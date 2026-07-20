@@ -14,8 +14,8 @@ func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
 		width, height int
 		wantX, wantY  int
 	}{
-		{name: "wide", width: 100, height: 24, wantX: 36, wantY: 2},
-		{name: "compact", width: 80, height: 24, wantX: 8, wantY: 2},
+		{name: "wide", width: 100, height: 24, wantX: 36, wantY: 3},
+		{name: "compact", width: 80, height: 24, wantX: 8, wantY: 3},
 	}
 
 	for _, test := range tests {

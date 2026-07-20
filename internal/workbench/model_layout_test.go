@@ -68,11 +68,11 @@ func TestResize_wide_layout_uses_plan_formula(t *testing.T) {
 	if got := model.editorWidth; got != 68 {
 		t.Errorf("right width = %d, want 68", got)
 	}
-	if got := model.editorHeight; got != 8 {
-		t.Errorf("editor height = %d, want 8", got)
+	if got := model.editorHeight; got != 6 {
+		t.Errorf("editor height = %d, want 6", got)
 	}
-	if got := model.resultsHeight; got != 12 {
-		t.Errorf("results height = %d, want 12", got)
+	if got := model.resultsHeight; got != 14 {
+		t.Errorf("results height = %d, want 14", got)
 	}
 }
 

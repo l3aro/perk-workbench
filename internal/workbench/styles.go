@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	colorCanvas  = "#10151f"
-	colorPanel   = "#17202e"
-	colorInk     = "#e6edf3"
-	colorMuted   = "#8b9bb4"
-	colorAccent  = "#55d6be"
-	colorBorder  = "#324155"
-	spaceCompact = 1
+	colorCanvas   = "#10151f"
+	colorPanel    = "#17202e"
+	colorInk      = "#e6edf3"
+	colorMuted    = "#8b9bb4"
+	colorAccent   = "#55d6be"
+	colorBorder   = "#324155"
+	spaceCompact  = 1
+	sqlEditorRows = 4
 )
 
 var (
@@ -118,7 +119,7 @@ func (m *Model) layout(width, height int) {
 		m.schemaWidth = 30
 		m.editorWidth = max(m.width-32, 0)
 	}
-	m.editorHeight = max(7, contentHeight*2/5)
+	m.editorHeight = min(contentHeight, sqlEditorRows+2)
 	m.resultsHeight = max(contentHeight-m.editorHeight, 0)
 	m.schema.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.picker.SetSize(max(m.width-2, 0), max(contentHeight-2, 0))
@@ -163,7 +164,7 @@ func (m Model) View() tea.View {
 	if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
 		if cursor := m.editor.textarea.Cursor(); cursor != nil {
 			cursor.Position.X += 2
-			cursor.Position.Y += 2
+			cursor.Position.Y += 3
 			if !m.compact {
 				cursor.Position.X += m.schemaWidth - 2
 			}
