@@ -10,6 +10,8 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/mysql"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -44,7 +46,7 @@ const (
 type Model struct {
 	state                                   modelState
 	target, status, pickerDir               string
-	service                                 *sqlite.Service
+	service                                 sharedsql.Service
 	appContext                              context.Context
 	queryContext                            context.Context
 	openTarget                              func(string) tea.Cmd
@@ -80,8 +82,8 @@ func (i schemaItem) Description() string { return i.description }
 
 type databaseOpenedMsg struct {
 	target  string
-	service *sqlite.Service
-	objects []sqlite.SchemaObject
+	service sharedsql.Service
+	objects []sharedsql.SchemaObject
 	err     error
 }
 
@@ -137,7 +139,7 @@ func Open(ctx context.Context) databaseOpener {
 		command: func(target string) tea.Cmd {
 			return func() tea.Msg {
 				if dsn, ok := strings.CutPrefix(target, "mysql:"); ok {
-					service, err := sqlite.OpenMySQL(ctx, dsn)
+					service, err := mysql.Open(ctx, dsn)
 					if err != nil {
 						return databaseOpenedMsg{err: fmt.Errorf("opening database: %w", err)}
 					}
@@ -171,7 +173,7 @@ func Open(ctx context.Context) databaseOpener {
 	}
 }
 
-func (m Model) Service() *sqlite.Service { return m.service }
+func (m Model) Service() sharedsql.Service { return m.service }
 
 func (m Model) Init() tea.Cmd {
 	if m.state == stateOpening {

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	dbmysql "github.com/l3aro/perk/internal/mysql"
 	modernsqlite "modernc.org/sqlite"
 )
 
@@ -181,8 +182,8 @@ func TestReturnsRows(t *testing.T) {
 		"INSERT INTO items VALUES (1)":             false,
 		"UPDATE items SET name = 'x'":              false,
 	} {
-		if got := returnsRows(statement); got != want {
-			t.Errorf("returnsRows(%q) = %t, want %t", statement, got, want)
+		if got := dbmysql.ReturnsRows(statement); got != want {
+			t.Errorf("ReturnsRows(%q) = %t, want %t", statement, got, want)
 		}
 	}
 }

@@ -1,4 +1,4 @@
-package sqlite
+package sql
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 	"unicode"
 )
 
-func validateStatement(input string) error {
+func ValidateStatement(input string) error {
 	const (
 		normal = iota
 		lineComment

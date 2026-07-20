@@ -2,115 +2,86 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
+	stdsql "database/sql"
 	"errors"
 	"fmt"
 	"net/url"
-	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	_ "modernc.org/sqlite"
 )
 
-const (
-	maxRows  = 500
-	maxRunes = 300
-)
-
 type Service struct {
-	db        *sql.DB
-	driver    string
+	db        *stdsql.DB
 	rawTarget string
 	dsn       string
 }
 
-type Result struct {
-	Columns      []string
-	Rows         [][]*string
-	RowsAffected int64
-	Duration     time.Duration
-	Truncated    bool
-}
+type Result = sharedsql.Result
+type SchemaObject = sharedsql.SchemaObject
+type ColumnInfo = sharedsql.ColumnInfo
 
-type SchemaObject struct {
-	Type string
-	Name string
-}
+const (
+	maxRows  = sharedsql.MaxRows
+	maxRunes = sharedsql.MaxRunes
+)
+
+func SanitizeDisplay(input string) string { return sharedsql.SanitizeDisplay(input) }
+
+func displayRow(values []any) []*string { return sharedsql.DisplayRow(values) }
 
 func Open(ctx context.Context, target string) (*Service, error) {
 	dsn := target
 	if target != ":memory:" {
 		dsn = (&url.URL{Scheme: "file", Path: target, RawQuery: "mode=rw"}).String()
 	}
-	return open(ctx, "sqlite", target, dsn)
-}
 
-func OpenMySQL(ctx context.Context, dsn string) (*Service, error) {
-	return open(ctx, "mysql", dsn, dsn)
-}
-
-func open(ctx context.Context, driver, target, dsn string) (*Service, error) {
-	db, err := sql.Open(driver, dsn)
+	db, err := stdsql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("opening %s database: %w", driver, err)
+		return nil, fmt.Errorf("opening sqlite database: %w", err)
 	}
-	if driver == "sqlite" && target == ":memory:" {
+	if target == ":memory:" {
 		db.SetMaxOpenConns(1)
 		db.SetMaxIdleConns(1)
 	}
 	if err := db.PingContext(ctx); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
-			return nil, fmt.Errorf("pinging %s database: %w", driver, errors.Join(err, closeErr))
+			return nil, fmt.Errorf("pinging sqlite database: %w", errors.Join(err, closeErr))
 		}
-		return nil, fmt.Errorf("pinging %s database: %w", driver, err)
+		return nil, fmt.Errorf("pinging sqlite database: %w", err)
 	}
-
-	return &Service{db: db, driver: driver, rawTarget: target, dsn: dsn}, nil
+	return &Service{db: db, rawTarget: target, dsn: dsn}, nil
 }
 
 func (s *Service) Close() error {
 	if err := s.db.Close(); err != nil {
-		return fmt.Errorf("closing %s database: %w", s.driver, err)
+		return fmt.Errorf("closing sqlite database: %w", err)
 	}
 	return nil
 }
 
-func (s *Service) ListSchema(ctx context.Context) ([]SchemaObject, error) {
-	query := `
+func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
+	rows, err := s.db.QueryContext(ctx, `
 		SELECT type, name
 		FROM sqlite_schema
 		WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
-		ORDER BY type, name`
-	if s.driver == "mysql" {
-		query = `
-			SELECT CASE table_type WHEN 'BASE TABLE' THEN 'table' ELSE 'view' END, table_name
-			FROM information_schema.tables
-			WHERE table_schema = DATABASE() AND table_type IN ('BASE TABLE', 'VIEW')
-			ORDER BY table_type, table_name`
-	}
-	rows, err := s.db.QueryContext(ctx, query)
+		ORDER BY type, name`)
 	if err != nil {
 		return nil, fmt.Errorf("listing schema: %w", err)
 	}
 
-	objects := []SchemaObject{}
+	objects := []sharedsql.SchemaObject{}
 	for rows.Next() {
-		var object SchemaObject
+		var object sharedsql.SchemaObject
 		if err := rows.Scan(&object.Type, &object.Name); err != nil {
-			if closeErr := rows.Close(); closeErr != nil {
-				return nil, fmt.Errorf("scanning schema: %w", errors.Join(err, closeErr))
-			}
-			return nil, fmt.Errorf("scanning schema: %w", err)
+			return nil, sharedsql.CloseRows(rows, "scanning schema", err)
 		}
-		object.Type = SanitizeDisplay(object.Type)
-		object.Name = SanitizeDisplay(object.Name)
+		object.Type = sharedsql.SanitizeDisplay(object.Type)
+		object.Name = sharedsql.SanitizeDisplay(object.Name)
 		objects = append(objects, object)
 	}
 	if err := rows.Err(); err != nil {
-		if closeErr := rows.Close(); closeErr != nil {
-			return nil, fmt.Errorf("iterating schema: %w", errors.Join(err, closeErr))
-		}
-		return nil, fmt.Errorf("iterating schema: %w", err)
+		return nil, sharedsql.CloseRows(rows, "iterating schema", err)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("closing schema rows: %w", err)

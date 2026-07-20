@@ -48,13 +48,3 @@ func TestOpenMissingFileDoesNotCreate(t *testing.T) {
 		t.Fatalf("missing database stat error = %v, want not exist", statErr)
 	}
 }
-
-func TestOpenMySQLRejectsInvalidDSN(t *testing.T) {
-	service, err := OpenMySQL(context.Background(), "not-a-mysql-dsn")
-	if err == nil {
-		if closeErr := service.Close(); closeErr != nil {
-			t.Errorf("Close() error = %v", closeErr)
-		}
-		t.Fatal("OpenMySQL() error = nil, want invalid DSN error")
-	}
-}

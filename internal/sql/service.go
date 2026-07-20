@@ -1,0 +1,40 @@
+package sql
+
+import (
+	"context"
+	"time"
+)
+
+const (
+	MaxRows  = 500
+	MaxRunes = 300
+)
+
+type Service interface {
+	Close() error
+	Execute(context.Context, string) (Result, error)
+	ListSchema(context.Context) ([]SchemaObject, error)
+	TableInfo(context.Context, string) ([]ColumnInfo, error)
+	BrowseTable(context.Context, string, int, int) (Result, error)
+}
+
+type Result struct {
+	Columns      []string
+	Rows         [][]*string
+	RowsAffected int64
+	Duration     time.Duration
+	Truncated    bool
+}
+
+type SchemaObject struct {
+	Type string
+	Name string
+}
+
+type ColumnInfo struct {
+	Name         string
+	Type         string
+	Nullable     bool
+	DefaultValue *string
+	PrimaryKey   int
+}

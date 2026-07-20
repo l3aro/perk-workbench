@@ -1,4 +1,4 @@
-package sqlite
+package sql
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-func displayRow(values []any) []*string {
+func DisplayRow(values []any) []*string {
 	row := make([]*string, len(values))
 	for index, value := range values {
 		if value == nil {
@@ -19,8 +19,8 @@ func displayRow(values []any) []*string {
 		} else {
 			text = SanitizeDisplay(fmt.Sprint(value))
 		}
-		if len([]rune(text)) > maxRunes {
-			text = string([]rune(text)[:maxRunes])
+		if len([]rune(text)) > MaxRunes {
+			text = string([]rune(text)[:MaxRunes])
 		}
 		row[index] = &text
 	}

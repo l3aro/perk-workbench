@@ -10,7 +10,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/l3aro/perk/internal/sqlite"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
 const (
@@ -324,4 +324,4 @@ func databaseSuffix(name string) bool {
 	return strings.HasSuffix(name, ".db") || strings.HasSuffix(name, ".sqlite") || strings.HasSuffix(name, ".sqlite3")
 }
 
-func safeText(input string) string { return sqlite.SanitizeDisplay(input) }
+func safeText(input string) string { return sharedsql.SanitizeDisplay(input) }

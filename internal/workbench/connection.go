@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net"
@@ -13,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/go-sql-driver/mysql"
+	dbmysql "github.com/l3aro/perk/internal/mysql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -254,12 +254,11 @@ func (m Model) testConnection() tea.Cmd {
 			}
 			return connectionTestMsg{err: service.Close()}
 		}
-		db, err := sql.Open("mysql", target)
+		db, err := dbmysql.Open(ctx, target)
 		if err != nil {
 			return connectionTestMsg{err: err}
 		}
-		defer db.Close()
-		return connectionTestMsg{err: db.PingContext(ctx)}
+		return connectionTestMsg{err: db.Close()}
 	}
 }
 

@@ -8,12 +8,12 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk/internal/sqlite"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
 type querySucceededMsg struct {
 	requestID uint64
-	result    sqlite.Result
+	result    sharedsql.Result
 }
 
 type queryFailedMsg struct {
@@ -25,14 +25,14 @@ type queryCanceledMsg struct{ requestID uint64 }
 
 type tableInfoMsg struct {
 	table   string
-	columns []sqlite.ColumnInfo
+	columns []sharedsql.ColumnInfo
 	err     error
 }
 
 type browseTableMsg struct {
 	table  string
 	page   int
-	result sqlite.Result
+	result sharedsql.Result
 	err    error
 }
 
@@ -119,7 +119,7 @@ func (m *Model) finishQuery() (bool, bool) {
 	return canceled, quit
 }
 
-func (m *Model) setResults(result sqlite.Result) {
+func (m *Model) setResults(result sharedsql.Result) {
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		titles[index] = safeText(column)
@@ -209,7 +209,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) setBrowse(result sqlite.Result) {
+func (m *Model) setBrowse(result sharedsql.Result) {
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		titles[index] = safeText(column)
