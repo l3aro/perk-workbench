@@ -1,4 +1,13 @@
+name: perk
+
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ${DEMO_DIR:-../demo}/office.sql:/docker-entrypoint-initdb.d/office.sql:ro
+
   dev:
     image: golang:1.25
     working_dir: /workspace
