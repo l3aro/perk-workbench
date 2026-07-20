@@ -103,7 +103,7 @@ func New(target string, opener databaseOpener) Model {
 		target:     target,
 		appContext: opener.ctx,
 		openTarget: opener.command,
-		schema:     newList("Schema", false),
+		schema:     newList("Schema", true),
 		picker:     newList("Choose database", true),
 		structure:  newResultsTable(),
 		browse:     newResultsTable(),

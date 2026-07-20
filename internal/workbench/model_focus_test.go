@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -127,6 +128,52 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	}
 }
 
+func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.state, model.focus = stateReady, focusSchema
+	model.schema.SetItems([]list.Item{
+		schemaItem{title: "accounts", description: "table"},
+		schemaItem{title: "queue_1", description: "table"},
+	})
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+
+	// Then
+	if !model.schema.SettingFilter() {
+		t.Fatal("schema filter is not active")
+	}
+	if got := model.schema.FilterValue(); got != "q1" {
+		t.Fatalf("filter value = %q, want %q", got, "q1")
+	}
+	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].FilterValue() != "queue_1" {
+		t.Fatalf("visible items = %#v, want queue_1", got)
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+
+	// Then
+	if model.schema.SettingFilter() {
+		t.Fatal("schema filter remains active after escape")
+	}
+	if got := model.schema.FilterValue(); got != "" {
+		t.Fatalf("filter value = %q, want empty", got)
+	}
+	if got := model.schema.VisibleItems(); len(got) != 2 {
+		t.Fatalf("visible items = %#v, want both tables", got)
+	}
+}
+
 func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
@@ -145,6 +192,23 @@ func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 
 	// Then
 	assertFocus(t, model, focusWorkspace)
+}
+
+func updateFromCommand(model Model, command tea.Cmd) Model {
+	if command == nil {
+		return model
+	}
+
+	message := command()
+	if batch, ok := message.(tea.BatchMsg); ok {
+		for _, command := range batch {
+			model = updateFromCommand(model, command)
+		}
+		return model
+	}
+
+	updated, _ := model.Update(message)
+	return updated.(Model)
 }
 
 func assertFocus(t *testing.T, model Model, want focus) {

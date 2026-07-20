@@ -14,7 +14,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(message.Width, message.Height)
 		return m, nil
 	case tea.KeyPressMsg:
-		if message.String() == "ctrl+c" || (message.String() == "q" && (m.running || m.state != stateReady || m.focus != focusWorkspace || m.tab != tabSQL || m.editor.textarea.Value() == "")) {
+		if message.String() == "ctrl+c" || (message.String() == "q" && !m.schema.SettingFilter() && (m.running || m.state != stateReady || m.focus != focusWorkspace || m.tab != tabSQL || m.editor.textarea.Value() == "")) {
 			if m.running {
 				m.pendingQuit = true
 				m.cancelQuery()
@@ -22,7 +22,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.state == stateReady {
+		if m.state == stateReady && !m.schema.SettingFilter() {
 			switch message.String() {
 			case "1":
 				m.focus = focusSchema
