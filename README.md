@@ -24,6 +24,29 @@ go run ./cmd/perk :memory:
 
 With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
 
+## Docker Compose
+
+The Compose development environment mounts this source directory and the sibling `../demo` directory at `/demo`. It opens the bundled demo database by default:
+
+```bash
+docker compose run --rm dev
+```
+
+For a demo directory elsewhere, set `DEMO_DIR` to its host path:
+
+```bash
+DEMO_DIR=/path/to/demo docker compose run --rm dev
+```
+
+Run the product checks in the same container environment:
+
+```bash
+docker compose run --rm dev go test -race ./cmd/... ./internal/...
+docker compose run --rm dev go vet ./cmd/... ./internal/...
+docker compose run --rm dev go build ./cmd/perk
+docker compose run --rm dev gofmt -l cmd internal
+```
+
 ## Keys
 
 ### Picker

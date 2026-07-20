@@ -3,6 +3,7 @@ package workbench
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -14,7 +15,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(message.Width, message.Height)
 		return m, nil
 	case tea.KeyPressMsg:
-		if message.String() == "ctrl+c" || (message.String() == "q" && !m.schema.SettingFilter() && (m.running || m.state != stateReady || m.focus != focusWorkspace || m.tab != tabSQL || m.editor.textarea.Value() == "")) {
+		if message.String() == "ctrl+c" || (message.String() == "q" && !m.schema.SettingFilter() && !(m.state == stateConnection && m.recent.SettingFilter()) && (m.running || m.state != stateReady || m.focus != focusWorkspace || m.tab != tabSQL || m.editor.textarea.Value() == "")) {
 			if m.running {
 				m.pendingQuit = true
 				m.cancelQuery()
@@ -85,6 +86,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTableInfo(message)
 	case browseTableMsg:
 		return m.updateBrowse(message)
+	case connectionTestMsg:
+		return m.updateConnection(message)
 	}
 
 	return m.updateActive(message)
@@ -97,7 +100,12 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.state, m.target, m.service = stateReady, message.target, message.service
-	m.status = safeText("ready: " + filepath.Base(message.target))
+	m.recordConnection()
+	name := filepath.Base(message.target)
+	if configured := strings.TrimSpace(m.connection.name.Value()); configured != "" {
+		name = configured
+	}
+	m.status = safeText("ready: " + name)
 	items := make([]list.Item, len(message.objects))
 	for index, object := range message.objects {
 		items[index] = schemaItem{title: safeText(object.Name), description: safeText(object.Type)}
@@ -107,6 +115,8 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
+	case stateConnection:
+		return m.updateConnection(message)
 	case statePicking:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "r" {
 			m.status = "reloading picker"

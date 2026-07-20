@@ -1,0 +1,20 @@
+services:
+  dev:
+    image: golang:1.25
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    environment:
+      GOCACHE: /go/build-cache
+      GOMODCACHE: /go/pkg/mod
+      GOFLAGS: -buildvcs=false
+    volumes:
+      - .:/workspace
+      - ${DEMO_DIR:-../demo}:/demo
+      - go-build-cache:/go/build-cache
+      - go-mod-cache:/go/pkg/mod
+    command: go run ./cmd/perk /demo/chinook.db
+
+volumes:
+  go-build-cache:
+  go-mod-cache:

@@ -94,6 +94,7 @@ func TestPicker_r_reloads_failed_directory(t *testing.T) {
 	// Given
 	directory := t.TempDir()
 	model := New("", Open(context.Background()))
+	model.state = statePicking
 	updated, _ := model.Update(directoryReadMsg{dir: directory, err: errors.New("permission denied")})
 	model = updated.(Model)
 

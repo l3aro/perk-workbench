@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk/internal/sqlite"
 )
@@ -17,7 +18,8 @@ const browsePageSize = 25
 type modelState int
 
 const (
-	statePicking modelState = iota
+	stateConnection modelState = iota
+	statePicking
 	stateOpening
 	stateReady
 	stateFailure
@@ -48,9 +50,12 @@ type Model struct {
 	running, cancelRequested, pendingQuit   bool
 	requestID, activeRequestID              uint64
 	cancel                                  context.CancelFunc
-	schema, picker                          list.Model
+	schema, picker, recent                  list.Model
 	structure, browse, results              table.Model
 	editor                                  editor
+	connection                              connectionForm
+	recentConnections                       []recentConnection
+	recentPath                              string
 	focus                                   focus
 	tab                                     workspaceTab
 	selectedTable                           string
@@ -105,15 +110,20 @@ func New(target string, opener databaseOpener) Model {
 		openTarget: opener.command,
 		schema:     newList("Schema", true),
 		picker:     newList("Choose database", true),
+		recent:     newList("Recent connections", true),
 		structure:  newResultsTable(),
 		browse:     newResultsTable(),
 		results:    newResultsTable(),
 		editor:     editor,
+		connection: newConnectionForm(),
 		focus:      focusWorkspace,
 		tab:        tabSQL,
 	}
 	if target == "" {
-		model.state = statePicking
+		model.state = stateConnection
+		model.recentPath, _ = recentConnectionsPath()
+		model.recentConnections = loadRecentConnections(model.recentPath)
+		_ = model.recent.SetItems(recentListItems(model.recentConnections))
 	} else {
 		model.state = stateOpening
 	}
@@ -152,5 +162,18 @@ func (m Model) Init() tea.Cmd {
 	if m.state == stateOpening {
 		return m.openTarget(m.target)
 	}
-	return readDirectory(".")
+	return nil
+}
+
+func newConnectionForm() connectionForm {
+	name := textinput.New()
+	name.Prompt = "Name: "
+	name.Placeholder = "Local database"
+	name.Focus()
+
+	target := textinput.New()
+	target.Prompt = "Target: "
+	target.Placeholder = "path/to/database.db or :memory:"
+
+	return connectionForm{name: name, target: target, focus: connectionFocusName}
 }

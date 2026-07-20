@@ -122,6 +122,13 @@ func (m *Model) layout(width, height int) {
 	m.resultsHeight = max(contentHeight-m.editorHeight, 0)
 	m.schema.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.picker.SetSize(max(m.width-2, 0), max(contentHeight-2, 0))
+	connectionWidth := m.width
+	if !m.compact {
+		connectionWidth = m.editorWidth
+	}
+	m.connection.name.SetWidth(max(connectionWidth-16, 1))
+	m.connection.target.SetWidth(max(connectionWidth-16, 1))
+	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.editor.textarea.SetWidth(max(m.editorWidth-4, 1))
 	m.editor.textarea.SetHeight(max(m.editorHeight-2, 1))
 	m.results.SetWidth(max(m.editorWidth-4, 1))
@@ -164,6 +171,17 @@ func (m Model) View() tea.View {
 
 func (m Model) contentView() string {
 	switch m.state {
+	case stateConnection:
+		if m.compact {
+			content := m.connectionView()
+			if m.connection.focus == connectionFocusRecent {
+				content = m.recent.View()
+			}
+			return compactPane(content, max(m.width-2, 0), max(m.height-4, 0))
+		}
+		left := paneStyle(m.connection.focus == connectionFocusRecent).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.recent.View())
+		right := paneStyle(m.connection.focus != connectionFocusRecent).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.connectionView())
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	case statePicking:
 		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(m.picker.View())
 	case stateOpening:
@@ -212,6 +230,9 @@ func (m Model) workspaceView() string {
 }
 
 func (m Model) footer() string {
+	if m.state == stateConnection {
+		return safeText(m.status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | q quit")
+	}
 	if m.state == stateReady {
 		return safeText(m.status + " | 1 tables | 2 tabs | tab switch view | q quit")
 	}
