@@ -2,10 +2,82 @@ package workbench
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/go-sql-driver/mysql"
 )
+
+func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
+	form := newConnectionForm()
+	form.driver = driverMySQL
+	form.host.SetValue("2001:db8::1")
+	form.port.SetValue("3307")
+	form.user.SetValue("alice")
+	form.pass.SetValue("secret")
+	form.target.SetValue("app")
+
+	dsn, err := mysql.ParseDSN(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing MySQL DSN: %v", err)
+	}
+	if dsn.User != "alice" || dsn.Passwd != "secret" || dsn.Addr != "[2001:db8::1]:3307" || dsn.DBName != "app" {
+		t.Fatalf("MySQL DSN = %#v, want separate field values", dsn)
+	}
+}
+
+func TestConnectionForm_showsMySQLControls(t *testing.T) {
+	model := New("", Open(context.Background()))
+	model.connection.setFocus(connectionFocusDriver)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+	view := model.connectionView()
+	for _, label := range []string{"Host:", "Port:", "Username:", "Password:", "Database:"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("MySQL connection view = %q, missing %q", view, label)
+		}
+	}
+
+	for _, want := range []int{connectionFocusName, connectionFocusHost, connectionFocusPort, connectionFocusUsername, connectionFocusPassword, connectionFocusTarget, connectionFocusTest, connectionFocusConnect} {
+		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+		model = updated.(Model)
+		if model.connection.focus != want {
+			t.Fatalf("connection focus = %d, want %d", model.connection.focus, want)
+		}
+	}
+}
+
+func TestConnectionForm_driverSwitchesWithDirectionalKeys(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{
+		{Code: tea.KeyLeft},
+		{Code: tea.KeyRight},
+		{Code: 'h', Text: "h"},
+		{Code: 'l', Text: "l"},
+	} {
+		model := New("", Open(context.Background()))
+		model.connection.setFocus(connectionFocusDriver)
+
+		updated, _ := model.Update(key)
+		model = updated.(Model)
+		if model.connection.driver != driverMySQL {
+			t.Fatalf("driver after %q = %d, want MySQL", key.String(), model.connection.driver)
+		}
+	}
+}
+
+func TestConnectionForm_allowsQInMySQLHost(t *testing.T) {
+	model := New("", Open(context.Background()))
+	model.connection.driver = driverMySQL
+	model.connection.setFocus(connectionFocusHost)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	if model.connection.host.Value() != "q" {
+		t.Fatalf("host = %q, want q", model.connection.host.Value())
+	}
+}
 
 func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 	model := New("", Open(context.Background()))
