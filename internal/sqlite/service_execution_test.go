@@ -168,3 +168,21 @@ func TestServiceExecuteCancellation(t *testing.T) {
 		t.Fatal("canceled query did not return")
 	}
 }
+
+func TestReturnsRows(t *testing.T) {
+	for statement, want := range map[string]bool{
+		"SELECT 1":                                 true,
+		"-- query comment\nSELECT 1":               true,
+		"/* query comment */ SELECT 1":             true,
+		"SHOW TABLES":                              true,
+		"DESCRIBE items":                           true,
+		"EXPLAIN SELECT 1":                         true,
+		"WITH ids AS (SELECT 1) SELECT * FROM ids": true,
+		"INSERT INTO items VALUES (1)":             false,
+		"UPDATE items SET name = 'x'":              false,
+	} {
+		if got := returnsRows(statement); got != want {
+			t.Errorf("returnsRows(%q) = %t, want %t", statement, got, want)
+		}
+	}
+}

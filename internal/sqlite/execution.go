@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -16,22 +17,38 @@ func (s *Service) Execute(ctx context.Context, statement string) (result Result,
 	started := time.Now()
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return Result{}, fmt.Errorf("acquiring sqlite connection: %w", err)
+		return Result{}, fmt.Errorf("acquiring %s connection: %w", s.driver, err)
 	}
 	defer func() {
 		if closeErr := conn.Close(); closeErr != nil {
 			if err != nil {
-				err = errors.Join(err, fmt.Errorf("closing sqlite connection: %w", closeErr))
+				err = errors.Join(err, fmt.Errorf("closing %s connection: %w", s.driver, closeErr))
 				return
 			}
 			result = Result{}
-			err = fmt.Errorf("closing sqlite connection: %w", closeErr)
+			err = fmt.Errorf("closing %s connection: %w", s.driver, closeErr)
 		}
 	}()
 
-	before, err := totalChanges(ctx, conn)
-	if err != nil {
-		return Result{}, err
+	if s.driver == "mysql" && !returnsRows(statement) {
+		execution, err := conn.ExecContext(ctx, statement)
+		if err != nil {
+			return Result{}, fmt.Errorf("executing statement: %w", err)
+		}
+		result.RowsAffected, err = execution.RowsAffected()
+		if err != nil {
+			return Result{}, fmt.Errorf("reading affected rows: %w", err)
+		}
+		result.Duration = time.Since(started)
+		return result, nil
+	}
+
+	before := int64(0)
+	if s.driver == "sqlite" {
+		before, err = totalChanges(ctx, conn)
+		if err != nil {
+			return Result{}, err
+		}
 	}
 	rows, err := conn.QueryContext(ctx, statement)
 	if err != nil {
@@ -42,18 +59,51 @@ func (s *Service) Execute(ctx context.Context, statement string) (result Result,
 	if err != nil {
 		return Result{}, err
 	}
-	after, err := totalChanges(ctx, conn)
-	if err != nil {
-		return Result{}, err
-	}
-	if after != before {
-		result.RowsAffected, err = changes(ctx, conn)
+	if s.driver == "sqlite" {
+		after, err := totalChanges(ctx, conn)
 		if err != nil {
 			return Result{}, err
+		}
+		if after != before {
+			result.RowsAffected, err = changes(ctx, conn)
+			if err != nil {
+				return Result{}, err
+			}
 		}
 	}
 	result.Duration = time.Since(started)
 	return result, nil
+}
+
+func returnsRows(statement string) bool {
+	for {
+		statement = strings.TrimSpace(strings.TrimLeft(statement, "("))
+		switch {
+		case strings.HasPrefix(statement, "--"):
+			if index := strings.IndexByte(statement, '\n'); index >= 0 {
+				statement = statement[index+1:]
+				continue
+			}
+			return false
+		case strings.HasPrefix(statement, "/*"):
+			index := strings.Index(statement[2:], "*/")
+			if index < 0 {
+				return false
+			}
+			statement = statement[index+4:]
+			continue
+		}
+		break
+	}
+	if index := strings.IndexAny(statement, " \t\n\r("); index >= 0 {
+		statement = statement[:index]
+	}
+	switch strings.ToUpper(statement) {
+	case "SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "WITH":
+		return true
+	default:
+		return false
+	}
 }
 
 func collectRows(rows *sql.Rows) (Result, error) {
