@@ -125,6 +125,33 @@ func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 	})
 }
 
+func TestConnectionForm_opensMySQLConnection(t *testing.T) {
+	var openedTarget string
+	model := New("", databaseOpener{
+		ctx: context.Background(),
+		command: func(target string) tea.Cmd {
+			openedTarget = target
+			return nil
+		},
+	})
+	model.connection.driver = driverMySQL
+	model.connection.host.SetValue("localhost")
+	model.connection.port.SetValue("3306")
+	model.connection.target.SetValue("app")
+
+	updated, command := model.openConnection()
+	model = updated.(Model)
+	if model.state != stateOpening {
+		t.Fatalf("model state = %v, want opening", model.state)
+	}
+	if command != nil {
+		t.Fatal("open command = non-nil, want nil from test opener")
+	}
+	if !strings.HasPrefix(openedTarget, "mysql:") {
+		t.Fatalf("opened target = %q, want mysql DSN prefix", openedTarget)
+	}
+}
+
 func TestConnectionForm_F5OpensSQLiteConnection(t *testing.T) {
 	model := New("", Open(context.Background()))
 	model.connection.target.SetValue(":memory:")

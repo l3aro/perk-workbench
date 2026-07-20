@@ -264,13 +264,18 @@ func (m Model) testConnection() tea.Cmd {
 }
 
 func (m Model) openConnection() (tea.Model, tea.Cmd) {
-	if m.connection.driver != driverSQLite {
-		m.status = "MySQL connections can be tested; workspace support is SQLite-only"
-		return m, nil
+	if m.connection.driver == driverMySQL {
+		if err := m.connection.validateMySQL(); err != nil {
+			m.status = safeText(err.Error())
+			return m, nil
+		}
 	}
 	if target := m.connection.targetValue(); target != "" {
 		m.target, m.state = target, stateOpening
 		m.status = "opening " + safeText(m.connection.connectionName())
+		if m.connection.driver == driverMySQL {
+			return m, m.openTarget("mysql:" + target)
+		}
 		return m, m.openTarget(target)
 	}
 	m.status = "target is required"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
@@ -135,6 +136,20 @@ func Open(ctx context.Context) databaseOpener {
 		ctx: ctx,
 		command: func(target string) tea.Cmd {
 			return func() tea.Msg {
+				if dsn, ok := strings.CutPrefix(target, "mysql:"); ok {
+					service, err := sqlite.OpenMySQL(ctx, dsn)
+					if err != nil {
+						return databaseOpenedMsg{err: fmt.Errorf("opening database: %w", err)}
+					}
+					objects, err := service.ListSchema(ctx)
+					if err != nil {
+						if closeErr := service.Close(); closeErr != nil {
+							return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", errors.Join(err, closeErr))}
+						}
+						return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", err)}
+					}
+					return databaseOpenedMsg{target: dsn, service: service, objects: objects}
+				}
 				resolved, err := resolveTarget(target)
 				if err != nil {
 					return databaseOpenedMsg{err: err}
