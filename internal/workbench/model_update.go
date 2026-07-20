@@ -10,41 +10,48 @@ import (
 )
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.running && !m.Workflow.Running() {
+		m.Workflow.RestoreQuery(m.appContext, m.activeRequestID, m.cancelRequested)
+		if m.pendingQuit {
+			m.Workflow.RequestQuit()
+		}
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
 		return m, nil
 	case tea.KeyPressMsg:
-		if message.String() == "ctrl+c" || (message.String() == "q" && !m.schema.SettingFilter() && !(m.state == stateConnection && (m.recent.SettingFilter() || m.connection.inputFocused())) && (m.running || m.state != stateReady || m.focus != focusWorkspace || m.tab != tabSQL || m.editor.textarea.Value() == "")) {
-			if m.running {
+		if message.String() == "ctrl+c" || (message.String() == "q" && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || m.connection.inputFocused())) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.textarea.Value() == "")) {
+			if m.Running() {
+				m.RequestQuit()
 				m.pendingQuit = true
 				m.cancelQuery()
 				return m, nil
 			}
 			return m, tea.Quit
 		}
-		if m.state == stateReady && !m.schema.SettingFilter() {
+		if m.State == stateReady && !m.schema.SettingFilter() {
 			switch message.String() {
 			case "1":
-				m.focus = focusSchema
+				m.Focus = focusSchema
 				m.editor.textarea.Blur()
 				return m, nil
 			case "2":
-				m.focus = focusWorkspace
-				if m.tab == tabSQL {
+				m.Focus = focusWorkspace
+				if m.Tab == tabSQL {
 					m.editor.textarea.Focus()
 				}
 				return m, nil
 			}
 		}
-		if m.state == stateReady && m.focus == focusWorkspace && m.tab == tabSQL && m.executeKey(message) {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && m.executeKey(message) {
 			return m.startQuery()
 		}
-		if m.running && message.Key().Code == tea.KeyEscape {
+		if m.Running() && message.Key().Code == tea.KeyEscape {
 			m.cancelQuery()
 			return m, nil
 		}
-		if m.state == stateReady && m.focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
+		if m.State == stateReady && m.Focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
 			m.toggleTab(message.String() == "tab")
 			return m, nil
 		}
@@ -56,10 +63,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case directoryReadMsg:
 		m.pickerDir = message.dir
 		if message.err != nil {
-			m.status = safeText(fmt.Sprintf("unable to read directory: %v", message.err))
+			m.Status = safeText(fmt.Sprintf("unable to read directory: %v", message.err))
 			return m, nil
 		}
-		m.status = "choose a database"
+		m.Status = "choose a database"
 		items := make([]list.Item, len(message.items))
 		for index, item := range message.items {
 			items[index] = item
@@ -67,14 +74,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.picker.SetItems(items)
 	case pickerSelectionMsg:
 		if message.err != nil {
-			m.status = safeText(fmt.Sprintf("unable to open selection: %v", message.err))
+			m.Status = safeText(fmt.Sprintf("unable to open selection: %v", message.err))
 			return m, nil
 		}
 		if message.dir {
 			return m, readDirectory(message.target)
 		}
-		m.state = stateOpening
-		m.status = "opening database"
+		m.BeginOpening(message.target, "opening database")
 		return m, m.openTarget(message.target)
 	case querySucceededMsg:
 		return m.updateQuerySuccess(message)
@@ -95,17 +101,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil {
-		m.state = stateFailure
-		m.status = safeText(fmt.Sprintf("database unavailable: %v", message.err))
+		m.Fail(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
 		return m, nil
 	}
-	m.state, m.target, m.service = stateReady, message.target, message.service
+	m.Opened(message.target, message.service, "")
 	m.recordConnection()
 	name := filepath.Base(message.target)
 	if configured := strings.TrimSpace(m.connection.name.Value()); configured != "" {
 		name = configured
 	}
-	m.status = safeText("ready: " + name)
+	m.Status = safeText("ready: " + name)
 	items := make([]list.Item, len(message.objects))
 	for index, object := range message.objects {
 		items[index] = schemaItem{title: safeText(object.Name), description: safeText(object.Type)}
@@ -114,12 +119,12 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
-	switch m.state {
+	switch m.State {
 	case stateConnection:
 		return m.updateConnection(message)
 	case statePicking:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "r" {
-			m.status = "reloading picker"
+			m.Status = "reloading picker"
 			return m, readDirectory(m.pickerDir)
 		}
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
@@ -132,11 +137,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, command
 	case stateReady:
 		var command tea.Cmd
-		switch m.focus {
+		switch m.Focus {
 		case focusSchema:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
-					m.selectedTable, m.browsePage, m.tab, m.focus = item.title, 0, tabStructure, focusWorkspace
+					m.SelectTable(item.title)
 					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 				}
 			}
@@ -144,21 +149,23 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, command
 		case focusWorkspace:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "esc" {
-				m.focus = focusSchema
+				m.Focus = focusSchema
 				m.editor.textarea.Blur()
 				return m, nil
 			}
-			switch m.tab {
+			switch m.Tab {
 			case tabStructure:
 				m.structure, command = m.structure.Update(message)
 			case tabBrowse:
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "n" || keyPress.String() == "p") {
 					if keyPress.String() == "n" {
-						m.browsePage++
-					} else if m.browsePage > 0 {
-						m.browsePage--
+						m.ChangeBrowsePage(1)
+						return m, m.loadBrowse()
 					}
-					return m, m.loadBrowse()
+					if m.ChangeBrowsePage(-1) {
+						return m, m.loadBrowse()
+					}
+					return m, nil
 				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
@@ -168,7 +175,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case stateFailure:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "esc") {
-			m.state, m.status = statePicking, "choose another database"
+			m.RecoverToPicker("choose another database")
 			return m, readDirectory(m.pickerDir)
 		}
 	}
@@ -180,12 +187,8 @@ func (m Model) executeKey(key tea.KeyPressMsg) bool {
 }
 
 func (m *Model) toggleTab(forward bool) {
-	step := workspaceTab(1)
-	if !forward {
-		step = 2
-	}
-	m.tab = (m.tab + step) % 3
-	if m.tab == tabSQL {
+	m.Workflow.ToggleTab(forward)
+	if m.Tab == tabSQL {
 		m.editor.textarea.Focus()
 	} else {
 		m.editor.textarea.Blur()

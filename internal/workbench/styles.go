@@ -160,7 +160,7 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer())))
-	if m.state == stateReady && m.focus == focusWorkspace && m.tab == tabSQL {
+	if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
 		if cursor := m.editor.textarea.Cursor(); cursor != nil {
 			cursor.Position.X += 2
 			cursor.Position.Y += 2
@@ -174,7 +174,7 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) contentView() string {
-	switch m.state {
+	switch m.State {
 	case stateConnection:
 		if m.compact {
 			content := m.connectionView()
@@ -191,36 +191,36 @@ func (m Model) contentView() string {
 	case stateOpening:
 		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(statusStyle.Render("opening database"))
 	case stateFailure:
-		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(statusStyle.Render(m.status + "\npress enter to return to the picker"))
+		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(statusStyle.Render(m.Status + "\npress enter to return to the picker"))
 	}
 	if m.compact {
 		width, height := max(1, m.width-2), max(1, m.height-4)
-		switch m.focus {
+		switch m.Focus {
 		case focusSchema:
 			return compactPane(m.schema.View(), width, height)
 		case focusWorkspace:
 			return compactPane(m.workspaceView(), width, height)
 		}
 	}
-	left := paneStyle(m.focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.schema.View())
+	left := paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.schema.View())
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, m.rightView())
 }
 
 func (m Model) rightView() string {
-	return paneStyle(m.focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.workspaceView())
+	return paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.workspaceView())
 }
 
 func (m Model) workspaceView() string {
 	tabs := []string{"Structure", "Browse", "SQL"}
 	for index := range tabs {
-		if workspaceTab(index) == m.tab {
+		if workspaceTab(index) == m.Tab {
 			tabs[index] = headerStyle.Render(tabs[index])
 		} else {
 			tabs[index] = statusStyle.Render(tabs[index])
 		}
 	}
 	var content string
-	switch m.tab {
+	switch m.Tab {
 	case tabStructure:
 		content = m.structure.View()
 	case tabBrowse:
@@ -234,13 +234,13 @@ func (m Model) workspaceView() string {
 }
 
 func (m Model) footer() string {
-	if m.state == stateConnection {
-		return safeText(m.status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | q quit")
+	if m.State == stateConnection {
+		return safeText(m.Status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | q quit")
 	}
-	if m.state == stateReady {
-		return safeText(m.status + " | 1 tables | 2 tabs | tab switch view | q quit")
+	if m.State == stateReady {
+		return safeText(m.Status + " | 1 tables | 2 tabs | tab switch view | q quit")
 	}
-	return safeText(m.status + " | q quit")
+	return safeText(m.Status + " | q quit")
 }
 
 func readDirectory(dir string) tea.Cmd {

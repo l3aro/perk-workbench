@@ -10,45 +10,38 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/core"
 	"github.com/l3aro/perk/internal/mysql"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
 const compactWidth = 90
-const browsePageSize = 25
+const browsePageSize = core.BrowsePageSize
 
-type modelState int
-
-const (
-	stateConnection modelState = iota
-	statePicking
-	stateOpening
-	stateReady
-	stateFailure
-)
-
-type focus int
+type modelState = core.State
+type focus = core.Focus
+type workspaceTab = core.Tab
 
 const (
-	focusSchema focus = iota
-	focusWorkspace
-)
+	stateConnection = core.StateConnection
+	statePicking    = core.StatePicking
+	stateOpening    = core.StateOpening
+	stateReady      = core.StateReady
+	stateFailure    = core.StateFailure
 
-type workspaceTab int
+	focusSchema    = core.FocusSchema
+	focusWorkspace = core.FocusWorkspace
 
-const (
-	tabStructure workspaceTab = iota
-	tabBrowse
-	tabSQL
+	tabStructure = core.TabStructure
+	tabBrowse    = core.TabBrowse
+	tabSQL       = core.TabSQL
 )
 
 type Model struct {
-	state                                   modelState
-	target, status, pickerDir               string
-	service                                 sharedsql.Service
+	core.Workflow
+	pickerDir                               string
 	appContext                              context.Context
-	queryContext                            context.Context
 	openTarget                              func(string) tea.Cmd
 	running, cancelRequested, pendingQuit   bool
 	requestID, activeRequestID              uint64
@@ -59,10 +52,6 @@ type Model struct {
 	connection                              connectionForm
 	recentConnections                       []recentConnection
 	recentPath                              string
-	focus                                   focus
-	tab                                     workspaceTab
-	selectedTable                           string
-	browsePage                              int
 	width, height, schemaWidth, editorWidth int
 	editorHeight, resultsHeight             int
 	compact                                 bool
@@ -108,7 +97,7 @@ func New(target string, opener databaseOpener) Model {
 	editor := newEditor()
 	editor.textarea.SetVirtualCursor(false)
 	model := Model{
-		target:     target,
+		Workflow:   core.New(target),
 		appContext: opener.ctx,
 		openTarget: opener.command,
 		schema:     newList("Schema", true),
@@ -119,16 +108,11 @@ func New(target string, opener databaseOpener) Model {
 		results:    newResultsTable(),
 		editor:     editor,
 		connection: newConnectionForm(),
-		focus:      focusWorkspace,
-		tab:        tabSQL,
 	}
 	if target == "" {
-		model.state = stateConnection
 		model.recentPath, _ = recentConnectionsPath()
 		model.recentConnections = loadRecentConnections(model.recentPath)
 		_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	} else {
-		model.state = stateOpening
 	}
 	return model
 }
@@ -173,11 +157,11 @@ func Open(ctx context.Context) databaseOpener {
 	}
 }
 
-func (m Model) Service() sharedsql.Service { return m.service }
+func (m Model) Service() sharedsql.Service { return m.Database }
 
 func (m Model) Init() tea.Cmd {
-	if m.state == stateOpening {
-		return m.openTarget(m.target)
+	if m.State == core.StateOpening {
+		return m.openTarget(m.Target)
 	}
 	return nil
 }

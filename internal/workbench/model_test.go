@@ -39,18 +39,18 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.state != stateReady {
-		t.Fatalf("model state = %v, want ready", model.state)
+	if model.State != stateReady {
+		t.Fatalf("model state = %v, want ready", model.State)
 	}
 	if got := model.schema.Items(); len(got) != 1 {
 		t.Fatalf("schema items = %d, want 1", len(got))
 	}
-	if model.service == nil {
+	if model.Database == nil {
 		t.Fatal("model service = nil, want opened service")
 	}
 	t.Cleanup(func() {
-		if model.service != nil {
-			if err := model.service.Close(); err != nil {
+		if model.Database != nil {
+			if err := model.Database.Close(); err != nil {
 				t.Errorf("closing workbench service: %v", err)
 			}
 		}
@@ -68,8 +68,8 @@ func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.state != stateFailure {
-		t.Fatalf("model state = %v, want failure", model.state)
+	if model.State != stateFailure {
+		t.Fatalf("model state = %v, want failure", model.State)
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("missing target was created or could not be inspected: %v", err)
@@ -88,7 +88,7 @@ func readyModel(t *testing.T) Model {
 		}
 	})
 	model := New("", Open(context.Background()))
-	model.state, model.service = stateReady, service
+	model.State, model.Database = stateReady, service
 	return model
 }
 

@@ -113,20 +113,20 @@ func (m *Model) selectedRecentConnection() (recentConnection, bool) {
 func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
-		m.status = "select a recent connection"
+		m.Status = "select a recent connection"
 		return nil
 	}
 	m.connection.driver = connection.Driver
 	m.connection.name.SetValue(connection.Name)
 	m.connection.target.SetValue(connection.Target)
-	m.status = "editing " + safeText(connection.Name)
+	m.Status = "editing " + safeText(connection.Name)
 	return m.connection.setFocus(connectionFocusName)
 }
 
 func (m *Model) deleteSelectedRecentConnection() {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
-		m.status = "select a recent connection"
+		m.Status = "select a recent connection"
 		return
 	}
 	connections := make([]recentConnection, 0, len(m.recentConnections)-1)
@@ -136,7 +136,7 @@ func (m *Model) deleteSelectedRecentConnection() {
 		}
 	}
 	m.setRecentConnections(connections)
-	m.status = "deleted " + safeText(connection.Name)
+	m.Status = "deleted " + safeText(connection.Name)
 }
 
 func (m *Model) newConnection() tea.Cmd {
@@ -149,7 +149,7 @@ func (m *Model) newConnection() tea.Cmd {
 	m.connection.pass.SetValue("")
 	m.connection.target.Placeholder = "path/to/database.db or :memory:"
 	m.connection.target.Prompt = "Target: "
-	m.status = "new connection"
+	m.Status = "new connection"
 	return m.connection.setFocus(connectionFocusName)
 }
 
@@ -265,28 +265,27 @@ func (m Model) testConnection() tea.Cmd {
 func (m Model) openConnection() (tea.Model, tea.Cmd) {
 	if m.connection.driver == driverMySQL {
 		if err := m.connection.validateMySQL(); err != nil {
-			m.status = safeText(err.Error())
+			m.Status = safeText(err.Error())
 			return m, nil
 		}
 	}
 	if target := m.connection.targetValue(); target != "" {
-		m.target, m.state = target, stateOpening
-		m.status = "opening " + safeText(m.connection.connectionName())
+		m.BeginOpening(target, "opening "+safeText(m.connection.connectionName()))
 		if m.connection.driver == driverMySQL {
 			return m, m.openTarget("mysql:" + target)
 		}
 		return m, m.openTarget(target)
 	}
-	m.status = "target is required"
+	m.Status = "target is required"
 	return m, nil
 }
 
 func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	if test, ok := message.(connectionTestMsg); ok {
 		if test.err != nil {
-			m.status = "connection test failed"
+			m.Status = "connection test failed"
 		} else {
-			m.status = "connection test succeeded: " + safeText(m.connection.connectionName())
+			m.Status = "connection test succeeded: " + safeText(m.connection.connectionName())
 		}
 		return m, nil
 	}

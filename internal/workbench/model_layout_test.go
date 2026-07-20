@@ -15,7 +15,7 @@ import (
 func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state = stateReady
+	model.State = stateReady
 
 	// When
 	model = resizeModel(model, 100, 24)
@@ -37,8 +37,8 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	if !model.compact {
 		t.Fatal("80-column terminal did not use compact layout")
 	}
-	if model.tab != tabStructure {
-		t.Fatalf("tab = %v, want structure after tab", model.tab)
+	if model.Tab != tabStructure {
+		t.Fatalf("tab = %v, want structure after tab", model.Tab)
 	}
 	if model.schemaWidth <= 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
 		t.Fatalf("compact layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
@@ -56,7 +56,7 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 func TestResize_wide_layout_uses_plan_formula(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state = stateReady
+	model.State = stateReady
 
 	// When
 	model = resizeModel(model, 100, 24)
@@ -94,7 +94,7 @@ func TestResize_small_nonzero_dimensions_render_without_negative_sizes(t *testin
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", Open(context.Background()))
-			model.state, model.focus = test.state, test.focus
+			model.State, model.Focus = test.state, test.focus
 
 			// When
 			model = resizeModel(model, test.width, test.height)
@@ -114,7 +114,7 @@ func TestResize_small_nonzero_dimensions_render_without_negative_sizes(t *testin
 func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state = stateReady
+	model.State = stateReady
 
 	// When
 	model = resizeModel(model, 100, 5)
@@ -141,9 +141,9 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 func TestResize_results_reflows_loaded_titles_without_replacing_rows(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.running, model.activeRequestID, model.cancel = true, 1, func() {}
+	requestID := model.StartQueryForTest(context.Background())
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(querySucceededMsg{requestID: 1, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"ID", "Name", "Status"},
 		Rows: [][]*string{
 			{stringPointer("1"), stringPointer("first"), nil},
@@ -164,7 +164,7 @@ func TestResize_results_reflows_loaded_titles_without_replacing_rows(t *testing.
 func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.selectedTable = "projects"
+	model.SelectedTable = "projects"
 	model = resizeModel(model, 100, 24)
 	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{
 		{Name: "id", Type: "INTEGER", PrimaryKey: 1},

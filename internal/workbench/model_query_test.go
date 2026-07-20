@@ -16,8 +16,7 @@ import (
 func TestExecute_success_message_populates_results(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.running, model.activeRequestID = true, 1
-	model.cancel = func() {}
+	requestID := model.StartQueryForTest(context.Background())
 	result := sqlite.Result{
 		Columns:      []string{"name", "note"},
 		Rows:         [][]*string{{stringPointer("projects"), nil}},
@@ -27,21 +26,21 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	}
 
 	// When
-	updated, command := model.Update(querySucceededMsg{requestID: 1, result: result})
+	updated, command := model.Update(querySucceededMsg{requestID: requestID, result: result})
 	model = updated.(Model)
 
 	// Then
 	if command != nil {
 		t.Fatal("success message returned an unexpected command")
 	}
-	if model.running || model.cancel != nil {
+	if model.Running() {
 		t.Fatal("success message did not clear active request state")
 	}
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "projects" || got[0][1] != "NULL" {
 		t.Fatalf("result rows = %#v, want populated sanitized cells", got)
 	}
-	if !strings.Contains(model.status, "1 row affected") || !strings.Contains(model.status, "truncated") {
-		t.Fatalf("success status = %q, want row count and truncation", model.status)
+	if !strings.Contains(model.Status, "1 row affected") || !strings.Contains(model.Status, "truncated") {
+		t.Fatalf("success status = %q, want row count and truncation", model.Status)
 	}
 }
 
@@ -64,7 +63,7 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 	t.Run("browse", func(t *testing.T) {
 		// Given
 		model := readyModel(t)
-		model.selectedTable = "projects"
+		model.SelectedTable = "projects"
 		model.browse.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
 		model.browse.SetRows([]table.Row{{"prior", "row"}})
 
@@ -80,13 +79,13 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	if _, err := model.service.Execute(context.Background(), `CREATE TABLE "project's" (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+	if _, err := model.Database.Execute(context.Background(), `CREATE TABLE "project's" (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
 		t.Fatalf("creating fixture schema: %v", err)
 	}
-	if _, err := model.service.Execute(context.Background(), `INSERT INTO "project's" (name) VALUES ('first')`); err != nil {
+	if _, err := model.Database.Execute(context.Background(), `INSERT INTO "project's" (name) VALUES ('first')`); err != nil {
 		t.Fatalf("creating fixture row: %v", err)
 	}
-	model.focus = focusSchema
+	model.Focus = focusSchema
 	model.schema.SetItems([]list.Item{schemaItem{title: "project's", description: "table"}})
 
 	// When
@@ -94,8 +93,8 @@ func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if command == nil || model.focus != focusWorkspace || model.tab != tabStructure || model.selectedTable != "project's" {
-		t.Fatalf("schema selection = focus:%v tab:%v table:%q command:%t", model.focus, model.tab, model.selectedTable, command != nil)
+	if command == nil || model.Focus != focusWorkspace || model.Tab != tabStructure || model.SelectedTable != "project's" {
+		t.Fatalf("schema selection = focus:%v tab:%v table:%q command:%t", model.Focus, model.Tab, model.SelectedTable, command != nil)
 	}
 
 	// When
@@ -138,7 +137,7 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 	t.Run("browse", func(t *testing.T) {
 		// Given
 		model := readyModel(t)
-		model.selectedTable = "projects"
+		model.SelectedTable = "projects"
 		model.browse.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
 		model.browse.SetRows([]table.Row{{"prior", "row"}})
 
@@ -178,8 +177,8 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("error replaced prior rows: %#v", got)
 	}
-	if !strings.Contains(model.status, "query failed") {
-		t.Fatalf("error status = %q, want inline failure", model.status)
+	if !strings.Contains(model.Status, "query failed") {
+		t.Fatalf("error status = %q, want inline failure", model.Status)
 	}
 }
 
@@ -204,8 +203,8 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("late success replaced prior rows: %#v", got)
 	}
-	if !strings.Contains(model.status, "canceled") {
-		t.Fatalf("late success status = %q, want cancellation", model.status)
+	if !strings.Contains(model.Status, "canceled") {
+		t.Fatalf("late success status = %q, want cancellation", model.Status)
 	}
 }
 

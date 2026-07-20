@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -37,45 +36,40 @@ type browseTableMsg struct {
 }
 
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
-	statement := strings.TrimSpace(m.editor.textarea.Value())
-	if statement == "" || m.running {
+	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.textarea.Value())
+	if !ok {
 		return m, nil
 	}
-	m.requestID++
-	m.activeRequestID = m.requestID
-	m.running, m.cancelRequested = true, false
-	m.queryContext, m.cancel = context.WithCancel(m.appContext)
-	m.status = "running query"
-	requestID, service, queryContext, cancel := m.activeRequestID, m.service, m.queryContext, m.cancel
+	m.running, m.activeRequestID, m.cancelRequested = true, query.RequestID, false
+	m.cancel = func() { m.Workflow.CancelQuery() }
 	return m, func() tea.Msg {
-		defer cancel()
-		result, err := service.Execute(queryContext, statement)
+		result, err := query.Service.Execute(query.Context, query.Statement)
 		if err == nil {
-			return querySucceededMsg{requestID: requestID, result: result}
+			return querySucceededMsg{requestID: query.RequestID, result: result}
 		}
 		if errors.Is(err, context.Canceled) {
-			return queryCanceledMsg{requestID: requestID}
+			return queryCanceledMsg{requestID: query.RequestID}
 		}
-		return queryFailedMsg{requestID: requestID, err: err}
+		return queryFailedMsg{requestID: query.RequestID, err: err}
 	}
 }
 
 func (m *Model) cancelQuery() {
-	if m.cancelRequested {
-		return
+	if m.cancel != nil {
+		m.cancel()
 	}
+	m.Workflow.CancelQuery()
 	m.cancelRequested = true
-	m.status = "canceling query"
-	m.cancel()
 }
 
 func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd) {
-	if !m.matchQuery(message.requestID) {
+	if !m.Workflow.MatchesQuery(message.requestID) {
 		return m, nil
 	}
-	canceled, quit := m.finishQuery()
+	canceled, quit := m.Workflow.FinishQuery()
+	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
 	if canceled {
-		m.status = "query canceled"
+		m.Status = "query canceled"
 	} else {
 		m.setResults(message.result)
 	}
@@ -86,11 +80,12 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 }
 
 func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
-	if !m.matchQuery(message.requestID) {
+	if !m.Workflow.MatchesQuery(message.requestID) {
 		return m, nil
 	}
-	_, quit := m.finishQuery()
-	m.status = safeText(fmt.Sprintf("query failed: %v", message.err))
+	_, quit := m.Workflow.FinishQuery()
+	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
+	m.Status = safeText(fmt.Sprintf("query failed: %v", message.err))
 	if quit {
 		return m, tea.Quit
 	}
@@ -98,25 +93,16 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd) {
-	if !m.matchQuery(message.requestID) {
+	if !m.Workflow.MatchesQuery(message.requestID) {
 		return m, nil
 	}
-	_, quit := m.finishQuery()
-	m.status = "query canceled"
+	_, quit := m.Workflow.FinishQuery()
+	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
+	m.Status = "query canceled"
 	if quit {
 		return m, tea.Quit
 	}
 	return m, nil
-}
-
-func (m Model) matchQuery(requestID uint64) bool {
-	return m.running && m.activeRequestID == requestID
-}
-
-func (m *Model) finishQuery() (bool, bool) {
-	canceled, quit := m.cancelRequested, m.pendingQuit
-	m.running, m.cancelRequested, m.pendingQuit, m.queryContext, m.cancel = false, false, false, nil, nil
-	return canceled, quit
 }
 
 func (m *Model) setResults(result sharedsql.Result) {
@@ -147,14 +133,14 @@ func (m *Model) setResults(result sharedsql.Result) {
 	if result.RowsAffected == 1 {
 		affectedLabel = "row"
 	}
-	m.status = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
+	m.Status = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
 	if result.Truncated {
-		m.status += " | truncated"
+		m.Status += " | truncated"
 	}
 }
 
 func (m Model) loadTableInfo() tea.Cmd {
-	tableName, service := m.selectedTable, m.service
+	tableName, service := m.SelectedTable, m.Database
 	return func() tea.Msg {
 		columns, err := service.TableInfo(m.appContext, tableName)
 		return tableInfoMsg{table: tableName, columns: columns, err: err}
@@ -162,7 +148,7 @@ func (m Model) loadTableInfo() tea.Cmd {
 }
 
 func (m Model) loadBrowse() tea.Cmd {
-	tableName, page, service := m.selectedTable, m.browsePage, m.service
+	tableName, page, service := m.SelectedTable, m.BrowsePage, m.Database
 	return func() tea.Msg {
 		result, err := service.BrowseTable(m.appContext, tableName, page*browsePageSize, browsePageSize)
 		return browseTableMsg{table: tableName, page: page, result: result, err: err}
@@ -170,9 +156,9 @@ func (m Model) loadBrowse() tea.Cmd {
 }
 
 func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
-	if message.table != m.selectedTable || message.err != nil {
+	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
-			m.status = safeText(fmt.Sprintf("loading structure: %v", message.err))
+			m.Status = safeText(fmt.Sprintf("loading structure: %v", message.err))
 		}
 		return m, nil
 	}
@@ -198,14 +184,14 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
-	if message.table != m.selectedTable || message.page != m.browsePage || message.err != nil {
+	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.err != nil {
 		if message.err != nil {
-			m.status = safeText(fmt.Sprintf("loading browse: %v", message.err))
+			m.Status = safeText(fmt.Sprintf("loading browse: %v", message.err))
 		}
 		return m, nil
 	}
 	m.setBrowse(message.result)
-	m.status = fmt.Sprintf("%s | page %d | %d rows", safeText(message.table), message.page+1, len(message.result.Rows))
+	m.Status = fmt.Sprintf("%s | page %d | %d rows", safeText(message.table), message.page+1, len(message.result.Rows))
 	return m, nil
 }
 

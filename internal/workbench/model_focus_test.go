@@ -22,7 +22,7 @@ func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", Open(context.Background()))
-			model.state = stateReady
+			model.State = stateReady
 
 			// When
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: test.width, Height: test.height})
@@ -45,7 +45,7 @@ func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
 func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state = stateReady
+	model.State = stateReady
 	model.editor.textarea.SetValue("select ")
 
 	// When
@@ -112,7 +112,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state = stateReady
+	model.State = stateReady
 	model.editor.textarea.SetValue("select ")
 
 	// When
@@ -131,7 +131,7 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state, model.focus = stateReady, focusSchema
+	model.State, model.Focus = stateReady, focusSchema
 	model.schema.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table"},
 		schemaItem{title: "queue_1", description: "table"},
@@ -177,7 +177,7 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.state = stateReady
+	model.State = stateReady
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
@@ -213,18 +213,18 @@ func updateFromCommand(model Model, command tea.Cmd) Model {
 
 func assertFocus(t *testing.T, model Model, want focus) {
 	t.Helper()
-	if model.focus != want {
-		t.Fatalf("focus = %v, want %v", model.focus, want)
+	if model.Focus != want {
+		t.Fatalf("focus = %v, want %v", model.Focus, want)
 	}
-	if got := model.editor.textarea.Focused(); got != (want == focusWorkspace && model.tab == tabSQL) {
-		t.Fatalf("editor focused = %t, want %t", got, want == focusWorkspace && model.tab == tabSQL)
+	if got := model.editor.textarea.Focused(); got != (want == focusWorkspace && model.Tab == tabSQL) {
+		t.Fatalf("editor focused = %t, want %t", got, want == focusWorkspace && model.Tab == tabSQL)
 	}
 }
 
 func assertTab(t *testing.T, model Model, want workspaceTab) {
 	t.Helper()
 	assertFocus(t, model, focusWorkspace)
-	if model.tab != want {
-		t.Fatalf("tab = %v, want %v", model.tab, want)
+	if model.Tab != want {
+		t.Fatalf("tab = %v, want %v", model.Tab, want)
 	}
 }

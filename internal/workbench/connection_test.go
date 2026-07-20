@@ -88,8 +88,8 @@ func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 	updated, _ := model.Update(message)
 	model = updated.(Model)
 
-	if model.status != "connection test succeeded: Scratch" {
-		t.Fatalf("connection status = %q, want successful test", model.status)
+	if model.Status != "connection test succeeded: Scratch" {
+		t.Fatalf("connection status = %q, want successful test", model.Status)
 	}
 }
 
@@ -100,8 +100,8 @@ func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 
 	updated, command := model.openConnection()
 	model = updated.(Model)
-	if model.state != stateOpening {
-		t.Fatalf("model state = %v, want opening", model.state)
+	if model.State != stateOpening {
+		t.Fatalf("model state = %v, want opening", model.State)
 	}
 	if command == nil {
 		t.Fatal("open connection command = nil")
@@ -109,17 +109,17 @@ func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 
 	updated, _ = model.Update(command())
 	model = updated.(Model)
-	if model.state != stateReady {
-		t.Fatalf("model state = %v, want ready", model.state)
+	if model.State != stateReady {
+		t.Fatalf("model state = %v, want ready", model.State)
 	}
-	if model.service == nil {
+	if model.Database == nil {
 		t.Fatal("model service = nil, want opened service")
 	}
-	if model.status != "ready: Scratch" {
-		t.Fatalf("connection status = %q, want connection name", model.status)
+	if model.Status != "ready: Scratch" {
+		t.Fatalf("connection status = %q, want connection name", model.Status)
 	}
 	t.Cleanup(func() {
-		if err := model.service.Close(); err != nil {
+		if err := model.Database.Close(); err != nil {
 			t.Errorf("closing connection: %v", err)
 		}
 	})
@@ -141,8 +141,8 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 
 	updated, command := model.openConnection()
 	model = updated.(Model)
-	if model.state != stateOpening {
-		t.Fatalf("model state = %v, want opening", model.state)
+	if model.State != stateOpening {
+		t.Fatalf("model state = %v, want opening", model.State)
 	}
 	if command != nil {
 		t.Fatal("open command = non-nil, want nil from test opener")
@@ -158,8 +158,8 @@ func TestConnectionForm_F5OpensSQLiteConnection(t *testing.T) {
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
-	if model.state != stateOpening {
-		t.Fatalf("model state = %v, want opening", model.state)
+	if model.State != stateOpening {
+		t.Fatalf("model state = %v, want opening", model.State)
 	}
 	if command == nil {
 		t.Fatal("open connection command = nil")
@@ -167,11 +167,11 @@ func TestConnectionForm_F5OpensSQLiteConnection(t *testing.T) {
 
 	updated, _ = model.Update(command())
 	model = updated.(Model)
-	if model.state != stateReady {
-		t.Fatalf("model state = %v, want ready", model.state)
+	if model.State != stateReady {
+		t.Fatalf("model state = %v, want ready", model.State)
 	}
 	t.Cleanup(func() {
-		if err := model.service.Close(); err != nil {
+		if err := model.Database.Close(); err != nil {
 			t.Errorf("closing connection: %v", err)
 		}
 	})
@@ -197,8 +197,8 @@ func TestConnectionForm_buttonsTestAndOpenSQLiteConnection(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(command())
 	model = updated.(Model)
-	if model.status != "connection test succeeded: Scratch" {
-		t.Fatalf("connection status = %q, want successful test", model.status)
+	if model.Status != "connection test succeeded: Scratch" {
+		t.Fatalf("connection status = %q, want successful test", model.Status)
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -208,17 +208,17 @@ func TestConnectionForm_buttonsTestAndOpenSQLiteConnection(t *testing.T) {
 	}
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.state != stateOpening {
-		t.Fatalf("model state = %v, want opening", model.state)
+	if model.State != stateOpening {
+		t.Fatalf("model state = %v, want opening", model.State)
 	}
 
 	updated, _ = model.Update(command())
 	model = updated.(Model)
-	if model.state != stateReady {
-		t.Fatalf("model state = %v, want ready", model.state)
+	if model.State != stateReady {
+		t.Fatalf("model state = %v, want ready", model.State)
 	}
 	t.Cleanup(func() {
-		if err := model.service.Close(); err != nil {
+		if err := model.Database.Close(); err != nil {
 			t.Errorf("closing connection: %v", err)
 		}
 	})
