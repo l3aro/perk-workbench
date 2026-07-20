@@ -42,6 +42,16 @@ func TestSanitizeDisplay(t *testing.T) {
 	}
 }
 
+func TestDisplayRowBytes(t *testing.T) {
+	row := displayRow([]any{[]byte("Mur"), nil})
+	if got := *row[0]; got != "Mur" {
+		t.Fatalf("display row byte cell = %q, want %q", got, "Mur")
+	}
+	if row[1] != nil {
+		t.Fatalf("display row NULL cell = %q, want nil", *row[1])
+	}
+}
+
 func TestListSchema(t *testing.T) {
 	// Given
 	service := newMemoryService(t)

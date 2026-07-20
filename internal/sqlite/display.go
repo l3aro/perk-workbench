@@ -13,7 +13,12 @@ func displayRow(values []any) []*string {
 		if value == nil {
 			continue
 		}
-		text := SanitizeDisplay(fmt.Sprint(value))
+		text := ""
+		if bytes, ok := value.([]byte); ok {
+			text = SanitizeDisplay(string(bytes))
+		} else {
+			text = SanitizeDisplay(fmt.Sprint(value))
+		}
 		if len([]rune(text)) > maxRunes {
 			text = string([]rune(text)[:maxRunes])
 		}
