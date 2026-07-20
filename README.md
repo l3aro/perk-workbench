@@ -1,12 +1,13 @@
 # Perk
 
-Perk is a small terminal workbench for exploring an existing SQLite database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
+Perk is a small terminal workbench for exploring an existing SQLite or MySQL database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
 
 ## Requirements
 
 - Go 1.25 or newer
 - A terminal with alternate screen support
 - An existing SQLite database file, or the in-memory target `:memory:`
+- A reachable MySQL server when using a MySQL connection
 
 ## Start
 
@@ -23,6 +24,12 @@ go run ./cmd/perk :memory:
 ```
 
 With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
+
+Select MySQL in the connection form to enter the server, credentials, and database. MySQL connections use the Go driver's normal DSN format internally and are not saved because that DSN can contain a password. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
+
+```bash
+go run ./cmd/perk 'mysql:alice:secret@tcp(127.0.0.1:3306)/app'
+```
 
 ## Docker Compose
 
@@ -76,11 +83,11 @@ There are no operators, visual mode, command mode, registers, or syntax highligh
 
 ## SQL behavior
 
-The workbench uses SQLite only. It accepts one SQL statement per run and rejects empty input, comments-only input, multiple statements, trailing tokens after a semicolon, and trigger creation, including temporary triggers. Semicolons inside strings, comments, or quoted identifiers are allowed.
+The workbench accepts SQLite and MySQL connections. It accepts one SQL statement per run and rejects empty input, comments-only input, multiple statements, trailing tokens after a semicolon, and trigger creation, including temporary triggers. Semicolons inside strings, comments, or quoted identifiers are allowed.
 
 Queries run asynchronously with cancellation. Results retain up to 500 rows and mark larger results as truncated. Cell values are made safe for terminal display, `NULL` values are shown as `NULL`, and long cells are capped at 300 runes. A failed query leaves the previous result table visible.
 
-The application does not create databases, support other database engines, provide migrations, or offer a multi-statement script runner.
+The application does not create SQLite databases, provide migrations, or offer a multi-statement script runner.
 
 ## Development checks
 
