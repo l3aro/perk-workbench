@@ -74,10 +74,28 @@ func newResultsTable() table.Model {
 		table.WithHeight(2),
 		table.WithStyles(table.Styles{
 			Header:   headerStyle,
-			Cell:     lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)),
+			Cell:     lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)).Padding(0, spaceCompact),
 			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)),
 		}),
 	)
+}
+
+func tableColumns(viewportWidth int, titles []string) []table.Column {
+	if len(titles) == 0 {
+		titles = []string{"Results"}
+	}
+
+	contentBudget := max(viewportWidth-len(titles)*2*spaceCompact, len(titles))
+	columnWidth, remainder := contentBudget/len(titles), contentBudget%len(titles)
+	columns := make([]table.Column, len(titles))
+	for index, title := range titles {
+		width := columnWidth
+		if index < remainder {
+			width++
+		}
+		columns[index] = table.Column{Title: title, Width: width}
+	}
+	return columns
 }
 
 func paneStyle(focused bool) lipgloss.Style {
@@ -108,11 +126,18 @@ func (m *Model) layout(width, height int) {
 	m.editor.textarea.SetHeight(max(m.editorHeight-2, 1))
 	m.results.SetWidth(max(m.editorWidth-4, 1))
 	m.results.SetHeight(max(m.resultsHeight-2, 2))
-	m.results.SetColumns([]table.Column{{Title: "Results", Width: max(m.editorWidth-6, 1)}})
 	m.structure.SetWidth(max(m.editorWidth-4, 1))
 	m.structure.SetHeight(max(contentHeight-4, 2))
 	m.browse.SetWidth(max(m.editorWidth-4, 1))
 	m.browse.SetHeight(max(contentHeight-4, 2))
+	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse} {
+		columns := resultTable.Columns()
+		titles := make([]string, len(columns))
+		for index, column := range columns {
+			titles[index] = column.Title
+		}
+		resultTable.SetColumns(tableColumns(resultTable.Width(), titles))
+	}
 }
 
 func (m Model) View() tea.View {

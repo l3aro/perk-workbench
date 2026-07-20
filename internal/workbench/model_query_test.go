@@ -45,6 +45,38 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	}
 }
 
+func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
+	t.Run("results", func(t *testing.T) {
+		// Given
+		model := readyModel(t)
+		model.results.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
+		model.results.SetRows([]table.Row{{"prior", "row"}})
+		model.running, model.activeRequestID, model.cancel = true, 1, func() {}
+
+		// When
+		updated, _ := model.Update(querySucceededMsg{requestID: 1, result: sqlite.Result{}})
+		model = updated.(Model)
+
+		// Then
+		assertResultsPlaceholder(t, model.results)
+	})
+
+	t.Run("browse", func(t *testing.T) {
+		// Given
+		model := readyModel(t)
+		model.selectedTable = "projects"
+		model.browse.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
+		model.browse.SetRows([]table.Row{{"prior", "row"}})
+
+		// When
+		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{}})
+		model = updated.(Model)
+
+		// Then
+		assertResultsPlaceholder(t, model.browse)
+	})
+}
+
 func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	// Given
 	model := readyModel(t)
@@ -79,6 +111,50 @@ func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	if got := model.browse.Rows(); len(got) != 1 || got[0][1] != "first" {
 		t.Fatalf("browse rows = %#v, want selected table data", got)
 	}
+}
+
+func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
+	t.Run("results", func(t *testing.T) {
+		// Given
+		model := readyModel(t)
+		model.results.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
+		model.results.SetRows([]table.Row{{"prior", "row"}})
+		model.running, model.activeRequestID, model.cancel = true, 1, func() {}
+
+		// When
+		updated, _ := model.Update(querySucceededMsg{requestID: 1, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
+		model = updated.(Model)
+
+		// Then
+		columns := model.results.Columns()
+		if len(columns) != 3 || columns[0].Title != "ID" || columns[1].Title != "Name" || columns[2].Title != "State" {
+			t.Fatalf("result columns = %#v, want ID, Name, State", columns)
+		}
+		if got := model.results.Rows(); len(got) != 1 || got[0][0] != "2" || got[0][1] != "next" || got[0][2] != "ready" {
+			t.Fatalf("result rows = %#v, want replacement row", got)
+		}
+	})
+
+	t.Run("browse", func(t *testing.T) {
+		// Given
+		model := readyModel(t)
+		model.selectedTable = "projects"
+		model.browse.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
+		model.browse.SetRows([]table.Row{{"prior", "row"}})
+
+		// When
+		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
+		model = updated.(Model)
+
+		// Then
+		columns := model.browse.Columns()
+		if len(columns) != 3 || columns[0].Title != "ID" || columns[1].Title != "Name" || columns[2].Title != "State" {
+			t.Fatalf("browse columns = %#v, want ID, Name, State", columns)
+		}
+		if got := model.browse.Rows(); len(got) != 1 || got[0][0] != "2" || got[0][1] != "next" || got[0][2] != "ready" {
+			t.Fatalf("browse rows = %#v, want replacement row", got)
+		}
+	})
 }
 
 func TestExecute_error_message_retains_prior_results(t *testing.T) {
@@ -250,5 +326,19 @@ func TestExecute_q_waits_for_matching_cancellation_before_quitting(t *testing.T)
 	}
 	if _, ok := command().(tea.QuitMsg); !ok {
 		t.Fatalf("pending quit command message = %T, want tea.QuitMsg", command())
+	}
+}
+
+func assertResultsPlaceholder(t *testing.T, resultTable table.Model) {
+	t.Helper()
+	columns := resultTable.Columns()
+	if got, want := len(columns), 1; got != want {
+		t.Fatalf("column count = %d, want %d", got, want)
+	}
+	if got, want := columns[0].Title, "Results"; got != want {
+		t.Fatalf("column title = %q, want %q", got, want)
+	}
+	if got := resultTable.Rows(); len(got) != 0 {
+		t.Fatalf("rows = %#v, want no rows", got)
 	}
 }

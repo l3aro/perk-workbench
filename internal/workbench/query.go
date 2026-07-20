@@ -120,13 +120,9 @@ func (m *Model) finishQuery() (bool, bool) {
 }
 
 func (m *Model) setResults(result sqlite.Result) {
-	columns := make([]table.Column, len(result.Columns))
-	columnWidth := max((m.editorWidth-8)/max(len(columns), 1), 1)
+	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
-		columns[index] = table.Column{Title: safeText(column), Width: columnWidth}
-	}
-	if len(columns) > 0 {
-		m.results.SetColumns(columns)
+		titles[index] = safeText(column)
 	}
 	rows := make([]table.Row, len(result.Rows))
 	for rowIndex, row := range result.Rows {
@@ -140,6 +136,8 @@ func (m *Model) setResults(result sqlite.Result) {
 		}
 		rows[rowIndex] = cells
 	}
+	m.results.SetRows(nil)
+	m.results.SetColumns(tableColumns(m.results.Width(), titles))
 	m.results.SetRows(rows)
 	rowLabel := "rows"
 	if len(rows) == 1 {
@@ -194,7 +192,7 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 		}
 		rows[index] = table.Row{safeText(column.Name), safeText(column.Type), nullable, defaultValue, primaryKey}
 	}
-	m.structure.SetColumns([]table.Column{{Title: "Column", Width: 16}, {Title: "Type", Width: 14}, {Title: "Nullable", Width: 9}, {Title: "Default", Width: 16}, {Title: "PK", Width: 3}})
+	m.structure.SetColumns(tableColumns(m.structure.Width(), []string{"Column", "Type", "Nullable", "Default", "PK"}))
 	m.structure.SetRows(rows)
 	return m, nil
 }
@@ -212,13 +210,9 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) setBrowse(result sqlite.Result) {
-	columns := make([]table.Column, len(result.Columns))
-	columnWidth := max((m.editorWidth-8)/max(len(columns), 1), 1)
+	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
-		columns[index] = table.Column{Title: safeText(column), Width: columnWidth}
-	}
-	if len(columns) > 0 {
-		m.browse.SetColumns(columns)
+		titles[index] = safeText(column)
 	}
 	rows := make([]table.Row, len(result.Rows))
 	for rowIndex, row := range result.Rows {
@@ -232,5 +226,7 @@ func (m *Model) setBrowse(result sqlite.Result) {
 		}
 		rows[rowIndex] = cells
 	}
+	m.browse.SetRows(nil)
+	m.browse.SetColumns(tableColumns(m.browse.Width(), titles))
 	m.browse.SetRows(rows)
 }
