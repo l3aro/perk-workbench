@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"bubble-workbench/internal/sqlite"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/sqlite"
 )
 
 type querySucceededMsg struct {

@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"bubble-workbench/internal/workbench"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/workbench"
 )
 
 func parseTarget(args []string) (string, error) {

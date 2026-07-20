@@ -1,6 +1,6 @@
-# Bubble Workbench
+# Perk
 
-Bubble Workbench is a small terminal workbench for exploring an existing SQLite database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
+Perk is a small terminal workbench for exploring an existing SQLite database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
 
 ## Requirements
 
@@ -13,13 +13,13 @@ Bubble Workbench is a small terminal workbench for exploring an existing SQLite 
 Run the workbench with an existing database:
 
 ```bash
-go run ./cmd/bubble-workbench <database.db>
+go run ./cmd/perk <database.db>
 ```
 
 For a temporary database:
 
 ```bash
-go run ./cmd/bubble-workbench :memory:
+go run ./cmd/perk :memory:
 ```
 
 With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
@@ -66,7 +66,7 @@ Run the product regression suite and quality checks:
 ```bash
 go test -race ./cmd/... ./internal/...
 go vet ./cmd/... ./internal/...
-go build ./cmd/bubble-workbench
+go build ./cmd/perk
 gofmt -l cmd internal
 ```
 

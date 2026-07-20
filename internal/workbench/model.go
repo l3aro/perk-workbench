@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	"bubble-workbench/internal/sqlite"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/sqlite"
 )
 
 const compactWidth = 90

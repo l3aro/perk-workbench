@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"bubble-workbench/internal/sqlite"
+	"github.com/l3aro/perk/internal/sqlite"
 )
 
 func TestOpen_existing_target_populates_schema(t *testing.T) {

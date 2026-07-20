@@ -1,4 +1,4 @@
-module bubble-workbench
+module github.com/l3aro/perk
 
 go 1.25.0
 
