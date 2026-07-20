@@ -175,5 +175,21 @@ func newConnectionForm() connectionForm {
 	target.Prompt = "Target: "
 	target.Placeholder = "path/to/database.db or :memory:"
 
-	return connectionForm{name: name, target: target, focus: connectionFocusName}
+	host := textinput.New()
+	host.Prompt = "Host: "
+	host.Placeholder = "localhost"
+
+	port := textinput.New()
+	port.Prompt = "Port: "
+	port.SetValue("3306")
+
+	user := textinput.New()
+	user.Prompt = "Username: "
+
+	pass := textinput.New()
+	pass.Prompt = "Password: "
+	pass.EchoMode = textinput.EchoPassword
+	pass.EchoCharacter = '*'
+
+	return connectionForm{name: name, target: target, host: host, port: port, user: user, pass: pass, focus: connectionFocusName}
 }

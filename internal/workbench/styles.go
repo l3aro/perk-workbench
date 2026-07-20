@@ -128,6 +128,10 @@ func (m *Model) layout(width, height int) {
 	}
 	m.connection.name.SetWidth(max(connectionWidth-16, 1))
 	m.connection.target.SetWidth(max(connectionWidth-16, 1))
+	m.connection.host.SetWidth(max(connectionWidth-16, 1))
+	m.connection.port.SetWidth(max(connectionWidth-16, 1))
+	m.connection.user.SetWidth(max(connectionWidth-16, 1))
+	m.connection.pass.SetWidth(max(connectionWidth-16, 1))
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.editor.textarea.SetWidth(max(m.editorWidth-4, 1))
 	m.editor.textarea.SetHeight(max(m.editorHeight-2, 1))
