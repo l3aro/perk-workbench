@@ -23,6 +23,19 @@ type queryFailedMsg struct {
 
 type queryCanceledMsg struct{ requestID uint64 }
 
+type tableInfoMsg struct {
+	table   string
+	columns []sqlite.ColumnInfo
+	err     error
+}
+
+type browseTableMsg struct {
+	table  string
+	page   int
+	result sqlite.Result
+	err    error
+}
+
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
 	statement := strings.TrimSpace(m.editor.textarea.Value())
 	if statement == "" || m.running {
@@ -140,4 +153,84 @@ func (m *Model) setResults(result sqlite.Result) {
 	if result.Truncated {
 		m.status += " | truncated"
 	}
+}
+
+func (m Model) loadTableInfo() tea.Cmd {
+	tableName, service := m.selectedTable, m.service
+	return func() tea.Msg {
+		columns, err := service.TableInfo(m.appContext, tableName)
+		return tableInfoMsg{table: tableName, columns: columns, err: err}
+	}
+}
+
+func (m Model) loadBrowse() tea.Cmd {
+	tableName, page, service := m.selectedTable, m.browsePage, m.service
+	return func() tea.Msg {
+		result, err := service.BrowseTable(m.appContext, tableName, page*browsePageSize, browsePageSize)
+		return browseTableMsg{table: tableName, page: page, result: result, err: err}
+	}
+}
+
+func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
+	if message.table != m.selectedTable || message.err != nil {
+		if message.err != nil {
+			m.status = safeText(fmt.Sprintf("loading structure: %v", message.err))
+		}
+		return m, nil
+	}
+	rows := make([]table.Row, len(message.columns))
+	for index, column := range message.columns {
+		defaultValue := "NULL"
+		if column.DefaultValue != nil {
+			defaultValue = safeText(*column.DefaultValue)
+		}
+		nullable := "yes"
+		if !column.Nullable {
+			nullable = "no"
+		}
+		primaryKey := ""
+		if column.PrimaryKey > 0 {
+			primaryKey = fmt.Sprintf("%d", column.PrimaryKey)
+		}
+		rows[index] = table.Row{safeText(column.Name), safeText(column.Type), nullable, defaultValue, primaryKey}
+	}
+	m.structure.SetColumns([]table.Column{{Title: "Column", Width: 16}, {Title: "Type", Width: 14}, {Title: "Nullable", Width: 9}, {Title: "Default", Width: 16}, {Title: "PK", Width: 3}})
+	m.structure.SetRows(rows)
+	return m, nil
+}
+
+func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
+	if message.table != m.selectedTable || message.page != m.browsePage || message.err != nil {
+		if message.err != nil {
+			m.status = safeText(fmt.Sprintf("loading browse: %v", message.err))
+		}
+		return m, nil
+	}
+	m.setBrowse(message.result)
+	m.status = fmt.Sprintf("%s | page %d | %d rows", safeText(message.table), message.page+1, len(message.result.Rows))
+	return m, nil
+}
+
+func (m *Model) setBrowse(result sqlite.Result) {
+	columns := make([]table.Column, len(result.Columns))
+	columnWidth := max((m.editorWidth-8)/max(len(columns), 1), 1)
+	for index, column := range result.Columns {
+		columns[index] = table.Column{Title: safeText(column), Width: columnWidth}
+	}
+	if len(columns) > 0 {
+		m.browse.SetColumns(columns)
+	}
+	rows := make([]table.Row, len(result.Rows))
+	for rowIndex, row := range result.Rows {
+		cells := make(table.Row, len(row))
+		for cellIndex, cell := range row {
+			if cell == nil {
+				cells[cellIndex] = "NULL"
+			} else {
+				cells[cellIndex] = safeText(*cell)
+			}
+		}
+		rows[rowIndex] = cells
+	}
+	m.browse.SetRows(rows)
 }

@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func TestView_editor_cursor_accounts_for_rendered_layout(t *testing.T) {
+func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
 	tests := []struct {
 		name          string
 		width, height int
@@ -29,7 +29,7 @@ func TestView_editor_cursor_accounts_for_rendered_layout(t *testing.T) {
 
 			// Then
 			if view.Cursor == nil {
-				t.Fatal("view cursor = nil, want editor cursor")
+				t.Fatal("view cursor = nil, want SQL cursor")
 			}
 			if got := view.Cursor.Position.X; got != test.wantX {
 				t.Errorf("cursor X = %d, want %d", got, test.wantX)
@@ -41,7 +41,7 @@ func TestView_editor_cursor_accounts_for_rendered_layout(t *testing.T) {
 	}
 }
 
-func TestFocus_cycles_exclusively_and_routes_input_to_the_owner(t *testing.T) {
+func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
 	model.state = stateReady
@@ -52,14 +52,14 @@ func TestFocus_cycles_exclusively_and_routes_input_to_the_owner(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusEditor)
+	assertFocus(t, model, focusWorkspace)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusResults)
+	assertTab(t, model, tabStructure)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
@@ -67,7 +67,7 @@ func TestFocus_cycles_exclusively_and_routes_input_to_the_owner(t *testing.T) {
 
 	// Then
 	if got := model.editor.textarea.Value(); got != "select " {
-		t.Fatalf("unfocused editor value = %q, want %q", got, "select ")
+		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
 	}
 
 	// When
@@ -75,7 +75,7 @@ func TestFocus_cycles_exclusively_and_routes_input_to_the_owner(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusSchema)
+	assertTab(t, model, tabBrowse)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
@@ -83,7 +83,7 @@ func TestFocus_cycles_exclusively_and_routes_input_to_the_owner(t *testing.T) {
 
 	// Then
 	if got := model.editor.textarea.Value(); got != "select " {
-		t.Fatalf("unfocused editor value after schema key = %q, want %q", got, "select ")
+		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
 	}
 
 	// When
@@ -91,24 +91,24 @@ func TestFocus_cycles_exclusively_and_routes_input_to_the_owner(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusEditor)
+	assertTab(t, model, tabSQL)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusSchema)
+	assertTab(t, model, tabBrowse)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusResults)
+	assertTab(t, model, tabStructure)
 }
 
-func TestFocus_editor_keeps_q_as_text_after_input_starts(t *testing.T) {
+func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
 	model.state = stateReady
@@ -132,10 +132,15 @@ func assertFocus(t *testing.T, model Model, want focus) {
 	if model.focus != want {
 		t.Fatalf("focus = %v, want %v", model.focus, want)
 	}
-	if got := model.editor.textarea.Focused(); got != (want == focusEditor) {
-		t.Fatalf("editor focused = %t, want %t", got, want == focusEditor)
+	if got := model.editor.textarea.Focused(); got != (want == focusWorkspace && model.tab == tabSQL) {
+		t.Fatalf("editor focused = %t, want %t", got, want == focusWorkspace && model.tab == tabSQL)
 	}
-	if got := model.results.Focused(); got != (want == focusResults) {
-		t.Fatalf("results focused = %t, want %t", got, want == focusResults)
+}
+
+func assertTab(t *testing.T, model Model, want workspaceTab) {
+	t.Helper()
+	assertFocus(t, model, focusWorkspace)
+	if model.tab != want {
+		t.Fatalf("tab = %v, want %v", model.tab, want)
 	}
 }

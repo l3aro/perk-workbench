@@ -12,6 +12,7 @@ import (
 )
 
 const compactWidth = 90
+const browsePageSize = 25
 
 type modelState int
 
@@ -26,8 +27,15 @@ type focus int
 
 const (
 	focusSchema focus = iota
-	focusEditor
-	focusResults
+	focusWorkspace
+)
+
+type workspaceTab int
+
+const (
+	tabStructure workspaceTab = iota
+	tabBrowse
+	tabSQL
 )
 
 type Model struct {
@@ -41,9 +49,12 @@ type Model struct {
 	requestID, activeRequestID              uint64
 	cancel                                  context.CancelFunc
 	schema, picker                          list.Model
-	results                                 table.Model
+	structure, browse, results              table.Model
 	editor                                  editor
 	focus                                   focus
+	tab                                     workspaceTab
+	selectedTable                           string
+	browsePage                              int
 	width, height, schemaWidth, editorWidth int
 	editorHeight, resultsHeight             int
 	compact                                 bool
@@ -94,9 +105,12 @@ func New(target string, opener databaseOpener) Model {
 		openTarget: opener.command,
 		schema:     newList("Schema", false),
 		picker:     newList("Choose database", true),
+		structure:  newResultsTable(),
+		browse:     newResultsTable(),
 		results:    newResultsTable(),
 		editor:     editor,
-		focus:      focusEditor,
+		focus:      focusWorkspace,
+		tab:        tabSQL,
 	}
 	if target == "" {
 		model.state = statePicking

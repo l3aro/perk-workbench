@@ -36,8 +36,8 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	if !model.compact {
 		t.Fatal("80-column terminal did not use compact layout")
 	}
-	if model.focus != focusResults {
-		t.Fatalf("focus = %v, want results after tab", model.focus)
+	if model.tab != tabStructure {
+		t.Fatalf("tab = %v, want structure after tab", model.tab)
 	}
 	if model.schemaWidth <= 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
 		t.Fatalf("compact layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
@@ -84,11 +84,11 @@ func TestResize_small_nonzero_dimensions_render_without_negative_sizes(t *testin
 		focus         focus
 		width, height int
 	}{
-		{name: "picking at 1x4", state: statePicking, focus: focusEditor, width: 1, height: 4},
-		{name: "opening at 2x5", state: stateOpening, focus: focusEditor, width: 2, height: 5},
-		{name: "failure at 1x4", state: stateFailure, focus: focusEditor, width: 1, height: 4},
+		{name: "picking at 1x4", state: statePicking, focus: focusWorkspace, width: 1, height: 4},
+		{name: "opening at 2x5", state: stateOpening, focus: focusWorkspace, width: 2, height: 5},
+		{name: "failure at 1x4", state: stateFailure, focus: focusWorkspace, width: 1, height: 4},
 		{name: "schema at 2x5", state: stateReady, focus: focusSchema, width: 2, height: 5},
-		{name: "editor at 1x4", state: stateReady, focus: focusEditor, width: 1, height: 4},
+		{name: "workspace at 1x4", state: stateReady, focus: focusWorkspace, width: 1, height: 4},
 	}
 
 	for _, test := range tests {

@@ -109,6 +109,10 @@ func (m *Model) layout(width, height int) {
 	m.results.SetWidth(max(m.editorWidth-4, 1))
 	m.results.SetHeight(max(m.resultsHeight-2, 2))
 	m.results.SetColumns([]table.Column{{Title: "Results", Width: max(m.editorWidth-6, 1)}})
+	m.structure.SetWidth(max(m.editorWidth-4, 1))
+	m.structure.SetHeight(max(contentHeight-4, 2))
+	m.browse.SetWidth(max(m.editorWidth-4, 1))
+	m.browse.SetHeight(max(contentHeight-4, 2))
 }
 
 func (m Model) View() tea.View {
@@ -120,7 +124,7 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer())))
-	if m.state == stateReady && m.focus == focusEditor {
+	if m.state == stateReady && m.focus == focusWorkspace && m.tab == tabSQL {
 		if cursor := m.editor.textarea.Cursor(); cursor != nil {
 			cursor.Position.X += 2
 			cursor.Position.Y += 2
@@ -147,10 +151,8 @@ func (m Model) contentView() string {
 		switch m.focus {
 		case focusSchema:
 			return compactPane(m.schema.View(), width, height)
-		case focusEditor:
-			return compactPane(m.editor.textarea.View(), width, height)
-		case focusResults:
-			return compactPane(m.results.View(), width, height)
+		case focusWorkspace:
+			return compactPane(m.workspaceView(), width, height)
 		}
 	}
 	left := paneStyle(m.focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.schema.View())
@@ -158,14 +160,35 @@ func (m Model) contentView() string {
 }
 
 func (m Model) rightView() string {
-	editor := paneStyle(m.focus == focusEditor).Width(max(m.editorWidth-2, 0)).Height(max(m.editorHeight, 0)).Render(m.editor.textarea.View())
-	results := paneStyle(m.focus == focusResults).Width(max(m.editorWidth-2, 0)).Height(max(m.resultsHeight, 0)).Render(m.results.View())
-	return lipgloss.JoinVertical(lipgloss.Left, editor, results)
+	return paneStyle(m.focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.workspaceView())
+}
+
+func (m Model) workspaceView() string {
+	tabs := []string{"Structure", "Browse", "SQL"}
+	for index := range tabs {
+		if workspaceTab(index) == m.tab {
+			tabs[index] = headerStyle.Render(tabs[index])
+		} else {
+			tabs[index] = statusStyle.Render(tabs[index])
+		}
+	}
+	var content string
+	switch m.tab {
+	case tabStructure:
+		content = m.structure.View()
+	case tabBrowse:
+		content = m.browse.View()
+	case tabSQL:
+		editor := m.editor.textarea.View()
+		results := m.results.View()
+		content = lipgloss.JoinVertical(lipgloss.Left, editor, results)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), content)
 }
 
 func (m Model) footer() string {
 	if m.state == stateReady {
-		return safeText(m.status + " | tab switch pane | q quit")
+		return safeText(m.status + " | tab switch view | esc schema | q quit")
 	}
 	return safeText(m.status + " | q quit")
 }

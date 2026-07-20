@@ -3,7 +3,6 @@ package workbench
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -15,7 +14,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(message.Width, message.Height)
 		return m, nil
 	case tea.KeyPressMsg:
-		if message.String() == "ctrl+c" || (message.String() == "q" && (m.running || m.state != stateReady || m.focus != focusEditor || m.editor.textarea.Value() == "")) {
+		if message.String() == "ctrl+c" || (message.String() == "q" && (m.running || m.state != stateReady || m.focus != focusWorkspace || m.tab != tabSQL || m.editor.textarea.Value() == "")) {
 			if m.running {
 				m.pendingQuit = true
 				m.cancelQuery()
@@ -23,15 +22,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.state == stateReady && m.focus == focusEditor && m.executeKey(message) {
+		if m.state == stateReady && m.focus == focusWorkspace && m.tab == tabSQL && m.executeKey(message) {
 			return m.startQuery()
 		}
 		if m.running && message.Key().Code == tea.KeyEscape {
 			m.cancelQuery()
 			return m, nil
 		}
-		if m.state == stateReady && (message.String() == "tab" || message.String() == "shift+tab") {
-			m.toggleFocus(message.String() == "tab")
+		if m.state == stateReady && m.focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
+			m.toggleTab(message.String() == "tab")
 			return m, nil
 		}
 	}
@@ -68,6 +67,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateQueryFailure(message)
 	case queryCanceledMsg:
 		return m.updateQueryCanceled(message)
+	case tableInfoMsg:
+		return m.updateTableInfo(message)
+	case browseTableMsg:
+		return m.updateBrowse(message)
 	}
 
 	return m.updateActive(message)
@@ -109,17 +112,34 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		case focusSchema:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
-					m.editor.textarea.SetValue(fmt.Sprintf("SELECT sql FROM sqlite_schema WHERE type = '%s' AND name = '%s'", strings.ReplaceAll(item.description, "'", "''"), strings.ReplaceAll(item.title, "'", "''")))
-					return m.startQuery()
+					m.selectedTable, m.browsePage, m.tab, m.focus = item.title, 0, tabStructure, focusWorkspace
+					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 				}
 			}
 			m.schema, command = m.schema.Update(message)
 			return m, command
-		case focusEditor:
-			m.editor, command = m.editor.Update(message)
-			return m, command
-		case focusResults:
-			m.results, command = m.results.Update(message)
+		case focusWorkspace:
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "esc" {
+				m.focus = focusSchema
+				m.editor.textarea.Blur()
+				return m, nil
+			}
+			switch m.tab {
+			case tabStructure:
+				m.structure, command = m.structure.Update(message)
+			case tabBrowse:
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "n" || keyPress.String() == "p") {
+					if keyPress.String() == "n" {
+						m.browsePage++
+					} else if m.browsePage > 0 {
+						m.browsePage--
+					}
+					return m, m.loadBrowse()
+				}
+				m.browse, command = m.browse.Update(message)
+			case tabSQL:
+				m.editor, command = m.editor.Update(message)
+			}
 			return m, command
 		}
 	case stateFailure:
@@ -135,18 +155,15 @@ func (m Model) executeKey(key tea.KeyPressMsg) bool {
 	return (key.Key().Code == tea.KeyEnter && key.Key().Mod == tea.ModCtrl) || key.Key().Code == tea.KeyF5
 }
 
-func (m *Model) toggleFocus(forward bool) {
-	step := focus(1)
+func (m *Model) toggleTab(forward bool) {
+	step := workspaceTab(1)
 	if !forward {
 		step = 2
 	}
-	m.focus = (m.focus + step) % 3
-	m.editor.textarea.Blur()
-	m.results.Blur()
-	switch m.focus {
-	case focusEditor:
+	m.tab = (m.tab + step) % 3
+	if m.tab == tabSQL {
 		m.editor.textarea.Focus()
-	case focusResults:
-		m.results.Focus()
+	} else {
+		m.editor.textarea.Blur()
 	}
 }

@@ -45,11 +45,14 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	}
 }
 
-func TestSchema_enter_runs_selected_object_ddl_query(t *testing.T) {
+func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	if _, err := model.service.Execute(context.Background(), `CREATE TABLE "project's" (id INTEGER PRIMARY KEY)`); err != nil {
+	if _, err := model.service.Execute(context.Background(), `CREATE TABLE "project's" (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
 		t.Fatalf("creating fixture schema: %v", err)
+	}
+	if _, err := model.service.Execute(context.Background(), `INSERT INTO "project's" (name) VALUES ('first')`); err != nil {
+		t.Fatalf("creating fixture row: %v", err)
 	}
 	model.focus = focusSchema
 	model.schema.SetItems([]list.Item{schemaItem{title: "project's", description: "table"}})
@@ -57,23 +60,24 @@ func TestSchema_enter_runs_selected_object_ddl_query(t *testing.T) {
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command == nil {
-		t.Fatal("schema enter did not start a query")
-	}
-	message := command()
 
 	// Then
-	if got := model.editor.textarea.Value(); got != "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'project''s'" {
-		t.Fatalf("schema statement = %q", got)
+	if command == nil || model.focus != focusWorkspace || model.tab != tabStructure || model.selectedTable != "project's" {
+		t.Fatalf("schema selection = focus:%v tab:%v table:%q command:%t", model.focus, model.tab, model.selectedTable, command != nil)
 	}
-	success, ok := message.(querySucceededMsg)
-	if !ok {
-		t.Fatalf("schema query message = %T, want querySucceededMsg", message)
-	}
-	updated, _ = model.Update(success)
+
+	// When
+	updated, _ = model.Update(tableInfoMsg{table: "project's", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
-	if got := model.results.Rows(); len(got) != 1 || !strings.Contains(got[0][0], `CREATE TABLE "project's"`) {
-		t.Fatalf("schema result = %#v, want selected table DDL", got)
+	updated, _ = model.Update(browseTableMsg{table: "project's", page: 0, result: sqlite.Result{Columns: []string{"id", "name"}, Rows: [][]*string{{stringPointer("1"), stringPointer("first")}}}})
+	model = updated.(Model)
+
+	// Then
+	if got := model.structure.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][4] != "1" {
+		t.Fatalf("structure rows = %#v, want selected table columns", got)
+	}
+	if got := model.browse.Rows(); len(got) != 1 || got[0][1] != "first" {
+		t.Fatalf("browse rows = %#v, want selected table data", got)
 	}
 }
 
