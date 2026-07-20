@@ -22,6 +22,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
+		if m.state == stateReady {
+			switch message.String() {
+			case "1":
+				m.focus = focusSchema
+				m.editor.textarea.Blur()
+				return m, nil
+			case "2":
+				m.focus = focusWorkspace
+				if m.tab == tabSQL {
+					m.editor.textarea.Focus()
+				}
+				return m, nil
+			}
+		}
 		if m.state == stateReady && m.focus == focusWorkspace && m.tab == tabSQL && m.executeKey(message) {
 			return m.startQuery()
 		}

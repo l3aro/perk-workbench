@@ -188,7 +188,7 @@ func (m Model) workspaceView() string {
 
 func (m Model) footer() string {
 	if m.state == stateReady {
-		return safeText(m.status + " | tab switch view | esc schema | q quit")
+		return safeText(m.status + " | 1 tables | 2 tabs | tab switch view | q quit")
 	}
 	return safeText(m.status + " | q quit")
 }

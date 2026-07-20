@@ -127,6 +127,26 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	}
 }
 
+func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.state = stateReady
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusSchema)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusWorkspace)
+}
+
 func assertFocus(t *testing.T, model Model, want focus) {
 	t.Helper()
 	if model.focus != want {
