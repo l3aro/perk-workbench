@@ -271,12 +271,21 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	}
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	model = updated.(Model)
 
 	// Then
 	if model.resultsOffset != 0 {
-		t.Fatalf("results offset = %d, want 0 after left", model.resultsOffset)
+		t.Fatalf("results offset = %d, want 0 after h", model.resultsOffset)
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updated.(Model)
+
+	// Then
+	if model.resultsOffset != 1 {
+		t.Fatalf("results offset = %d, want 1 after l", model.resultsOffset)
 	}
 }
 

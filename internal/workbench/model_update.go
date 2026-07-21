@@ -199,9 +199,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
 	switch keyPress.Key().Code {
-	case tea.KeyLeft:
+	case tea.KeyLeft, 'h':
 		*offset = tableOffset(*resultTable, *offset-1, viewportWidth)
-	case tea.KeyRight:
+	case tea.KeyRight, 'l':
 		*offset = tableOffset(*resultTable, *offset+1, viewportWidth)
 	default:
 		return false
