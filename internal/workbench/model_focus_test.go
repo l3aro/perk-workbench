@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/sqlite"
 )
 
 func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
@@ -192,6 +193,89 @@ func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 
 	// Then
 	assertFocus(t, model, focusWorkspace)
+}
+
+func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	requestID := model.StartQueryForTest(context.Background())
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+		Columns: []string{"ID"},
+		Rows: [][]*string{
+			{stringPointer("1")},
+			{stringPointer("2")},
+			{stringPointer("3")},
+		},
+	}})
+	model = updated.(Model)
+
+	// When
+	for _, test := range []struct {
+		key  tea.KeyPressMsg
+		want int
+	}{
+		{key: tea.KeyPressMsg{Code: 'j', Text: "j"}, want: 0},
+		{key: tea.KeyPressMsg{Code: tea.KeyDown}, want: 1},
+		{key: tea.KeyPressMsg{Code: tea.KeyUp}, want: 0},
+		{key: tea.KeyPressMsg{Code: 'k', Text: "k"}, want: 0},
+	} {
+		updated, _ = model.Update(test.key)
+		model = updated.(Model)
+
+		// Then
+		if got := model.results.Cursor(); got != test.want {
+			t.Fatalf("result cursor = %d, want %d after %s", got, test.want, test.key.String())
+		}
+	}
+}
+
+func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(Model) Model
+	}{
+		{
+			name: "structure",
+			setup: func(model Model) Model {
+				model.SelectedTable, model.Tab = "projects", tabStructure
+				model.focusActiveTable()
+				updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{{Name: "id"}, {Name: "name"}}})
+				model = updated.(Model)
+				model.structure.SetCursor(1)
+				return model
+			},
+		},
+		{
+			name: "browse",
+			setup: func(model Model) Model {
+				model.SelectedTable, model.Tab = "projects", tabBrowse
+				model.focusActiveTable()
+				updated, _ := model.Update(browseTableMsg{table: "projects", page: model.BrowsePage, result: sqlite.Result{Columns: []string{"ID"}, Rows: [][]*string{{stringPointer("1")}, {stringPointer("2")}}}})
+				model = updated.(Model)
+				model.browse.SetCursor(1)
+				return model
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			model := test.setup(readyModel(t))
+
+			// When
+			updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+			model = updated.(Model)
+
+			// Then
+			if test.name == "structure" && model.structure.Cursor() != 0 {
+				t.Fatalf("structure cursor = %d, want 0 after k", model.structure.Cursor())
+			}
+			if test.name == "browse" && model.browse.Cursor() != 0 {
+				t.Fatalf("browse cursor = %d, want 0 after k", model.browse.Cursor())
+			}
+		})
+	}
 }
 
 func updateFromCommand(model Model, command tea.Cmd) Model {

@@ -35,12 +35,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "1":
 				m.Focus = focusSchema
 				m.editor.textarea.Blur()
+				m.blurTables()
 				return m, nil
 			case "2":
 				m.Focus = focusWorkspace
-				if m.Tab == tabSQL {
-					m.editor.textarea.Focus()
-				}
+				m.focusActiveTable()
 				return m, nil
 			}
 		}
@@ -142,6 +141,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					m.SelectTable(item.title)
+					m.focusActiveTable()
 					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 				}
 			}
@@ -151,6 +151,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "esc" {
 				m.Focus = focusSchema
 				m.editor.textarea.Blur()
+				m.blurTables()
 				return m, nil
 			}
 			switch m.Tab {
@@ -169,7 +170,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
-				m.editor, command = m.editor.Update(message)
+				if m.results.Focused() {
+					m.results, command = m.results.Update(message)
+				} else {
+					m.editor, command = m.editor.Update(message)
+				}
 			}
 			return m, command
 		}
@@ -188,9 +193,24 @@ func (m Model) executeKey(key tea.KeyPressMsg) bool {
 
 func (m *Model) toggleTab(forward bool) {
 	m.Workflow.ToggleTab(forward)
-	if m.Tab == tabSQL {
+	m.focusActiveTable()
+}
+
+func (m *Model) focusActiveTable() {
+	m.editor.textarea.Blur()
+	m.blurTables()
+	switch m.Tab {
+	case tabStructure:
+		m.structure.Focus()
+	case tabBrowse:
+		m.browse.Focus()
+	case tabSQL:
 		m.editor.textarea.Focus()
-	} else {
-		m.editor.textarea.Blur()
 	}
+}
+
+func (m *Model) blurTables() {
+	m.structure.Blur()
+	m.browse.Blur()
+	m.results.Blur()
 }

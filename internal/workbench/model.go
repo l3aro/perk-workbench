@@ -109,6 +109,7 @@ func New(target string, opener databaseOpener) Model {
 		editor:     editor,
 		connection: newConnectionForm(),
 	}
+	model.focusActiveTable()
 	if target == "" {
 		model.recentPath, _ = recentConnectionsPath()
 		model.recentConnections = loadRecentConnections(model.recentPath)

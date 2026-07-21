@@ -16,6 +16,7 @@ import (
 const (
 	colorCanvas   = "#10151f"
 	colorPanel    = "#17202e"
+	colorStripe   = "#1c2838"
 	colorInk      = "#e6edf3"
 	colorMuted    = "#8b9bb4"
 	colorAccent   = "#55d6be"
@@ -71,12 +72,13 @@ func newList(title string, filtering bool) list.Model {
 func newResultsTable() table.Model {
 	return table.New(
 		table.WithColumns([]table.Column{{Title: "Results", Width: 1}}),
+		table.WithFocused(true),
 		table.WithWidth(1),
 		table.WithHeight(2),
 		table.WithStyles(table.Styles{
 			Header:   headerStyle,
 			Cell:     lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)).Padding(0, spaceCompact),
-			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)),
+			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)),
 		}),
 	)
 }

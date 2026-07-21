@@ -125,6 +125,8 @@ func (m *Model) setResults(result sharedsql.Result) {
 	m.results.SetRows(nil)
 	m.results.SetColumns(tableColumns(m.results.Width(), titles))
 	m.results.SetRows(rows)
+	m.results.Focus()
+	m.editor.textarea.Blur()
 	rowLabel := "rows"
 	if len(rows) == 1 {
 		rowLabel = "row"

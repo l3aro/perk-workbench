@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -242,7 +243,11 @@ func assertTableTitlesAndPositiveWidths(t *testing.T, resultTable table.Model, t
 
 func assertTableRows(t *testing.T, resultTable table.Model, want []table.Row) {
 	t.Helper()
-	if got := resultTable.Rows(); !slices.EqualFunc(got, want, slices.Equal) {
+	if got := resultTable.Rows(); !slices.EqualFunc(got, want, func(gotRow, wantRow table.Row) bool {
+		return slices.EqualFunc(gotRow, wantRow, func(gotCell, wantCell string) bool {
+			return strings.TrimRight(ansi.Strip(gotCell), " ") == wantCell
+		})
+	}) {
 		t.Fatalf("rows = %#v, want %#v", got, want)
 	}
 }
