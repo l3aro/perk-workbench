@@ -37,6 +37,8 @@ type browseTableMsg struct {
 
 type columnAlteredMsg struct{ err error }
 
+type browseRowUpdatedMsg struct{ err error }
+
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
 	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.textarea.Value())
 	if !ok {
@@ -168,6 +170,21 @@ func (m Model) alterColumn() tea.Cmd {
 	}
 }
 
+func (m Model) updateBrowseRow() tea.Cmd {
+	statement, err := m.browseForm.updateStatement(m.SelectedTable)
+	if err != nil {
+		return func() tea.Msg { return browseRowUpdatedMsg{err: err} }
+	}
+	service := m.Database
+	return func() tea.Msg {
+		result, err := service.Execute(m.appContext, statement)
+		if err == nil && result.RowsAffected != 1 {
+			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
+		}
+		return browseRowUpdatedMsg{err: err}
+	}
+}
+
 func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
@@ -210,6 +227,17 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
 
+func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, tea.Cmd) {
+	if message.err != nil {
+		m.browseForm.saving = false
+		m.Status = safeText(fmt.Sprintf("updating row: %v", message.err))
+		return m, nil
+	}
+	m.browseForm = browseForm{}
+	m.Status = "row updated"
+	return m, m.loadBrowse()
+}
+
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.err != nil {
 		if message.err != nil {
@@ -223,6 +251,8 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) setBrowse(result sharedsql.Result) {
+	cursor := m.browse.Cursor()
+	m.browseResult = result
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		titles[index] = safeText(column)
@@ -243,5 +273,8 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 	m.browse.SetColumns(tableColumns(titles, rows))
 	resizeResultsTable(&m.browse, m.tableViewportWidth, m.browse.Height()+1)
 	m.browse.SetRows(rows)
+	if cursor >= 0 && len(rows) > 0 {
+		m.browse.SetCursor(min(cursor, len(rows)-1))
+	}
 	m.browseOffset = 0
 }

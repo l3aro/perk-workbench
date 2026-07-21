@@ -223,6 +223,7 @@ func (m *Model) layout(width, height int) {
 		m.tableViewportWidth = max(m.editorWidth-8, 1)
 	}
 	m.columnForm.setWidth(m.tableViewportWidth)
+	m.browseForm.setWidth(m.tableViewportWidth)
 	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
@@ -312,7 +313,7 @@ func (m Model) workspaceView() string {
 	case tabStructure:
 		content = m.structureView()
 	case tabBrowse:
-		content = tableViewportView(m.browse, m.browseOffset, m.tableViewportWidth)
+		content = m.browseView()
 	case tabSQL:
 		editor := m.editor.textarea.View()
 		results := tableViewportView(m.results, m.resultsOffset, m.tableViewportWidth)
@@ -326,6 +327,13 @@ func (m Model) structureView() string {
 		return m.columnForm.View()
 	}
 	return tableViewportView(m.structure, m.structureOffset, m.tableViewportWidth)
+}
+
+func (m Model) browseView() string {
+	if m.browseForm.active() {
+		return m.browseForm.View()
+	}
+	return tableViewportView(m.browse, m.browseOffset, m.tableViewportWidth)
 }
 
 func (m Model) footer() string {

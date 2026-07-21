@@ -49,8 +49,10 @@ type Model struct {
 	schema, picker, recent                          list.Model
 	structure, browse, results                      table.Model
 	structureColumns                                []sharedsql.ColumnInfo
+	browseResult                                    sharedsql.Result
 	editor                                          editor
 	columnForm                                      columnForm
+	browseForm                                      browseForm
 	connection                                      connectionForm
 	recentConnections                               []recentConnection
 	recentPath                                      string
