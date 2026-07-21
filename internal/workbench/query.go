@@ -164,7 +164,11 @@ func (m Model) loadBrowse() tea.Cmd {
 }
 
 func (m Model) alterColumn() tea.Cmd {
-	table, change, service := m.SelectedTable, m.columnForm.change(), m.Database
+	table, service := m.SelectedTable, m.Database
+	change, err := m.columnForm.change()
+	if err != nil {
+		return func() tea.Msg { return columnAlteredMsg{err: err} }
+	}
 	return func() tea.Msg {
 		return columnAlteredMsg{err: service.AlterColumn(m.appContext, table, change)}
 	}

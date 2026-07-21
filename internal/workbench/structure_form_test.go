@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -96,6 +97,72 @@ func TestStructureForm_iOpensSelectedColumn(t *testing.T) {
 	}
 }
 
+func TestStructureForm_typeSelectionBuildsDecimalDeclaration(t *testing.T) {
+	// Given
+	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "INTEGER", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.focus = columnFieldType
+
+	// When
+	_, _ = form.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	for form.typeOptions[form.typePicker].Name != "DECIMAL" {
+		_, _ = form.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+	_, _ = form.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	form.parameters[0].SetValue("12")
+	form.parameters[1].SetValue("2")
+	change, err := form.change()
+
+	// Then
+	if err != nil {
+		t.Fatalf("change() error = %v", err)
+	}
+	if change.Type != "DECIMAL(12,2)" {
+		t.Errorf("type = %q, want DECIMAL(12,2)", change.Type)
+	}
+}
+
+func TestStructureForm_keepsExistingTypeWhenOnlyRenamingColumn(t *testing.T) {
+	// Given
+	form := newColumnForm(sqlite.ColumnInfo{Name: "title", Type: "varchar(120)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.name.SetValue("name")
+
+	// When
+	change, err := form.change()
+
+	// Then
+	if err != nil {
+		t.Fatalf("change() error = %v", err)
+	}
+	if change.Type != "varchar(120)" {
+		t.Errorf("type = %q, want existing declaration", change.Type)
+	}
+}
+
+func TestStructureForm_parsesSpacedNumericDeclaration(t *testing.T) {
+	// Given
+	form := newColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+
+	// Then
+	if len(form.parameters) != 2 || form.parameters[0].Value() != "10" || form.parameters[1].Value() != "2" {
+		t.Fatalf("parameters = %#v, want editable precision 10 and scale 2", form.parameters)
+	}
+}
+
+func TestStructureForm_replacesNumericParameterOnEdit(t *testing.T) {
+	// Given
+	form := newColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.focus = columnFieldParameterStart
+
+	// When
+	_, _ = form.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	_, _ = form.Update(tea.KeyPressMsg{Code: '9', Text: "9"})
+
+	// Then
+	if got := form.parameters[0].Value(); got != "9" {
+		t.Errorf("precision = %q, want replacement value 9", got)
+	}
+}
+
 func TestStructureForm_usesNormalAndInsertModeNavigation(t *testing.T) {
 	// Given
 	model := readyModel(t)
@@ -125,7 +192,7 @@ func TestStructureForm_usesNormalAndInsertModeNavigation(t *testing.T) {
 	if model.columnForm.mode != columnFormNormal || model.columnForm.name.Value() != "namex" {
 		t.Fatalf("form state = mode:%d name:%q, want normal mode and edited name", model.columnForm.mode, model.columnForm.name.Value())
 	}
-	if model.columnForm.focus != columnFieldDefault {
+	if model.columnForm.focus != model.columnForm.defaultField() {
 		t.Fatalf("form focus = %d, want default field after G", model.columnForm.focus)
 	}
 }

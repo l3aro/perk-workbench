@@ -1,7 +1,6 @@
 package workbench
 
 import (
-	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -14,6 +13,7 @@ type columnFormMode uint8
 const (
 	columnFormNormal columnFormMode = iota
 	columnFormInsert
+	columnFormSelectType
 	columnFormConfirmSave
 	columnFormConfirmDiscard
 )
@@ -29,36 +29,46 @@ const (
 const (
 	columnFieldName = iota
 	columnFieldType
-	columnFieldNullable
-	columnFieldDefault
-	columnFieldCount
+	columnFieldParameterStart
 )
 
 type columnForm struct {
-	mode              columnFormMode
-	focus             int
-	pendingG          bool
-	confirmed         bool
-	saving            bool
-	previousName      string
-	primaryKey        int
-	nullable          bool
-	name, typ, preset textinput.Model
+	mode         columnFormMode
+	focus        int
+	pendingG     bool
+	confirmed    bool
+	saving       bool
+	previousName string
+	originalType string
+	typeChanged  bool
+	primaryKey   int
+	nullable     bool
+	typeIndex    int
+	typePicker   int
+	typeOptions  []sharedsql.ColumnType
+	parameters   []textinput.Model
+	name, preset textinput.Model
 }
 
-func newColumnForm(column sharedsql.ColumnInfo) columnForm {
+func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnType) columnForm {
 	name := textinput.New()
 	name.Prompt = "Name: "
 	name.SetValue(column.Name)
-	typ := textinput.New()
-	typ.Prompt = "Type: "
-	typ.SetValue(column.Type)
 	preset := textinput.New()
 	preset.Prompt = "Default: "
 	if column.DefaultValue != nil {
 		preset.SetValue(*column.DefaultValue)
 	}
-	return columnForm{previousName: column.Name, primaryKey: column.PrimaryKey, nullable: column.Nullable, name: name, typ: typ, preset: preset}
+	form := columnForm{previousName: column.Name, originalType: column.Type, primaryKey: column.PrimaryKey, nullable: column.Nullable, typeOptions: typeOptions, name: name, preset: preset}
+	if index, values, ok := sharedsql.MatchColumnType(typeOptions, column.Type); ok {
+		form.selectType(index, values)
+		return form
+	}
+	if strings.TrimSpace(column.Type) != "" {
+		form.typeOptions = append([]sharedsql.ColumnType{{Name: column.Type}}, typeOptions...)
+	}
+	form.selectType(0, nil)
+	return form
 }
 
 func (m *Model) openColumnForm() {
@@ -67,7 +77,7 @@ func (m *Model) openColumnForm() {
 		m.Status = "select a column"
 		return
 	}
-	m.columnForm = newColumnForm(m.structureColumns[row])
+	m.columnForm = newColumnForm(m.structureColumns[row], sharedsql.ColumnTypes(m.databaseInfo))
 }
 
 func (f columnForm) active() bool { return f.previousName != "" }
@@ -81,6 +91,24 @@ func (f *columnForm) Update(message tea.Msg) (tea.Cmd, columnFormAction) {
 		return nil, columnFormNoAction
 	}
 	keyPress, ok := message.(tea.KeyPressMsg)
+	if f.mode == columnFormSelectType {
+		if !ok {
+			return nil, columnFormNoAction
+		}
+		switch keyPress.String() {
+		case "esc", "escape":
+			f.mode = columnFormNormal
+		case "j", "down":
+			f.typePicker = (f.typePicker + 1) % len(f.typeOptions)
+		case "k", "up":
+			f.typePicker = (f.typePicker + len(f.typeOptions) - 1) % len(f.typeOptions)
+		case "enter":
+			f.typeChanged = f.typeChanged || f.typePicker != f.typeIndex
+			f.selectType(f.typePicker, nil)
+			f.mode = columnFormNormal
+		}
+		return nil, columnFormNoAction
+	}
 	if !ok {
 		if f.mode != columnFormInsert {
 			return nil, columnFormNoAction
@@ -125,9 +153,9 @@ func (f *columnForm) Update(message tea.Msg) (tea.Cmd, columnFormAction) {
 	case "ctrl+enter", "f5":
 		f.mode, f.confirmed = columnFormConfirmSave, false
 	case "j", "down":
-		f.focus = (f.focus + 1) % columnFieldCount
+		f.focus = (f.focus + 1) % f.fieldCount()
 	case "k", "up":
-		f.focus = (f.focus + columnFieldCount - 1) % columnFieldCount
+		f.focus = (f.focus + f.fieldCount() - 1) % f.fieldCount()
 	case "g":
 		if f.pendingG {
 			f.focus, f.pendingG = columnFieldName, false
@@ -136,10 +164,14 @@ func (f *columnForm) Update(message tea.Msg) (tea.Cmd, columnFormAction) {
 		f.pendingG = true
 		return nil, columnFormNoAction
 	case "G":
-		f.focus, f.pendingG = columnFieldDefault, false
+		f.focus, f.pendingG = f.defaultField(), false
 	case "i":
 		f.pendingG = false
-		if f.focus == columnFieldNullable {
+		if f.focus == columnFieldType {
+			f.typePicker, f.mode = f.typeIndex, columnFormSelectType
+			return nil, columnFormNoAction
+		}
+		if f.focus == f.nullableField() {
 			f.nullable = !f.nullable
 			return nil, columnFormNoAction
 		}
@@ -147,13 +179,17 @@ func (f *columnForm) Update(message tea.Msg) (tea.Cmd, columnFormAction) {
 		return f.focusInput(), columnFormNoAction
 	case "enter":
 		f.pendingG = false
-		if f.focus == columnFieldNullable {
+		if f.focus == columnFieldType {
+			f.typePicker, f.mode = f.typeIndex, columnFormSelectType
+			return nil, columnFormNoAction
+		}
+		if f.focus == f.nullableField() {
 			f.nullable = !f.nullable
 		}
 	default:
 		f.pendingG = false
 	}
-	if keyPress.Key().Code == ' ' && f.focus == columnFieldNullable {
+	if keyPress.Key().Code == ' ' && f.focus == f.nullableField() {
 		f.nullable = !f.nullable
 	}
 	return nil, columnFormNoAction
@@ -164,18 +200,22 @@ func (f *columnForm) focusInput() tea.Cmd {
 	switch f.focus {
 	case columnFieldName:
 		return f.name.Focus()
-	case columnFieldType:
-		return f.typ.Focus()
-	case columnFieldDefault:
+	case f.defaultField():
 		return f.preset.Focus()
+	}
+	if parameter := f.parameterIndex(); parameter >= 0 {
+		f.parameters[parameter].SetValue("")
+		return f.parameters[parameter].Focus()
 	}
 	return nil
 }
 
 func (f *columnForm) blurInputs() {
 	f.name.Blur()
-	f.typ.Blur()
 	f.preset.Blur()
+	for index := range f.parameters {
+		f.parameters[index].Blur()
+	}
 }
 
 func (f *columnForm) updateInput(message tea.Msg) tea.Cmd {
@@ -183,66 +223,33 @@ func (f *columnForm) updateInput(message tea.Msg) tea.Cmd {
 	switch f.focus {
 	case columnFieldName:
 		f.name, command = f.name.Update(message)
-	case columnFieldType:
-		f.typ, command = f.typ.Update(message)
-	case columnFieldDefault:
+	case f.defaultField():
 		f.preset, command = f.preset.Update(message)
+	}
+	if parameter := f.parameterIndex(); parameter >= 0 {
+		f.parameters[parameter], command = f.parameters[parameter].Update(message)
 	}
 	return command
 }
 
-func (f columnForm) change() sharedsql.ColumnChange {
-	change := sharedsql.ColumnChange{PreviousName: f.previousName, Name: f.name.Value(), Type: f.typ.Value(), Nullable: f.nullable}
+func (f columnForm) change() (sharedsql.ColumnChange, error) {
+	typeDeclaration, err := f.typeDeclaration()
+	if err != nil {
+		return sharedsql.ColumnChange{}, err
+	}
+	change := sharedsql.ColumnChange{PreviousName: f.previousName, Name: f.name.Value(), Type: typeDeclaration, Nullable: f.nullable}
 	if value := strings.TrimSpace(f.preset.Value()); value != "" {
 		change.DefaultValue = &value
 	}
-	return change
+	return change, nil
 }
 
 func (f *columnForm) setWidth(width int) {
-	for _, input := range []*textinput.Model{&f.name, &f.typ, &f.preset} {
+	inputs := []*textinput.Model{&f.name, &f.preset}
+	for index := range f.parameters {
+		inputs = append(inputs, &f.parameters[index])
+	}
+	for _, input := range inputs {
 		input.SetWidth(max(width-12, 1))
 	}
-}
-
-func (f columnForm) View() string {
-	if f.saving {
-		return statusStyle.Render("saving column changes")
-	}
-	if f.confirming() {
-		action := "Save column changes?"
-		if f.mode == columnFormConfirmDiscard {
-			action = "Discard column changes?"
-		}
-		choices := "[false] true"
-		if f.confirmed {
-			choices = "false [true]"
-		}
-		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
-	}
-	fields := []string{f.field(columnFieldName, f.name.View()), f.field(columnFieldType, f.typ.View())}
-	nullable := "Nullable: false"
-	if f.nullable {
-		nullable = "Nullable: true"
-	}
-	fields = append(fields, f.field(columnFieldNullable, nullable), f.field(columnFieldDefault, f.preset.View()), "PK: "+primaryKeyText(f.primaryKey))
-	help := "j/k fields | gg/G first/last | i edit | space toggle nullable | F5 save | Esc discard"
-	if f.mode == columnFormInsert {
-		help = "insert mode | Esc normal mode"
-	}
-	return strings.Join(fields, "\n") + "\n" + statusStyle.Render(help)
-}
-
-func (f columnForm) field(index int, value string) string {
-	if f.focus == index && f.mode == columnFormNormal {
-		return headerStyle.Render(value)
-	}
-	return value
-}
-
-func primaryKeyText(position int) string {
-	if position == 0 {
-		return ""
-	}
-	return strconv.Itoa(position) + " (read-only)"
 }
