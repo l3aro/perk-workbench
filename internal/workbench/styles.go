@@ -126,13 +126,17 @@ func tableColumns(titles []string, rows []table.Row) []table.Column {
 }
 
 func tableViewportView(resultTable table.Model, offset, width int) string {
+	return tableViewportViewWithAlignment(resultTable, nil, offset, width)
+}
+
+func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bool, offset, width int) string {
 	offset = min(max(offset, 0), max(resultTable.Width()-width, 0))
 	columns := resultTable.Columns()
-	lines := []string{headerStyle.Padding(0, 0).Render(tableLine(columns, nil, offset, width))}
+	lines := []string{headerStyle.Padding(0, 0).Render(tableLine(columns, nil, numericColumns, offset, width))}
 	rows, rowHeight := resultTable.Rows(), resultTable.Height()
 	start := min(max(resultTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
 	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
-		row := tableLine(columns, rows[rowIndex], offset, width)
+		row := tableLine(columns, rows[rowIndex], numericColumns, offset, width)
 		if rowIndex == resultTable.Cursor() {
 			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(row)
 		}
@@ -144,7 +148,7 @@ func tableViewportView(resultTable table.Model, offset, width int) string {
 	return strings.Join(lines, "\n")
 }
 
-func tableLine(columns []table.Column, row table.Row, offset, width int) string {
+func tableLine(columns []table.Column, row table.Row, numericColumns []bool, offset, width int) string {
 	cells := make([]string, len(columns))
 	for index, column := range columns {
 		value := column.Title
@@ -154,7 +158,11 @@ func tableLine(columns []table.Column, row table.Row, offset, width int) string 
 				value = row[index]
 			}
 		}
-		cell := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Inline(true).Render(ansi.Truncate(value, column.Width, "…"))
+		style := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Inline(true)
+		if row != nil && index < len(numericColumns) && numericColumns[index] {
+			style = style.Align(lipgloss.Right)
+		}
+		cell := style.Render(ansi.Truncate(value, column.Width, "…"))
 		cells[index] = strings.Repeat(" ", spaceCompact) + cell + strings.Repeat(" ", spaceCompact)
 	}
 	return cropTableLine(strings.Join(cells, ""), offset, width)
@@ -316,7 +324,7 @@ func (m Model) workspaceView() string {
 		content = m.browseView()
 	case tabSQL:
 		editor := m.editor.textarea.View()
-		results := tableViewportView(m.results, m.resultsOffset, m.tableViewportWidth)
+		results := tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth)
 		content = lipgloss.JoinVertical(lipgloss.Left, editor, results)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), content)
@@ -333,7 +341,7 @@ func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.browseForm.View()
 	}
-	return tableViewportView(m.browse, m.browseOffset, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth)
 }
 
 func (m Model) footer() string {

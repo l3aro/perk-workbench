@@ -426,3 +426,16 @@ func TestTableColumns_return_results_placeholder_when_titles_are_empty(t *testin
 		t.Errorf("placeholder width = %d, want %d", got, len("Results"))
 	}
 }
+
+func TestTableLine_aligns_numeric_cells_right(t *testing.T) {
+	// Given
+	columns := []table.Column{{Title: "count", Width: 5}, {Title: "name", Width: 5}}
+
+	// When
+	line := tableLine(columns, table.Row{"12", "oak"}, numericColumns([]string{"INTEGER", "TEXT"}), 0, 14)
+
+	// Then
+	if got, want := ansi.Strip(line), "    12  oak   "; got != want {
+		t.Fatalf("table line = %q, want %q", got, want)
+	}
+}
