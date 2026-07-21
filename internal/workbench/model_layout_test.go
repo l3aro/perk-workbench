@@ -221,7 +221,7 @@ func TestResultsTable_selected_row_highlights_all_columns(t *testing.T) {
 	model := newResultsTable()
 	resizeResultsTable(&model, 18, 2)
 	model.SetColumns([]table.Column{{Title: "ID", Width: 4}, {Title: "Name", Width: 4}, {Title: "State", Width: 4}})
-	model.SetRows([]table.Row{{"1", "first", "x"}})
+	model.SetRows([]table.Row{{"1", "first", ""}})
 
 	body := strings.Split(model.View(), "\n")[1]
 	if got := strings.Count(body, "\x1b[m"); got != 1 {
@@ -229,6 +229,20 @@ func TestResultsTable_selected_row_highlights_all_columns(t *testing.T) {
 	}
 	if got, want := lipgloss.Width(body), model.Width(); got != want {
 		t.Fatalf("selected row width = %d, want table width %d", got, want)
+	}
+}
+
+func TestStructureTable_selected_empty_primary_key_preserves_final_cell(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model = resizeModel(model, 100, 24)
+	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	model = updated.(Model)
+
+	// Then
+	body := strings.Split(model.structureView(), "\n")[1]
+	if got, want := lipgloss.Width(body), model.structure.Width(); got != want {
+		t.Fatalf("selected structure row width = %d, want table width %d", got, want)
 	}
 }
 

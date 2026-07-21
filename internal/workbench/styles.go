@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
@@ -235,7 +236,7 @@ func (m Model) workspaceView() string {
 	var content string
 	switch m.Tab {
 	case tabStructure:
-		content = m.structure.View()
+		content = m.structureView()
 	case tabBrowse:
 		content = m.browse.View()
 	case tabSQL:
@@ -244,6 +245,36 @@ func (m Model) workspaceView() string {
 		content = lipgloss.JoinVertical(lipgloss.Left, editor, results)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), content)
+}
+
+func (m Model) structureView() string {
+	view := m.structure.View()
+	row := m.structure.SelectedRow()
+	if len(row) == 0 {
+		return view
+	}
+	cells := make([]string, len(m.structure.Columns()))
+	for index, column := range m.structure.Columns() {
+		value := row[index]
+		if value == "" {
+			cells[index] = "\x1b[38;2;28;40;56;48;2;28;40;56m" + strings.Repeat(".", column.Width+2*spaceCompact) + "\x1b[m"
+			continue
+		}
+		cellStyle := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Padding(0, spaceCompact).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe))
+		if index == 0 {
+			cellStyle = cellStyle.Padding(0, 0).PaddingRight(2 * spaceCompact)
+		}
+		cells[index] = cellStyle.Render(ansi.Truncate(value, column.Width, "…"))
+	}
+	selected := " " + lipgloss.NewStyle().Width(m.structure.Width()-spaceCompact).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(strings.Join(cells, ""))
+	lines := strings.Split(view, "\n")
+	selectedStyle := "\x1b[38;2;85;214;190;48;2;28;40;56m"
+	for index, line := range lines {
+		if strings.Contains(line, selectedStyle) {
+			lines[index] = selected
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) footer() string {
