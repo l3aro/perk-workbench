@@ -110,6 +110,7 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 }
 
 func (m *Model) setResults(result sharedsql.Result) {
+	m.resultsNumericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		titles[index] = safeText(column)
@@ -257,6 +258,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 func (m *Model) setBrowse(result sharedsql.Result) {
 	cursor := m.browse.Cursor()
 	m.browseResult = result
+	m.browseNumericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		titles[index] = safeText(column)
@@ -281,4 +283,12 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 		m.browse.SetCursor(min(cursor, len(rows)-1))
 	}
 	m.browseOffset = 0
+}
+
+func numericColumns(types []string) []bool {
+	columns := make([]bool, len(types))
+	for index, typeName := range types {
+		columns[index] = sharedsql.IsNumericColumnType(typeName)
+	}
+	return columns
 }
