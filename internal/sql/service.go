@@ -12,11 +12,17 @@ const (
 
 type Service interface {
 	Close() error
+	Info() DatabaseInfo
 	Execute(context.Context, string) (Result, error)
 	ListSchema(context.Context) ([]SchemaObject, error)
 	TableInfo(context.Context, string) ([]ColumnInfo, error)
 	AlterColumn(context.Context, string, ColumnChange) error
 	BrowseTable(context.Context, string, int, int) (Result, error)
+}
+
+type DatabaseInfo struct {
+	Product string
+	Version string
 }
 
 type Result struct {

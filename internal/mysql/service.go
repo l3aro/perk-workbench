@@ -12,7 +12,10 @@ import (
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
-type Service struct{ db *stdsql.DB }
+type Service struct {
+	db   *stdsql.DB
+	info sharedsql.DatabaseInfo
+}
 
 func Open(ctx context.Context, dsn string) (*Service, error) {
 	db, err := stdsql.Open("mysql", dsn)
@@ -25,7 +28,14 @@ func Open(ctx context.Context, dsn string) (*Service, error) {
 		}
 		return nil, fmt.Errorf("pinging mysql database: %w", err)
 	}
-	return &Service{db: db}, nil
+	var version string
+	if err := db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("reading mysql version: %w", errors.Join(err, closeErr))
+		}
+		return nil, fmt.Errorf("reading mysql version: %w", err)
+	}
+	return &Service{db: db, info: sharedsql.DatabaseInfo{Product: "MySQL", Version: version}}, nil
 }
 
 func (s *Service) Close() error {
@@ -34,6 +44,8 @@ func (s *Service) Close() error {
 	}
 	return nil
 }
+
+func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	rows, err := s.db.QueryContext(ctx, `

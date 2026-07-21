@@ -15,6 +15,7 @@ type Service struct {
 	db        *stdsql.DB
 	rawTarget string
 	dsn       string
+	info      sharedsql.DatabaseInfo
 }
 
 type Result = sharedsql.Result
@@ -51,7 +52,14 @@ func Open(ctx context.Context, target string) (*Service, error) {
 		}
 		return nil, fmt.Errorf("pinging sqlite database: %w", err)
 	}
-	return &Service{db: db, rawTarget: target, dsn: dsn}, nil
+	var version string
+	if err := db.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&version); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return nil, fmt.Errorf("reading sqlite version: %w", errors.Join(err, closeErr))
+		}
+		return nil, fmt.Errorf("reading sqlite version: %w", err)
+	}
+	return &Service{db: db, rawTarget: target, dsn: dsn, info: sharedsql.DatabaseInfo{Product: "SQLite", Version: version}}, nil
 }
 
 func (s *Service) Close() error {
@@ -60,6 +68,8 @@ func (s *Service) Close() error {
 	}
 	return nil
 }
+
+func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	rows, err := s.db.QueryContext(ctx, `

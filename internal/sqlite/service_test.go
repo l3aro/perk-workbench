@@ -19,6 +19,22 @@ func newMemoryService(t *testing.T) *Service {
 	return service
 }
 
+func TestServiceInfo_reportsSQLiteVersion(t *testing.T) {
+	// Given
+	service := newMemoryService(t)
+
+	// When
+	info := service.Info()
+
+	// Then
+	if info.Product != "SQLite" {
+		t.Errorf("product = %q, want SQLite", info.Product)
+	}
+	if info.Version == "" {
+		t.Fatal("version is empty")
+	}
+}
+
 func slicesEqual(got, want []string) bool {
 	if len(got) != len(want) {
 		return false
