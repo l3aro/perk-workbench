@@ -144,6 +144,122 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.Colum
 	return columns, nil
 }
 
+func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsql.ColumnChange) error {
+	if err := sharedsql.ValidateColumnChange(change); err != nil {
+		return err
+	}
+	columns, err := s.TableInfo(ctx, table)
+	if err != nil {
+		return err
+	}
+	var current sharedsql.ColumnInfo
+	found := false
+	for _, column := range columns {
+		if column.Name == change.PreviousName {
+			current, found = column, true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("column %q was not found", change.PreviousName)
+	}
+	if change.Name == change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
+		return nil
+	}
+	if current.PrimaryKey > 0 {
+		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
+			_, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name))
+			return err
+		}
+		return errors.New("primary-key columns can only be renamed without other changes")
+	}
+	if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
+			return fmt.Errorf("renaming column: %w", err)
+		}
+		return nil
+	}
+	attributes, err := s.columnAttributes(ctx, table, change.PreviousName)
+	if err != nil {
+		return err
+	}
+	if attributes.extra != "" {
+		return fmt.Errorf("column %q has unsupported attributes: %s", change.PreviousName, attributes.extra)
+	}
+	statement := "ALTER TABLE " + quoteIdentifier(table) + " CHANGE COLUMN " + quoteIdentifier(change.PreviousName) + " " + quoteIdentifier(change.Name) + " " + strings.TrimSpace(change.Type)
+	if change.Nullable {
+		statement += " NULL"
+	} else {
+		statement += " NOT NULL"
+	}
+	if change.DefaultValue != nil {
+		statement += " DEFAULT " + mysqlDefault(*change.DefaultValue)
+	}
+	if attributes.characterSet.Valid {
+		statement += " CHARACTER SET " + attributes.characterSet.String
+	}
+	if attributes.collation.Valid {
+		statement += " COLLATE " + attributes.collation.String
+	}
+	if attributes.comment.Valid && attributes.comment.String != "" {
+		statement += " COMMENT " + mysqlDefault(attributes.comment.String)
+	}
+	if _, err := s.db.ExecContext(ctx, statement); err != nil {
+		return fmt.Errorf("altering column: %w", err)
+	}
+	return nil
+}
+
+type mysqlColumnAttributes struct {
+	extra                            string
+	comment, characterSet, collation stdsql.NullString
+}
+
+func (s *Service) columnAttributes(ctx context.Context, table, column string) (mysqlColumnAttributes, error) {
+	var attributes mysqlColumnAttributes
+	err := s.db.QueryRowContext(ctx, `
+		SELECT extra, column_comment, character_set_name, collation_name
+		FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`, table, column).Scan(&attributes.extra, &attributes.comment, &attributes.characterSet, &attributes.collation)
+	if err != nil {
+		return mysqlColumnAttributes{}, fmt.Errorf("reading column attributes: %w", err)
+	}
+	return attributes, nil
+}
+
+func mysqlDefault(value string) string {
+	trimmed := strings.TrimSpace(value)
+	switch strings.ToUpper(trimmed) {
+	case "NULL", "CURRENT_DATE", "CURRENT_TIME", "CURRENT_TIMESTAMP":
+		return trimmed
+	}
+	if numericDefault(trimmed) {
+		return trimmed
+	}
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func numericDefault(value string) bool {
+	if value == "" {
+		return false
+	}
+	for index, character := range value {
+		if character == '+' || character == '-' {
+			if index == 0 {
+				continue
+			}
+			return false
+		}
+		if character == '.' {
+			continue
+		}
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit int) (sharedsql.Result, error) {
 	if offset < 0 || limit < 1 {
 		return sharedsql.Result{}, fmt.Errorf("invalid page: offset=%d limit=%d", offset, limit)
@@ -188,4 +304,11 @@ func ReturnsRows(statement string) bool {
 
 func quoteIdentifier(name string) string {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
+func mysqlDefaultsEqual(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == right
+	}
+	return *left == *right
 }
