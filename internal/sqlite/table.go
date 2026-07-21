@@ -10,7 +10,15 @@ import (
 )
 
 func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.ColumnInfo, error) {
-	rows, err := s.db.QueryContext(ctx, "PRAGMA table_info("+quoteIdentifier(name)+")")
+	return tableInfo(ctx, s.db, name)
+}
+
+type tableInfoQuerier interface {
+	QueryContext(context.Context, string, ...any) (*stdsql.Rows, error)
+}
+
+func tableInfo(ctx context.Context, queryer tableInfoQuerier, name string) ([]sharedsql.ColumnInfo, error) {
+	rows, err := queryer.QueryContext(ctx, "PRAGMA table_info("+quoteIdentifier(name)+")")
 	if err != nil {
 		return nil, fmt.Errorf("reading table info: %w", err)
 	}

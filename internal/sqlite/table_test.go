@@ -33,3 +33,69 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 		t.Fatalf("BrowseTable() = %#v, want second page with one row", result)
 	}
 }
+
+func TestServiceAlterColumn_rebuildsSchemaAndRetainsRows(t *testing.T) {
+	// Given
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT 'untitled', note TEXT)`); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	if _, err := service.Execute(ctx, `CREATE INDEX items_note ON items(note)`); err != nil {
+		t.Fatalf("creating index: %v", err)
+	}
+	if _, err := service.Execute(ctx, `INSERT INTO items (name, note) VALUES ('first', 'kept')`); err != nil {
+		t.Fatalf("inserting row: %v", err)
+	}
+
+	// When
+	err := service.AlterColumn(ctx, "items", ColumnChange{
+		Name:         "title",
+		PreviousName: "name",
+		Type:         "VARCHAR(40)",
+		Nullable:     true,
+	})
+
+	// Then
+	if err != nil {
+		t.Fatalf("AlterColumn() error = %v", err)
+	}
+	columns, err := service.TableInfo(ctx, "items")
+	if err != nil {
+		t.Fatalf("reading altered table info: %v", err)
+	}
+	if len(columns) != 3 || columns[1].Name != "title" || columns[1].Type != "VARCHAR(40)" || !columns[1].Nullable || columns[1].DefaultValue != nil {
+		t.Fatalf("TableInfo() = %#v, want altered title column", columns)
+	}
+	result, err := service.BrowseTable(ctx, "items", 0, 25)
+	if err != nil {
+		t.Fatalf("browsing altered table: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][1] == nil || *result.Rows[0][1] != "first" || result.Rows[0][2] == nil || *result.Rows[0][2] != "kept" {
+		t.Fatalf("BrowseTable() = %#v, want retained row values", result)
+	}
+}
+
+func TestServiceAlterColumn_retainsNameWhenRebuildCannotSafelyProceed(t *testing.T) {
+	// Given
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, `CREATE TABLE items (name TEXT CHECK(length(name) > 0))`); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+
+	// When
+	err := service.AlterColumn(ctx, "items", ColumnChange{PreviousName: "name", Name: "title", Type: "VARCHAR(40)", Nullable: true})
+
+	// Then
+	if err == nil {
+		t.Fatal("AlterColumn() error = nil, want unsupported constraint failure")
+	}
+	columns, err := service.TableInfo(ctx, "items")
+	if err != nil {
+		t.Fatalf("reading table info after failed alteration: %v", err)
+	}
+	if len(columns) != 1 || columns[0].Name != "name" {
+		t.Fatalf("TableInfo() = %#v, want original name after failed alteration", columns)
+	}
+}

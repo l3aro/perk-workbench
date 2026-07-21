@@ -20,6 +20,7 @@ type Service struct {
 type Result = sharedsql.Result
 type SchemaObject = sharedsql.SchemaObject
 type ColumnInfo = sharedsql.ColumnInfo
+type ColumnChange = sharedsql.ColumnChange
 
 const (
 	maxRows  = sharedsql.MaxRows
