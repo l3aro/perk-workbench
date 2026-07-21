@@ -210,11 +210,26 @@ func TestResize_tiny_multicolumn_results_render_within_viewport(t *testing.T) {
 
 func TestResultsTable_HeaderMatchesBodyWidth(t *testing.T) {
 	model := newResultsTable()
-	model.SetWidth(12)
+	resizeResultsTable(&model, 12, 2)
 	model.SetColumns([]table.Column{{Title: "Name", Width: 10}})
 	model.SetRows([]table.Row{{"value"}})
 
 	assertTableRenderGeometry(t, model)
+}
+
+func TestResultsTable_selected_row_highlights_all_columns(t *testing.T) {
+	model := newResultsTable()
+	resizeResultsTable(&model, 18, 2)
+	model.SetColumns([]table.Column{{Title: "ID", Width: 4}, {Title: "Name", Width: 4}, {Title: "State", Width: 4}})
+	model.SetRows([]table.Row{{"1", "first", "x"}})
+
+	body := strings.Split(model.View(), "\n")[1]
+	if got := strings.Count(body, "\x1b[m"); got != 1 {
+		t.Fatalf("selected row contains %d ANSI resets, want 1 so its highlight spans every column: %q", got, body)
+	}
+	if got, want := lipgloss.Width(body), model.Width(); got != want {
+		t.Fatalf("selected row width = %d, want table width %d", got, want)
+	}
 }
 
 func resizeModel(model Model, width, height int) Model {

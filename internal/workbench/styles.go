@@ -77,10 +77,23 @@ func newResultsTable() table.Model {
 		table.WithHeight(2),
 		table.WithStyles(table.Styles{
 			Header:   headerStyle,
-			Cell:     lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)).Padding(0, spaceCompact),
+			Cell:     lipgloss.NewStyle().Padding(0, spaceCompact),
 			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)),
 		}),
 	)
+}
+
+func resizeResultsTable(resultTable *table.Model, width, height int) {
+	resultTable.SetWidth(width)
+	resultTable.SetHeight(height)
+	resultTable.SetStyles(table.Styles{
+		Header: headerStyle,
+		Cell:   lipgloss.NewStyle().Padding(0, spaceCompact),
+		Selected: lipgloss.NewStyle().
+			Width(width).
+			Foreground(lipgloss.Color(colorAccent)).
+			Background(lipgloss.Color(colorStripe)),
+	})
 }
 
 func tableColumns(viewportWidth int, titles []string) []table.Column {
@@ -138,12 +151,9 @@ func (m *Model) layout(width, height int) {
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.editor.textarea.SetWidth(max(m.editorWidth-4, 1))
 	m.editor.textarea.SetHeight(max(m.editorHeight-2, 1))
-	m.results.SetWidth(max(m.editorWidth-4, 1))
-	m.results.SetHeight(max(m.resultsHeight-2, 2))
-	m.structure.SetWidth(max(m.editorWidth-4, 1))
-	m.structure.SetHeight(max(contentHeight-4, 2))
-	m.browse.SetWidth(max(m.editorWidth-4, 1))
-	m.browse.SetHeight(max(contentHeight-4, 2))
+	resizeResultsTable(&m.results, max(m.editorWidth-4, 1), max(m.resultsHeight-2, 2))
+	resizeResultsTable(&m.structure, max(m.editorWidth-4, 1), max(contentHeight-4, 2))
+	resizeResultsTable(&m.browse, max(m.editorWidth-4, 1), max(contentHeight-4, 2))
 	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
