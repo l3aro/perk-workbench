@@ -138,8 +138,14 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.Colum
 		column.Name = sharedsql.SanitizeDisplay(column.Name)
 		column.Type = sharedsql.SanitizeDisplay(column.Type)
 		column.Nullable = nullable == "YES"
-		if key == "PRI" {
+		switch key {
+		case "PRI":
 			column.PrimaryKey = 1
+			column.Indexes = []sharedsql.IndexKind{sharedsql.IndexPrimaryKey}
+		case "UNI":
+			column.Indexes = []sharedsql.IndexKind{sharedsql.IndexUnique}
+		case "MUL":
+			column.Indexes = []sharedsql.IndexKind{sharedsql.IndexRegular}
 		}
 		if defaultValue.Valid {
 			value := sharedsql.SanitizeDisplay(defaultValue.String)

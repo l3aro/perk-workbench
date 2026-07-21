@@ -39,12 +39,21 @@ type SchemaObject struct {
 	Name string
 }
 
+type IndexKind uint8
+
+const (
+	IndexPrimaryKey IndexKind = iota + 1
+	IndexUnique
+	IndexRegular
+)
+
 type ColumnInfo struct {
 	Name         string
 	Type         string
 	Nullable     bool
 	DefaultValue *string
 	PrimaryKey   int
+	Indexes      []IndexKind
 }
 
 type ColumnChange struct {

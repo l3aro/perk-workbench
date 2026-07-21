@@ -207,13 +207,9 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 		if !column.Nullable {
 			nullable = "no"
 		}
-		primaryKey := ""
-		if column.PrimaryKey > 0 {
-			primaryKey = fmt.Sprintf("%d", column.PrimaryKey)
-		}
-		rows[index] = table.Row{safeText(column.Name), safeText(column.Type), nullable, defaultValue, primaryKey}
+		rows[index] = table.Row{safeText(column.Name), indexIcons(column.Indexes), safeText(column.Type), nullable, defaultValue}
 	}
-	m.structure.SetColumns(tableColumns([]string{"Column", "Type", "Nullable", "Default", "PK"}, rows))
+	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Nullable", "Default"}, rows))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
 	m.structure.SetRows(rows)
 	m.structureColumns = message.columns

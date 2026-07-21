@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -171,8 +172,8 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	model.SelectedTable = "projects"
 	model = resizeModel(model, 100, 24)
 	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{
-		{Name: "id", Type: "INTEGER", PrimaryKey: 1},
-		{Name: "name", Type: "TEXT", Nullable: true},
+		{Name: "id", Type: "INTEGER", PrimaryKey: 1, Indexes: []sharedsql.IndexKind{sharedsql.IndexPrimaryKey}},
+		{Name: "name", Type: "TEXT", Nullable: true, Indexes: []sharedsql.IndexKind{sharedsql.IndexUnique, sharedsql.IndexRegular}},
 	}})
 	model = updated.(Model)
 	updated, _ = model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{
@@ -185,8 +186,11 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	model = resizeModel(model, 80, 24)
 
 	// Then
-	assertTableTitlesAndPositiveWidths(t, model.structure, []string{"Column", "Type", "Nullable", "Default", "PK"})
-	assertTableRows(t, model.structure, []table.Row{{"id", "INTEGER", "no", "NULL", "1"}, {"name", "TEXT", "yes", "NULL", ""}})
+	assertTableTitlesAndPositiveWidths(t, model.structure, []string{"Column", "Indexes", "Type", "Nullable", "Default"})
+	rows := model.structure.Rows()
+	if len(rows) != 2 || !strings.Contains(rows[0][1], iconPrimaryKey+"PK") || !strings.Contains(rows[1][1], iconUnique+"UQ") || !strings.Contains(rows[1][1], iconRegular+"IX") || ansi.Strip(rows[1][1]) != iconUnique+"UQ "+iconRegular+"IX" || !strings.Contains(rows[0][1], "\x1b[") || !strings.Contains(rows[1][1], "\x1b[") {
+		t.Fatalf("structure index markers = %#v, want colored primary, unique, and regular icons", rows)
+	}
 	assertTableRenderGeometry(t, model.structure)
 
 	assertTableTitlesAndPositiveWidths(t, model.browse, []string{"id", "name", "state"})
@@ -223,12 +227,12 @@ func TestResultsTable_HeaderMatchesBodyWidth(t *testing.T) {
 func TestResultsTable_selected_row_highlights_all_columns(t *testing.T) {
 	model := newResultsTable()
 	resizeResultsTable(&model, 18, 2)
-	model.SetColumns([]table.Column{{Title: "ID", Width: 4}, {Title: "Name", Width: 4}, {Title: "State", Width: 4}})
-	model.SetRows([]table.Row{{"1", "first", ""}})
+	model.SetColumns([]table.Column{{Title: "ID", Width: 4}, {Title: "Indexes", Width: 8}, {Title: "State", Width: 4}})
+	model.SetRows([]table.Row{{"1", indexIcons([]sharedsql.IndexKind{sharedsql.IndexPrimaryKey, sharedsql.IndexUnique}), ""}})
 
-	body := strings.Split(model.View(), "\n")[1]
-	if got := strings.Count(body, "\x1b[m"); got != 1 {
-		t.Fatalf("selected row contains %d ANSI resets, want 1 so its highlight spans every column: %q", got, body)
+	body := strings.Split(tableViewportView(model, 0, 18), "\n")[1]
+	if strings.Contains(body, "\x1b[38;2;163;113;247m") || strings.Contains(body, "\x1b[38;2;227;179;65m") {
+		t.Fatalf("selected row retains inline index colors that interrupt its highlight: %q", body)
 	}
 	if got, want := lipgloss.Width(body), model.Width(); got != want {
 		t.Fatalf("selected row width = %d, want table width %d", got, want)

@@ -2,7 +2,10 @@ package sqlite
 
 import (
 	"context"
+	"slices"
 	"testing"
+
+	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
 func TestServiceTableInfoAndBrowse(t *testing.T) {
@@ -10,6 +13,12 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	ctx := context.Background()
 	if _, err := service.Execute(ctx, `CREATE TABLE "items" (id INTEGER PRIMARY KEY, name TEXT NOT NULL, note TEXT DEFAULT 'new')`); err != nil {
 		t.Fatalf("creating table: %v", err)
+	}
+	if _, err := service.Execute(ctx, `CREATE UNIQUE INDEX items_id_name_unique ON items(id, name)`); err != nil {
+		t.Fatalf("creating unique index: %v", err)
+	}
+	if _, err := service.Execute(ctx, `CREATE INDEX items_note_index ON items(note)`); err != nil {
+		t.Fatalf("creating index: %v", err)
 	}
 	for index := range 26 {
 		if _, err := service.Execute(ctx, "INSERT INTO items (name) VALUES ('item')"); err != nil {
@@ -23,6 +32,9 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	}
 	if len(columns) != 3 || columns[1].Name != "name" || columns[1].Nullable || columns[2].DefaultValue == nil || *columns[2].DefaultValue != "'new'" {
 		t.Fatalf("TableInfo() = %#v, want column details", columns)
+	}
+	if !slices.Equal(columns[0].Indexes, []sharedsql.IndexKind{sharedsql.IndexPrimaryKey, sharedsql.IndexUnique}) || !slices.Equal(columns[1].Indexes, []sharedsql.IndexKind{sharedsql.IndexUnique}) || !slices.Equal(columns[2].Indexes, []sharedsql.IndexKind{sharedsql.IndexRegular}) {
+		t.Fatalf("TableInfo() indexes = %#v, want primary, unique, and regular index metadata", columns)
 	}
 
 	result, err := service.BrowseTable(ctx, "items", 25, 25)

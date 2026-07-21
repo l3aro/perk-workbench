@@ -104,7 +104,7 @@ func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.structure.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][4] != "1" {
+	if got := model.structure.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][2] != "INTEGER" {
 		t.Fatalf("structure rows = %#v, want selected table columns", got)
 	}
 	if got := model.browse.Rows(); len(got) != 1 || got[0][1] != "first" {

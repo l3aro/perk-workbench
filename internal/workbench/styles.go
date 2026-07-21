@@ -16,15 +16,18 @@ import (
 )
 
 const (
-	colorCanvas   = "#10151f"
-	colorPanel    = "#17202e"
-	colorStripe   = "#1c2838"
-	colorInk      = "#e6edf3"
-	colorMuted    = "#8b9bb4"
-	colorAccent   = "#55d6be"
-	colorBorder   = "#324155"
-	spaceCompact  = 1
-	sqlEditorRows = 4
+	colorCanvas    = "#10151f"
+	colorPanel     = "#17202e"
+	colorStripe    = "#1c2838"
+	colorInk       = "#e6edf3"
+	colorMuted     = "#8b9bb4"
+	colorAccent    = "#55d6be"
+	colorBorder    = "#324155"
+	spaceCompact   = 1
+	sqlEditorRows  = 4
+	iconPrimaryKey = "\uf084" // nf-fa-key
+	iconUnique     = "\uee40" // nf-fa-fingerprint
+	iconRegular    = "\uf0cb" // nf-fa-list_ol
 )
 
 var (
@@ -49,7 +52,26 @@ var (
 			BorderForeground(lipgloss.Color(colorBorder)).
 			Foreground(lipgloss.Color(colorInk)).
 			Padding(0, spaceCompact)
+	primaryIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
+	uniqueIndexStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
+	regularIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 )
+
+func indexIcons(indexes []sharedsql.IndexKind) string {
+	// ponytail: terminals do not expose font support, so labels are the fallback.
+	icons := make([]string, 0, len(indexes))
+	for _, index := range indexes {
+		switch index {
+		case sharedsql.IndexPrimaryKey:
+			icons = append(icons, primaryIndexStyle.Render(iconPrimaryKey+"PK"))
+		case sharedsql.IndexUnique:
+			icons = append(icons, uniqueIndexStyle.Render(iconUnique+"UQ"))
+		case sharedsql.IndexRegular:
+			icons = append(icons, regularIndexStyle.Render(iconRegular+"IX"))
+		}
+	}
+	return strings.Join(icons, " ")
+}
 
 func newList(title string, filtering bool) list.Model {
 	delegate := list.NewDefaultDelegate()
@@ -162,7 +184,7 @@ func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bo
 	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
 		row := tableLine(columns, rows[rowIndex], numericColumns, offset, width)
 		if rowIndex == resultTable.Cursor() {
-			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(row)
+			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(ansi.Strip(row))
 		}
 		lines = append(lines, row)
 	}

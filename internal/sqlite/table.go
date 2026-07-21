@@ -4,6 +4,7 @@ import (
 	"context"
 	stdsql "database/sql"
 	"fmt"
+	"slices"
 	"strings"
 
 	sharedsql "github.com/l3aro/perk/internal/sql"
@@ -35,6 +36,9 @@ func tableInfo(ctx context.Context, queryer tableInfoQuerier, name string) ([]sh
 		column.Type = sharedsql.SanitizeDisplay(column.Type)
 		column.Nullable = notNull == 0
 		column.PrimaryKey = primaryKey
+		if primaryKey > 0 {
+			column.Indexes = []sharedsql.IndexKind{sharedsql.IndexPrimaryKey}
+		}
 		if defaultValue.Valid {
 			value := sharedsql.SanitizeDisplay(defaultValue.String)
 			column.DefaultValue = &value
@@ -47,7 +51,79 @@ func tableInfo(ctx context.Context, queryer tableInfoQuerier, name string) ([]sh
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("closing table info rows: %w", err)
 	}
+	indexKinds, err := tableIndexKinds(ctx, queryer, name)
+	if err != nil {
+		return nil, err
+	}
+	for index := range columns {
+		for _, kind := range indexKinds[columns[index].Name] {
+			if !slices.Contains(columns[index].Indexes, kind) {
+				columns[index].Indexes = append(columns[index].Indexes, kind)
+			}
+		}
+	}
 	return columns, nil
+}
+
+type tableIndex struct {
+	name string
+	kind sharedsql.IndexKind
+}
+
+func tableIndexKinds(ctx context.Context, queryer tableInfoQuerier, table string) (map[string][]sharedsql.IndexKind, error) {
+	rows, err := queryer.QueryContext(ctx, "PRAGMA index_list("+quoteIdentifier(table)+")")
+	if err != nil {
+		return nil, fmt.Errorf("reading table indexes: %w", err)
+	}
+	indexes := []tableIndex{}
+	for rows.Next() {
+		var sequence, unique, partial int
+		var name, origin string
+		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning table indexes", err)
+		}
+		kind := sharedsql.IndexRegular
+		if origin == "pk" {
+			kind = sharedsql.IndexPrimaryKey
+		} else if unique != 0 {
+			kind = sharedsql.IndexUnique
+		}
+		indexes = append(indexes, tableIndex{name: name, kind: kind})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating table indexes", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing table index rows: %w", err)
+	}
+
+	columnIndexes := map[string][]sharedsql.IndexKind{}
+	for _, index := range indexes {
+		rows, err := queryer.QueryContext(ctx, "PRAGMA index_info("+quoteIdentifier(index.name)+")")
+		if err != nil {
+			return nil, fmt.Errorf("reading index %q columns: %w", index.name, err)
+		}
+		for rows.Next() {
+			var sequence, columnID int
+			var columnName stdsql.NullString
+			if err := rows.Scan(&sequence, &columnID, &columnName); err != nil {
+				return nil, sharedsql.CloseRows(rows, "scanning index columns", err)
+			}
+			if columnName.Valid {
+				name := sharedsql.SanitizeDisplay(columnName.String)
+				if !slices.Contains(columnIndexes[name], index.kind) {
+					columnIndexes[name] = append(columnIndexes[name], index.kind)
+				}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, sharedsql.CloseRows(rows, "iterating index columns", err)
+		}
+		if err := rows.Close(); err != nil {
+			return nil, fmt.Errorf("closing index %q columns: %w", index.name, err)
+		}
+	}
+	return columnIndexes, nil
 }
 
 func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit int) (sharedsql.Result, error) {
