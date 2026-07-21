@@ -42,13 +42,11 @@ var (
 	focusStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(lipgloss.Color(colorAccent)).
-			Background(lipgloss.Color(colorPanel)).
 			Foreground(lipgloss.Color(colorInk)).
 			Padding(0, spaceCompact)
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(lipgloss.Color(colorBorder)).
-			Background(lipgloss.Color(colorPanel)).
 			Foreground(lipgloss.Color(colorInk)).
 			Padding(0, spaceCompact)
 )

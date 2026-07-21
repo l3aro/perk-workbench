@@ -151,5 +151,3 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 		t.Fatalf("opened target = %q, want mysql DSN prefix", openedTarget)
 	}
 }
-
-
