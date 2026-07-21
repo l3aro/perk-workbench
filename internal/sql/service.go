@@ -15,6 +15,7 @@ type Service interface {
 	Execute(context.Context, string) (Result, error)
 	ListSchema(context.Context) ([]SchemaObject, error)
 	TableInfo(context.Context, string) ([]ColumnInfo, error)
+	AlterColumn(context.Context, string, ColumnChange) error
 	BrowseTable(context.Context, string, int, int) (Result, error)
 }
 
@@ -37,4 +38,12 @@ type ColumnInfo struct {
 	Nullable     bool
 	DefaultValue *string
 	PrimaryKey   int
+}
+
+type ColumnChange struct {
+	PreviousName string
+	Name         string
+	Type         string
+	Nullable     bool
+	DefaultValue *string
 }
