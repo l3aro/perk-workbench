@@ -51,6 +51,9 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 	if model.Database == nil {
 		t.Fatal("model service = nil, want opened service")
 	}
+	if model.databaseInfo.Product != "SQLite" || model.databaseInfo.Version == "" {
+		t.Fatalf("database info = %#v, want SQLite version", model.databaseInfo)
+	}
 	t.Cleanup(func() {
 		if model.Database != nil {
 			if err := model.Database.Close(); err != nil {

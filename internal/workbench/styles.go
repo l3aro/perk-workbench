@@ -341,7 +341,11 @@ func (m Model) footer() string {
 		return safeText(m.Status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | q quit")
 	}
 	if m.State == stateReady {
-		return safeText(m.Status + " | 1 tables | 2 tabs | tab switch view | q quit")
+		identity := ""
+		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
+			identity = " | " + m.databaseInfo.Product + " " + m.databaseInfo.Version
+		}
+		return safeText(m.Status + identity + " | 1 tables | 2 tabs | tab switch view | q quit")
 	}
 	return safeText(m.Status + " | q quit")
 }

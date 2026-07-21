@@ -109,6 +109,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.Opened(message.target, message.service, "")
+	m.databaseInfo = message.info
 	m.Focus = focusSchema
 	m.editor.textarea.Blur()
 	m.blurTables()

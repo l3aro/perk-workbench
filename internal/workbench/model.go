@@ -49,6 +49,7 @@ type Model struct {
 	schema, picker, recent                          list.Model
 	structure, browse, results                      table.Model
 	structureColumns                                []sharedsql.ColumnInfo
+	databaseInfo                                    sharedsql.DatabaseInfo
 	browseResult                                    sharedsql.Result
 	editor                                          editor
 	columnForm                                      columnForm
@@ -77,6 +78,7 @@ func (i schemaItem) Description() string { return i.description }
 type databaseOpenedMsg struct {
 	target  string
 	service sharedsql.Service
+	info    sharedsql.DatabaseInfo
 	objects []sharedsql.SchemaObject
 	err     error
 }
@@ -140,7 +142,7 @@ func Open(ctx context.Context) databaseOpener {
 						}
 						return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", err)}
 					}
-					return databaseOpenedMsg{target: dsn, service: service, objects: objects}
+					return databaseOpenedMsg{target: dsn, service: service, info: service.Info(), objects: objects}
 				}
 				resolved, err := resolveTarget(target)
 				if err != nil {
@@ -157,7 +159,7 @@ func Open(ctx context.Context) databaseOpener {
 					}
 					return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", err)}
 				}
-				return databaseOpenedMsg{target: resolved, service: service, objects: objects}
+				return databaseOpenedMsg{target: resolved, service: service, info: service.Info(), objects: objects}
 			}
 		},
 	}
