@@ -42,6 +42,9 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 	if model.State != stateReady {
 		t.Fatalf("model state = %v, want ready", model.State)
 	}
+	if model.Focus != focusSchema {
+		t.Fatalf("model focus = %v, want schema", model.Focus)
+	}
 	if got := model.schema.Items(); len(got) != 1 {
 		t.Fatalf("schema items = %d, want 1", len(got))
 	}
@@ -73,6 +76,13 @@ func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("missing target was created or could not be inspected: %v", err)
+	}
+}
+
+func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
+	model := New("", Open(context.Background()))
+	if model.connection.focus != connectionFocusRecent {
+		t.Fatalf("connection focus = %d, want recent connections", model.connection.focus)
 	}
 }
 

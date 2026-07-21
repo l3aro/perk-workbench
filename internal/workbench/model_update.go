@@ -105,6 +105,9 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.Opened(message.target, message.service, "")
+	m.Focus = focusSchema
+	m.editor.textarea.Blur()
+	m.blurTables()
 	m.recordConnection()
 	name := filepath.Base(message.target)
 	if configured := strings.TrimSpace(m.connection.name.Value()); configured != "" {

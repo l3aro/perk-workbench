@@ -194,5 +194,7 @@ func newConnectionForm() connectionForm {
 	pass.EchoMode = textinput.EchoPassword
 	pass.EchoCharacter = '*'
 
-	return connectionForm{name: name, target: target, host: host, port: port, user: user, pass: pass, focus: connectionFocusName}
+	form := connectionForm{name: name, target: target, host: host, port: port, user: user, pass: pass}
+	form.setFocus(connectionFocusRecent)
+	return form
 }
