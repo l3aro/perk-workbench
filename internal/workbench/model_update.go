@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -156,6 +157,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.Tab {
 			case tabStructure:
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
+					return m, nil
+				}
 				m.structure, command = m.structure.Update(message)
 			case tabBrowse:
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "n" || keyPress.String() == "p") {
@@ -168,9 +172,15 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.browse, &m.browseOffset, m.tableViewportWidth, keyPress) {
+					return m, nil
+				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
 				if m.results.Focused() {
+					if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.results, &m.resultsOffset, m.tableViewportWidth, keyPress) {
+						return m, nil
+					}
 					m.results, command = m.results.Update(message)
 				} else {
 					m.editor, command = m.editor.Update(message)
@@ -185,6 +195,18 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
+	switch keyPress.Key().Code {
+	case tea.KeyLeft:
+		*offset = tableOffset(*resultTable, *offset-1, viewportWidth)
+	case tea.KeyRight:
+		*offset = tableOffset(*resultTable, *offset+1, viewportWidth)
+	default:
+		return false
+	}
+	return true
 }
 
 func (m Model) executeKey(key tea.KeyPressMsg) bool {

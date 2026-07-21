@@ -2,10 +2,12 @@ package workbench
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -226,6 +228,55 @@ func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 		if got := model.results.Cursor(); got != test.want {
 			t.Fatalf("result cursor = %d, want %d after %s", got, test.want, test.key.String())
 		}
+	}
+}
+
+func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model = resizeModel(model, 100, 24)
+	requestID := model.StartQueryForTest(context.Background())
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+		Columns: []string{"first column", "second column", "third column"},
+		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value"), stringPointer("third value")}},
+	}})
+	model = updated.(Model)
+	initialRow := model.results.Cursor()
+	view := tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth)
+	if got, want := len(strings.Split(view, "\n")), model.results.Height()+1; got != want {
+		t.Fatalf("rendered result lines = %d, want fixed viewport height %d", got, want)
+	}
+	for index, line := range strings.Split(view, "\n") {
+		if got := ansi.StringWidth(line); got > model.tableViewportWidth {
+			t.Fatalf("rendered line %d width = %d, exceeds viewport %d: %q", index, got, model.tableViewportWidth, line)
+		}
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+
+	// Then
+	if model.resultsOffset != 1 {
+		t.Fatalf("results offset = %d, want 1 after right", model.resultsOffset)
+	}
+	if got := model.results.Cursor(); got != initialRow {
+		t.Fatalf("result cursor = %d, want %d after right", got, initialRow)
+	}
+	if !strings.Contains(ansi.Strip(tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth)), "irst column") {
+		t.Fatalf("right-scrolled result viewport did not retain visible table content: %q", ansi.Strip(tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth)))
+	}
+	if got := model.results.View(); got == tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth) {
+		t.Fatal("wide result table did not require a horizontal viewport")
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	model = updated.(Model)
+
+	// Then
+	if model.resultsOffset != 0 {
+		t.Fatalf("results offset = %d, want 0 after left", model.resultsOffset)
 	}
 }
 

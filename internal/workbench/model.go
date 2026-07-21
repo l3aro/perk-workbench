@@ -40,21 +40,22 @@ const (
 
 type Model struct {
 	core.Workflow
-	pickerDir                               string
-	appContext                              context.Context
-	openTarget                              func(string) tea.Cmd
-	running, cancelRequested, pendingQuit   bool
-	requestID, activeRequestID              uint64
-	cancel                                  context.CancelFunc
-	schema, picker, recent                  list.Model
-	structure, browse, results              table.Model
-	editor                                  editor
-	connection                              connectionForm
-	recentConnections                       []recentConnection
-	recentPath                              string
-	width, height, schemaWidth, editorWidth int
-	editorHeight, resultsHeight             int
-	compact                                 bool
+	pickerDir                                       string
+	appContext                                      context.Context
+	openTarget                                      func(string) tea.Cmd
+	running, cancelRequested, pendingQuit           bool
+	requestID, activeRequestID                      uint64
+	cancel                                          context.CancelFunc
+	schema, picker, recent                          list.Model
+	structure, browse, results                      table.Model
+	editor                                          editor
+	connection                                      connectionForm
+	recentConnections                               []recentConnection
+	recentPath                                      string
+	width, height, schemaWidth, editorWidth         int
+	editorHeight, resultsHeight, tableViewportWidth int
+	structureOffset, browseOffset, resultsOffset    int
+	compact                                         bool
 }
 
 type pickerItem struct{ raw, title, description string }

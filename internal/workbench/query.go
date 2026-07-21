@@ -123,8 +123,10 @@ func (m *Model) setResults(result sharedsql.Result) {
 		rows[rowIndex] = cells
 	}
 	m.results.SetRows(nil)
-	m.results.SetColumns(tableColumns(m.results.Width(), titles))
+	m.results.SetColumns(tableColumns(titles, rows))
+	resizeResultsTable(&m.results, m.tableViewportWidth, m.results.Height()+1)
 	m.results.SetRows(rows)
+	m.resultsOffset = 0
 	m.results.Focus()
 	m.editor.textarea.Blur()
 	rowLabel := "rows"
@@ -180,8 +182,10 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 		}
 		rows[index] = table.Row{safeText(column.Name), safeText(column.Type), nullable, defaultValue, primaryKey}
 	}
-	m.structure.SetColumns(tableColumns(m.structure.Width(), []string{"Column", "Type", "Nullable", "Default", "PK"}))
+	m.structure.SetColumns(tableColumns([]string{"Column", "Type", "Nullable", "Default", "PK"}, rows))
+	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
 	m.structure.SetRows(rows)
+	m.structureOffset = 0
 	return m, nil
 }
 
@@ -215,6 +219,8 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 		rows[rowIndex] = cells
 	}
 	m.browse.SetRows(nil)
-	m.browse.SetColumns(tableColumns(m.browse.Width(), titles))
+	m.browse.SetColumns(tableColumns(titles, rows))
+	resizeResultsTable(&m.browse, m.tableViewportWidth, m.browse.Height()+1)
 	m.browse.SetRows(rows)
+	m.browseOffset = 0
 }
