@@ -53,3 +53,23 @@ func TestColumnTypeDeclaration_rejectsScaleAbovePrecision(t *testing.T) {
 		t.Fatal("Declaration() error = nil, want scale validation error")
 	}
 }
+
+func TestIsNumericColumnType_recognizes_database_numeric_types(t *testing.T) {
+	for typeName, want := range map[string]bool{
+		"INTEGER":         true,
+		"DECIMAL(10,2)":   true,
+		"BIGINT UNSIGNED": true,
+		"TEXT":            false,
+		"BOOLEAN":         false,
+		"":                false,
+	} {
+		// Given
+		// When
+		got := IsNumericColumnType(typeName)
+
+		// Then
+		if got != want {
+			t.Errorf("IsNumericColumnType(%q) = %t, want %t", typeName, got, want)
+		}
+	}
+}

@@ -27,6 +27,7 @@ type DatabaseInfo struct {
 
 type Result struct {
 	Columns      []string
+	ColumnTypes  []string
 	Rows         [][]*string
 	RowsAffected int64
 	Duration     time.Duration

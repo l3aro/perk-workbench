@@ -87,6 +87,18 @@ func MatchColumnType(types []ColumnType, declaration string) (int, []string, boo
 	return 0, nil, false
 }
 
+func IsNumericColumnType(typeName string) bool {
+	typeName = strings.ToUpper(strings.TrimSpace(typeName))
+	typeName, _, _ = strings.Cut(typeName, "(")
+	typeName, _, _ = strings.Cut(typeName, " ")
+	switch typeName {
+	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL":
+		return true
+	default:
+		return false
+	}
+}
+
 func positiveName(name string) string {
 	if name == "Scale" {
 		return "non-negative " + strings.ToLower(name)

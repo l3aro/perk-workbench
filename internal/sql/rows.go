@@ -11,9 +11,16 @@ func CollectRows(rows *sql.Rows) (Result, error) {
 	if err != nil {
 		return Result{}, CloseRows(rows, "reading result columns", err)
 	}
-	result := Result{Columns: make([]string, len(columns)), Rows: [][]*string{}}
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return Result{}, CloseRows(rows, "reading result column types", err)
+	}
+	result := Result{Columns: make([]string, len(columns)), ColumnTypes: make([]string, len(columnTypes)), Rows: [][]*string{}}
 	for index, column := range columns {
 		result.Columns[index] = SanitizeDisplay(column)
+	}
+	for index, columnType := range columnTypes {
+		result.ColumnTypes[index] = columnType.DatabaseTypeName()
 	}
 
 	for rows.Next() {
