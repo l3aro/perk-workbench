@@ -44,6 +44,9 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	if model.schemaWidth <= 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
 		t.Fatalf("compact layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
 	}
+	if got, want := model.tableViewportWidth, 74; got != want {
+		t.Errorf("compact table viewport width = %d, want %d", got, want)
+	}
 
 	// When
 	model = resizeModel(model, 0, 0)
@@ -194,7 +197,7 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 func TestResize_tiny_multicolumn_results_render_within_viewport(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.results.SetColumns(tableColumns(1, []string{"ID", "Name", "Status"}))
+	model.results.SetColumns(tableColumns([]string{"ID", "Name", "Status"}, []table.Row{{"1", "first", "open"}}))
 	model.results.SetRows([]table.Row{{"1", "first", "open"}})
 
 	// When
@@ -232,6 +235,76 @@ func TestResultsTable_selected_row_highlights_all_columns(t *testing.T) {
 	}
 }
 
+func TestTableViewport_keeps_every_line_at_the_viewport_width(t *testing.T) {
+	// Given
+	model := newResultsTable()
+	model.SetColumns([]table.Column{{Title: "A", Width: 1}})
+	model.SetRows([]table.Row{{"x"}})
+	resizeResultsTable(&model, 4, 3)
+
+	// When
+	lines := strings.Split(tableViewportView(model, 0, 4), "\n")
+
+	// Then
+	for index, line := range lines {
+		if got, want := ansi.StringWidth(line), 4; got != want {
+			t.Errorf("line %d width = %d, want %d", index, got, want)
+		}
+	}
+}
+
+func TestResize_wide_browse_table_does_not_wrap_inside_workspace_pane(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "customers", tabBrowse
+	model.focusActiveTable()
+	model = resizeModel(model, 160, 24)
+	updated, _ := model.Update(browseTableMsg{table: "customers", page: 0, result: sqlite.Result{
+		Columns: []string{"CustomerId", "FirstName", "LastName", "Company", "Address", "City", "State", "Country", "PostalCode", "Phone", "Fax", "Email", "SupportRepId"},
+		Rows: [][]*string{{
+			stringPointer("7"),
+			stringPointer("Astrid"),
+			stringPointer("Gruber"),
+			stringPointer("NULL"),
+			stringPointer("Rotenturmstraße 4, 1010 Innere Stadt"),
+			stringPointer("Vienna"),
+			stringPointer("NULL"),
+			stringPointer("Austria"),
+			stringPointer("1010"),
+			stringPointer("+43 1 512 33 55"),
+			stringPointer("+43 1 512 33 44"),
+			stringPointer("astrid@example.com"),
+			stringPointer("3"),
+		}},
+	}})
+	model = updated.(Model)
+
+	// When
+	view := ansi.Strip(model.View().Content)
+
+	// Then
+	if strings.Contains(view, "││ 5") {
+		t.Fatalf("wide workspace table wrapped a cell: %q", view)
+	}
+}
+
+func TestCropTableLine_skips_wide_characters_cut_by_viewport_edges(t *testing.T) {
+	// Given
+	line := "ab中文cd"
+
+	// When
+	leftEdge := cropTableLine(line, 2, 2)
+	rightEdge := cropTableLine(line, 3, 2)
+
+	// Then
+	if got, want := leftEdge, "中"; got != want {
+		t.Errorf("left-edge crop = %q, want %q", got, want)
+	}
+	if got, want := rightEdge, "  "; got != want {
+		t.Errorf("right-edge crop = %q, want %q", got, want)
+	}
+}
+
 func TestStructureTable_selected_empty_primary_key_preserves_final_cell(t *testing.T) {
 	// Given
 	model := readyModel(t)
@@ -265,8 +338,8 @@ func assertTableTitlesAndPositiveWidths(t *testing.T, resultTable table.Model, t
 			t.Errorf("column %d = (%q, %d), want (%q, positive)", index, column.Title, column.Width, title)
 		}
 	}
-	if width != resultTable.Width() && resultTable.Width() >= len(columns)*(2*spaceCompact+1) {
-		t.Errorf("column footprint = %d, want viewport %d", width, resultTable.Width())
+	if width > resultTable.Width() {
+		t.Errorf("column footprint = %d, exceeds table width %d", width, resultTable.Width())
 	}
 }
 
@@ -295,39 +368,34 @@ func assertTableRenderGeometry(t *testing.T, resultTable table.Model) {
 	}
 }
 
-func TestTableColumns_use_viewport_budget_and_title_order(t *testing.T) {
+func TestTableColumns_keep_full_header_and_cell_widths(t *testing.T) {
 	// Given
-	const viewportWidth = 31
 	titles := []string{"ID", "Name", "Value"}
+	rows := []table.Row{{"1", "long value", "open"}}
 
 	// When
-	columns := tableColumns(viewportWidth, titles)
+	columns := tableColumns(titles, rows)
 
 	// Then
 	if got, want := len(columns), len(titles); got != want {
 		t.Fatalf("column count = %d, want %d", got, want)
 	}
-	width := 0
 	for index, column := range columns {
 		if got, want := column.Title, titles[index]; got != want {
 			t.Errorf("column %d title = %q, want %q", index, got, want)
 		}
-		width += column.Width + 2*spaceCompact
-	}
-	if got, want := width, viewportWidth; got != want {
-		t.Errorf("rendered column width = %d, want %d", got, want)
-	}
-	if got, want := columns[0].Width, 9; got != want {
-		t.Errorf("first column width = %d, want %d", got, want)
+		if got, want := column.Width, []int{2, 10, 5}[index]; got != want {
+			t.Errorf("column %d width = %d, want %d", index, got, want)
+		}
 	}
 }
 
-func TestTableColumns_keep_positive_widths_when_viewport_is_too_narrow(t *testing.T) {
+func TestTableColumns_keep_positive_widths(t *testing.T) {
 	// Given
 	titles := []string{"ID", "Name", "Value"}
 
 	// When
-	columns := tableColumns(1, titles)
+	columns := tableColumns(titles, nil)
 
 	// Then
 	if got, want := len(columns), len(titles); got != want {
@@ -345,7 +413,7 @@ func TestTableColumns_keep_positive_widths_when_viewport_is_too_narrow(t *testin
 
 func TestTableColumns_return_results_placeholder_when_titles_are_empty(t *testing.T) {
 	// Given
-	columns := tableColumns(12, nil)
+	columns := tableColumns(nil, nil)
 
 	// Then
 	if got, want := len(columns), 1; got != want {
@@ -354,7 +422,7 @@ func TestTableColumns_return_results_placeholder_when_titles_are_empty(t *testin
 	if got, want := columns[0].Title, "Results"; got != want {
 		t.Errorf("column title = %q, want %q", got, want)
 	}
-	if got := columns[0].Width + 2*spaceCompact; got != 12 {
-		t.Errorf("rendered placeholder width = %d, want 12", got)
+	if got := columns[0].Width; got != len("Results") {
+		t.Errorf("placeholder width = %d, want %d", got, len("Results"))
 	}
 }

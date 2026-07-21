@@ -85,34 +85,98 @@ func newResultsTable() table.Model {
 }
 
 func resizeResultsTable(resultTable *table.Model, width, height int) {
-	resultTable.SetWidth(width)
+	tableWidth := max(width, tableContentWidth(resultTable.Columns()))
+	resultTable.SetWidth(tableWidth)
 	resultTable.SetHeight(height)
 	resultTable.SetStyles(table.Styles{
 		Header: headerStyle,
 		Cell:   lipgloss.NewStyle().Padding(0, spaceCompact),
 		Selected: lipgloss.NewStyle().
-			Width(width).
+			Width(tableWidth).
 			Foreground(lipgloss.Color(colorAccent)).
 			Background(lipgloss.Color(colorStripe)),
 	})
 }
 
-func tableColumns(viewportWidth int, titles []string) []table.Column {
+func tableContentWidth(columns []table.Column) int {
+	width := 0
+	for _, column := range columns {
+		width += column.Width + 2*spaceCompact
+	}
+	return width
+}
+
+func tableColumns(titles []string, rows []table.Row) []table.Column {
 	if len(titles) == 0 {
 		titles = []string{"Results"}
 	}
 
-	contentBudget := max(viewportWidth-len(titles)*2*spaceCompact, len(titles))
-	columnWidth, remainder := contentBudget/len(titles), contentBudget%len(titles)
 	columns := make([]table.Column, len(titles))
 	for index, title := range titles {
-		width := columnWidth
-		if index < remainder {
-			width++
+		columns[index] = table.Column{Title: title, Width: max(ansi.StringWidth(title), 1)}
+	}
+	for _, row := range rows {
+		for index, value := range row {
+			if index < len(columns) {
+				columns[index].Width = max(columns[index].Width, ansi.StringWidth(value))
+			}
 		}
-		columns[index] = table.Column{Title: title, Width: width}
 	}
 	return columns
+}
+
+func tableViewportView(resultTable table.Model, offset, width int) string {
+	offset = min(max(offset, 0), max(resultTable.Width()-width, 0))
+	columns := resultTable.Columns()
+	lines := []string{headerStyle.Padding(0, 0).Render(tableLine(columns, nil, offset, width))}
+	rows, rowHeight := resultTable.Rows(), resultTable.Height()
+	start := min(max(resultTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
+		row := tableLine(columns, rows[rowIndex], offset, width)
+		if rowIndex == resultTable.Cursor() {
+			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(row)
+		}
+		lines = append(lines, row)
+	}
+	for range max(rowHeight-(len(lines)-1), 0) {
+		lines = append(lines, strings.Repeat(" ", width))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func tableLine(columns []table.Column, row table.Row, offset, width int) string {
+	cells := make([]string, len(columns))
+	for index, column := range columns {
+		value := column.Title
+		if row != nil {
+			value = ""
+			if index < len(row) {
+				value = row[index]
+			}
+		}
+		cell := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Inline(true).Render(ansi.Truncate(value, column.Width, "…"))
+		cells[index] = strings.Repeat(" ", spaceCompact) + cell + strings.Repeat(" ", spaceCompact)
+	}
+	return cropTableLine(strings.Join(cells, ""), offset, width)
+}
+
+func cropTableLine(line string, offset, width int) string {
+	var visible strings.Builder
+	position, end := 0, offset+width
+	for len(line) > 0 && position < end {
+		cluster, clusterWidth := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
+		nextPosition := position + clusterWidth
+		if position >= offset && nextPosition <= end {
+			visible.WriteString(cluster)
+		}
+		position = nextPosition
+		line = line[len(cluster):]
+	}
+	return visible.String() + strings.Repeat(" ", max(width-ansi.StringWidth(visible.String()), 0))
+}
+
+func tableOffset(resultTable table.Model, offset, viewportWidth int) int {
+	return min(max(offset, 0), max(resultTable.Width()-viewportWidth, 0))
 }
 
 func paneStyle(focused bool) lipgloss.Style {
@@ -152,17 +216,26 @@ func (m *Model) layout(width, height int) {
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.editor.textarea.SetWidth(max(m.editorWidth-4, 1))
 	m.editor.textarea.SetHeight(max(m.editorHeight-2, 1))
-	resizeResultsTable(&m.results, max(m.editorWidth-4, 1), max(m.resultsHeight-2, 2))
-	resizeResultsTable(&m.structure, max(m.editorWidth-4, 1), max(contentHeight-4, 2))
-	resizeResultsTable(&m.browse, max(m.editorWidth-4, 1), max(contentHeight-4, 2))
+	m.tableViewportWidth = max(m.editorWidth-4, 1)
+	if m.compact {
+		m.tableViewportWidth = max(m.editorWidth-6, 1)
+	} else {
+		m.tableViewportWidth = max(m.editorWidth-8, 1)
+	}
 	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
 		for index, column := range columns {
 			titles[index] = column.Title
 		}
-		resultTable.SetColumns(tableColumns(resultTable.Width(), titles))
+		resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 	}
+	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-2, 2))
+	resizeResultsTable(&m.structure, m.tableViewportWidth, max(contentHeight-4, 2))
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(contentHeight-4, 2))
+	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
+	m.browseOffset = tableOffset(m.browse, m.browseOffset, m.tableViewportWidth)
+	m.resultsOffset = tableOffset(m.results, m.resultsOffset, m.tableViewportWidth)
 }
 
 func (m Model) View() tea.View {
@@ -238,43 +311,17 @@ func (m Model) workspaceView() string {
 	case tabStructure:
 		content = m.structureView()
 	case tabBrowse:
-		content = m.browse.View()
+		content = tableViewportView(m.browse, m.browseOffset, m.tableViewportWidth)
 	case tabSQL:
 		editor := m.editor.textarea.View()
-		results := m.results.View()
+		results := tableViewportView(m.results, m.resultsOffset, m.tableViewportWidth)
 		content = lipgloss.JoinVertical(lipgloss.Left, editor, results)
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), content)
 }
 
 func (m Model) structureView() string {
-	view := m.structure.View()
-	row := m.structure.SelectedRow()
-	if len(row) == 0 {
-		return view
-	}
-	cells := make([]string, len(m.structure.Columns()))
-	for index, column := range m.structure.Columns() {
-		value := row[index]
-		if value == "" {
-			cells[index] = "\x1b[38;2;28;40;56;48;2;28;40;56m" + strings.Repeat(".", column.Width+2*spaceCompact) + "\x1b[m"
-			continue
-		}
-		cellStyle := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Padding(0, spaceCompact).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe))
-		if index == 0 {
-			cellStyle = cellStyle.Padding(0, 0).PaddingRight(2 * spaceCompact)
-		}
-		cells[index] = cellStyle.Render(ansi.Truncate(value, column.Width, "…"))
-	}
-	selected := " " + lipgloss.NewStyle().Width(m.structure.Width()-spaceCompact).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(strings.Join(cells, ""))
-	lines := strings.Split(view, "\n")
-	selectedStyle := "\x1b[38;2;85;214;190;48;2;28;40;56m"
-	for index, line := range lines {
-		if strings.Contains(line, selectedStyle) {
-			lines[index] = selected
-		}
-	}
-	return strings.Join(lines, "\n")
+	return tableViewportView(m.structure, m.structureOffset, m.tableViewportWidth)
 }
 
 func (m Model) footer() string {
