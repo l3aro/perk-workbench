@@ -48,7 +48,9 @@ type Model struct {
 	cancel                                          context.CancelFunc
 	schema, picker, recent                          list.Model
 	structure, browse, results                      table.Model
+	structureColumns                                []sharedsql.ColumnInfo
 	editor                                          editor
+	columnForm                                      columnForm
 	connection                                      connectionForm
 	recentConnections                               []recentConnection
 	recentPath                                      string

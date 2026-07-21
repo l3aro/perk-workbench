@@ -222,6 +222,7 @@ func (m *Model) layout(width, height int) {
 	} else {
 		m.tableViewportWidth = max(m.editorWidth-8, 1)
 	}
+	m.columnForm.setWidth(m.tableViewportWidth)
 	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
@@ -321,6 +322,9 @@ func (m Model) workspaceView() string {
 }
 
 func (m Model) structureView() string {
+	if m.columnForm.active() {
+		return m.columnForm.View()
+	}
 	return tableViewportView(m.structure, m.structureOffset, m.tableViewportWidth)
 }
 

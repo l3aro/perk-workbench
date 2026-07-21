@@ -35,6 +35,8 @@ type browseTableMsg struct {
 	err    error
 }
 
+type columnAlteredMsg struct{ err error }
+
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
 	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.textarea.Value())
 	if !ok {
@@ -159,6 +161,13 @@ func (m Model) loadBrowse() tea.Cmd {
 	}
 }
 
+func (m Model) alterColumn() tea.Cmd {
+	table, change, service := m.SelectedTable, m.columnForm.change(), m.Database
+	return func() tea.Msg {
+		return columnAlteredMsg{err: service.AlterColumn(m.appContext, table, change)}
+	}
+}
+
 func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
@@ -185,8 +194,20 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	m.structure.SetColumns(tableColumns([]string{"Column", "Type", "Nullable", "Default", "PK"}, rows))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
 	m.structure.SetRows(rows)
+	m.structureColumns = message.columns
 	m.structureOffset = 0
 	return m, nil
+}
+
+func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd) {
+	if message.err != nil {
+		m.columnForm.saving = false
+		m.Status = safeText(fmt.Sprintf("updating column: %v", message.err))
+		return m, nil
+	}
+	m.columnForm = columnForm{}
+	m.Status = "column updated"
+	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
 
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {

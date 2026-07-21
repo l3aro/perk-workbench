@@ -22,7 +22,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(message.Width, message.Height)
 		return m, nil
 	case tea.KeyPressMsg:
-		if message.String() == "ctrl+c" || (message.String() == "q" && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || m.connection.inputFocused())) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.textarea.Value() == "")) {
+		if message.String() == "ctrl+c" || (message.String() == "q" && !m.columnForm.active() && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || m.connection.inputFocused())) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.textarea.Value() == "")) {
 			if m.Running() {
 				m.RequestQuit()
 				m.pendingQuit = true
@@ -31,7 +31,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.State == stateReady && !m.schema.SettingFilter() {
+		if m.State == stateReady && !m.columnForm.active() && !m.schema.SettingFilter() {
 			switch message.String() {
 			case "1":
 				m.Focus = focusSchema
@@ -47,11 +47,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && m.executeKey(message) {
 			return m.startQuery()
 		}
-		if m.Running() && message.Key().Code == tea.KeyEscape {
+		if m.Running() && !m.columnForm.active() && message.Key().Code == tea.KeyEscape {
 			m.cancelQuery()
 			return m, nil
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
+		if m.State == stateReady && !m.columnForm.active() && m.Focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
 			m.toggleTab(message.String() == "tab")
 			return m, nil
 		}
@@ -94,6 +94,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBrowse(message)
 	case connectionTestMsg:
 		return m.updateConnection(message)
+	case columnAlteredMsg:
+		return m.updateColumnAltered(message)
 	}
 
 	return m.updateActive(message)
@@ -152,7 +154,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.schema, command = m.schema.Update(message)
 			return m, command
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "esc" {
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.columnForm.active() && keyPress.String() == "esc" {
 				m.Focus = focusSchema
 				m.editor.textarea.Blur()
 				m.blurTables()
@@ -160,6 +162,21 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.Tab {
 			case tabStructure:
+				if m.columnForm.active() {
+					command, action := m.columnForm.Update(message)
+					switch action {
+					case columnFormSave:
+						m.columnForm.saving = true
+						return m, m.alterColumn()
+					case columnFormDiscard:
+						m.columnForm = columnForm{}
+					}
+					return m, command
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "i") {
+					m.openColumnForm()
+					return m, nil
+				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
