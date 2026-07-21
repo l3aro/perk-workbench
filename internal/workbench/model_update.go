@@ -121,7 +121,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	m.Status = safeText("ready: " + name)
 	items := make([]list.Item, len(message.objects))
 	for index, object := range message.objects {
-		items[index] = schemaItem{title: safeText(object.Name), description: safeText(object.Type)}
+		items[index] = schemaItem{title: safeText(object.Name)}
 	}
 	return m, m.schema.SetItems(items)
 }

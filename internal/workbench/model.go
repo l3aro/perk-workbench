@@ -108,7 +108,7 @@ func New(target string, opener databaseOpener) Model {
 		Workflow:   core.New(target),
 		appContext: opener.ctx,
 		openTarget: opener.command,
-		schema:     newList("Schema", true),
+		schema:     newSchemaList(),
 		picker:     newList("Choose database", true),
 		recent:     newList("Recent connections", true),
 		structure:  newResultsTable(),

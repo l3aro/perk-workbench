@@ -4,8 +4,11 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -86,6 +89,23 @@ func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
 	model := New("", Open(context.Background()))
 	if model.connection.focus != connectionFocusRecent {
 		t.Fatalf("connection focus = %d, want recent connections", model.connection.focus)
+	}
+}
+
+func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	if err := model.schema.SetItems([]list.Item{schemaItem{title: "projects"}}); err != nil {
+		t.Fatalf("setting schema items: %v", err)
+	}
+	model.schema.SetSize(20, 5)
+
+	// When
+	view := ansi.Strip(model.schema.View())
+
+	// Then
+	if !strings.Contains(view, "> projects") {
+		t.Fatalf("schema list = %q, want simple selected row", view)
 	}
 }
 

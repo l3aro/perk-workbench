@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,31 @@ func newList(title string, filtering bool) list.Model {
 	model.KeyMap.ForceQuit.SetEnabled(false)
 	model.Styles.Title = headerStyle
 	model.Styles.NoItems = statusStyle
+	return model
+}
+
+type schemaItemDelegate struct{}
+
+func (schemaItemDelegate) Height() int                         { return 1 }
+func (schemaItemDelegate) Spacing() int                        { return 0 }
+func (schemaItemDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
+	schema, ok := item.(schemaItem)
+	if !ok {
+		return
+	}
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)).PaddingLeft(2)
+	if index == model.Index() {
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).PaddingLeft(2)
+		fmt.Fprint(writer, style.Render("> "+schema.Title()))
+		return
+	}
+	fmt.Fprint(writer, style.Render(schema.Title()))
+}
+
+func newSchemaList() list.Model {
+	model := newList("Tables", true)
+	model.SetDelegate(schemaItemDelegate{})
 	return model
 }
 
