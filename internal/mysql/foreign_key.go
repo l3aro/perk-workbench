@@ -46,6 +46,44 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 	return foreignKeys, nil
 }
 
+func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) ([]sharedsql.ReferencingForeignKeyInfo, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.column_name,
+			key_column_usage.referenced_table_name, key_column_usage.referenced_column_name,
+			referential_constraints.update_rule, referential_constraints.delete_rule
+		FROM information_schema.key_column_usage
+		JOIN information_schema.referential_constraints
+			ON referential_constraints.constraint_schema = key_column_usage.constraint_schema
+			AND referential_constraints.table_name = key_column_usage.table_name
+			AND referential_constraints.constraint_name = key_column_usage.constraint_name
+		WHERE key_column_usage.table_schema = DATABASE() AND key_column_usage.referenced_table_schema = DATABASE()
+			AND key_column_usage.referenced_table_name = ?
+		ORDER BY key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.ordinal_position`, table)
+	if err != nil {
+		return nil, fmt.Errorf("reading referencing foreign keys: %w", err)
+	}
+	references := []sharedsql.ReferencingForeignKeyInfo{}
+	for rows.Next() {
+		var sourceTable, id, column, referencedTable, referencedColumn, onUpdate, onDelete string
+		if err := rows.Scan(&sourceTable, &id, &column, &referencedTable, &referencedColumn, &onUpdate, &onDelete); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning referencing foreign keys", err)
+		}
+		if len(references) == 0 || references[len(references)-1].Table != sourceTable || references[len(references)-1].ID != id {
+			references = append(references, sharedsql.ReferencingForeignKeyInfo{Table: sharedsql.SanitizeDisplay(sourceTable), ForeignKeyInfo: sharedsql.ForeignKeyInfo{ID: sharedsql.SanitizeDisplay(id), ReferenceTable: sharedsql.SanitizeDisplay(referencedTable), OnDelete: sharedsql.SanitizeDisplay(onDelete), OnUpdate: sharedsql.SanitizeDisplay(onUpdate)}})
+		}
+		last := len(references) - 1
+		references[last].Columns = append(references[last].Columns, sharedsql.SanitizeDisplay(column))
+		references[last].ReferenceColumns = append(references[last].ReferenceColumns, sharedsql.SanitizeDisplay(referencedColumn))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating referencing foreign keys", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing referencing-foreign-key rows: %w", err)
+	}
+	return references, nil
+}
+
 func (s *Service) CreateForeignKey(ctx context.Context, table string, change sharedsql.ForeignKeyChange) error {
 	if err := sharedsql.ValidateForeignKeyChange(change); err != nil {
 		return err
