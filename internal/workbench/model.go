@@ -177,27 +177,27 @@ func (m Model) Init() tea.Cmd {
 
 func newConnectionForm() connectionForm {
 	name := textinput.New()
-	name.Prompt = "Name: "
+	setConnectionPrompt(&name, "Name")
 	name.Placeholder = "Local database"
 	name.Focus()
 
 	target := textinput.New()
-	target.Prompt = "Target: "
+	setConnectionPrompt(&target, "Target")
 	target.Placeholder = "path/to/database.db or :memory:"
 
 	host := textinput.New()
-	host.Prompt = "Host: "
+	setConnectionPrompt(&host, "Host")
 	host.Placeholder = "localhost"
 
 	port := textinput.New()
-	port.Prompt = "Port: "
+	setConnectionPrompt(&port, "Port")
 	port.SetValue("3306")
 
 	user := textinput.New()
-	user.Prompt = "Username: "
+	setConnectionPrompt(&user, "Username")
 
 	pass := textinput.New()
-	pass.Prompt = "Password: "
+	setConnectionPrompt(&pass, "Password")
 	pass.EchoMode = textinput.EchoPassword
 	pass.EchoCharacter = '*'
 

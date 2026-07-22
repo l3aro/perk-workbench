@@ -38,6 +38,13 @@ const (
 
 const connectionFocusFirstForm = connectionFocusDriver
 
+type connectionFormMode uint8
+
+const (
+	connectionFormNormal connectionFormMode = iota
+	connectionFormInsert
+)
+
 type connectionForm struct {
 	driver connectionDriver
 	name   textinput.Model
@@ -47,6 +54,7 @@ type connectionForm struct {
 	user   textinput.Model
 	pass   textinput.Model
 	focus  int
+	mode   connectionFormMode
 }
 
 type connectionTestMsg struct {
@@ -55,13 +63,22 @@ type connectionTestMsg struct {
 
 func (f *connectionForm) setFocus(index int) tea.Cmd {
 	f.focus = index
+	f.mode = connectionFormNormal
 	f.name.Blur()
 	f.target.Blur()
 	f.host.Blur()
 	f.port.Blur()
 	f.user.Blur()
 	f.pass.Blur()
-	switch index {
+	return nil
+}
+
+func (f *connectionForm) enterInsertMode() tea.Cmd {
+	if !f.editable() {
+		return nil
+	}
+	f.mode = connectionFormInsert
+	switch f.focus {
 	case connectionFocusName:
 		return f.name.Focus()
 	case connectionFocusTarget:
@@ -148,7 +165,7 @@ func (m *Model) newConnection() tea.Cmd {
 	m.connection.user.SetValue("")
 	m.connection.pass.SetValue("")
 	m.connection.target.Placeholder = "path/to/database.db or :memory:"
-	m.connection.target.Prompt = "Target: "
+	setConnectionPrompt(&m.connection.target, "Target")
 	m.Status = "new connection"
 	return m.connection.setFocus(connectionFocusName)
 }
@@ -210,6 +227,10 @@ func (f *connectionForm) shiftFocus(offset int) tea.Cmd {
 }
 
 func (f connectionForm) inputFocused() bool {
+	return f.mode == connectionFormInsert && f.editable()
+}
+
+func (f connectionForm) editable() bool {
 	switch f.focus {
 	case connectionFocusName, connectionFocusTarget, connectionFocusHost, connectionFocusPort, connectionFocusUsername, connectionFocusPassword:
 		return true
@@ -292,6 +313,15 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 
 	keyPress, ok := message.(tea.KeyPressMsg)
 	if !ok {
+		if m.connection.mode == connectionFormInsert {
+			return m, m.connection.update(message)
+		}
+		return m, nil
+	}
+	if m.connection.mode == connectionFormInsert {
+		if keyPress.Key().Code == tea.KeyEscape {
+			return m, m.connection.setFocus(m.connection.focus)
+		}
 		return m, m.connection.update(message)
 	}
 	switch keyPress.String() {
@@ -315,25 +345,27 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, command
 	}
 	switch keyPress.String() {
-	case "tab":
+	case "tab", "j":
 		return m, m.connection.shiftFocus(1)
-	case "shift+tab":
+	case "shift+tab", "k":
 		return m, m.connection.shiftFocus(-1)
 	case "left", "right", "h", "l":
 		if m.connection.focus == connectionFocusDriver {
 			m.connection.driver = 1 - m.connection.driver
 			if m.connection.driver == driverMySQL {
-				m.connection.target.Prompt = "Database: "
+				setConnectionPrompt(&m.connection.target, "Database")
 				m.connection.target.Placeholder = "database"
 				m.connection.port.SetValue("3306")
 			} else {
-				m.connection.target.Prompt = "Target: "
+				setConnectionPrompt(&m.connection.target, "Target")
 				m.connection.target.Placeholder = "path/to/database.db or :memory:"
 			}
 			return m, nil
 		}
 	case "enter":
 		switch m.connection.focus {
+		case connectionFocusName, connectionFocusTarget, connectionFocusHost, connectionFocusPort, connectionFocusUsername, connectionFocusPassword:
+			return m, m.connection.enterInsertMode()
 		case connectionFocusTest:
 			return m, m.testConnection()
 		case connectionFocusConnect:
@@ -342,7 +374,13 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	case "ctrl+enter", "f5":
 		return m.openConnection()
 	}
-	return m, m.connection.update(message)
+	if keyPress.String() == "i" {
+		if !m.connection.editable() {
+			return m, nil
+		}
+		return m, m.connection.enterInsertMode()
+	}
+	return m, nil
 }
 
 func (m Model) connectionView() string {
@@ -360,11 +398,47 @@ func (m Model) connectionView() string {
 	}
 	fields := []string{
 		driver,
-		m.connection.name.View(),
+		m.connectionInputView(connectionFocusName, m.connection.name),
 	}
 	if m.connection.driver == driverMySQL {
-		fields = append(fields, m.connection.host.View(), m.connection.port.View(), m.connection.user.View(), m.connection.pass.View())
+		fields = append(fields,
+			m.connectionInputView(connectionFocusHost, m.connection.host),
+			m.connectionInputView(connectionFocusPort, m.connection.port),
+			m.connectionInputView(connectionFocusUsername, m.connection.user),
+			m.connectionInputView(connectionFocusPassword, m.connection.pass),
+		)
 	}
-	fields = append(fields, m.connection.target.View(), strings.Join([]string{testButton, connectButton}, " "), statusStyle.Render("Tab to a control | Enter activates it"))
+	fields = append(fields, m.connectionInputView(connectionFocusTarget, m.connection.target), strings.Join([]string{testButton, connectButton}, " "))
 	return strings.Join(fields, "\n")
+}
+
+func (m Model) connectionPaneView(height int) string {
+	content := m.connectionView()
+	mode := "NORMAL"
+	if m.connection.mode == connectionFormInsert {
+		mode = "INSERT"
+	}
+	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + headerStyle.Render(mode)
+}
+
+func (m Model) connectionInputView(focus int, input textinput.Model) string {
+	if m.connection.mode == connectionFormNormal && m.connection.focus == focus {
+		styles := input.Styles()
+		styles.Focused.Prompt = headerStyle.Padding(0, 0)
+		styles.Blurred.Prompt = headerStyle.Padding(0, 0)
+		input.SetStyles(styles)
+	}
+	return input.View()
+}
+
+func connectionPrompt(label string) string {
+	return fmt.Sprintf("%-*s", formLabelWidth, label) + formFieldGap
+}
+
+func setConnectionPrompt(input *textinput.Model, label string) {
+	input.Prompt = connectionPrompt(label)
+	styles := input.Styles()
+	styles.Focused.Prompt = formLabelStyle
+	styles.Blurred.Prompt = formLabelStyle
+	input.SetStyles(styles)
 }

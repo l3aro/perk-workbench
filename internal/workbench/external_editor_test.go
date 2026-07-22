@@ -19,6 +19,7 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 			name: "connection field",
 			setup: func(model *Model) {
 				model.connection.setFocus(connectionFocusName)
+				model.connection.enterInsertMode()
 				model.connection.name.SetValue("before")
 			},
 			value: func(model Model) string { return model.connection.name.Value() },
@@ -95,5 +96,25 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 				t.Fatalf("value = %q, want edited value", got)
 			}
 		})
+	}
+}
+
+func TestModel_ctrlEIgnoresConnectionFieldsInNormalMode(t *testing.T) {
+	// Given
+	t.Setenv("EDITOR", "true")
+	model := New("", Open(context.Background()))
+	model.connection.setFocus(connectionFocusName)
+	model.connection.name.SetValue("before")
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if command != nil {
+		t.Fatal("editor command = non-nil in normal mode")
+	}
+	if model.connection.name.Value() != "before" {
+		t.Fatalf("name = %q, want unchanged value", model.connection.name.Value())
 	}
 }

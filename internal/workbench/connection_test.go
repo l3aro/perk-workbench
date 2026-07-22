@@ -27,6 +27,59 @@ func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 	}
 }
 
+func TestConnectionForm_alignsInputLabels(t *testing.T) {
+	form := newConnectionForm()
+	for _, test := range []struct {
+		label  string
+		prompt string
+	}{
+		{label: "Name", prompt: form.name.Prompt},
+		{label: "Target", prompt: form.target.Prompt},
+		{label: "Host", prompt: form.host.Prompt},
+		{label: "Port", prompt: form.port.Prompt},
+		{label: "Username", prompt: form.user.Prompt},
+		{label: "Password", prompt: form.pass.Prompt},
+	} {
+		t.Run(test.label, func(t *testing.T) {
+			want := test.label + strings.Repeat(" ", formLabelWidth-len(test.label)) + formFieldGap
+			if test.prompt != want {
+				t.Fatalf("prompt = %q, want %q", test.prompt, want)
+			}
+		})
+	}
+}
+
+func TestConnectionForm_showsModeAtPaneBottom(t *testing.T) {
+	for _, test := range []struct {
+		mode connectionFormMode
+		want string
+	}{
+		{mode: connectionFormNormal, want: "NORMAL"},
+		{mode: connectionFormInsert, want: "INSERT"},
+	} {
+		t.Run(test.want, func(t *testing.T) {
+			// Given
+			model := New("", Open(context.Background()))
+			model.connection.mode = test.mode
+
+			// When
+			view := model.connectionPaneView(12)
+			lines := strings.Split(view, "\n")
+
+			// Then
+			if strings.Contains(view, "Tab to a control") {
+				t.Fatal("connection pane retained inline help")
+			}
+			if got := lines[len(lines)-1]; !strings.Contains(got, test.want) {
+				t.Fatalf("last pane line = %q, want mode %q", got, test.want)
+			}
+			if len(lines) != 12 {
+				t.Fatalf("pane line count = %d, want 12", len(lines))
+			}
+		})
+	}
+}
+
 func TestConnectionForm_showsMySQLControls(t *testing.T) {
 	model := New("", Open(context.Background()))
 	model.connection.setFocus(connectionFocusDriver)
@@ -34,7 +87,7 @@ func TestConnectionForm_showsMySQLControls(t *testing.T) {
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	model = updated.(Model)
 	view := model.connectionView()
-	for _, label := range []string{"Host:", "Port:", "Username:", "Password:", "Database:"} {
+	for _, label := range []string{"Host", "Port", "Username", "Password", "Database"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("MySQL connection view = %q, missing %q", view, label)
 		}
@@ -71,11 +124,96 @@ func TestConnectionForm_allowsQInMySQLHost(t *testing.T) {
 	model := New("", Open(context.Background()))
 	model.connection.driver = driverMySQL
 	model.connection.setFocus(connectionFocusHost)
+	model.connection.enterInsertMode()
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	model = updated.(Model)
 	if model.connection.host.Value() != "q" {
 		t.Fatalf("host = %q, want q", model.connection.host.Value())
+	}
+}
+
+func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
+	for _, key := range []tea.KeyPressMsg{
+		{Code: 'i', Text: "i"},
+		{Code: tea.KeyEnter},
+	} {
+		t.Run(key.String(), func(t *testing.T) {
+			model := New("", Open(context.Background()))
+			model.connection.setFocus(connectionFocusName)
+
+			updated, _ := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+			model = updated.(Model)
+			if model.connection.name.Value() != "" {
+				t.Fatalf("name in normal mode = %q, want empty", model.connection.name.Value())
+			}
+
+			updated, _ = model.Update(key)
+			model = updated.(Model)
+			updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+			model = updated.(Model)
+			if model.connection.name.Value() != "a" {
+				t.Fatalf("name in insert mode = %q, want a", model.connection.name.Value())
+			}
+
+			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+			model = updated.(Model)
+			updated, _ = model.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+			model = updated.(Model)
+			if model.connection.name.Value() != "a" {
+				t.Fatalf("name after escape = %q, want a", model.connection.name.Value())
+			}
+		})
+	}
+}
+
+func TestConnectionForm_navigatesNormalModeWithVimKeys(t *testing.T) {
+	for _, test := range []struct {
+		key  tea.KeyPressMsg
+		want int
+	}{
+		{key: tea.KeyPressMsg{Code: 'j', Text: "j"}, want: connectionFocusTarget},
+		{key: tea.KeyPressMsg{Code: 'k', Text: "k"}, want: connectionFocusDriver},
+	} {
+		t.Run(test.key.String(), func(t *testing.T) {
+			// Given
+			model := New("", Open(context.Background()))
+			model.connection.setFocus(connectionFocusName)
+
+			// When
+			updated, _ := model.Update(test.key)
+			model = updated.(Model)
+
+			// Then
+			if model.connection.focus != test.want {
+				t.Fatalf("connection focus = %d, want %d", model.connection.focus, test.want)
+			}
+		})
+	}
+}
+
+func TestConnectionForm_highlightsOnlyFocusedLabelInNormalMode(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.connection.setFocus(connectionFocusName)
+	model.connection.name.SetValue("value")
+
+	// When
+	got := model.connectionInputView(connectionFocusName, model.connection.name)
+
+	// Then
+	if model.connection.name.Focused() {
+		t.Fatal("name input is focused in normal mode")
+	}
+	wantInput := model.connection.name
+	wantInput.Prompt = "Name" + strings.Repeat(" ", formLabelWidth-len("Name")) + formFieldGap
+	styles := wantInput.Styles()
+	styles.Focused.Prompt = headerStyle.Padding(0, 0)
+	styles.Blurred.Prompt = headerStyle.Padding(0, 0)
+	wantInput.SetStyles(styles)
+	want := wantInput.View()
+	if got != want {
+		t.Fatalf("focused connection input = %q, want %q", got, want)
 	}
 }
 

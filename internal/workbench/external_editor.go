@@ -68,6 +68,9 @@ func (m Model) focusedTextValue() (string, bool) {
 		if m.recent.SettingFilter() {
 			return m.recent.FilterValue(), true
 		}
+		if m.connection.mode != connectionFormInsert {
+			return "", false
+		}
 		switch m.connection.focus {
 		case connectionFocusName:
 			return m.connection.name.Value(), true
@@ -131,6 +134,9 @@ func (m *Model) setFocusedTextValue(value string) bool {
 		if m.recent.SettingFilter() {
 			m.recent.SetFilterText(value)
 			return true
+		}
+		if m.connection.mode != connectionFormInsert {
+			return false
 		}
 		switch m.connection.focus {
 		case connectionFocusName:
