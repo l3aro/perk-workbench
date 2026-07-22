@@ -15,6 +15,11 @@ type foreignKeysLoadedMsg struct {
 	foreignKeys []sharedsql.ForeignKeyInfo
 	err         error
 }
+type referencingForeignKeysLoadedMsg struct {
+	table       string
+	foreignKeys []sharedsql.ReferencingForeignKeyInfo
+	err         error
+}
 type foreignKeyChangedMsg struct {
 	statement string
 	startedAt time.Time
@@ -31,6 +36,14 @@ func (m Model) loadForeignKeys() tea.Cmd {
 	return func() tea.Msg {
 		foreignKeys, err := service.ListForeignKeys(m.appContext, table)
 		return foreignKeysLoadedMsg{table: table, foreignKeys: foreignKeys, err: err}
+	}
+}
+
+func (m Model) loadReferencingForeignKeys() tea.Cmd {
+	table, service := m.SelectedTable, m.Database
+	return func() tea.Msg {
+		foreignKeys, err := service.ListReferencingForeignKeys(m.appContext, table)
+		return referencingForeignKeysLoadedMsg{table: table, foreignKeys: foreignKeys, err: err}
 	}
 }
 
@@ -76,6 +89,17 @@ func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.C
 	return m, nil
 }
 
+func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoadedMsg) (tea.Model, tea.Cmd) {
+	if message.table != m.SelectedTable || message.err != nil {
+		if message.err != nil {
+			m.Status = safeText(fmt.Sprintf("loading referencing foreign keys: %v", message.err))
+		}
+		return m, nil
+	}
+	m.referencingForeignKeyInfo = message.foreignKeys
+	return m, nil
+}
+
 func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
 		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
@@ -87,7 +111,7 @@ func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model,
 	}
 	m.foreignKeyForm.close()
 	m.Status = "foreign key updated"
-	return m, tea.Batch(m.loadForeignKeys(), m.loadTableInfo())
+	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
 
 func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model, tea.Cmd) {
@@ -101,7 +125,7 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 	}
 	m.foreignKeyForm.close()
 	m.Status = "foreign key deleted"
-	return m, tea.Batch(m.loadForeignKeys(), m.loadTableInfo())
+	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
 
 func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) {

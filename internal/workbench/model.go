@@ -54,6 +54,7 @@ type Model struct {
 	structureColumns                                                                               []sharedsql.ColumnInfo
 	indexInfo                                                                                      []sharedsql.IndexInfo
 	foreignKeyInfo                                                                                 []sharedsql.ForeignKeyInfo
+	referencingForeignKeyInfo                                                                      []sharedsql.ReferencingForeignKeyInfo
 	browseNumericColumns, resultsNumericColumns                                                    []bool
 	databaseInfo                                                                                   sharedsql.DatabaseInfo
 	browseResult                                                                                   sharedsql.Result
@@ -72,7 +73,7 @@ type Model struct {
 	workspaceHeight, queryLogHeight                                                                int
 	editorHeight, resultsHeight, tableViewportWidth                                                int
 	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
-	compact, fullscreen                                                                            bool
+	compact, fullscreen, relationshipDiagram                                                       bool
 }
 
 type pickerItem struct{ raw, title, description string }

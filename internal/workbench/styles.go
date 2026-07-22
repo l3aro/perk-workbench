@@ -450,6 +450,9 @@ func (m Model) foreignKeysView() string {
 	if m.foreignKeyForm.active() {
 		return m.foreignKeyForm.View()
 	}
+	if m.relationshipDiagram {
+		return m.relationshipView()
+	}
 	return tableViewportView(m.foreignKeys, m.foreignKeysOffset, m.tableViewportWidth)
 }
 

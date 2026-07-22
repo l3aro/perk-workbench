@@ -136,6 +136,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateIndexes(message)
 	case foreignKeysLoadedMsg:
 		return m.updateForeignKeys(message)
+	case referencingForeignKeysLoadedMsg:
+		return m.updateReferencingForeignKeys(message)
 	case indexChangedMsg:
 		return m.updateIndexChanged(message)
 	case indexDeletedMsg:
@@ -213,8 +215,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					m.SelectTable(item.title)
+					m.structureColumns = nil
+					m.foreignKeyInfo = nil
+					m.referencingForeignKeyInfo = nil
+					m.relationshipDiagram = false
 					m.focusActiveTable()
-					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys())
+					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
 				}
 			}
 			m.schema, command = m.schema.Update(message)
@@ -347,6 +353,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch keyPress.String() {
+					case "g":
+						m.relationshipDiagram = !m.relationshipDiagram
+						return m, nil
 					case "n":
 						m.openForeignKeyForm(nil)
 						return m, nil
