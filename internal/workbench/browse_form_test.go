@@ -1,9 +1,11 @@
 package workbench
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -60,6 +62,29 @@ func TestBrowseForm_savesConfirmedRowChange(t *testing.T) {
 	}
 	if got := model.browse.Cursor(); got != 1 {
 		t.Fatalf("browse cursor = %d, want saved row cursor 1", got)
+	}
+}
+
+func TestBrowseForm_alignsValuesWhenAColumnNameExceedsTheLabelWidth(t *testing.T) {
+	// Given
+	form, err := newBrowseForm(
+		[]string{"id", "very_long_column_name"},
+		[]*string{stringPointer("1"), stringPointer("two")},
+		[]sqlite.ColumnInfo{{Name: "id", PrimaryKey: 1}},
+	)
+	if err != nil {
+		t.Fatalf("new browse form: %v", err)
+	}
+	form.setWidth(20)
+
+	// When
+	rows := strings.Split(ansi.Strip(form.View()), "\n")
+
+	// Then
+	firstValue := strings.Index(rows[0], "1")
+	secondValue := strings.Index(rows[1], "two")
+	if firstValue != formLabelWidth+len(formFieldGap) || secondValue != firstValue {
+		t.Errorf("value columns = %d and %d, want %d", firstValue, secondValue, formLabelWidth+len(formFieldGap))
 	}
 }
 

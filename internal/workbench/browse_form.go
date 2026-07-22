@@ -66,7 +66,7 @@ func newBrowseForm(columns []string, values []*string, info []sharedsql.ColumnIn
 	form := browseForm{columns: append([]string(nil), columns...), values: append([]*string(nil), values...), nulls: make([]bool, len(values)), inputs: make([]textinput.Model, len(values))}
 	for index, value := range values {
 		input := textinput.New()
-		input.Prompt = columns[index] + ": "
+		input.Prompt = ""
 		if value == nil {
 			form.nulls[index] = true
 		} else {
@@ -181,8 +181,9 @@ func (f *browseForm) updateInput(message tea.Msg) tea.Cmd {
 }
 
 func (f *browseForm) setWidth(width int) {
+	inputWidth := max(width-formLabelWidth-len(formFieldGap)-1, 1)
 	for index := range f.inputs {
-		f.inputs[index].SetWidth(max(width-16, 1))
+		f.inputs[index].SetWidth(inputWidth)
 	}
 }
 
@@ -233,20 +234,25 @@ func (f browseForm) View() string {
 		}
 		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
 	}
-	fields := make([]string, len(f.inputs))
+	lines := make([]string, len(f.inputs))
 	for index, input := range f.inputs {
-		value := input.View()
-		if f.nulls[index] {
-			value = f.columns[index] + ": NULL"
-		}
+		label := formLabel(f.columns[index], formLabelWidth)
 		if f.focus == index && f.mode == browseFormNormal {
-			value = headerStyle.Render(value)
+			label = focusedFormLabel(f.columns[index], formLabelWidth)
 		}
-		fields[index] = value
+		lines[index] = label + formFieldGap + f.valueDisplay(index, input)
 	}
 	help := "j/k fields | gg/G first/last | i edit | space toggle NULL | F5 save | Esc discard"
 	if f.mode == browseFormInsert {
 		help = "insert mode | Esc normal mode"
 	}
-	return strings.Join(fields, "\n") + "\n" + statusStyle.Render(help)
+	return strings.Join(lines, "\n") + "\n" + statusStyle.Render(help)
+}
+
+// valueDisplay distinguishes NULL from a real empty value.
+func (f browseForm) valueDisplay(index int, input textinput.Model) string {
+	if f.nulls[index] {
+		return formLabelStyle.Render("NULL")
+	}
+	return input.View()
 }
