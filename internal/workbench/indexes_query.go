@@ -3,6 +3,7 @@ package workbench
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -14,8 +15,16 @@ type indexesLoadedMsg struct {
 	indexes []sharedsql.IndexInfo
 	err     error
 }
-type indexChangedMsg struct{ err error }
-type indexDeletedMsg struct{ err error }
+type indexChangedMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
+type indexDeletedMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
 
 func (m Model) loadIndexes() tea.Cmd {
 	table, service := m.SelectedTable, m.Database
@@ -30,16 +39,20 @@ func (m Model) saveIndex() tea.Cmd {
 		return func() tea.Msg { return indexChangedMsg{err: err} }
 	}
 	table, service, previous := m.SelectedTable, m.Database, m.indexForm.previous
+	statement, startedAt := m.indexChangeStatement(table, previous, change), time.Now()
 	return func() tea.Msg {
 		if previous == "" {
-			return indexChangedMsg{err: service.CreateIndex(m.appContext, table, change)}
+			return indexChangedMsg{statement: statement, startedAt: startedAt, err: service.CreateIndex(m.appContext, table, change)}
 		}
-		return indexChangedMsg{err: service.ReplaceIndex(m.appContext, table, previous, change)}
+		return indexChangedMsg{statement: statement, startedAt: startedAt, err: service.ReplaceIndex(m.appContext, table, previous, change)}
 	}
 }
 func (m Model) deleteIndex() tea.Cmd {
 	table, service, name := m.SelectedTable, m.Database, m.indexForm.previous
-	return func() tea.Msg { return indexDeletedMsg{err: service.DropIndex(m.appContext, table, name)} }
+	statement, startedAt := m.dropIndexStatement(table, name), time.Now()
+	return func() tea.Msg {
+		return indexDeletedMsg{statement: statement, startedAt: startedAt, err: service.DropIndex(m.appContext, table, name)}
+	}
 }
 func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
@@ -66,6 +79,9 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+	}
 	if message.err != nil {
 		m.indexForm.saving = false
 		m.Status = safeText(fmt.Sprintf("updating index: %v", message.err))
@@ -76,6 +92,9 @@ func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) 
 	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
 }
 func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+	}
 	if message.err != nil {
 		m.indexForm.saving = false
 		m.Status = safeText(fmt.Sprintf("deleting index: %v", message.err))

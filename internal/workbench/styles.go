@@ -318,7 +318,7 @@ func (m Model) View() tea.View {
 	if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
 		if cursor := m.editor.textarea.Cursor(); cursor != nil {
 			cursor.Position.X += 2
-			cursor.Position.Y += 3
+			cursor.Position.Y += 4
 			if !m.compact {
 				cursor.Position.X += m.schemaWidth - 2
 			}

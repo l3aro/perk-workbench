@@ -25,7 +25,11 @@ type browseTableMsg struct {
 	err       error
 }
 
-type columnAlteredMsg struct{ err error }
+type columnAlteredMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
 
 type browseRowUpdatedMsg struct{ err error }
 
@@ -93,8 +97,9 @@ func (m Model) alterColumn() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return columnAlteredMsg{err: err} }
 	}
+	statement, startedAt := m.columnChangeStatement(table, change), time.Now()
 	return func() tea.Msg {
-		return columnAlteredMsg{err: service.AlterColumn(m.appContext, table, change)}
+		return columnAlteredMsg{statement: statement, startedAt: startedAt, err: service.AlterColumn(m.appContext, table, change)}
 	}
 }
 
@@ -138,6 +143,9 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+	}
 	if message.err != nil {
 		m.columnForm.saving = false
 		m.Status = safeText(fmt.Sprintf("updating column: %v", message.err))

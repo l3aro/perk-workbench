@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/table"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -80,6 +81,72 @@ func TestQueryLog_records_browse_page_load(t *testing.T) {
 	want := table.Row{"SELECT * FROM \"projects\" LIMIT 25 OFFSET 25", "2ms", "1"}
 	if got := rows[0][1:]; !equalTableRow(got, want) {
 		t.Fatalf("browse query log row = %#v, want %#v", got, want)
+	}
+}
+
+func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable = "items"
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (name TEXT)"); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	model.columnForm = newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(model.databaseInfo))
+	model.columnForm.name.SetValue("title")
+
+	// When
+	updated, _ := model.Update(model.alterColumn()())
+	model = updated.(Model)
+	model.indexForm = newIndexForm(nil)
+	model.indexForm.name.SetValue("items_title")
+	model.indexForm.columns.SetValue("title")
+	updated, _ = model.Update(model.saveIndex()())
+	model = updated.(Model)
+
+	// Then
+	rows := model.queryLog.Rows()
+	if got, want := len(rows), 2; got != want {
+		t.Fatalf("query log entries = %d, want %d", got, want)
+	}
+	if got, want := rows[0][1], `CREATE INDEX "items_title" ON "items" ("title")`; got != want {
+		t.Fatalf("index action log = %q, want %q", got, want)
+	}
+	if got, want := rows[1][1], `ALTER TABLE "items" RENAME COLUMN "name" TO "title"`; got != want {
+		t.Fatalf("structure action log = %q, want %q", got, want)
+	}
+}
+
+func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable = "items"
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (name TEXT, title TEXT)"); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	if _, err := model.Database.Execute(model.appContext, "CREATE INDEX items_name ON items (name)"); err != nil {
+		t.Fatalf("creating index: %v", err)
+	}
+	model.indexForm = newIndexForm(&sharedsql.IndexInfo{Name: "items_name", Columns: []string{"name"}})
+	model.indexForm.name.SetValue("items_title")
+	model.indexForm.columns.SetValue("title")
+
+	// When
+	updated, _ := model.Update(model.saveIndex()())
+	model = updated.(Model)
+	model.indexForm = newIndexForm(&sharedsql.IndexInfo{Name: "items_title", Columns: []string{"title"}})
+	updated, _ = model.Update(model.deleteIndex()())
+	model = updated.(Model)
+
+	// Then
+	rows := model.queryLog.Rows()
+	if got, want := len(rows), 2; got != want {
+		t.Fatalf("query log entries = %d, want %d", got, want)
+	}
+	if got, want := rows[0][1], `DROP INDEX "items_title"`; got != want {
+		t.Fatalf("index deletion log = %q, want %q", got, want)
+	}
+	if got, want := rows[1][1], `DROP INDEX "items_name"; CREATE INDEX "items_title" ON "items" ("title")`; got != want {
+		t.Fatalf("index replacement log = %q, want %q", got, want)
 	}
 }
 
