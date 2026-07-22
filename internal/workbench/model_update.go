@@ -61,12 +61,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch message.String() {
 			case "1":
 				m.Focus = focusSchema
+				m.queryLogPendingG = false
 				m.editor.textarea.Blur()
 				m.blurTables()
 				return m, nil
 			case "2":
 				m.Focus = focusWorkspace
+				m.queryLogPendingG = false
 				m.focusActiveTable()
+				return m, nil
+			case "3":
+				m.Focus = focusQueryLog
+				m.queryLogPendingG = false
+				m.editor.textarea.Blur()
+				m.blurTables()
+				m.queryLog.Focus()
+				if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
+					m.queryLog.SetCursor(0)
+				}
 				return m, nil
 			}
 		}
@@ -261,10 +273,10 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.editor.insert && scrollTable(&m.results, &m.resultsOffset, m.tableViewportWidth, keyPress) {
+					return m, nil
+				}
 				if m.results.Focused() {
-					if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.results, &m.resultsOffset, m.tableViewportWidth, keyPress) {
-						return m, nil
-					}
 					m.results, command = m.results.Update(message)
 				} else {
 					m.editor, command = m.editor.Update(message)
@@ -310,6 +322,40 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.indexes, command = m.indexes.Update(message)
 			}
 			return m, command
+		case focusQueryLog:
+			if keyPress, ok := message.(tea.KeyPressMsg); ok {
+				if keyPress.String() != "g" {
+					m.queryLogPendingG = false
+				}
+				if scrollTable(&m.queryLog, &m.queryLogOffset, m.tableViewportWidth, keyPress) {
+					return m, nil
+				}
+				rows := m.queryLog.Rows()
+				if len(rows) == 0 {
+					return m, nil
+				}
+				switch keyPress.String() {
+				case "j":
+					m.queryLog.SetCursor(min(m.queryLog.Cursor()+1, len(rows)-1))
+					return m, nil
+				case "k":
+					m.queryLog.SetCursor(max(m.queryLog.Cursor()-1, 0))
+					return m, nil
+				case "g":
+					if m.queryLogPendingG {
+						m.queryLog.SetCursor(0)
+						m.queryLogPendingG = false
+					} else {
+						m.queryLogPendingG = true
+					}
+					return m, nil
+				case "G":
+					m.queryLog.SetCursor(len(rows) - 1)
+					return m, nil
+				}
+			}
+			m.queryLog, command = m.queryLog.Update(message)
+			return m, command
 		}
 	case stateFailure:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "esc") {
@@ -325,14 +371,20 @@ func (m Model) formActive() bool {
 }
 
 func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
+	step := max(viewportWidth/2, 1)
+	next := *offset
 	switch keyPress.Key().Code {
 	case tea.KeyLeft, 'h':
-		*offset = tableOffset(*resultTable, *offset-1, viewportWidth)
+		next = tableOffset(*resultTable, *offset-step, viewportWidth)
 	case tea.KeyRight, 'l':
-		*offset = tableOffset(*resultTable, *offset+1, viewportWidth)
+		next = tableOffset(*resultTable, *offset+step, viewportWidth)
 	default:
 		return false
 	}
+	if next == *offset {
+		return false
+	}
+	*offset = next
 	return true
 }
 
@@ -354,7 +406,11 @@ func (m *Model) focusActiveTable() {
 	case tabBrowse:
 		m.browse.Focus()
 	case tabSQL:
-		m.editor.textarea.Focus()
+		if len(m.results.Rows()) > 0 {
+			m.results.Focus()
+		} else {
+			m.editor.textarea.Focus()
+		}
 	case tabIndexes:
 		m.indexes.Focus()
 	}
@@ -365,4 +421,5 @@ func (m *Model) blurTables() {
 	m.browse.Blur()
 	m.results.Blur()
 	m.indexes.Blur()
+	m.queryLog.Blur()
 }

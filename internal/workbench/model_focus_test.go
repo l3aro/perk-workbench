@@ -314,14 +314,14 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	model = updated.(Model)
 
 	// Then
-	if model.resultsOffset != 1 {
-		t.Fatalf("results offset = %d, want 1 after right", model.resultsOffset)
+	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
+		t.Fatalf("results offset = %d, want %d after right", got, want)
 	}
 	if got := model.results.Cursor(); got != initialRow {
 		t.Fatalf("result cursor = %d, want %d after right", got, initialRow)
 	}
-	if !strings.Contains(ansi.Strip(tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth)), "irst column") {
-		t.Fatalf("right-scrolled result viewport did not retain visible table content: %q", ansi.Strip(tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth)))
+	if got := tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth); got == view {
+		t.Fatal("right-scrolled result viewport did not change")
 	}
 	if got := model.results.View(); got == tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth) {
 		t.Fatal("wide result table did not require a horizontal viewport")
@@ -332,8 +332,8 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	model = updated.(Model)
 
 	// Then
-	if model.resultsOffset != 0 {
-		t.Fatalf("results offset = %d, want 0 after h", model.resultsOffset)
+	if got := model.resultsOffset; got != 0 {
+		t.Fatalf("results offset = %d, want 0 after h", got)
 	}
 
 	// When
@@ -341,8 +341,130 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	model = updated.(Model)
 
 	// Then
-	if model.resultsOffset != 1 {
-		t.Fatalf("results offset = %d, want 1 after l", model.resultsOffset)
+	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
+		t.Fatalf("results offset = %d, want %d after l", got, want)
+	}
+}
+
+func TestQueryLog_l_scrolls_wide_history_without_changing_row(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	model.appendQueryLog(queryLogEntry{statement: strings.Repeat("select a very long query ", 20)})
+	model.appendQueryLog(queryLogEntry{statement: "select 2"})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	model = updated.(Model)
+	model.queryLog.SetCursor(1)
+	initialRow := model.queryLog.Cursor()
+	view := model.queryLogContentView()
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updated.(Model)
+
+	// Then
+	if got := model.queryLog.Cursor(); got != initialRow {
+		t.Fatalf("query log cursor = %d, want %d after l", got, initialRow)
+	}
+	if got := model.queryLogContentView(); got == view {
+		t.Fatal("right-scrolled query log viewport did not change")
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	model = updated.(Model)
+
+	// Then
+	if got := model.queryLog.Cursor(); got != initialRow {
+		t.Fatalf("query log cursor = %d, want %d after h", got, initialRow)
+	}
+	if got := model.queryLogContentView(); got != view {
+		t.Fatal("left-scrolled query log viewport did not return to the initial view")
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	model = updated.(Model)
+
+	// Then
+	if got := model.queryLog.Cursor(); got != initialRow {
+		t.Fatalf("query log cursor = %d, want %d after g, l, g", got, initialRow)
+	}
+}
+
+func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	model.editor.insert = true
+	requestID := model.StartQueryForTest(context.Background())
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+		Columns: []string{"first column", "second column"},
+		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value")}},
+	}})
+	model = updated.(Model)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.Tab, tabSQL; got != want {
+		t.Fatalf("tab = %v, want %v", got, want)
+	}
+	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
+		t.Fatalf("results offset = %d, want %d after l", got, want)
+	}
+}
+
+func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	requestID := model.StartQueryForTest(context.Background())
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+		Columns: []string{"first column", "second column"},
+		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value")}},
+	}})
+	model = updated.(Model)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
+		t.Fatalf("results offset = %d, want visible step %d", got, want)
+	}
+}
+
+func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	model.editor.insert = true
+	requestID := model.StartQueryForTest(context.Background())
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column", "sixth column", "seventh column", "eighth column"},
+	}})
+	model = updated.(Model)
+	model.focusActiveTable()
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
+		t.Fatalf("results offset = %d, want visible step %d", got, want)
 	}
 }
 

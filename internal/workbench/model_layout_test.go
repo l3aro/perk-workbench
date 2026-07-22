@@ -143,6 +143,31 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	}
 }
 
+func TestResize_compact_query_log_fills_single_pane(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model = resizeModel(model, 80, 24)
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	model = updated.(Model)
+	view := ansi.Strip(model.View().Content)
+
+	// Then
+	if model.Focus != focusQueryLog {
+		t.Fatalf("focus = %v, want query log", model.Focus)
+	}
+	if got, want := model.queryLogHeight, 20; got != want {
+		t.Fatalf("query log height = %d, want %d", got, want)
+	}
+	if got := lipgloss.Width(view); got > 80 {
+		t.Fatalf("compact view width = %d, want at most 80", got)
+	}
+	if !strings.Contains(view, "Time") {
+		t.Fatalf("compact query log view = %q, want query log table", view)
+	}
+}
+
 func TestResize_results_reflows_loaded_titles_without_replacing_rows(t *testing.T) {
 	// Given
 	model := readyModel(t)
