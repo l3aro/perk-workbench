@@ -20,6 +20,10 @@ type Service interface {
 	CreateIndex(context.Context, string, IndexChange) error
 	ReplaceIndex(context.Context, string, string, IndexChange) error
 	DropIndex(context.Context, string, string) error
+	ListForeignKeys(context.Context, string) ([]ForeignKeyInfo, error)
+	CreateForeignKey(context.Context, string, ForeignKeyChange) error
+	ReplaceForeignKey(context.Context, string, string, ForeignKeyChange) error
+	DropForeignKey(context.Context, string, string) error
 	AlterColumn(context.Context, string, ColumnChange) error
 	BrowseTable(context.Context, string, int, int) (Result, error)
 }
