@@ -16,18 +16,19 @@ import (
 )
 
 const (
-	colorCanvas    = "#10151f"
-	colorPanel     = "#17202e"
-	colorStripe    = "#1c2838"
-	colorInk       = "#e6edf3"
-	colorMuted     = "#8b9bb4"
-	colorAccent    = "#55d6be"
-	colorBorder    = "#324155"
-	spaceCompact   = 1
-	sqlEditorRows  = 4
-	iconPrimaryKey = "\uf084" // nf-fa-key
-	iconUnique     = "\uee40" // nf-fa-fingerprint
-	iconRegular    = "\uf0cb" // nf-fa-list_ol
+	colorCanvas        = "#10151f"
+	colorPanel         = "#17202e"
+	colorStripe        = "#1c2838"
+	colorInk           = "#e6edf3"
+	colorMuted         = "#8b9bb4"
+	colorAccent        = "#55d6be"
+	colorBorder        = "#324155"
+	spaceCompact       = 1
+	sqlEditorRows      = 4
+	queryLogPaneHeight = 11
+	iconPrimaryKey     = "\uf084" // nf-fa-key
+	iconUnique         = "\uee40" // nf-fa-fingerprint
+	iconRegular        = "\uf0cb" // nf-fa-list_ol
 )
 
 var (
@@ -249,12 +250,18 @@ func (m *Model) layout(width, height int) {
 	contentHeight := max(m.height-4, 0)
 	m.compact = m.width < compactWidth || m.height < 24
 	m.schemaWidth, m.editorWidth = m.width, m.width
+	m.workspaceHeight, m.queryLogHeight = contentHeight, 0
+	if m.compact {
+		m.queryLogHeight = contentHeight
+	}
 	if !m.compact {
 		m.schemaWidth = 30
 		m.editorWidth = max(m.width-32, 0)
+		m.queryLogHeight = min(queryLogPaneHeight, contentHeight)
+		m.workspaceHeight = contentHeight - m.queryLogHeight
 	}
-	m.editorHeight = min(contentHeight, sqlEditorRows+2)
-	m.resultsHeight = max(contentHeight-m.editorHeight, 0)
+	m.editorHeight = min(m.workspaceHeight, sqlEditorRows+2)
+	m.resultsHeight = max(m.workspaceHeight-m.editorHeight, 0)
 	m.schema.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.picker.SetSize(max(m.width-2, 0), max(contentHeight-2, 0))
 	connectionWidth := m.width
@@ -279,7 +286,7 @@ func (m *Model) layout(width, height int) {
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.browseForm.setWidth(m.tableViewportWidth)
 	m.indexForm.setWidth(m.tableViewportWidth)
-	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes} {
+	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.queryLog} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
 		for index, column := range columns {
@@ -288,13 +295,15 @@ func (m *Model) layout(width, height int) {
 		resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 	}
 	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
-	resizeResultsTable(&m.structure, m.tableViewportWidth, max(contentHeight-4, 2))
-	resizeResultsTable(&m.browse, m.tableViewportWidth, max(contentHeight-5, 2))
-	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(contentHeight-4, 2))
+	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(m.queryLogHeight-5, 2))
+	resizeResultsTable(&m.structure, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-5, 2))
+	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
 	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
 	m.browseOffset = tableOffset(m.browse, m.browseOffset, m.tableViewportWidth)
 	m.resultsOffset = tableOffset(m.results, m.resultsOffset, m.tableViewportWidth)
 	m.indexesOffset = tableOffset(m.indexes, m.indexesOffset, m.tableViewportWidth)
+	m.queryLogOffset = tableOffset(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
 }
 
 func (m Model) View() tea.View {
@@ -346,14 +355,30 @@ func (m Model) contentView() string {
 			return compactPane(m.schema.View(), width, height)
 		case focusWorkspace:
 			return compactPane(m.workspaceView(), width, height)
+		case focusQueryLog:
+			return compactPane(m.queryLogContentView(), width, height)
 		}
 	}
-	left := paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.schema.View())
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, m.rightView())
+	left := paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)).Render(m.schema.View())
+	right := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
 
 func (m Model) rightView() string {
-	return paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.workspaceView())
+	return paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.workspaceHeight, 0)).Render(m.workspaceView())
+}
+
+func (m Model) queryLogPaneView() string {
+	return paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)).Render(m.queryLogContentView())
+}
+
+func (m Model) queryLogContentView() string {
+	content := tableViewportView(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
+	if summary := m.queryLogSummary(); summary != "" {
+		padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
+		content += strings.Repeat("\n", padding+1) + paneStatus("", statusStyle.Render(summary), m.tableViewportWidth)
+	}
+	return content
 }
 
 func (m Model) workspaceView() string {
@@ -428,7 +453,7 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "tab switch view", "q quit")
+		parts = append(parts, "1 tables", "2 tabs", "3 history", "tab switch view", "q quit")
 		return safeText(strings.Join(parts, " | "))
 	}
 	return safeText(m.Status + " | q quit")
