@@ -130,11 +130,20 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 	if offset < 0 || limit < 1 {
 		return sharedsql.Result{}, fmt.Errorf("invalid page: offset=%d limit=%d", offset, limit)
 	}
+	var totalRows int64
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+quoteIdentifier(name)).Scan(&totalRows); err != nil {
+		return sharedsql.Result{}, fmt.Errorf("counting table rows: %w", err)
+	}
 	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+quoteIdentifier(name)+" LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
 		return sharedsql.Result{}, fmt.Errorf("browsing table: %w", err)
 	}
-	return sharedsql.CollectRows(rows)
+	result, err := sharedsql.CollectRows(rows)
+	if err != nil {
+		return sharedsql.Result{}, err
+	}
+	result.TotalRows = totalRows
+	return result, nil
 }
 
 func quoteIdentifier(name string) string {

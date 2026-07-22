@@ -41,7 +41,7 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BrowseTable() error = %v", err)
 	}
-	if len(result.Rows) != 1 || result.Columns[0] != "id" {
+	if len(result.Rows) != 1 || result.Columns[0] != "id" || result.TotalRows != 26 {
 		t.Fatalf("BrowseTable() = %#v, want second page with one row", result)
 	}
 }
