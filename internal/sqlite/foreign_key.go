@@ -11,6 +11,11 @@ import (
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
+type missingReferenceColumn struct {
+	foreignKey, column, sequence int
+	referencedTable              string
+}
+
 func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsql.ForeignKeyInfo, error) {
 	rows, err := s.db.QueryContext(ctx, "PRAGMA foreign_key_list("+quoteIdentifier(table)+")")
 	if err != nil {
@@ -18,9 +23,11 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 	}
 	foreignKeys := []sharedsql.ForeignKeyInfo{}
 	positions := map[int]int{}
+	missingColumns := []missingReferenceColumn{}
 	for rows.Next() {
 		var id, sequence int
-		var referencedTable, from, to, onUpdate, onDelete, match string
+		var referencedTable, from, onUpdate, onDelete, match string
+		var to stdsql.NullString
 		if err := rows.Scan(&id, &sequence, &referencedTable, &from, &to, &onUpdate, &onDelete, &match); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning foreign keys", err)
 		}
@@ -31,7 +38,10 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 			foreignKeys = append(foreignKeys, sharedsql.ForeignKeyInfo{ID: strconv.Itoa(id), ReferenceTable: sharedsql.SanitizeDisplay(referencedTable), OnDelete: sharedsql.SanitizeDisplay(onDelete), OnUpdate: sharedsql.SanitizeDisplay(onUpdate)})
 		}
 		foreignKeys[position].Columns = append(foreignKeys[position].Columns, sharedsql.SanitizeDisplay(from))
-		foreignKeys[position].ReferenceColumns = append(foreignKeys[position].ReferenceColumns, sharedsql.SanitizeDisplay(to))
+		foreignKeys[position].ReferenceColumns = append(foreignKeys[position].ReferenceColumns, sharedsql.SanitizeDisplay(to.String))
+		if !to.Valid {
+			missingColumns = append(missingColumns, missingReferenceColumn{foreignKey: position, column: len(foreignKeys[position].ReferenceColumns) - 1, sequence: sequence, referencedTable: referencedTable})
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, sharedsql.CloseRows(rows, "iterating foreign keys", err)
@@ -39,7 +49,82 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("closing foreign-key rows: %w", err)
 	}
+	if err := s.resolveMissingReferenceColumns(ctx, foreignKeys, missingColumns); err != nil {
+		return nil, err
+	}
 	return foreignKeys, nil
+}
+
+func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) ([]sharedsql.ReferencingForeignKeyInfo, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.name, f.id, f.seq, f."table", f."from", f."to", f.on_update, f.on_delete
+		FROM sqlite_schema AS m
+		JOIN pragma_foreign_key_list(m.name) AS f
+		WHERE m.type = 'table' AND lower(f."table") = lower(?)
+		ORDER BY m.name, f.id, f.seq`, table)
+	if err != nil {
+		return nil, fmt.Errorf("reading referencing foreign keys: %w", err)
+	}
+	references := []sharedsql.ReferencingForeignKeyInfo{}
+	positions := map[string]int{}
+	missingColumns := []missingReferenceColumn{}
+	for rows.Next() {
+		var sourceTable, referencedTable, from, onUpdate, onDelete string
+		var id, sequence int
+		var to stdsql.NullString
+		if err := rows.Scan(&sourceTable, &id, &sequence, &referencedTable, &from, &to, &onUpdate, &onDelete); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning referencing foreign keys", err)
+		}
+		key := sourceTable + "\x00" + strconv.Itoa(id)
+		position, exists := positions[key]
+		if !exists {
+			position = len(references)
+			positions[key] = position
+			references = append(references, sharedsql.ReferencingForeignKeyInfo{Table: sharedsql.SanitizeDisplay(sourceTable), ForeignKeyInfo: sharedsql.ForeignKeyInfo{ID: strconv.Itoa(id), ReferenceTable: sharedsql.SanitizeDisplay(referencedTable), OnDelete: sharedsql.SanitizeDisplay(onDelete), OnUpdate: sharedsql.SanitizeDisplay(onUpdate)}})
+		}
+		references[position].Columns = append(references[position].Columns, sharedsql.SanitizeDisplay(from))
+		references[position].ReferenceColumns = append(references[position].ReferenceColumns, sharedsql.SanitizeDisplay(to.String))
+		if !to.Valid {
+			missingColumns = append(missingColumns, missingReferenceColumn{foreignKey: position, column: len(references[position].ReferenceColumns) - 1, sequence: sequence, referencedTable: referencedTable})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating referencing foreign keys", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing referencing-foreign-key rows: %w", err)
+	}
+	foreignKeys := make([]sharedsql.ForeignKeyInfo, len(references))
+	for index := range references {
+		foreignKeys[index] = references[index].ForeignKeyInfo
+	}
+	if err := s.resolveMissingReferenceColumns(ctx, foreignKeys, missingColumns); err != nil {
+		return nil, err
+	}
+	for index := range references {
+		references[index].ForeignKeyInfo = foreignKeys[index]
+	}
+	return references, nil
+}
+
+func (s *Service) resolveMissingReferenceColumns(ctx context.Context, foreignKeys []sharedsql.ForeignKeyInfo, missingColumns []missingReferenceColumn) error {
+	primaryKeys := map[string][]string{}
+	for _, missing := range missingColumns {
+		primary, exists := primaryKeys[missing.referencedTable]
+		if !exists {
+			var err error
+			primary, err = s.primaryKeyColumns(ctx, missing.referencedTable)
+			if err != nil {
+				return fmt.Errorf("reading referenced primary key: %w", err)
+			}
+			primaryKeys[missing.referencedTable] = primary
+		}
+		if missing.sequence >= len(primary) {
+			return fmt.Errorf("referenced primary key for %q has no column at position %d", missing.referencedTable, missing.sequence)
+		}
+		foreignKeys[missing.foreignKey].ReferenceColumns[missing.column] = sharedsql.SanitizeDisplay(primary[missing.sequence])
+	}
+	return nil
 }
 
 func (s *Service) CreateForeignKey(ctx context.Context, table string, change sharedsql.ForeignKeyChange) error {

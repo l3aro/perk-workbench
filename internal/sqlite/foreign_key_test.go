@@ -89,3 +89,65 @@ func TestService_dropsInlineForeignKey(t *testing.T) {
 		t.Fatalf("ListForeignKeys() after drop = %#v, want no foreign keys", foreignKeys)
 	}
 }
+
+func TestService_listsReferencingForeignKeys_withCompositeAndSelfReferences(t *testing.T) {
+	// Given
+	service := newMemoryService(t)
+	ctx := context.Background()
+	for _, statement := range []string{
+		"CREATE TABLE parents (first INTEGER, second INTEGER, PRIMARY KEY (first, second))",
+		"CREATE TABLE children (first INTEGER, second INTEGER, FOREIGN KEY (first, second) REFERENCES parents(first, second))",
+		"CREATE TABLE tree (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES tree(id))",
+	} {
+		if _, err := service.Execute(ctx, statement); err != nil {
+			t.Fatalf("creating table: %v", err)
+		}
+	}
+
+	// When
+	parents, err := service.ListReferencingForeignKeys(ctx, "parents")
+	tree, treeErr := service.ListReferencingForeignKeys(ctx, "tree")
+
+	// Then
+	if err != nil {
+		t.Fatalf("ListReferencingForeignKeys(parents) error = %v", err)
+	}
+	if len(parents) != 1 || parents[0].Table != "children" || !slices.Equal(parents[0].Columns, []string{"first", "second"}) || !slices.Equal(parents[0].ReferenceColumns, []string{"first", "second"}) {
+		t.Fatalf("ListReferencingForeignKeys(parents) = %#v, want composite FK from children", parents)
+	}
+	if treeErr != nil {
+		t.Fatalf("ListReferencingForeignKeys(tree) error = %v", treeErr)
+	}
+	if len(tree) != 1 || tree[0].Table != "tree" || !slices.Equal(tree[0].Columns, []string{"parent_id"}) || !slices.Equal(tree[0].ReferenceColumns, []string{"id"}) {
+		t.Fatalf("ListReferencingForeignKeys(tree) = %#v, want self reference", tree)
+	}
+}
+
+func TestService_listsReferencingForeignKeys_withShorthandAndCaseInsensitiveTableNames(t *testing.T) {
+	// Given
+	service := newMemoryService(t)
+	ctx := context.Background()
+	for _, statement := range []string{
+		"CREATE TABLE Parent (id INTEGER PRIMARY KEY)",
+		"CREATE TABLE child (parent_id INTEGER REFERENCES parent)",
+	} {
+		if _, err := service.Execute(ctx, statement); err != nil {
+			t.Fatalf("creating table: %v", err)
+		}
+	}
+
+	// When
+	foreignKeys, err := service.ListReferencingForeignKeys(ctx, "Parent")
+	outbound, outboundErr := service.ListForeignKeys(ctx, "child")
+
+	// Then
+	if err != nil {
+		t.Fatalf("ListReferencingForeignKeys() error = %v", err)
+	}
+	if len(foreignKeys) != 1 || foreignKeys[0].Table != "child" || !slices.Equal(foreignKeys[0].ReferenceColumns, []string{"id"}) {
+		t.Fatalf("ListReferencingForeignKeys() = %#v, want child parent_id references Parent(id)", foreignKeys)
+	}
+	if outboundErr != nil || len(outbound) != 1 || !slices.Equal(outbound[0].ReferenceColumns, []string{"id"}) {
+		t.Fatalf("ListForeignKeys() = %#v, %v; want child parent_id references Parent(id)", outbound, outboundErr)
+	}
+}
