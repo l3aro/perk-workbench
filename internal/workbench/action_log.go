@@ -48,6 +48,24 @@ func (m Model) dropIndexStatement(table, name string) string {
 	return statement
 }
 
+func (m Model) foreignKeyChangeStatement(table, previous string, change sharedsql.ForeignKeyChange) string {
+	columns := make([]string, len(change.Columns))
+	references := make([]string, len(change.ReferenceColumns))
+	for index := range change.Columns {
+		columns[index] = m.actionIdentifier(strings.TrimSpace(change.Columns[index]))
+		references[index] = m.actionIdentifier(strings.TrimSpace(change.ReferenceColumns[index]))
+	}
+	statement := "ALTER TABLE " + m.actionIdentifier(table) + " ADD FOREIGN KEY (" + strings.Join(columns, ", ") + ") REFERENCES " + m.actionIdentifier(change.ReferenceTable) + " (" + strings.Join(references, ", ") + ") ON DELETE " + change.OnDelete + " ON UPDATE " + change.OnUpdate
+	if previous == "" {
+		return statement
+	}
+	return m.dropForeignKeyStatement(table, previous) + "; " + statement
+}
+
+func (m Model) dropForeignKeyStatement(table, previous string) string {
+	return "ALTER TABLE " + m.actionIdentifier(table) + " DROP FOREIGN KEY " + m.actionIdentifier(previous)
+}
+
 func (m Model) columnChangeStatement(table string, change sharedsql.ColumnChange) string {
 	quotedTable := m.actionIdentifier(table)
 	if !m.columnForm.typeChanged && !m.columnForm.hadDefault && change.DefaultValue == nil && change.Nullable == m.columnForm.nullable {

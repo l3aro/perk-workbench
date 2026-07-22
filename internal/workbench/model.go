@@ -34,42 +34,45 @@ const (
 	focusWorkspace = core.FocusWorkspace
 	focusQueryLog  = core.FocusQueryLog
 
-	tabStructure = core.TabStructure
-	tabBrowse    = core.TabBrowse
-	tabSQL       = core.TabSQL
-	tabIndexes   = core.TabIndexes
+	tabStructure   = core.TabStructure
+	tabBrowse      = core.TabBrowse
+	tabSQL         = core.TabSQL
+	tabIndexes     = core.TabIndexes
+	tabForeignKeys = core.TabForeignKeys
 )
 
 type Model struct {
 	core.Workflow
-	pickerDir                                                                   string
-	appContext                                                                  context.Context
-	openTarget                                                                  func(string) tea.Cmd
-	running, cancelRequested, pendingQuit, browseLoading                        bool
-	requestID, activeRequestID, browsePageTag                                   uint64
-	cancel                                                                      context.CancelFunc
-	schema, picker, recent                                                      list.Model
-	structure, browse, results, indexes, queryLog                               table.Model
-	structureColumns                                                            []sharedsql.ColumnInfo
-	indexInfo                                                                   []sharedsql.IndexInfo
-	browseNumericColumns, resultsNumericColumns                                 []bool
-	databaseInfo                                                                sharedsql.DatabaseInfo
-	browseResult                                                                sharedsql.Result
-	resultsStatus, browseStatus                                                 string
-	queryLogEntries                                                             []queryLogEntry
-	queryLogPendingG                                                            bool
-	editor                                                                      editor
-	columnForm                                                                  columnForm
-	browseForm                                                                  browseForm
-	indexForm                                                                   indexForm
-	connection                                                                  connectionForm
-	recentConnections                                                           []recentConnection
-	recentPath                                                                  string
-	width, height, schemaWidth, editorWidth                                     int
-	workspaceHeight, queryLogHeight                                             int
-	editorHeight, resultsHeight, tableViewportWidth                             int
-	structureOffset, browseOffset, resultsOffset, indexesOffset, queryLogOffset int
-	compact, fullscreen                                                         bool
+	pickerDir                                                                                      string
+	appContext                                                                                     context.Context
+	openTarget                                                                                     func(string) tea.Cmd
+	running, cancelRequested, pendingQuit, browseLoading                                           bool
+	requestID, activeRequestID, browsePageTag                                                      uint64
+	cancel                                                                                         context.CancelFunc
+	schema, picker, recent                                                                         list.Model
+	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
+	structureColumns                                                                               []sharedsql.ColumnInfo
+	indexInfo                                                                                      []sharedsql.IndexInfo
+	foreignKeyInfo                                                                                 []sharedsql.ForeignKeyInfo
+	browseNumericColumns, resultsNumericColumns                                                    []bool
+	databaseInfo                                                                                   sharedsql.DatabaseInfo
+	browseResult                                                                                   sharedsql.Result
+	resultsStatus, browseStatus                                                                    string
+	queryLogEntries                                                                                []queryLogEntry
+	queryLogPendingG                                                                               bool
+	editor                                                                                         editor
+	columnForm                                                                                     columnForm
+	browseForm                                                                                     browseForm
+	indexForm                                                                                      indexForm
+	foreignKeyForm                                                                                 foreignKeyForm
+	connection                                                                                     connectionForm
+	recentConnections                                                                              []recentConnection
+	recentPath                                                                                     string
+	width, height, schemaWidth, editorWidth                                                        int
+	workspaceHeight, queryLogHeight                                                                int
+	editorHeight, resultsHeight, tableViewportWidth                                                int
+	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
+	compact, fullscreen                                                                            bool
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -113,19 +116,20 @@ func New(target string, opener databaseOpener) Model {
 	editor := newEditor()
 	editor.textarea.SetVirtualCursor(false)
 	model := Model{
-		Workflow:   core.New(target),
-		appContext: opener.ctx,
-		openTarget: opener.command,
-		schema:     newSchemaList(),
-		picker:     newList("Choose database", true),
-		recent:     newList("Recent connections", true),
-		structure:  newResultsTable(),
-		browse:     newResultsTable(),
-		results:    newResultsTable(),
-		indexes:    newResultsTable(),
-		queryLog:   newResultsTable(),
-		editor:     editor,
-		connection: newConnectionForm(),
+		Workflow:    core.New(target),
+		appContext:  opener.ctx,
+		openTarget:  opener.command,
+		schema:      newSchemaList(),
+		picker:      newList("Choose database", true),
+		recent:      newList("Recent connections", true),
+		structure:   newResultsTable(),
+		browse:      newResultsTable(),
+		results:     newResultsTable(),
+		indexes:     newResultsTable(),
+		foreignKeys: newResultsTable(),
+		queryLog:    newResultsTable(),
+		editor:      editor,
+		connection:  newConnectionForm(),
 	}
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Query", "Duration", "Fetch"}, nil))
 	model.queryLog.Blur()

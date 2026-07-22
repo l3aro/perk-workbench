@@ -34,6 +34,7 @@ const (
 	TabBrowse
 	TabSQL
 	TabIndexes
+	TabForeignKeys
 )
 
 type Query struct {
@@ -157,8 +158,8 @@ func (w *Workflow) ChangeBrowsePage(delta int) bool {
 
 func (w *Workflow) ToggleTab(forward bool) {
 	if forward {
-		w.Tab = (w.Tab + 1) % 4
+		w.Tab = (w.Tab + 1) % 5
 		return
 	}
-	w.Tab = (w.Tab + 3) % 4
+	w.Tab = (w.Tab + 4) % 5
 }
