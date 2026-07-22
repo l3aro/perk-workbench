@@ -1,27 +1,15 @@
 package workbench
 
 import (
-	"context"
-	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/dustin/go-humanize"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
-
-type querySucceededMsg struct {
-	requestID uint64
-	result    sharedsql.Result
-}
-
-type queryFailedMsg struct {
-	requestID uint64
-	err       error
-}
-
-type queryCanceledMsg struct{ requestID uint64 }
 
 type tableInfoMsg struct {
 	table   string
@@ -30,85 +18,16 @@ type tableInfoMsg struct {
 }
 
 type browseTableMsg struct {
-	table  string
-	page   int
-	result sharedsql.Result
-	err    error
+	table     string
+	page      int
+	startedAt time.Time
+	result    sharedsql.Result
+	err       error
 }
 
 type columnAlteredMsg struct{ err error }
 
 type browseRowUpdatedMsg struct{ err error }
-
-func (m Model) startQuery() (tea.Model, tea.Cmd) {
-	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.textarea.Value())
-	if !ok {
-		return m, nil
-	}
-	m.running, m.activeRequestID, m.cancelRequested = true, query.RequestID, false
-	m.cancel = func() { m.Workflow.CancelQuery() }
-	return m, func() tea.Msg {
-		result, err := query.Service.Execute(query.Context, query.Statement)
-		if err == nil {
-			return querySucceededMsg{requestID: query.RequestID, result: result}
-		}
-		if errors.Is(err, context.Canceled) {
-			return queryCanceledMsg{requestID: query.RequestID}
-		}
-		return queryFailedMsg{requestID: query.RequestID, err: err}
-	}
-}
-
-func (m *Model) cancelQuery() {
-	if m.cancel != nil {
-		m.cancel()
-	}
-	m.Workflow.CancelQuery()
-	m.cancelRequested = true
-}
-
-func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd) {
-	if !m.Workflow.MatchesQuery(message.requestID) {
-		return m, nil
-	}
-	canceled, quit := m.Workflow.FinishQuery()
-	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
-	if canceled {
-		m.Status = "query canceled"
-	} else {
-		m.setResults(message.result)
-	}
-	if quit {
-		return m, tea.Quit
-	}
-	return m, nil
-}
-
-func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
-	if !m.Workflow.MatchesQuery(message.requestID) {
-		return m, nil
-	}
-	_, quit := m.Workflow.FinishQuery()
-	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
-	m.Status = safeText(fmt.Sprintf("query failed: %v", message.err))
-	if quit {
-		return m, tea.Quit
-	}
-	return m, nil
-}
-
-func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd) {
-	if !m.Workflow.MatchesQuery(message.requestID) {
-		return m, nil
-	}
-	_, quit := m.Workflow.FinishQuery()
-	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
-	m.Status = "query canceled"
-	if quit {
-		return m, tea.Quit
-	}
-	return m, nil
-}
 
 func (m *Model) setResults(result sharedsql.Result) {
 	m.resultsNumericColumns = numericColumns(result.ColumnTypes)
@@ -130,10 +49,11 @@ func (m *Model) setResults(result sharedsql.Result) {
 	}
 	m.results.SetRows(nil)
 	m.results.SetColumns(tableColumns(titles, rows))
-	resizeResultsTable(&m.results, m.tableViewportWidth, m.results.Height()+1)
+	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
 	m.results.SetRows(rows)
 	m.resultsOffset = 0
 	m.results.Focus()
+	m.editor.enterNormalMode()
 	m.editor.textarea.Blur()
 	rowLabel := "rows"
 	if len(rows) == 1 {
@@ -160,9 +80,10 @@ func (m Model) loadTableInfo() tea.Cmd {
 
 func (m Model) loadBrowse() tea.Cmd {
 	tableName, page, service := m.SelectedTable, m.BrowsePage, m.Database
+	startedAt := time.Now()
 	return func() tea.Msg {
 		result, err := service.BrowseTable(m.appContext, tableName, page*browsePageSize, browsePageSize)
-		return browseTableMsg{table: tableName, page: page, result: result, err: err}
+		return browseTableMsg{table: tableName, page: page, startedAt: startedAt, result: result, err: err}
 	}
 }
 
@@ -248,6 +169,22 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.setBrowse(message.result)
+	duration := message.result.Duration
+	if !message.startedAt.IsZero() {
+		duration = time.Since(message.startedAt)
+	}
+	fetched := len(message.result.Rows)
+	quote := `"`
+	if m.databaseInfo.Product == "MySQL" {
+		quote = "`"
+	}
+	quotedTable := quote + strings.ReplaceAll(message.table, quote, quote+quote) + quote
+	m.appendQueryLog(queryLogEntry{
+		startedAt: message.startedAt,
+		statement: fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, browsePageSize, message.page*browsePageSize),
+		duration:  duration,
+		fetched:   fetched,
+	})
 	start, end := message.page*browsePageSize+1, message.page*browsePageSize+len(message.result.Rows)
 	if len(message.result.Rows) == 0 {
 		start = 0
@@ -279,7 +216,7 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 	}
 	m.browse.SetRows(nil)
 	m.browse.SetColumns(tableColumns(titles, rows))
-	resizeResultsTable(&m.browse, m.tableViewportWidth, m.browse.Height()+1)
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-5, 2))
 	m.browse.SetRows(rows)
 	if cursor >= 0 && len(rows) > 0 {
 		m.browse.SetCursor(min(cursor, len(rows)-1))
