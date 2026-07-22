@@ -1,9 +1,11 @@
 package workbench
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
@@ -218,5 +220,52 @@ func TestStructureForm_escapeDoesNotCancelRunningQuery(t *testing.T) {
 	}
 	if !model.columnForm.confirming() {
 		t.Fatal("escape did not open discard confirmation")
+	}
+}
+
+func TestStructureForm_defaultDisplayDistinguishesNoneFromCleared(t *testing.T) {
+	// Given
+	noDefault := newColumnForm(sqlite.ColumnInfo{Name: "a", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	hasDefault := newColumnForm(sqlite.ColumnInfo{Name: "a", Type: "TEXT", DefaultValue: ptr("now")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+
+	// Then
+	if got, want := noDefault.defaultDisplay(), "(none)"; !strings.Contains(got, want) {
+		t.Errorf("no-default display = %q, want contains %q", got, want)
+	}
+	if got, want := hasDefault.defaultDisplay(), "now"; !strings.Contains(got, want) {
+		t.Errorf("with-default display = %q, want contains %q", got, want)
+	}
+
+	// When — user clears an existing default
+	hasDefault.preset.SetValue("")
+
+	// Then
+	if got, want := hasDefault.defaultDisplay(), "(cleared)"; !strings.Contains(got, want) {
+		t.Errorf("cleared display = %q, want contains %q", got, want)
+	}
+}
+
+func ptr[T any](value T) *T { return &value }
+
+func TestStructureForm_viewHasNoStrayPromptBetweenLabelAndValue(t *testing.T) {
+	// Given
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1, Nullable: false}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.setWidth(40)
+
+	// When
+	plain := ansi.Strip(form.View())
+
+	// Then
+	for _, row := range strings.Split(plain, "\n") {
+		if strings.Contains(row, " > ") {
+			t.Errorf("row %q still contains the textinput default prompt", row)
+		}
+	}
+	expectedNameRow := "Name" + strings.Repeat(" ", formLabelWidth-len("Name")+len(formFieldGap)) + "id"
+	if !strings.Contains(plain, expectedNameRow) {
+		t.Errorf("form view = %q, want a gap between the label and value", plain)
+	}
+	if !strings.Contains(form.View(), headerStyle.Padding(0, 0).Width(formLabelWidth).Render("Name")) {
+		t.Errorf("form view = %q, want the focused label highlighted", form.View())
 	}
 }

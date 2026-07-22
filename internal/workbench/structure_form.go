@@ -43,6 +43,7 @@ type columnForm struct {
 	typeChanged  bool
 	primaryKey   int
 	nullable     bool
+	hadDefault   bool
 	typeIndex    int
 	typePicker   int
 	typeOptions  []sharedsql.ColumnType
@@ -52,14 +53,23 @@ type columnForm struct {
 
 func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnType) columnForm {
 	name := textinput.New()
-	name.Prompt = "Name: "
+	name.Prompt = ""
 	name.SetValue(column.Name)
 	preset := textinput.New()
-	preset.Prompt = "Default: "
+	preset.Prompt = ""
 	if column.DefaultValue != nil {
 		preset.SetValue(*column.DefaultValue)
 	}
-	form := columnForm{previousName: column.Name, originalType: column.Type, primaryKey: column.PrimaryKey, nullable: column.Nullable, typeOptions: typeOptions, name: name, preset: preset}
+	form := columnForm{
+		previousName: column.Name,
+		originalType: column.Type,
+		primaryKey:   column.PrimaryKey,
+		nullable:     column.Nullable,
+		hadDefault:   column.DefaultValue != nil,
+		typeOptions:  typeOptions,
+		name:         name,
+		preset:       preset,
+	}
 	if index, values, ok := sharedsql.MatchColumnType(typeOptions, column.Type); ok {
 		form.selectType(index, values)
 		return form
@@ -250,6 +260,6 @@ func (f *columnForm) setWidth(width int) {
 		inputs = append(inputs, &f.parameters[index])
 	}
 	for _, input := range inputs {
-		input.SetWidth(max(width-12, 1))
+		input.SetWidth(max(width-formLabelWidth-len(formFieldGap)-1, 1))
 	}
 }

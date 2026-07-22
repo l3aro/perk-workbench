@@ -12,7 +12,7 @@ func (f *columnForm) selectType(index int, values []string) {
 	f.parameters = make([]textinput.Model, len(parameters))
 	for parameterIndex, parameter := range parameters {
 		input := textinput.New()
-		input.Prompt = parameter.Name + ": "
+		input.Prompt = ""
 		input.SetValue(parameter.Default)
 		if parameterIndex < len(values) {
 			input.SetValue(strings.TrimSpace(values[parameterIndex]))
