@@ -373,7 +373,7 @@ func (m Model) workspaceView() string {
 		results := tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth)
 		content = lipgloss.JoinVertical(lipgloss.Left, editor, results)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), content)
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content)
 }
 
 func (m Model) structureView() string {

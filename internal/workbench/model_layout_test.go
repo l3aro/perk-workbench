@@ -347,6 +347,19 @@ func assertTableTitlesAndPositiveWidths(t *testing.T, resultTable table.Model, t
 	}
 }
 
+func TestWorkspaceView_separatesTabsAndContent(t *testing.T) {
+	model := readyModel(t)
+	model = resizeModel(model, 100, 24)
+	model.Tab = tabStructure
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}})
+	model = updated.(Model)
+
+	lines := strings.Split(ansi.Strip(model.workspaceView()), "\n")
+	if len(lines) < 2 || strings.TrimSpace(lines[1]) != "" {
+		t.Errorf("workspace lines = %#v, want a blank line after tabs", lines)
+	}
+}
+
 func assertTableRows(t *testing.T, resultTable table.Model, want []table.Row) {
 	t.Helper()
 	if got := resultTable.Rows(); !slices.EqualFunc(got, want, func(gotRow, wantRow table.Row) bool {
