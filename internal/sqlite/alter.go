@@ -50,6 +50,23 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 }
 
 func (s *Service) rebuildTable(ctx context.Context, table string, change sharedsql.ColumnChange) (err error) {
+	prepare := func(*stdsql.Tx) error { return nil }
+	if change.Name != change.PreviousName {
+		previousName := change.PreviousName
+		prepare = func(transaction *stdsql.Tx) error {
+			if _, err := transaction.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(previousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
+				return fmt.Errorf("renaming column: %w", err)
+			}
+			return nil
+		}
+		change.PreviousName = change.Name
+	}
+	return s.rebuildTableWithSQL(ctx, table, prepare, func(createSQL string) (string, error) {
+		return rewriteCreateTable(createSQL, "__perk_column_edit", change)
+	})
+}
+
+func (s *Service) rebuildTableWithSQL(ctx context.Context, table string, prepare func(*stdsql.Tx) error, rewrite func(string) (string, error)) (err error) {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("acquiring sqlite connection: %w", err)
@@ -74,18 +91,15 @@ func (s *Service) rebuildTable(ctx context.Context, table string, change shareds
 		return fmt.Errorf("starting schema migration: %w", err)
 	}
 	defer transaction.Rollback()
-	if change.Name != change.PreviousName {
-		if _, err := transaction.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
-			return fmt.Errorf("renaming column: %w", err)
-		}
-		change.PreviousName = change.Name
+	if err := prepare(transaction); err != nil {
+		return err
 	}
 	createSQL, schemaObjects, columns, err := rebuildInputs(ctx, transaction, table)
 	if err != nil {
 		return err
 	}
 	temporary := "__perk_column_edit"
-	rebuiltSQL, err := rewriteCreateTable(createSQL, temporary, change)
+	rebuiltSQL, err := rewrite(createSQL)
 	if err != nil {
 		return err
 	}

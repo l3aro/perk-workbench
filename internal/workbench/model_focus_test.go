@@ -63,6 +63,22 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
+	assertTab(t, model, tabIndexes)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	model = updated.(Model)
+
+	// Then
+	if got := model.editor.textarea.Value(); got != "select " {
+		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+
+	// Then
 	assertTab(t, model, tabStructure)
 
 	// When
@@ -80,15 +96,6 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 
 	// Then
 	assertTab(t, model, tabBrowse)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	model = updated.(Model)
-
-	// Then
-	if got := model.editor.textarea.Value(); got != "select " {
-		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
-	}
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})

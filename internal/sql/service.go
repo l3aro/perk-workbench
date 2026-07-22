@@ -16,6 +16,10 @@ type Service interface {
 	Execute(context.Context, string) (Result, error)
 	ListSchema(context.Context) ([]SchemaObject, error)
 	TableInfo(context.Context, string) ([]ColumnInfo, error)
+	ListIndexes(context.Context, string) ([]IndexInfo, error)
+	CreateIndex(context.Context, string, IndexChange) error
+	ReplaceIndex(context.Context, string, string, IndexChange) error
+	DropIndex(context.Context, string, string) error
 	AlterColumn(context.Context, string, ColumnChange) error
 	BrowseTable(context.Context, string, int, int) (Result, error)
 }

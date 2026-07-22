@@ -32,6 +32,7 @@ const (
 	TabStructure Tab = iota
 	TabBrowse
 	TabSQL
+	TabIndexes
 )
 
 type Query struct {
@@ -155,8 +156,8 @@ func (w *Workflow) ChangeBrowsePage(delta int) bool {
 
 func (w *Workflow) ToggleTab(forward bool) {
 	if forward {
-		w.Tab = (w.Tab + 1) % 3
+		w.Tab = (w.Tab + 1) % 4
 		return
 	}
-	w.Tab = (w.Tab + 2) % 3
+	w.Tab = (w.Tab + 3) % 4
 }

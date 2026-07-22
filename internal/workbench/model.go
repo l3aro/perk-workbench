@@ -36,32 +36,35 @@ const (
 	tabStructure = core.TabStructure
 	tabBrowse    = core.TabBrowse
 	tabSQL       = core.TabSQL
+	tabIndexes   = core.TabIndexes
 )
 
 type Model struct {
 	core.Workflow
-	pickerDir                                       string
-	appContext                                      context.Context
-	openTarget                                      func(string) tea.Cmd
-	running, cancelRequested, pendingQuit           bool
-	requestID, activeRequestID                      uint64
-	cancel                                          context.CancelFunc
-	schema, picker, recent                          list.Model
-	structure, browse, results                      table.Model
-	structureColumns                                []sharedsql.ColumnInfo
-	browseNumericColumns, resultsNumericColumns     []bool
-	databaseInfo                                    sharedsql.DatabaseInfo
-	browseResult                                    sharedsql.Result
-	editor                                          editor
-	columnForm                                      columnForm
-	browseForm                                      browseForm
-	connection                                      connectionForm
-	recentConnections                               []recentConnection
-	recentPath                                      string
-	width, height, schemaWidth, editorWidth         int
-	editorHeight, resultsHeight, tableViewportWidth int
-	structureOffset, browseOffset, resultsOffset    int
-	compact                                         bool
+	pickerDir                                                   string
+	appContext                                                  context.Context
+	openTarget                                                  func(string) tea.Cmd
+	running, cancelRequested, pendingQuit                       bool
+	requestID, activeRequestID                                  uint64
+	cancel                                                      context.CancelFunc
+	schema, picker, recent                                      list.Model
+	structure, browse, results, indexes                         table.Model
+	structureColumns                                            []sharedsql.ColumnInfo
+	indexInfo                                                   []sharedsql.IndexInfo
+	browseNumericColumns, resultsNumericColumns                 []bool
+	databaseInfo                                                sharedsql.DatabaseInfo
+	browseResult                                                sharedsql.Result
+	editor                                                      editor
+	columnForm                                                  columnForm
+	browseForm                                                  browseForm
+	indexForm                                                   indexForm
+	connection                                                  connectionForm
+	recentConnections                                           []recentConnection
+	recentPath                                                  string
+	width, height, schemaWidth, editorWidth                     int
+	editorHeight, resultsHeight, tableViewportWidth             int
+	structureOffset, browseOffset, resultsOffset, indexesOffset int
+	compact                                                     bool
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -114,6 +117,7 @@ func New(target string, opener databaseOpener) Model {
 		structure:  newResultsTable(),
 		browse:     newResultsTable(),
 		results:    newResultsTable(),
+		indexes:    newResultsTable(),
 		editor:     editor,
 		connection: newConnectionForm(),
 	}

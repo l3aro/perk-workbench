@@ -95,6 +95,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateQueryCanceled(message)
 	case tableInfoMsg:
 		return m.updateTableInfo(message)
+	case indexesLoadedMsg:
+		return m.updateIndexes(message)
+	case indexChangedMsg:
+		return m.updateIndexChanged(message)
+	case indexDeletedMsg:
+		return m.updateIndexDeleted(message)
 	case browseTableMsg:
 		return m.updateBrowse(message)
 	case connectionTestMsg:
@@ -165,7 +171,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					m.SelectTable(item.title)
 					m.focusActiveTable()
-					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
+					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes())
 				}
 			}
 			m.schema, command = m.schema.Update(message)
@@ -237,6 +243,45 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.editor, command = m.editor.Update(message)
 				}
+			case tabIndexes:
+				if m.indexForm.active() {
+					command, action := m.indexForm.Update(message)
+					switch action {
+					case indexFormSave:
+						m.indexForm.saving = true
+						return m, m.saveIndex()
+					case indexFormDelete:
+						m.indexForm.saving = true
+						return m, m.deleteIndex()
+					case indexFormDiscard:
+						m.indexForm.close()
+					}
+					return m, command
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok {
+					switch keyPress.String() {
+					case "n":
+						m.openIndexForm(nil)
+						return m, nil
+					case "enter", "i":
+						row := m.indexes.Cursor()
+						if row >= 0 && row < len(m.indexInfo) {
+							m.openIndexForm(&m.indexInfo[row])
+						}
+						return m, nil
+					case "d":
+						row := m.indexes.Cursor()
+						if row >= 0 && row < len(m.indexInfo) {
+							m.openIndexForm(&m.indexInfo[row])
+							m.indexForm.mode = indexFormConfirmDelete
+						}
+						return m, nil
+					}
+					if scrollTable(&m.indexes, &m.indexesOffset, m.tableViewportWidth, keyPress) {
+						return m, nil
+					}
+				}
+				m.indexes, command = m.indexes.Update(message)
 			}
 			return m, command
 		}
@@ -249,7 +294,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) formActive() bool { return m.columnForm.active() || m.browseForm.active() }
+func (m Model) formActive() bool {
+	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active()
+}
 
 func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
 	switch keyPress.Key().Code {
@@ -282,6 +329,8 @@ func (m *Model) focusActiveTable() {
 		m.browse.Focus()
 	case tabSQL:
 		m.editor.textarea.Focus()
+	case tabIndexes:
+		m.indexes.Focus()
 	}
 }
 
@@ -289,4 +338,5 @@ func (m *Model) blurTables() {
 	m.structure.Blur()
 	m.browse.Blur()
 	m.results.Blur()
+	m.indexes.Blur()
 }
