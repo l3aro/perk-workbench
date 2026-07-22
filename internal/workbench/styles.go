@@ -286,7 +286,8 @@ func (m *Model) layout(width, height int) {
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.browseForm.setWidth(m.tableViewportWidth)
 	m.indexForm.setWidth(m.tableViewportWidth)
-	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.queryLog} {
+	m.foreignKeyForm.setWidth(m.tableViewportWidth)
+	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.foreignKeys, &m.queryLog} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
 		for index, column := range columns {
@@ -299,10 +300,12 @@ func (m *Model) layout(width, height int) {
 	resizeResultsTable(&m.structure, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
 	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-5, 2))
 	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
+	resizeResultsTable(&m.foreignKeys, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
 	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
 	m.browseOffset = tableOffset(m.browse, m.browseOffset, m.tableViewportWidth)
 	m.resultsOffset = tableOffset(m.results, m.resultsOffset, m.tableViewportWidth)
 	m.indexesOffset = tableOffset(m.indexes, m.indexesOffset, m.tableViewportWidth)
+	m.foreignKeysOffset = tableOffset(m.foreignKeys, m.foreignKeysOffset, m.tableViewportWidth)
 	m.queryLogOffset = tableOffset(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
 }
 
@@ -382,7 +385,7 @@ func (m Model) queryLogContentView() string {
 }
 
 func (m Model) workspaceView() string {
-	tabs := []string{"Structure", "Browse", "SQL", "Indexes"}
+	tabs := []string{"Structure", "Browse", "SQL", "Indexes", "Foreign Keys"}
 	for index := range tabs {
 		if workspaceTab(index) == m.Tab {
 			tabs[index] = headerStyle.Render(tabs[index])
@@ -400,6 +403,8 @@ func (m Model) workspaceView() string {
 		content = m.sqlPaneView()
 	case tabIndexes:
 		content = m.indexesView()
+	case tabForeignKeys:
+		content = m.foreignKeysView()
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content)
 }
@@ -439,6 +444,13 @@ func (m Model) indexesView() string {
 		return m.indexForm.View()
 	}
 	return tableViewportView(m.indexes, m.indexesOffset, m.tableViewportWidth)
+}
+
+func (m Model) foreignKeysView() string {
+	if m.foreignKeyForm.active() {
+		return m.foreignKeyForm.View()
+	}
+	return tableViewportView(m.foreignKeys, m.foreignKeysOffset, m.tableViewportWidth)
 }
 
 func (m Model) footer() string {

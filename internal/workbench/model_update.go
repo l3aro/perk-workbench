@@ -134,10 +134,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateTableInfo(message)
 	case indexesLoadedMsg:
 		return m.updateIndexes(message)
+	case foreignKeysLoadedMsg:
+		return m.updateForeignKeys(message)
 	case indexChangedMsg:
 		return m.updateIndexChanged(message)
 	case indexDeletedMsg:
 		return m.updateIndexDeleted(message)
+	case foreignKeyChangedMsg:
+		return m.updateForeignKeyChanged(message)
+	case foreignKeyDeletedMsg:
+		return m.updateForeignKeyDeleted(message)
 	case browseTableMsg:
 		return m.updateBrowse(message)
 	case connectionTestMsg:
@@ -208,7 +214,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					m.SelectTable(item.title)
 					m.focusActiveTable()
-					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes())
+					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys())
 				}
 			}
 			m.schema, command = m.schema.Update(message)
@@ -324,6 +330,45 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				m.indexes, command = m.indexes.Update(message)
+			case tabForeignKeys:
+				if m.foreignKeyForm.active() {
+					command, action := m.foreignKeyForm.Update(message)
+					switch action {
+					case foreignKeyFormSave:
+						m.foreignKeyForm.saving = true
+						return m, m.saveForeignKey()
+					case foreignKeyFormDelete:
+						m.foreignKeyForm.saving = true
+						return m, m.deleteForeignKey()
+					case foreignKeyFormDiscard:
+						m.foreignKeyForm.close()
+					}
+					return m, command
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok {
+					switch keyPress.String() {
+					case "n":
+						m.openForeignKeyForm(nil)
+						return m, nil
+					case "enter", "i":
+						row := m.foreignKeys.Cursor()
+						if row >= 0 && row < len(m.foreignKeyInfo) {
+							m.openForeignKeyForm(&m.foreignKeyInfo[row])
+						}
+						return m, nil
+					case "d":
+						row := m.foreignKeys.Cursor()
+						if row >= 0 && row < len(m.foreignKeyInfo) {
+							m.openForeignKeyForm(&m.foreignKeyInfo[row])
+							m.foreignKeyForm.mode = foreignKeyFormConfirmDelete
+						}
+						return m, nil
+					}
+					if scrollTable(&m.foreignKeys, &m.foreignKeysOffset, m.tableViewportWidth, keyPress) {
+						return m, nil
+					}
+				}
+				m.foreignKeys, command = m.foreignKeys.Update(message)
 			}
 			return m, command
 		case focusQueryLog:
@@ -371,7 +416,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) formActive() bool {
-	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active()
+	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active() || m.foreignKeyForm.active()
 }
 
 func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
@@ -417,6 +462,8 @@ func (m *Model) focusActiveTable() {
 		}
 	case tabIndexes:
 		m.indexes.Focus()
+	case tabForeignKeys:
+		m.foreignKeys.Focus()
 	}
 }
 
@@ -425,5 +472,6 @@ func (m *Model) blurTables() {
 	m.browse.Blur()
 	m.results.Blur()
 	m.indexes.Blur()
+	m.foreignKeys.Blur()
 	m.queryLog.Blur()
 }
