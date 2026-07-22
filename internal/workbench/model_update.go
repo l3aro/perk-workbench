@@ -22,6 +22,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(message.Width, message.Height)
 		return m, nil
 	case tea.KeyPressMsg:
+		if message.Key().Code == 'e' && message.Key().Mod == tea.ModCtrl {
+			if command, handled := m.openExternalEditor(); handled {
+				return m, command
+			}
+		}
 		if message.String() == "ctrl+c" || (message.String() == "q" && !m.formActive() && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || m.connection.inputFocused())) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.textarea.Value() == "")) {
 			if m.Running() {
 				m.RequestQuit()
@@ -98,6 +103,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateColumnAltered(message)
 	case browseRowUpdatedMsg:
 		return m.updateBrowseRowUpdated(message)
+	case externalEditorFinishedMsg:
+		if message.err != nil {
+			m.Status = safeText(fmt.Sprintf("editor failed: %v", message.err))
+			return m, nil
+		}
+		if !m.setFocusedTextValue(message.value) {
+			m.Status = "editor target is no longer focused"
+		}
+		return m, nil
 	}
 
 	return m.updateActive(message)
