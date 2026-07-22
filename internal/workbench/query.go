@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/dustin/go-humanize"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
@@ -142,10 +143,11 @@ func (m *Model) setResults(result sharedsql.Result) {
 	if result.RowsAffected == 1 {
 		affectedLabel = "row"
 	}
-	m.Status = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
+	m.resultsStatus = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
 	if result.Truncated {
-		m.Status += " | truncated"
+		m.resultsStatus += " | truncated"
 	}
+	m.Status = ""
 }
 
 func (m Model) loadTableInfo() tea.Cmd {
@@ -237,14 +239,21 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 }
 
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
-	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.err != nil {
-		if message.err != nil {
-			m.Status = safeText(fmt.Sprintf("loading browse: %v", message.err))
-		}
+	if message.table != m.SelectedTable || message.page != m.BrowsePage {
+		return m, nil
+	}
+	m.browseLoading = false
+	if message.err != nil {
+		m.Status = safeText(fmt.Sprintf("loading browse: %v", message.err))
 		return m, nil
 	}
 	m.setBrowse(message.result)
-	m.Status = fmt.Sprintf("%s | page %d | %d rows", safeText(message.table), message.page+1, len(message.result.Rows))
+	start, end := message.page*browsePageSize+1, message.page*browsePageSize+len(message.result.Rows)
+	if len(message.result.Rows) == 0 {
+		start = 0
+	}
+	m.browseStatus = fmt.Sprintf("%s | %s-%s of %s", safeText(message.table), humanize.Comma(int64(start)), humanize.Comma(int64(end)), humanize.Comma(message.result.TotalRows))
+	m.Status = ""
 	return m, nil
 }
 

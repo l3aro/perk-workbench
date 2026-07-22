@@ -39,8 +39,8 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "projects" || got[0][1] != "NULL" {
 		t.Fatalf("result rows = %#v, want populated sanitized cells", got)
 	}
-	if !strings.Contains(model.Status, "1 row affected") || !strings.Contains(model.Status, "truncated") {
-		t.Fatalf("success status = %q, want row count and truncation", model.Status)
+	if !strings.Contains(model.resultsStatus, "1 row affected") || !strings.Contains(model.resultsStatus, "truncated") {
+		t.Fatalf("result status = %q, want row count and truncation", model.resultsStatus)
 	}
 }
 
@@ -154,6 +154,22 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 			t.Fatalf("browse rows = %#v, want replacement row", got)
 		}
 	})
+}
+
+func TestBrowse_status_shows_current_batch_and_total(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable, model.BrowsePage = "projects", 1
+	rows := make([][]*string, browsePageSize)
+
+	// When
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, TotalRows: 1000}})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.browseStatus, "projects | 26-50 of 1,000"; got != want {
+		t.Fatalf("browse status = %q, want %q", got, want)
+	}
 }
 
 func TestExecute_error_message_retains_prior_results(t *testing.T) {

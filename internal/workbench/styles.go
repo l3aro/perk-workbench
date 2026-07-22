@@ -287,9 +287,9 @@ func (m *Model) layout(width, height int) {
 		}
 		resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 	}
-	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-3, 2))
+	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, max(contentHeight-4, 2))
-	resizeResultsTable(&m.browse, m.tableViewportWidth, max(contentHeight-4, 2))
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(contentHeight-5, 2))
 	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(contentHeight-4, 2))
 	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
 	m.browseOffset = tableOffset(m.browse, m.browseOffset, m.tableViewportWidth)
@@ -388,7 +388,7 @@ func (m Model) sqlPaneView() string {
 	if m.editor.insert {
 		mode = "INSERT"
 	}
-	return content + "\n" + headerStyle.Render(mode)
+	return content + "\n" + paneStatus(headerStyle.Render(mode), m.resultsStatus, m.tableViewportWidth)
 }
 
 func (m Model) structureView() string {
@@ -402,7 +402,11 @@ func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.browseForm.View()
 	}
-	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth) + "\n" + paneStatus("", m.browseStatus, m.tableViewportWidth)
+}
+
+func paneStatus(left, right string, width int) string {
+	return left + lipgloss.NewStyle().Width(max(width-lipgloss.Width(left), 0)).Align(lipgloss.Right).Render(right)
 }
 
 func (m Model) indexesView() string {
@@ -417,11 +421,15 @@ func (m Model) footer() string {
 		return safeText(m.Status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | q quit")
 	}
 	if m.State == stateReady {
-		identity := ""
-		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
-			identity = " | " + m.databaseInfo.Product + " " + m.databaseInfo.Version
+		parts := []string{}
+		if m.Status != "" {
+			parts = append(parts, m.Status)
 		}
-		return safeText(m.Status + identity + " | 1 tables | 2 tabs | tab switch view | q quit")
+		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
+			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
+		}
+		parts = append(parts, "1 tables", "2 tabs", "tab switch view", "q quit")
+		return safeText(strings.Join(parts, " | "))
 	}
 	return safeText(m.Status + " | q quit")
 }
