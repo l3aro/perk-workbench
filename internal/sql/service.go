@@ -21,6 +21,7 @@ type Service interface {
 	ReplaceIndex(context.Context, string, string, IndexChange) error
 	DropIndex(context.Context, string, string) error
 	ListForeignKeys(context.Context, string) ([]ForeignKeyInfo, error)
+	ListReferencingForeignKeys(context.Context, string) ([]ReferencingForeignKeyInfo, error)
 	CreateForeignKey(context.Context, string, ForeignKeyChange) error
 	ReplaceForeignKey(context.Context, string, string, ForeignKeyChange) error
 	DropForeignKey(context.Context, string, string) error

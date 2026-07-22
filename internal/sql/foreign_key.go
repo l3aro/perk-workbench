@@ -14,6 +14,12 @@ type ForeignKeyInfo struct {
 	OnUpdate         string
 }
 
+// ReferencingForeignKeyInfo identifies a foreign key declared by another table.
+type ReferencingForeignKeyInfo struct {
+	Table string
+	ForeignKeyInfo
+}
+
 type ForeignKeyChange struct {
 	Columns          []string
 	ReferenceTable   string
