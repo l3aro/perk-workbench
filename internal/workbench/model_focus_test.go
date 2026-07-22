@@ -79,6 +79,13 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
+	assertTab(t, model, tabForeignKeys)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+
+	// Then
 	assertTab(t, model, tabStructure)
 
 	// When
@@ -407,6 +414,8 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	model = updated.(Model)
 
 	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
