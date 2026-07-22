@@ -20,7 +20,7 @@ type editor struct {
 func newEditor() editor {
 	input := textarea.New()
 	input.Focus()
-	return editor{textarea: input, insert: true}
+	return editor{textarea: input}
 }
 
 func (e editor) Update(message tea.Msg) (editor, tea.Cmd) {

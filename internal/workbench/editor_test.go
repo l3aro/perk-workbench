@@ -11,6 +11,7 @@ func TestEditor_preserves_inserted_SQL_and_enters_normal_mode_after_escape(t *te
 	editor := newEditor()
 
 	// When
+	editor, _ = editor.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	editor, _ = editor.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
 	editor, _ = editor.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	editor, _ = editor.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
@@ -24,6 +25,31 @@ func TestEditor_preserves_inserted_SQL_and_enters_normal_mode_after_escape(t *te
 	}
 	if got := editor.textarea.Column(); got != 0 {
 		t.Errorf("editor column = %d, want 0", got)
+	}
+}
+
+func TestEditor_startsInNormalModeAndRequiresIToEdit(t *testing.T) {
+	// Given
+	editor := newEditor()
+
+	// When
+	editor, _ = editor.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
+
+	// Then
+	if editor.insert {
+		t.Fatal("editor started in insert mode")
+	}
+	if got := editor.textarea.Value(); got != "" {
+		t.Errorf("editor value = %q, want empty before insert mode", got)
+	}
+
+	// When
+	editor, _ = editor.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	editor, _ = editor.Update(tea.KeyPressMsg{Code: 'S', Text: "S"})
+
+	// Then
+	if got := editor.textarea.Value(); got != "S" {
+		t.Errorf("editor value = %q, want S after entering insert mode", got)
 	}
 }
 
