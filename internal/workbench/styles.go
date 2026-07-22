@@ -248,7 +248,7 @@ func compactPane(content string, width, height int) string {
 func (m *Model) layout(width, height int) {
 	m.width, m.height = max(width, 0), max(height, 0)
 	contentHeight := max(m.height-4, 0)
-	m.compact = m.width < compactWidth || m.height < 24
+	m.compact = m.fullscreen || m.width < compactWidth || m.height < 24
 	m.schemaWidth, m.editorWidth = m.width, m.width
 	m.workspaceHeight, m.queryLogHeight = contentHeight, 0
 	if m.compact {
@@ -453,7 +453,7 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history", "tab switch view", "q quit")
+		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "tab switch view", "q quit")
 		return safeText(strings.Join(parts, " | "))
 	}
 	return safeText(m.Status + " | q quit")

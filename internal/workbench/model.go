@@ -69,7 +69,7 @@ type Model struct {
 	workspaceHeight, queryLogHeight                                             int
 	editorHeight, resultsHeight, tableViewportWidth                             int
 	structureOffset, browseOffset, resultsOffset, indexesOffset, queryLogOffset int
-	compact                                                                     bool
+	compact, fullscreen                                                         bool
 }
 
 type pickerItem struct{ raw, title, description string }

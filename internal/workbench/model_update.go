@@ -80,6 +80,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.queryLog.SetCursor(0)
 				}
 				return m, nil
+			case "f":
+				m.fullscreen = !m.fullscreen
+				m.layout(m.width, m.height)
+				return m, nil
 			}
 		}
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && m.executeKey(message) {
