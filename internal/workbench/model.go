@@ -32,6 +32,7 @@ const (
 
 	focusSchema    = core.FocusSchema
 	focusWorkspace = core.FocusWorkspace
+	focusQueryLog  = core.FocusQueryLog
 
 	tabStructure = core.TabStructure
 	tabBrowse    = core.TabBrowse
@@ -41,31 +42,34 @@ const (
 
 type Model struct {
 	core.Workflow
-	pickerDir                                                   string
-	appContext                                                  context.Context
-	openTarget                                                  func(string) tea.Cmd
-	running, cancelRequested, pendingQuit, browseLoading        bool
-	requestID, activeRequestID, browsePageTag                   uint64
-	cancel                                                      context.CancelFunc
-	schema, picker, recent                                      list.Model
-	structure, browse, results, indexes                         table.Model
-	structureColumns                                            []sharedsql.ColumnInfo
-	indexInfo                                                   []sharedsql.IndexInfo
-	browseNumericColumns, resultsNumericColumns                 []bool
-	databaseInfo                                                sharedsql.DatabaseInfo
-	browseResult                                                sharedsql.Result
-	resultsStatus, browseStatus                                 string
-	editor                                                      editor
-	columnForm                                                  columnForm
-	browseForm                                                  browseForm
-	indexForm                                                   indexForm
-	connection                                                  connectionForm
-	recentConnections                                           []recentConnection
-	recentPath                                                  string
-	width, height, schemaWidth, editorWidth                     int
-	editorHeight, resultsHeight, tableViewportWidth             int
-	structureOffset, browseOffset, resultsOffset, indexesOffset int
-	compact                                                     bool
+	pickerDir                                                                   string
+	appContext                                                                  context.Context
+	openTarget                                                                  func(string) tea.Cmd
+	running, cancelRequested, pendingQuit, browseLoading                        bool
+	requestID, activeRequestID, browsePageTag                                   uint64
+	cancel                                                                      context.CancelFunc
+	schema, picker, recent                                                      list.Model
+	structure, browse, results, indexes, queryLog                               table.Model
+	structureColumns                                                            []sharedsql.ColumnInfo
+	indexInfo                                                                   []sharedsql.IndexInfo
+	browseNumericColumns, resultsNumericColumns                                 []bool
+	databaseInfo                                                                sharedsql.DatabaseInfo
+	browseResult                                                                sharedsql.Result
+	resultsStatus, browseStatus                                                 string
+	queryLogEntries                                                             []queryLogEntry
+	queryLogPendingG                                                            bool
+	editor                                                                      editor
+	columnForm                                                                  columnForm
+	browseForm                                                                  browseForm
+	indexForm                                                                   indexForm
+	connection                                                                  connectionForm
+	recentConnections                                                           []recentConnection
+	recentPath                                                                  string
+	width, height, schemaWidth, editorWidth                                     int
+	workspaceHeight, queryLogHeight                                             int
+	editorHeight, resultsHeight, tableViewportWidth                             int
+	structureOffset, browseOffset, resultsOffset, indexesOffset, queryLogOffset int
+	compact                                                                     bool
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -119,9 +123,12 @@ func New(target string, opener databaseOpener) Model {
 		browse:     newResultsTable(),
 		results:    newResultsTable(),
 		indexes:    newResultsTable(),
+		queryLog:   newResultsTable(),
 		editor:     editor,
 		connection: newConnectionForm(),
 	}
+	model.queryLog.SetColumns(tableColumns([]string{"Time", "Query", "Duration", "Fetch"}, nil))
+	model.queryLog.Blur()
 	model.focusActiveTable()
 	if target == "" {
 		model.recentPath, _ = recentConnectionsPath()
