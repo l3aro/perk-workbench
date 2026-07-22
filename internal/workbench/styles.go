@@ -286,7 +286,7 @@ func (m *Model) layout(width, height int) {
 		}
 		resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 	}
-	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-2, 2))
+	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-3, 2))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, max(contentHeight-4, 2))
 	resizeResultsTable(&m.browse, m.tableViewportWidth, max(contentHeight-4, 2))
 	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
@@ -369,11 +369,21 @@ func (m Model) workspaceView() string {
 	case tabBrowse:
 		content = m.browseView()
 	case tabSQL:
-		editor := m.editor.textarea.View()
-		results := tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth)
-		content = lipgloss.JoinVertical(lipgloss.Left, editor, results)
+		content = m.sqlPaneView()
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content)
+}
+
+func (m Model) sqlPaneView() string {
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		m.editor.textarea.View(),
+		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth),
+	)
+	mode := "NORMAL"
+	if m.editor.insert {
+		mode = "INSERT"
+	}
+	return content + "\n" + headerStyle.Render(mode)
 }
 
 func (m Model) structureView() string {

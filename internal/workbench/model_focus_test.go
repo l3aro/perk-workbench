@@ -119,6 +119,8 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	model.editor.textarea.SetValue("select ")
 
 	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	model = updated.(Model)
 
@@ -128,6 +130,54 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	}
 	if got := model.editor.textarea.Value(); got != "select q" {
 		t.Fatalf("editor value = %q, want %q", got, "select q")
+	}
+}
+
+func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.State = stateReady
+	model.editor.textarea.SetValue("select ")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+
+	// Then
+	if command != nil {
+		t.Fatal("editor shortcut text returned a command")
+	}
+	if got := model.editor.textarea.Value(); got != "select 1" {
+		t.Fatalf("editor value = %q, want %q", got, "select 1")
+	}
+}
+
+func TestView_sqlShowsModeBadge(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.layout(100, 24)
+
+	// When
+	normal := ansi.Strip(model.workspaceView())
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	insert := ansi.Strip(model.workspaceView())
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	normalAgain := ansi.Strip(model.workspaceView())
+
+	// Then
+	if !strings.HasSuffix(strings.TrimSpace(normal), "NORMAL") {
+		t.Errorf("normal SQL pane = %q, want bottom-left NORMAL badge", normal)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(insert), "INSERT") {
+		t.Errorf("insert SQL pane = %q, want bottom-left INSERT badge", insert)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(normalAgain), "NORMAL") {
+		t.Errorf("SQL pane after escape = %q, want bottom-left NORMAL badge", normalAgain)
 	}
 }
 

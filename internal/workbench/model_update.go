@@ -36,7 +36,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.State == stateReady && !m.columnForm.active() && !m.schema.SettingFilter() {
+		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.editor.insert) {
 			switch message.String() {
 			case "1":
 				m.Focus = focusSchema
@@ -171,7 +171,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.schema, command = m.schema.Update(message)
 			return m, command
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && keyPress.String() == "esc" {
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.editor.insert) && keyPress.String() == "esc" {
 				m.Focus = focusSchema
 				m.editor.textarea.Blur()
 				m.blurTables()
