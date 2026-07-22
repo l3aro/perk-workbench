@@ -44,8 +44,8 @@ type Model struct {
 	pickerDir                                                   string
 	appContext                                                  context.Context
 	openTarget                                                  func(string) tea.Cmd
-	running, cancelRequested, pendingQuit                       bool
-	requestID, activeRequestID                                  uint64
+	running, cancelRequested, pendingQuit, browseLoading        bool
+	requestID, activeRequestID, browsePageTag                   uint64
 	cancel                                                      context.CancelFunc
 	schema, picker, recent                                      list.Model
 	structure, browse, results, indexes                         table.Model
@@ -54,6 +54,7 @@ type Model struct {
 	browseNumericColumns, resultsNumericColumns                 []bool
 	databaseInfo                                                sharedsql.DatabaseInfo
 	browseResult                                                sharedsql.Result
+	resultsStatus, browseStatus                                 string
 	editor                                                      editor
 	columnForm                                                  columnForm
 	browseForm                                                  browseForm

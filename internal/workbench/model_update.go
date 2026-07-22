@@ -4,11 +4,20 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 )
+
+const browseDebounceDuration = 150 * time.Millisecond
+
+type browseDebounceMsg struct {
+	tag   uint64
+	delta int
+	table string
+}
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.running && !m.Workflow.Running() {
@@ -21,6 +30,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
 		return m, nil
+	case browseDebounceMsg:
+		if message.tag != m.browsePageTag || message.table != m.SelectedTable || m.browseLoading {
+			return m, nil
+		}
+		if message.delta > 0 && int64((m.BrowsePage+1)*browsePageSize) >= m.browseResult.TotalRows {
+			return m, nil
+		}
+		if !m.ChangeBrowsePage(message.delta) {
+			return m, nil
+		}
+		m.browseLoading = true
+		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
 		if message.Key().Code == 'e' && message.Key().Mod == tea.ModCtrl {
 			if command, handled := m.openExternalEditor(); handled {
@@ -221,14 +242,19 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "n" || keyPress.String() == "p") {
-					if keyPress.String() == "n" {
-						m.ChangeBrowsePage(1)
-						return m, m.loadBrowse()
+					if m.browseLoading {
+						return m, nil
 					}
-					if m.ChangeBrowsePage(-1) {
-						return m, m.loadBrowse()
+					delta := 1
+					if keyPress.String() == "p" {
+						delta = -1
 					}
-					return m, nil
+					m.browsePageTag++
+					tag := m.browsePageTag
+					table := m.SelectedTable
+					return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
+						return browseDebounceMsg{tag: tag, delta: delta, table: table}
+					})
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.browse, &m.browseOffset, m.tableViewportWidth, keyPress) {
 					return m, nil

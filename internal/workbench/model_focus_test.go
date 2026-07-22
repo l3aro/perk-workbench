@@ -395,6 +395,48 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 	}
 }
 
+func TestBrowse_next_stays_on_final_page(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable, model.Tab, model.BrowsePage = "projects", tabBrowse, 2
+	model.browseResult.TotalRows = 55
+	model.focusActiveTable()
+
+	// When
+	updated, timer := model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+	updated, command := model.Update(browseDebounceMsg{tag: model.browsePageTag, delta: 1, table: "projects"})
+	model = updated.(Model)
+
+	// Then
+	if timer == nil || command != nil || model.BrowsePage != 2 {
+		t.Fatalf("next page = %d, commands = %t/%t, want final page without a load", model.BrowsePage, timer != nil, command != nil)
+	}
+}
+
+func TestBrowse_debounces_navigation(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "projects", tabBrowse
+	model.browseResult.TotalRows = 100
+	model.focusActiveTable()
+
+	// When
+	updated, firstTimer := model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+	updated, secondTimer := model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+	updated, staleCommand := model.Update(browseDebounceMsg{tag: 1, delta: 1, table: "projects"})
+	model = updated.(Model)
+	updated, loadCommand := model.Update(browseDebounceMsg{tag: model.browsePageTag, delta: 1, table: "projects"})
+	model = updated.(Model)
+
+	// Then
+	if firstTimer == nil || secondTimer == nil || staleCommand != nil || loadCommand == nil || model.BrowsePage != 1 {
+		t.Fatalf("page = %d, commands = %t/%t/%t/%t, want one debounced load for page 2", model.BrowsePage, firstTimer != nil, secondTimer != nil, staleCommand != nil, loadCommand != nil)
+	}
+}
+
 func updateFromCommand(model Model, command tea.Cmd) Model {
 	if command == nil {
 		return model
