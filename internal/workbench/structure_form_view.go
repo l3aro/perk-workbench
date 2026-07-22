@@ -14,9 +14,9 @@ func (f columnForm) View() string {
 		if f.mode == columnFormConfirmDiscard {
 			action = "Discard column changes?"
 		}
-		choices := "[false] true"
+		choices := "[" + booleanValue(false) + "] " + booleanValue(true)
 		if f.confirmed {
-			choices = "false [true]"
+			choices = booleanValue(false) + " [" + booleanValue(true) + "]"
 		}
 		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
 	}
@@ -27,10 +27,7 @@ func (f columnForm) View() string {
 	for index, parameter := range f.parameters {
 		fields = append(fields, f.field(columnFieldParameterStart+index, parameter.View()))
 	}
-	nullable := "Nullable: false"
-	if f.nullable {
-		nullable = "Nullable: true"
-	}
+	nullable := "Nullable: " + booleanValue(f.nullable)
 	fields = append(fields, f.field(f.nullableField(), nullable), f.field(f.defaultField(), f.preset.View()), "PK: "+primaryKeyText(f.primaryKey))
 	help := "j/k fields | gg/G first/last | i edit/select | space toggle nullable | F5 save | Esc discard"
 	if f.mode == columnFormInsert {

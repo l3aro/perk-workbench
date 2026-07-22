@@ -227,9 +227,9 @@ func (f browseForm) View() string {
 		if f.mode == browseFormConfirmDiscard {
 			action = "Discard row changes?"
 		}
-		choices := "[false] true"
+		choices := "[" + booleanValue(false) + "] " + booleanValue(true)
 		if f.confirmed {
-			choices = "false [true]"
+			choices = booleanValue(false) + " [" + booleanValue(true) + "]"
 		}
 		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
 	}

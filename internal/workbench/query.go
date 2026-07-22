@@ -203,10 +203,7 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 		if column.DefaultValue != nil {
 			defaultValue = safeText(*column.DefaultValue)
 		}
-		nullable := "yes"
-		if !column.Nullable {
-			nullable = "no"
-		}
+		nullable := booleanValue(column.Nullable)
 		rows[index] = table.Row{safeText(column.Name), indexIcons(column.Indexes), safeText(column.Type), nullable, defaultValue}
 	}
 	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Nullable", "Default"}, rows))
