@@ -57,7 +57,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
 		if message.Key().Code == 'e' && message.Key().Mod == tea.ModCtrl {
-			if command, handled := m.openSQLExternalEditor(); handled {
+			if command, handled := m.openExternalEditor(); handled {
 				return m, command
 			}
 		}
@@ -117,9 +117,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
-			m.toggleTab(message.String() == "tab")
-			return m, nil
+		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
+			switch message.String() {
+			case "tab", "]":
+				m.toggleTab(true)
+				return m, nil
+			case "shift+tab", "[":
+				m.toggleTab(false)
+				return m, nil
+			}
 		}
 	}
 
@@ -179,7 +185,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case browseRowUpdatedMsg:
 		return m.updateBrowseRowUpdated(message)
 	case sqlEditorFinishedMsg:
-		return m.updateSQLExternalEditor(message)
+		return m.updateExternalEditor(message)
 	}
 
 	if m.sqlEditorActive() && m.formMode.editing() {

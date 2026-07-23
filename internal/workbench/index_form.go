@@ -152,8 +152,8 @@ func (f *indexForm) beginConfirmation(save, delete bool) {
 
 func (f *indexForm) rebuildForm() {
 	f.form = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Key("name").Title("Name*").Value(&f.values.name).Validate(f.validateName),
-		huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredIndexColumns),
+		newEditableInput(huh.NewInput().Key("name").Title("Name*").Value(&f.values.name).Validate(f.validateName), &f.values.name),
+		newEditableInput(huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredIndexColumns), &f.values.columns),
 		huh.NewSelect[string]().Key("kind").Title("Kind").Options(
 			huh.NewOption(indexKindNormal, indexKindNormal),
 			huh.NewOption(indexKindUnique, indexKindUnique),

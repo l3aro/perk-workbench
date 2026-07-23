@@ -29,6 +29,12 @@ func (e *editor) setValue(value string) {
 	e.resetText()
 }
 
+func (e *editor) externalEditorValue() string { return e.value }
+
+func (e *editor) setExternalEditorValue(value string) { e.setValue(value) }
+
+func (e *editor) Focus() tea.Cmd { return e.text.Focus() }
+
 func (e *editor) setSize(width, height int) {
 	e.width, e.height = width, height
 	e.text.WithWidth(max(width, 1))

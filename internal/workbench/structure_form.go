@@ -198,16 +198,16 @@ func (f *columnForm) setWidth(width int) {
 func (f *columnForm) rebuildForm() {
 	f.formType = f.values.typeName
 	fields := []huh.Field{
-		huh.NewInput().Key("name").Title("Name*").Value(&f.values.name).Validate(requiredColumnName),
+		newEditableInput(huh.NewInput().Key("name").Title("Name*").Value(&f.values.name).Validate(requiredColumnName), &f.values.name),
 		huh.NewSelect[string]().Key("type").Title("Type*").Options(f.typeChoices()...).Value(&f.values.typeName).Validate(f.validateType),
 	}
 	for index, parameter := range f.typeOptions[f.typeIndex()].Parameters {
 		index, parameter := index, parameter
-		fields = append(fields, huh.NewInput().Key("parameter").Title(parameter.Name).Value(&f.values.parameters[index]).Validate(f.validateParameter(index)))
+		fields = append(fields, newEditableInput(huh.NewInput().Key("parameter").Title(parameter.Name).Value(&f.values.parameters[index]).Validate(f.validateParameter(index)), &f.values.parameters[index]))
 	}
 	fields = append(fields,
 		huh.NewConfirm().Key("nullable").Title("Nullable").Affirmative("Yes").Negative("No").Value(&f.values.nullable),
-		huh.NewInput().Key("default").Title("Default").Value(&f.values.defaultValue),
+		newEditableInput(huh.NewInput().Key("default").Title("Default").Value(&f.values.defaultValue), &f.values.defaultValue),
 	)
 	if f.primaryKey > 0 {
 		fields = append(fields, huh.NewNote().Title("Primary key").Description(primaryKeyNote(f.primaryKey)))

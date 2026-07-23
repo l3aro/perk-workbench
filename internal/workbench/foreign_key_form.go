@@ -152,9 +152,9 @@ func (f *foreignKeyForm) rebuildForm() {
 		huh.NewOption("CASCADE", "CASCADE"),
 	}
 	f.form = huh.NewForm(huh.NewGroup(
-		huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredForeignKeyColumns),
-		huh.NewInput().Key("reference-table").Title("Reference table*").Value(&f.values.referenceTable).Validate(requiredReferenceTable),
-		huh.NewInput().Key("reference-columns").Title("Reference columns*").Value(&f.values.referenceColumns).Validate(f.validateReferenceColumns),
+		newEditableInput(huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredForeignKeyColumns), &f.values.columns),
+		newEditableInput(huh.NewInput().Key("reference-table").Title("Reference table*").Value(&f.values.referenceTable).Validate(requiredReferenceTable), &f.values.referenceTable),
+		newEditableInput(huh.NewInput().Key("reference-columns").Title("Reference columns*").Value(&f.values.referenceColumns).Validate(f.validateReferenceColumns), &f.values.referenceColumns),
 		huh.NewSelect[string]().Key("on-delete").Title("On delete").Options(actions...).Value(&f.values.onDelete),
 		huh.NewSelect[string]().Key("on-update").Title("On update").Options(actions...).Value(&f.values.onUpdate),
 	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))

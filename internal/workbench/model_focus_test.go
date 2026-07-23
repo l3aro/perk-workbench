@@ -120,6 +120,26 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	assertTab(t, model, tabStructure)
 }
 
+func TestWorkspace_bracketsNavigateTabs(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	model = updated.(Model)
+
+	// Then
+	assertTab(t, model, tabIndexes)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	model = updated.(Model)
+
+	// Then
+	assertTab(t, model, tabSQL)
+}
+
 func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)
@@ -186,6 +206,29 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.layout(100, 24)
+
+	// When
+	workspace := ansi.Strip(model.workspaceView())
+	history := ansi.Strip(model.queryLogContentView())
+	footer := ansi.Strip(model.footer())
+
+	// Then
+	if bottom := strings.TrimSpace(workspace[strings.LastIndex(workspace, "\n")+1:]); !strings.HasPrefix(bottom, "NORMAL") || !strings.HasSuffix(bottom, "tab view") {
+		t.Fatalf("workspace hint = %q, want bottom-left NORMAL followed by tab view", workspace)
+	}
+	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); bottom != "y copy query | enter detail | e explain" {
+		t.Fatalf("history hint = %q, want query-history shortcuts", history)
+	}
+	if strings.Contains(footer, "e explain") || strings.Contains(footer, "tab view") {
+		t.Fatalf("footer = %q, want contextual hints omitted", footer)
 	}
 }
 

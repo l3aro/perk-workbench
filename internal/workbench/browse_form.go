@@ -206,7 +206,7 @@ func (f *browseForm) rebuildForm() {
 	fields := make([]huh.Field, 0, len(f.columns))
 	for index, column := range f.columns {
 		fields = append(fields,
-			huh.NewInput().Key(f.valueKey(index)).Title(column).Value(&f.values.fields[index]),
+			newEditableInput(huh.NewInput().Key(f.valueKey(index)).Title(column).Value(&f.values.fields[index]), &f.values.fields[index]),
 		)
 	}
 	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))

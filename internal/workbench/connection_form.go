@@ -68,19 +68,19 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 			huh.NewOption("MySQL", driverMySQL),
 			huh.NewOption("PostgreSQL", driverPostgreSQL),
 		).Value(&f.values.driver),
-		huh.NewInput().Key("name").Title("Name").Placeholder("Local database").Value(&f.values.name),
+		newEditableInput(huh.NewInput().Key("name").Title("Name").Placeholder("Local database").Value(&f.values.name), &f.values.name),
 	}
 	if f.values.driver != driverSQLite {
 		fields = append(fields,
-			huh.NewInput().Key("host").Title("Host*").Placeholder("localhost").Value(&f.values.host).Validate(requiredConnectionHost),
-			huh.NewInput().Key("port").Title("Port*").Value(&f.values.port).Validate(requiredConnectionPort),
-			huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser),
-			huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword),
-			huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target),
+			newEditableInput(huh.NewInput().Key("host").Title("Host*").Placeholder("localhost").Value(&f.values.host).Validate(requiredConnectionHost), &f.values.host),
+			newEditableInput(huh.NewInput().Key("port").Title("Port*").Value(&f.values.port).Validate(requiredConnectionPort), &f.values.port),
+			newEditableInput(huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser), &f.values.user),
+			newEditableInput(huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword), &f.values.pass),
+			newEditableInput(huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target), &f.values.target),
 			huh.NewNote().Title("Privacy").Description("Remote connections are not saved."),
 		)
 	} else {
-		fields = append(fields, huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget))
+		fields = append(fields, newEditableInput(huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget), &f.values.target))
 	}
 	fields = append(fields, newConnectionActionButtons(&f.values.action))
 	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))

@@ -568,11 +568,10 @@ func (m Model) queryLogPaneView() string {
 
 func (m Model) queryLogContentView() string {
 	content := tableViewportView(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
-	if summary := m.queryLogSummary(); summary != "" {
-		padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
-		content += strings.Repeat("\n", padding+1) + paneStatus("", statusStyle.Render(summary), m.tableViewportWidth)
-	}
-	return content
+	summary := m.queryLogSummary()
+	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
+	return content + strings.Repeat("\n", padding+1) +
+		paneStatus(statusStyle.Render("y copy query | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {
@@ -597,7 +596,7 @@ func (m Model) workspaceView() string {
 	case tabForeignKeys:
 		content = m.foreignKeysView()
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, m.modeBadge())
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, m.modeBadge()+" "+statusStyle.Render("tab view"))
 }
 
 func (m Model) sqlPaneView() string {
@@ -673,7 +672,7 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history", "e explain", "f fullscreen", "tab view")
+		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen")
 		parts = append(parts, "q quit")
 		return safeText(strings.Join(parts, " | "))
 	}
