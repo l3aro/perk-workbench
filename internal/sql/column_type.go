@@ -34,6 +34,15 @@ func ColumnTypes(info DatabaseInfo) []ColumnType {
 			{Name: "DATE"}, {Name: "TIME"}, {Name: "DATETIME"}, {Name: "TIMESTAMP"}, {Name: "BOOLEAN"}, {Name: "JSON"},
 		}
 	}
+	if info.Product == "PostgreSQL" {
+		return []ColumnType{
+			{Name: "SMALLINT"}, {Name: "INTEGER"}, {Name: "BIGINT"},
+			{Name: "NUMERIC", Parameters: decimal}, {Name: "DECIMAL", Parameters: decimal},
+			{Name: "REAL"}, {Name: "DOUBLE PRECISION"},
+			{Name: "CHAR", Parameters: []ColumnTypeParameter{length}}, {Name: "VARCHAR", Parameters: []ColumnTypeParameter{length}}, {Name: "TEXT"},
+			{Name: "BYTEA"}, {Name: "BOOLEAN"}, {Name: "DATE"}, {Name: "TIME"}, {Name: "TIMESTAMP"}, {Name: "TIMESTAMPTZ"}, {Name: "UUID"}, {Name: "JSONB"},
+		}
+	}
 	return []ColumnType{
 		{Name: "INTEGER"}, {Name: "REAL"}, {Name: "TEXT"}, {Name: "BLOB"},
 		{Name: "NUMERIC", Parameters: decimal}, {Name: "DECIMAL", Parameters: decimal},

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/l3aro/perk/internal/mysql"
+	"github.com/l3aro/perk/internal/postgres"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
@@ -18,6 +19,16 @@ func Open(ctx context.Context, target string) (sharedsql.Opened, error) {
 	if dsn, ok := strings.CutPrefix(target, "mysql:"); ok {
 		return open(ctx, dsn, func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return mysql.Open(ctx, target)
+		})
+	}
+	if strings.HasPrefix(target, "postgres://") || strings.HasPrefix(target, "postgresql://") {
+		return open(ctx, target, func(ctx context.Context, target string) (sharedsql.Service, error) {
+			return postgres.Open(ctx, target)
+		})
+	}
+	if dsn, ok := strings.CutPrefix(target, "postgres:"); ok {
+		return open(ctx, dsn, func(ctx context.Context, target string) (sharedsql.Service, error) {
+			return postgres.Open(ctx, target)
 		})
 	}
 
