@@ -6,10 +6,24 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/table"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk/internal/clipboard"
 )
 
 const queryLogLimit = 100
+
+// copyQueryLogStatement writes a statement through both OSC 52 and the native
+// system clipboard, covering terminals and desktop clipboard clients.
+func copyQueryLogStatement(statement string) tea.Cmd {
+	return tea.Sequence(
+		tea.SetClipboard(statement),
+		func() tea.Msg {
+			clipboard.WriteText(statement)
+			return nil
+		},
+	)
+}
 
 type queryLogEntry struct {
 	startedAt time.Time

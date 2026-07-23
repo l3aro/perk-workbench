@@ -29,8 +29,8 @@ func TestWideLayout_renders_query_log_in_its_own_pane(t *testing.T) {
 		t.Fatal("workspace view embeds the query log")
 	}
 	if !strings.Contains(ansi.Strip(model.queryLogPaneView()), "Message") {
-			t.Fatal("query log pane does not render its table")
-		}
+		t.Fatal("query log pane does not render its table")
+	}
 }
 
 func TestWideLayout_shows_completed_query_in_lower_pane(t *testing.T) {
@@ -117,5 +117,25 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 		if got := model.queryLog.Cursor(); got != test.want {
 			t.Fatalf("query log cursor = %d, want %d after %s", got, test.want, test.key.String())
 		}
+	}
+}
+
+func TestQueryLog_c_copies_selected_statement(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.appendQueryLog(queryLogEntry{statement: "SELECT 42"})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	model = updated.(Model)
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.Status, "copied query to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("copy command = nil, want clipboard command")
 	}
 }
