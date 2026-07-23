@@ -54,6 +54,26 @@ docker compose run --rm dev go build ./cmd/perk
 docker compose run --rm dev gofmt -l cmd internal
 ```
 
+### Clipboard in tmux
+
+The query log copies the selected SQL statement with `c`. When running Perk through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:
+
+```bash
+tmux set-option -g set-clipboard on
+```
+
+To keep the setting after restarting tmux, add this line to `~/.tmux.conf` and reload it:
+
+```tmux
+set -g set-clipboard on
+```
+
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+The container cannot access the native desktop clipboard; the terminal forwards OSC 52 instead.
+
 ## Keys
 
 ### Picker
