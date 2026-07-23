@@ -80,7 +80,7 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 	switch keyPress.String() {
 	case "i", "enter":
 		return controller.beginHuh(f.focus()), indexFormNoAction
-	case "ctrl+enter", "f5":
+	case "ctrl+enter", "ctrl+s", "f5":
 		if _, err := f.change(); err != nil {
 			f.showValidationError()
 			return nil, indexFormNoAction

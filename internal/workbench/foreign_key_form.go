@@ -73,7 +73,7 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 	switch keyPress.String() {
 	case "i", "enter":
 		return controller.beginHuh(f.focus()), foreignKeyFormNoAction
-	case "ctrl+enter", "f5":
+	case "ctrl+enter", "ctrl+s", "f5":
 		if _, err := f.change(); err != nil {
 			f.showValidationError()
 			return nil, foreignKeyFormNoAction

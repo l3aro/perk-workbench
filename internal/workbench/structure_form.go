@@ -94,7 +94,7 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	switch keyPress.String() {
 	case "i", "enter":
 		return controller.beginHuh(f.focus()), columnFormNoAction
-	case "ctrl+enter", "f5":
+	case "ctrl+enter", "ctrl+s", "f5":
 		if _, err := f.change(); err != nil {
 			f.validationError = err.Error()
 			return nil, columnFormNoAction
