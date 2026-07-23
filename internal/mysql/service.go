@@ -240,28 +240,33 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	if attributes.extra != "" {
 		return fmt.Errorf("column %q has unsupported attributes: %s", change.PreviousName, attributes.extra)
 	}
-	statement := "ALTER TABLE " + mysqlTableIdentifier(table) + " CHANGE COLUMN " + quoteIdentifier(change.PreviousName) + " " + quoteIdentifier(change.Name) + " " + strings.TrimSpace(change.Type)
-	if change.Nullable {
-		statement += " NULL"
-	} else {
-		statement += " NOT NULL"
-	}
-	if change.DefaultValue != nil {
-		statement += " DEFAULT " + mysqlDefault(*change.DefaultValue)
-	}
-	if attributes.characterSet.Valid {
-		statement += " CHARACTER SET " + attributes.characterSet.String
-	}
-	if attributes.collation.Valid {
-		statement += " COLLATE " + attributes.collation.String
-	}
-	if attributes.comment.Valid && attributes.comment.String != "" {
-		statement += " COMMENT " + mysqlDefault(attributes.comment.String)
-	}
+	statement := "ALTER TABLE " + mysqlTableIdentifier(table) + " CHANGE COLUMN " + quoteIdentifier(change.PreviousName) + " " + quoteIdentifier(change.Name) + " " + mysqlColumnDeclaration(change, attributes)
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("altering column: %w", err)
 	}
 	return nil
+}
+
+func mysqlColumnDeclaration(change sharedsql.ColumnChange, attributes mysqlColumnAttributes) string {
+	declaration := strings.TrimSpace(change.Type)
+	if attributes.characterSet.Valid {
+		declaration += " CHARACTER SET " + attributes.characterSet.String
+	}
+	if attributes.collation.Valid {
+		declaration += " COLLATE " + attributes.collation.String
+	}
+	if change.Nullable {
+		declaration += " NULL"
+	} else {
+		declaration += " NOT NULL"
+	}
+	if change.DefaultValue != nil {
+		declaration += " DEFAULT " + mysqlDefault(*change.DefaultValue)
+	}
+	if attributes.comment.Valid && attributes.comment.String != "" {
+		declaration += " COMMENT " + mysqlDefault(attributes.comment.String)
+	}
+	return declaration
 }
 
 type mysqlColumnAttributes struct {
