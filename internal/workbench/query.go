@@ -57,8 +57,8 @@ func (m *Model) setResults(result sharedsql.Result) {
 	m.results.SetRows(rows)
 	m.resultsOffset = 0
 	m.results.Focus()
-	m.editor.enterNormalMode()
-	m.editor.textarea.Blur()
+	m.formMode.mode = formModeNormal
+	m.editor.text.Blur()
 	rowLabel := "rows"
 	if len(rows) == 1 {
 		rowLabel = "row"

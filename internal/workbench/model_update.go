@@ -44,11 +44,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
 		if message.Key().Code == 'e' && message.Key().Mod == tea.ModCtrl {
-			if command, handled := m.openExternalEditor(); handled {
+			if command, handled := m.openSQLExternalEditor(); handled {
 				return m, command
 			}
 		}
-		if message.String() == "ctrl+c" || (message.String() == "q" && !m.formActive() && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || m.connection.inputFocused())) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.textarea.Value() == "")) {
+		if message.String() == "ctrl+c" || (message.String() == "q" && !m.formActive() && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) && !(m.sqlEditorActive() && m.formMode.editing()) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.value == "")) {
 			if m.Running() {
 				m.RequestQuit()
 				m.pendingQuit = true
@@ -57,12 +57,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.editor.insert) {
+		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) {
 			switch message.String() {
 			case "1":
 				m.Focus = focusSchema
 				m.queryLogPendingG = false
-				m.editor.textarea.Blur()
+				m.editor.text.Blur()
 				m.blurTables()
 				return m, nil
 			case "2":
@@ -73,7 +73,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case "3":
 				m.Focus = focusQueryLog
 				m.queryLogPendingG = false
-				m.editor.textarea.Blur()
+				m.editor.text.Blur()
 				m.blurTables()
 				m.queryLog.Focus()
 				if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
@@ -89,9 +89,21 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && m.executeKey(message) {
 			return m.startQuery()
 		}
-		if m.Running() && !m.formActive() && message.Key().Code == tea.KeyEscape {
+		if m.Running() && message.Key().Code == tea.KeyEscape {
 			m.cancelQuery()
 			return m, nil
+		}
+		if m.sqlEditorActive() {
+			switch m.formMode.route(message, m.editor) {
+			case formRouteConsumed:
+				return m, nil
+			case formRouteHuh:
+				return m, m.editor.update(message)
+			case formRouteParent:
+				if message.String() == "i" {
+					return m, m.formMode.beginInsert(m.editor)
+				}
+			}
 		}
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace && (message.String() == "tab" || message.String() == "shift+tab") {
 			m.toggleTab(message.String() == "tab")
@@ -154,15 +166,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateColumnAltered(message)
 	case browseRowUpdatedMsg:
 		return m.updateBrowseRowUpdated(message)
-	case externalEditorFinishedMsg:
-		if message.err != nil {
-			m.Status = safeText(fmt.Sprintf("editor failed: %v", message.err))
-			return m, nil
-		}
-		if !m.setFocusedTextValue(message.value) {
-			m.Status = "editor target is no longer focused"
-		}
-		return m, nil
+	case sqlEditorFinishedMsg:
+		return m.updateSQLExternalEditor(message)
+	}
+
+	if m.sqlEditorActive() && m.formMode.editing() {
+		return m, m.editor.update(message)
 	}
 
 	return m.updateActive(message)
@@ -170,17 +179,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil {
+		if m.connection.focus == connectionFocusForm {
+			m.State = stateConnection
+			m.Status = safeText(fmt.Sprintf("database unavailable: %v", message.err))
+			m.formMode.mode = formModeNormal
+			return m, nil
+		}
 		m.Fail(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
 		return m, nil
 	}
 	m.Opened(message.target, message.service, "")
 	m.databaseInfo = message.info
 	m.Focus = focusSchema
-	m.editor.textarea.Blur()
+	m.editor.text.Blur()
 	m.blurTables()
 	m.recordConnection()
 	name := filepath.Base(message.target)
-	if configured := strings.TrimSpace(m.connection.name.Value()); configured != "" {
+	if configured := strings.TrimSpace(m.connection.values.name); configured != "" {
 		name = configured
 	}
 	m.Status = safeText("ready: " + name)
@@ -226,16 +241,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.schema, command = m.schema.Update(message)
 			return m, command
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.editor.insert) && keyPress.String() == "esc" {
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.formMode.editing()) && keyPress.String() == "esc" {
 				m.Focus = focusSchema
-				m.editor.textarea.Blur()
+				m.editor.text.Blur()
 				m.blurTables()
 				return m, nil
 			}
 			switch m.Tab {
 			case tabStructure:
 				if m.columnForm.active() {
-					command, action := m.columnForm.Update(message)
+					command, action := m.columnForm.Update(message, m.formMode)
 					switch action {
 					case columnFormSave:
 						m.columnForm.saving = true
@@ -246,8 +261,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, command
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "i") {
-					m.openColumnForm()
-					return m, nil
+					return m, m.openColumnForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
@@ -255,7 +269,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.structure, command = m.structure.Update(message)
 			case tabBrowse:
 				if m.browseForm.active() {
-					command, action := m.browseForm.Update(message)
+					command, action := m.browseForm.Update(message, m.formMode)
 					switch action {
 					case browseFormSave:
 						m.browseForm.saving = true
@@ -266,8 +280,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, command
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "i") {
-					m.openBrowseForm()
-					return m, nil
+					return m, m.openBrowseForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "n" || keyPress.String() == "p") {
 					if m.browseLoading {
@@ -289,17 +302,15 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.editor.insert && scrollTable(&m.results, &m.resultsOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && scrollTable(&m.results, &m.resultsOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				if m.results.Focused() {
 					m.results, command = m.results.Update(message)
-				} else {
-					m.editor, command = m.editor.Update(message)
 				}
 			case tabIndexes:
 				if m.indexForm.active() {
-					command, action := m.indexForm.Update(message)
+					command, action := m.indexForm.Update(message, m.formMode)
 					switch action {
 					case indexFormSave:
 						m.indexForm.saving = true
@@ -315,19 +326,20 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch keyPress.String() {
 					case "n":
-						m.openIndexForm(nil)
-						return m, nil
+						return m, m.openIndexForm(nil)
 					case "enter", "i":
 						row := m.indexes.Cursor()
 						if row >= 0 && row < len(m.indexInfo) {
-							m.openIndexForm(&m.indexInfo[row])
+							return m, m.openIndexForm(&m.indexInfo[row])
 						}
 						return m, nil
 					case "d":
 						row := m.indexes.Cursor()
 						if row >= 0 && row < len(m.indexInfo) {
-							m.openIndexForm(&m.indexInfo[row])
-							m.indexForm.mode = indexFormConfirmDelete
+							_ = m.openIndexForm(&m.indexInfo[row])
+							m.indexForm.beginConfirmation(false, true)
+							m.formMode.beginConfirm()
+							return m, m.indexForm.confirmation.Init()
 						}
 						return m, nil
 					}
@@ -338,7 +350,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.indexes, command = m.indexes.Update(message)
 			case tabForeignKeys:
 				if m.foreignKeyForm.active() {
-					command, action := m.foreignKeyForm.Update(message)
+					command, action := m.foreignKeyForm.Update(message, m.formMode)
 					switch action {
 					case foreignKeyFormSave:
 						m.foreignKeyForm.saving = true
@@ -357,19 +369,20 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.relationshipDiagram = !m.relationshipDiagram
 						return m, nil
 					case "n":
-						m.openForeignKeyForm(nil)
-						return m, nil
+						return m, m.openForeignKeyForm(nil)
 					case "enter", "i":
 						row := m.foreignKeys.Cursor()
 						if row >= 0 && row < len(m.foreignKeyInfo) {
-							m.openForeignKeyForm(&m.foreignKeyInfo[row])
+							return m, m.openForeignKeyForm(&m.foreignKeyInfo[row])
 						}
 						return m, nil
 					case "d":
 						row := m.foreignKeys.Cursor()
 						if row >= 0 && row < len(m.foreignKeyInfo) {
-							m.openForeignKeyForm(&m.foreignKeyInfo[row])
-							m.foreignKeyForm.mode = foreignKeyFormConfirmDelete
+							_ = m.openForeignKeyForm(&m.foreignKeyInfo[row])
+							m.foreignKeyForm.beginConfirmation(false, true)
+							m.formMode.beginConfirm()
+							return m, m.foreignKeyForm.confirmation.Init()
 						}
 						return m, nil
 					}
@@ -428,6 +441,10 @@ func (m Model) formActive() bool {
 	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active() || m.foreignKeyForm.active()
 }
 
+func (m Model) sqlEditorActive() bool {
+	return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
+}
+
 func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
 	step := max(viewportWidth/2, 1)
 	next := *offset
@@ -456,7 +473,7 @@ func (m *Model) toggleTab(forward bool) {
 }
 
 func (m *Model) focusActiveTable() {
-	m.editor.textarea.Blur()
+	m.editor.text.Blur()
 	m.blurTables()
 	switch m.Tab {
 	case tabStructure:
@@ -466,8 +483,6 @@ func (m *Model) focusActiveTable() {
 	case tabSQL:
 		if len(m.results.Rows()) > 0 {
 			m.results.Focus()
-		} else {
-			m.editor.textarea.Focus()
 		}
 	case tabIndexes:
 		m.indexes.Focus()

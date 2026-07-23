@@ -31,7 +31,7 @@ type queryCanceledMsg struct {
 }
 
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
-	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.textarea.Value())
+	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.value)
 	if !ok {
 		return m, nil
 	}
