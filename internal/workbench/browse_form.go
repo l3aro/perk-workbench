@@ -4,18 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	sharedsql "github.com/l3aro/perk/internal/sql"
-)
-
-type browseFormMode uint8
-
-const (
-	browseFormNormal browseFormMode = iota
-	browseFormInsert
-	browseFormConfirmSave
-	browseFormConfirmDiscard
 )
 
 type browseFormAction uint8
@@ -27,34 +18,40 @@ const (
 )
 
 type browseForm struct {
-	mode      browseFormMode
-	focus     int
-	pendingG  bool
-	confirmed bool
-	saving    bool
-	columns   []string
-	values    []*string
-	nulls     []bool
-	primary   []int
-	inputs    []textinput.Model
+	form, confirmation *huh.Form
+	values             *browseFormValues
+	columns            []string
+	original           []*string
+	primary            []int
+	width              int
+	pendingG, saving   bool
+	confirmationSave   bool
 }
 
-func (m *Model) openBrowseForm() {
+type browseFormValues struct {
+	fields    []string
+	nulls     []bool
+	confirmed bool
+}
+
+func (m *Model) openBrowseForm() tea.Cmd {
 	row := m.browse.Cursor()
 	if row < 0 || row >= len(m.browseResult.Rows) {
 		m.Status = "select a row"
-		return
+		return nil
 	}
 	form, err := newBrowseForm(m.browseResult.Columns, m.browseResult.Rows[row], m.structureColumns)
 	if err != nil {
 		m.Status = safeText(err.Error())
-		return
+		return nil
 	}
 	m.browseForm = form
+	m.browseForm.setWidth(m.tableViewportWidth)
+	return m.browseForm.form.Init()
 }
 
-func newBrowseForm(columns []string, values []*string, info []sharedsql.ColumnInfo) (browseForm, error) {
-	if len(columns) == 0 || len(columns) != len(values) {
+func newBrowseForm(columns []string, original []*string, info []sharedsql.ColumnInfo) (browseForm, error) {
+	if len(columns) == 0 || len(columns) != len(original) {
 		return browseForm{}, fmt.Errorf("selected row is unavailable")
 	}
 	primaryNames := make(map[string]bool, len(info))
@@ -63,16 +60,17 @@ func newBrowseForm(columns []string, values []*string, info []sharedsql.ColumnIn
 			primaryNames[strings.ToLower(column.Name)] = true
 		}
 	}
-	form := browseForm{columns: append([]string(nil), columns...), values: append([]*string(nil), values...), nulls: make([]bool, len(values)), inputs: make([]textinput.Model, len(values))}
-	for index, value := range values {
-		input := textinput.New()
-		input.Prompt = ""
+	form := browseForm{
+		columns:  append([]string(nil), columns...),
+		original: append([]*string(nil), original...),
+		values:   &browseFormValues{fields: make([]string, len(original)), nulls: make([]bool, len(original))},
+	}
+	for index, value := range original {
 		if value == nil {
-			form.nulls[index] = true
+			form.values.nulls[index] = true
 		} else {
-			input.SetValue(*value)
+			form.values.fields[index] = *value
 		}
-		form.inputs[index] = input
 		if primaryNames[strings.ToLower(columns[index])] {
 			form.primary = append(form.primary, index)
 		}
@@ -80,179 +78,193 @@ func newBrowseForm(columns []string, values []*string, info []sharedsql.ColumnIn
 	if len(form.primary) == 0 {
 		return browseForm{}, fmt.Errorf("cannot edit rows without a primary key")
 	}
+	form.rebuildForm()
 	return form, nil
 }
 
 func (f browseForm) active() bool { return len(f.columns) > 0 }
 
-func (f browseForm) confirming() bool {
-	return f.mode == browseFormConfirmSave || f.mode == browseFormConfirmDiscard
-}
+func (f browseForm) confirming() bool { return f.confirmation != nil }
 
-func (f *browseForm) Update(message tea.Msg) (tea.Cmd, browseFormAction) {
+func (f *browseForm) Update(message tea.Msg, controller *formModeController) (tea.Cmd, browseFormAction) {
 	if f.saving {
+		return nil, browseFormNoAction
+	}
+	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+		if route == formRouteConsumed && f.confirmation != nil && controller.mode == formModeNormal {
+			f.confirmation = nil
+		}
+		if route == formRouteHuh {
+			return f.updateHuh(message, controller)
+		}
 		return nil, browseFormNoAction
 	}
 	keyPress, ok := message.(tea.KeyPressMsg)
 	if !ok {
-		if f.mode == browseFormInsert {
-			return f.updateInput(message), browseFormNoAction
-		}
-		return nil, browseFormNoAction
-	}
-	if f.confirming() {
-		if keyPress.Key().Code == tea.KeyEscape {
-			f.mode, f.confirmed = browseFormNormal, false
-			return nil, browseFormNoAction
-		}
-		switch keyPress.String() {
-		case "tab", "shift+tab":
-			f.confirmed = !f.confirmed
-		case "enter":
-			if !f.confirmed {
-				f.mode = browseFormNormal
-				return nil, browseFormNoAction
-			}
-			if f.mode == browseFormConfirmSave {
-				return nil, browseFormSave
-			}
-			return nil, browseFormDiscard
-		}
-		return nil, browseFormNoAction
-	}
-	if f.mode == browseFormInsert {
-		if keyPress.Key().Code == tea.KeyEscape {
-			f.mode = browseFormNormal
-			f.blurInputs()
-			return nil, browseFormNoAction
-		}
-		f.nulls[f.focus] = false
-		return f.updateInput(message), browseFormNoAction
-	}
-	if keyPress.Key().Code == tea.KeyEscape {
-		f.mode, f.confirmed = browseFormConfirmDiscard, false
 		return nil, browseFormNoAction
 	}
 	switch keyPress.String() {
-	case "esc", "escape":
-		f.mode, f.confirmed = browseFormConfirmDiscard, false
+	case "i", "enter":
+		return controller.beginHuh(f.focus()), browseFormNoAction
 	case "ctrl+enter", "f5":
-		f.mode, f.confirmed = browseFormConfirmSave, false
+		f.beginConfirmation(true)
+		controller.beginConfirm()
+		return f.confirmation.Init(), browseFormNoAction
+	case "esc", "escape":
+		f.beginConfirmation(false)
+		controller.beginConfirm()
+		return f.confirmation.Init(), browseFormNoAction
 	case "j", "down":
-		f.focus = (f.focus + 1) % len(f.inputs)
+		f.pendingG = false
+		return f.nextField(), browseFormNoAction
 	case "k", "up":
-		f.focus = (f.focus + len(f.inputs) - 1) % len(f.inputs)
+		f.pendingG = false
+		return f.previousField(), browseFormNoAction
 	case "g":
 		if f.pendingG {
-			f.focus, f.pendingG = 0, false
-			return nil, browseFormNoAction
+			f.pendingG = false
+			return f.firstField(), browseFormNoAction
 		}
 		f.pendingG = true
 		return nil, browseFormNoAction
 	case "G":
-		f.focus, f.pendingG = len(f.inputs)-1, false
-	case "i", "enter":
 		f.pendingG = false
-		f.mode = browseFormInsert
-		return f.focusInput(), browseFormNoAction
-	case " ":
-		f.nulls[f.focus] = !f.nulls[f.focus]
+		return f.lastField(), browseFormNoAction
 	default:
 		f.pendingG = false
 	}
 	return nil, browseFormNoAction
 }
 
-func (f *browseForm) focusInput() tea.Cmd {
-	f.blurInputs()
-	return f.inputs[f.focus].Focus()
+func (f *browseForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, browseFormAction) {
+	if f.confirmation != nil {
+		model, command := f.confirmation.Update(message)
+		f.confirmation = model.(*huh.Form)
+		if f.confirmation.State != huh.StateCompleted {
+			return command, browseFormNoAction
+		}
+		confirmed, save := f.values.confirmed || f.confirmation.GetBool("confirm"), f.confirmationSave
+		f.confirmation = nil
+		controller.mode = formModeNormal
+		if !confirmed {
+			return nil, browseFormNoAction
+		}
+		if save {
+			return nil, browseFormSave
+		}
+		return nil, browseFormDiscard
+	}
+	model, command := f.form.Update(message)
+	f.form = model.(*huh.Form)
+	if f.form.State == huh.StateCompleted {
+		f.rebuildForm()
+		return f.focus(), browseFormNoAction
+	}
+	return command, browseFormNoAction
 }
 
-func (f *browseForm) blurInputs() {
-	for index := range f.inputs {
-		f.inputs[index].Blur()
+func (f *browseForm) beginConfirmation(save bool) {
+	f.values.confirmed, f.confirmationSave = false, save
+	title := "Discard row changes?"
+	if save {
+		title = "Save row changes?"
+	}
+	f.confirmation = huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
+	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+}
+
+func (f *browseForm) rebuildForm() {
+	fields := make([]huh.Field, 0, len(f.columns)*2)
+	for index, column := range f.columns {
+		fields = append(fields,
+			huh.NewInput().Key(f.valueKey(index)).Title(column).Value(&f.values.fields[index]),
+			huh.NewConfirm().Key(f.nullKey(index)).Title(column+" NULL").Affirmative("NULL").Negative("Value").Value(&f.values.nulls[index]),
+		)
+	}
+	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+}
+
+func (f browseForm) valueKey(index int) string { return fmt.Sprintf("value-%d", index) }
+
+func (f browseForm) nullKey(index int) string { return fmt.Sprintf("null-%d", index) }
+
+func (f browseForm) focusedIndex() int {
+	if f.form == nil {
+		return 0
+	}
+	key := f.form.GetFocusedField().GetKey()
+	for index := range f.columns {
+		if key == f.valueKey(index) {
+			return index * 2
+		}
+		if key == f.nullKey(index) {
+			return index*2 + 1
+		}
+	}
+	return 0
+}
+
+func (f *browseForm) nextField() tea.Cmd {
+	if f.focusedIndex() == len(f.columns)*2-1 {
+		return nil
+	}
+	return f.form.NextField()
+}
+
+func (f *browseForm) previousField() tea.Cmd {
+	if f.focusedIndex() == 0 {
+		return nil
+	}
+	return f.form.PrevField()
+}
+
+func (f *browseForm) firstField() tea.Cmd {
+	for f.focusedIndex() > 0 {
+		_ = f.form.PrevField()
+	}
+	return f.focus()
+}
+
+func (f *browseForm) lastField() tea.Cmd {
+	for f.focusedIndex() < len(f.columns)*2-1 {
+		_ = f.form.NextField()
+	}
+	return f.focus()
+}
+
+func (f *browseForm) blur() {
+	if f.form != nil {
+		_ = f.form.GetFocusedField().Blur()
 	}
 }
 
-func (f *browseForm) updateInput(message tea.Msg) tea.Cmd {
-	var command tea.Cmd
-	f.inputs[f.focus], command = f.inputs[f.focus].Update(message)
-	return command
+func (f *browseForm) focus() tea.Cmd {
+	if f.form == nil {
+		return nil
+	}
+	return f.form.GetFocusedField().Focus()
 }
 
 func (f *browseForm) setWidth(width int) {
-	inputWidth := max(width-formLabelWidth-len(formFieldGap)-1, 1)
-	for index := range f.inputs {
-		f.inputs[index].SetWidth(inputWidth)
+	f.width = max(width, 1)
+	if f.form != nil {
+		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
+	}
+	if f.confirmation != nil {
+		f.confirmation.WithWidth(f.width).WithShowHelp(f.width >= 40)
 	}
 }
-
-func (f browseForm) updateStatement(table string) (string, error) {
-	if !f.active() || len(f.primary) == 0 {
-		return "", fmt.Errorf("selected row cannot be updated")
-	}
-	sets := make([]string, len(f.columns))
-	for index, column := range f.columns {
-		sets[index] = quoteBrowseIdentifier(column) + " = " + f.value(index)
-	}
-	where := make([]string, len(f.primary))
-	for index, primary := range f.primary {
-		if f.values[primary] == nil {
-			where[index] = quoteBrowseIdentifier(f.columns[primary]) + " IS NULL"
-		} else {
-			where[index] = quoteBrowseIdentifier(f.columns[primary]) + " = " + quoteBrowseValue(*f.values[primary])
-		}
-	}
-	return "UPDATE " + quoteBrowseIdentifier(table) + " SET " + strings.Join(sets, ", ") + " WHERE " + strings.Join(where, " AND "), nil
-}
-
-func (f browseForm) value(index int) string {
-	if f.nulls[index] {
-		return "NULL"
-	}
-	return quoteBrowseValue(f.inputs[index].Value())
-}
-
-func quoteBrowseIdentifier(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
-}
-
-func quoteBrowseValue(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
 
 func (f browseForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving row changes")
 	}
-	if f.confirming() {
-		action := "Save row changes?"
-		if f.mode == browseFormConfirmDiscard {
-			action = "Discard row changes?"
-		}
-		choices := "[" + booleanValue(false) + "] " + booleanValue(true)
-		if f.confirmed {
-			choices = booleanValue(false) + " [" + booleanValue(true) + "]"
-		}
-		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
+	if f.confirmation != nil {
+		return f.confirmation.View()
 	}
-	lines := make([]string, len(f.inputs))
-	for index, input := range f.inputs {
-		label := formLabel(f.columns[index], formLabelWidth)
-		if f.focus == index && f.mode == browseFormNormal {
-			label = focusedFormLabel(f.columns[index], formLabelWidth)
-		}
-		lines[index] = label + formFieldGap + f.valueDisplay(index, input)
+	if f.form == nil {
+		return ""
 	}
-	help := "j/k fields | gg/G first/last | i edit | space toggle NULL | F5 save | Esc discard"
-	if f.mode == browseFormInsert {
-		help = "insert mode | Esc normal mode"
-	}
-	return strings.Join(lines, "\n") + "\n" + statusStyle.Render(help)
-}
-
-// valueDisplay distinguishes NULL from a real empty value.
-func (f browseForm) valueDisplay(index int, input textinput.Model) string {
-	if f.nulls[index] {
-		return formLabelStyle.Render("NULL")
-	}
-	return input.View()
+	return f.form.View()
 }

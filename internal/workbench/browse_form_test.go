@@ -1,11 +1,13 @@
 package workbench
 
 import (
+	"context"
+	"strconv"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -20,31 +22,80 @@ func TestBrowseForm_enterAndIOpenSelectedRow(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if !model.browseForm.active() || model.browseForm.inputs[1].Value() != "first" {
+			if !model.browseForm.active() || model.browseForm.form == nil || model.browseForm.values.fields[1] != "first" {
 				t.Fatalf("browse form = %#v, status = %q, want selected row", model.browseForm, model.Status)
 			}
 		})
 	}
 }
 
-func TestBrowseForm_savesConfirmedRowChange(t *testing.T) {
+func TestBrowseForm_normalModeNavigatesWithoutMutatingValues(t *testing.T) {
 	// Given
-	model := readyBrowseModel(t)
-	model.browse.SetCursor(1)
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updated.(Model)
-	model.browseForm.inputs[1].SetValue("edited")
+	model := openBrowseRow(t, 1)
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	model = updated.(Model)
-	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	updated, refresh := model.Update(command())
-	model = updated.(Model)
-	model = updateFromCommand(model, refresh)
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
+
+	// Then
+	if got := model.browseForm.form.GetFocusedField().GetKey(); got != "value-1" {
+		t.Fatalf("focused field = %q, want value-1", got)
+	}
+	if got := model.browseForm.values.fields[1]; got != "second" {
+		t.Fatalf("normal mode changed value = %q, want second", got)
+	}
+}
+
+func TestBrowseForm_huhValueAndNULLControlsProduceOriginalPredicateStatement(t *testing.T) {
+	// Given
+	model := openBrowseRow(t, 1)
+
+	// When
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 't', Text: "t"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	statement, err := model.browseForm.updateStatement("items")
+
+	// Then
+	if err != nil {
+		t.Fatalf("update statement: %v", err)
+	}
+	if want := "UPDATE `items` SET `id` = '2', `name` = NULL WHERE `id` = '2'"; statement != want {
+		t.Fatalf("statement = %q, want %q", statement, want)
+	}
+}
+
+func TestBrowseForm_savesOnlyAfterPositiveHuhConfirmation(t *testing.T) {
+	// Given
+	model := openBrowseRow(t, 1)
+	model.browseForm.values.fields[1] = "edited"
+
+	// When
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if !model.browseForm.active() || model.browseForm.confirmation != nil {
+		t.Fatal("negative save confirmation changed the form")
+	}
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
 	if model.browseForm.active() {
@@ -65,27 +116,104 @@ func TestBrowseForm_savesConfirmedRowChange(t *testing.T) {
 	}
 }
 
-func TestBrowseForm_alignsValuesWhenAColumnNameExceedsTheLabelWidth(t *testing.T) {
+func TestBrowseForm_positiveDiscardConfirmationClosesWithoutPersistence(t *testing.T) {
 	// Given
-	form, err := newBrowseForm(
-		[]string{"id", "very_long_column_name"},
-		[]*string{stringPointer("1"), stringPointer("two")},
-		[]sqlite.ColumnInfo{{Name: "id", PrimaryKey: 1}},
-	)
-	if err != nil {
-		t.Fatalf("new browse form: %v", err)
-	}
-	form.setWidth(20)
+	model := openBrowseRow(t, 1)
+	model.browseForm.values.fields[1] = "discarded"
 
 	// When
-	rows := strings.Split(ansi.Strip(form.View()), "\n")
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if !model.browseForm.active() || model.browseForm.confirmation != nil {
+		t.Fatal("negative discard confirmation changed the form")
+	}
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	firstValue := strings.Index(rows[0], "1")
-	secondValue := strings.Index(rows[1], "two")
-	if firstValue != formLabelWidth+len(formFieldGap) || secondValue != firstValue {
-		t.Errorf("value columns = %d and %d, want %d", firstValue, secondValue, formLabelWidth+len(formFieldGap))
+	if model.browseForm.active() {
+		t.Fatal("positive discard confirmation left the form open")
 	}
+	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
+	if err != nil {
+		t.Fatalf("selecting discarded row: %v", err)
+	}
+	if got := *result.Rows[0][0]; got != "second" {
+		t.Fatalf("name = %q, want second", got)
+	}
+}
+
+func TestBrowseForm_rejectsRowsWithoutPrimaryKey(t *testing.T) {
+	// Given
+	// When
+	_, err := newBrowseForm([]string{"name"}, []*string{stringPointer("first")}, []sqlite.ColumnInfo{{Name: "name"}})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "primary key") {
+		t.Fatalf("error = %v, want primary-key rejection", err)
+	}
+}
+
+func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
+	for _, affected := range []int64{0, 2} {
+		t.Run("affected="+strconv.FormatInt(affected, 10), func(t *testing.T) {
+			// Given
+			model := openBrowseRow(t, 1)
+			model.browseForm.saving = true
+			model.Database = browseExecuteService{result: sharedsql.Result{RowsAffected: affected}}
+
+			// When
+			updated, _ := model.Update(model.updateBrowseRow()())
+			model = updated.(Model)
+
+			// Then
+			if !model.browseForm.active() || model.browseForm.saving {
+				t.Fatalf("form = %#v, want retained unsaved form", model.browseForm)
+			}
+		})
+	}
+}
+
+type browseExecuteService struct {
+	sharedsql.Service
+	result sharedsql.Result
+}
+
+func (s browseExecuteService) Execute(context.Context, string) (sharedsql.Result, error) {
+	return s.result, nil
+}
+
+func openBrowseRow(t *testing.T, row int) Model {
+	t.Helper()
+	model := readyBrowseModel(t)
+	model.browse.SetCursor(row)
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	return model
+}
+
+func updateBrowseForm(model Model, message tea.Msg) Model {
+	updated, _ := model.Update(message)
+	return updated.(Model)
+}
+
+func resolveBrowseCommand(model Model, message tea.Msg) Model {
+	updated, command := model.Update(message)
+	model = updated.(Model)
+	for range 4 {
+		if command == nil {
+			return model
+		}
+		message = command()
+		if batch, ok := message.(tea.BatchMsg); ok {
+			for _, next := range batch {
+				model = resolveBrowseCommand(model, next())
+			}
+			return model
+		}
+		updated, command = model.Update(message)
+		model = updated.(Model)
+	}
+	return model
 }
 
 func readyBrowseModel(t *testing.T) Model {
