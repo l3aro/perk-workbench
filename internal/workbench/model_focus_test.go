@@ -198,7 +198,8 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 				view := model.workspaceView()
 
 				// Then
-				if !strings.HasSuffix(strings.TrimSpace(ansi.Strip(view)), mode.label) {
+				bottom := strings.TrimSpace(ansi.Strip(view[strings.LastIndex(view, "\n")+1:]))
+				if !strings.HasPrefix(bottom, mode.label) {
 					t.Errorf("tab %d pane = %q, want bottom-left %s badge", tab, ansi.Strip(view), mode.label)
 				}
 				if !strings.Contains(view, mode.badge) {

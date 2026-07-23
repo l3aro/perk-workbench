@@ -267,6 +267,12 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	if got, want := rows[1][3], "GENERATED STORED"; got != want {
 		t.Fatalf("structure attributes = %q, want %q", got, want)
 	}
+	if got, want := rows[0][5], "NONE"; got != want {
+		t.Fatalf("non-null column without default = %q, want %q", got, want)
+	}
+	if got, want := rows[1][5], "NULL"; got != want {
+		t.Fatalf("nullable column without default = %q, want %q", got, want)
+	}
 	assertTableRenderGeometry(t, model.structure)
 
 	assertTableTitlesAndPositiveWidths(t, model.browse, []string{"id", "name", "state"})

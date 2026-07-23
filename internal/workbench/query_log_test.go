@@ -68,6 +68,24 @@ func TestNew_queryLog_has_history_columns(t *testing.T) {
 	}
 }
 
+func TestQueryLogDetail_shows_statement(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	statement := "SELECT id, name FROM projects WHERE active = 1"
+	model.queryLogDetail = &queryLogEntry{statement: statement}
+
+	// When
+	view := ansi.Strip(model.View().Content)
+
+	// Then
+	if !strings.Contains(view, "Statement:") {
+		t.Fatalf("query log detail = %q, want statement label", view)
+	}
+	if !strings.Contains(view, statement) {
+		t.Fatalf("query log detail = %q, want statement %q", view, statement)
+	}
+}
+
 func TestQueryLog_records_browse_page_load(t *testing.T) {
 	// Given
 	model := readyModel(t)

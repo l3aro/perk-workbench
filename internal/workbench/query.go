@@ -135,7 +135,10 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	}
 	rows := make([]table.Row, len(message.columns))
 	for index, column := range message.columns {
-		defaultValue := "NULL"
+		defaultValue := "NONE"
+		if column.Nullable {
+			defaultValue = "NULL"
+		}
 		if column.DefaultValue != nil {
 			defaultValue = safeText(*column.DefaultValue)
 		}
