@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
@@ -33,6 +34,9 @@ const (
 	iconPrimaryKey     = "\uf084" // nf-fa-key
 	iconUnique         = "\uee40" // nf-fa-fingerprint
 	iconRegular        = "\uf0cb" // nf-fa-list_ol
+	iconSuccess        = "\uf00c" // nf-fa-check
+	iconFailed         = "\uf00d" // nf-fa-times
+	iconCanceled       = "\uf05e" // nf-fa-ban
 )
 
 var (
@@ -66,9 +70,12 @@ var (
 					Background(lipgloss.Color(colorAccent)).
 					Bold(true).
 					Padding(0, spaceCompact)
-	primaryIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
-	uniqueIndexStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
-	regularIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	primaryIndexStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
+	uniqueIndexStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
+	regularIndexStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	statusSuccessStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#3fb950"))
+	statusFailedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
+	statusCanceledStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d29922"))
 )
 
 func indexIcons(indexes []sharedsql.IndexKind) string {
@@ -343,10 +350,54 @@ func (m Model) View() tea.View {
 func (m Model) hasConfirming() bool {
 	return m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
-		m.connection.confirmation != nil
+		m.connection.confirmation != nil || m.queryLogDetail != nil
 }
 
 func (m Model) confirmContent() string {
+	if m.queryLogDetail != nil {
+		d := m.queryLogDetail
+		var statusStr, iconStr string
+		switch d.status {
+		case "failed":
+			statusStr = "Failed"
+			iconStr = statusFailedStyle.Render(iconFailed)
+		case "canceled":
+			statusStr = "Canceled"
+			iconStr = statusCanceledStyle.Render(iconCanceled)
+		default:
+			statusStr = "Success"
+			iconStr = statusSuccessStyle.Render(iconSuccess)
+		}
+		var b strings.Builder
+		b.WriteString("Query Log Detail")
+		b.WriteString("\n\n")
+		b.WriteString("Time:     ")
+		b.WriteString(d.startedAt.Format("2006-01-02 15:04:05"))
+		b.WriteString("\n")
+		b.WriteString("Status:   ")
+		b.WriteString(iconStr)
+		b.WriteString(" ")
+		b.WriteString(statusStr)
+		b.WriteString("\n")
+		b.WriteString("Duration: ")
+		b.WriteString(d.duration.Round(time.Microsecond).String())
+		b.WriteString("\n")
+		b.WriteString("Fetched:  ")
+		if d.fetched > 0 || d.status == "success" {
+			b.WriteString(fmt.Sprintf("%d", d.fetched))
+		} else {
+			b.WriteString("-")
+		}
+		b.WriteString("\n")
+		b.WriteString("Statement:\n")
+		b.WriteString(safeText(d.statement))
+		if d.errMsg != "" {
+			b.WriteString("\n\nError:\n")
+			b.WriteString(safeText(d.errMsg))
+		}
+		b.WriteString("\n\nenter/esc to close")
+		return b.String()
+	}
 	var raw string
 	switch {
 	case m.columnForm.confirming():
