@@ -244,9 +244,6 @@ func (f indexForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving index changes")
 	}
-	if f.confirmation != nil {
-		return f.confirmation.View()
-	}
 	if f.form == nil {
 		return ""
 	}

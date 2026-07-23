@@ -226,9 +226,6 @@ func (f connectionForm) connectionName() string {
 }
 
 func (f connectionForm) View() string {
-	if f.confirmation != nil {
-		return f.confirmation.View()
-	}
 	if f.form == nil {
 		return ""
 	}

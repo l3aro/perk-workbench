@@ -263,9 +263,6 @@ func (f foreignKeyForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving foreign-key changes")
 	}
-	if f.confirmation != nil {
-		return f.confirmation.View()
-	}
 	if f.form == nil {
 		return ""
 	}

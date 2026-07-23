@@ -277,9 +277,6 @@ func (f browseForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving row changes")
 	}
-	if f.confirmation != nil {
-		return f.confirmation.View()
-	}
 	if f.form == nil {
 		return ""
 	}
