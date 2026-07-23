@@ -456,21 +456,8 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString("  Duration: ")
 	b.WriteString(d.duration.Round(time.Microsecond).String())
 	b.WriteString("\n")
-	b.WriteString("  Fetched:  ")
-	if d.fetched > 0 || d.status == "success" {
-		b.WriteString(fmt.Sprintf("%d", d.fetched))
-	} else {
-		b.WriteString("-")
-	}
-	b.WriteString("\n\n")
-	b.WriteString("  Statement:\n")
-	b.WriteString("  ")
-	b.WriteString(ansi.Wordwrap(safeText(d.statement), innerW-4, " "))
-	if d.errMsg != "" {
-		b.WriteString("\n\n  Error:\n")
-		b.WriteString("  ")
-		b.WriteString(ansi.Wordwrap(safeText(d.errMsg), innerW-4, " "))
-	}
+	b.WriteString("  Message:  ")
+	b.WriteString(ansi.Wordwrap(safeText(d.message), innerW-14, " "))
 	b.WriteString("\n\n  enter/esc to close")
 
 	// Fill background
