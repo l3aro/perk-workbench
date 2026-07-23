@@ -68,6 +68,7 @@ const (
 type ColumnInfo struct {
 	Name         string
 	Type         string
+	Attributes   string
 	Nullable     bool
 	DefaultValue *string
 	PrimaryKey   int
