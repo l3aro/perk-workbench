@@ -9,11 +9,12 @@ import (
 )
 
 func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.IndexInfo, error) {
+	database, name := mysqlTableParts(table)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT index_name, non_unique, column_name
 		FROM information_schema.statistics
-		WHERE table_schema = DATABASE() AND table_name = ?
-		ORDER BY index_name, seq_in_index`, table)
+		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ?
+		ORDER BY index_name, seq_in_index`, database, name)
 	if err != nil {
 		return nil, fmt.Errorf("reading indexes: %w", err)
 	}
@@ -66,7 +67,7 @@ func (s *Service) ReplaceIndex(ctx context.Context, table, previous string, chan
 		if !change.PrimaryKey {
 			return fmt.Errorf("replace a primary key with another primary key, or delete it first")
 		}
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" DROP PRIMARY KEY, ADD PRIMARY KEY ("+indexColumns(change.Columns)+")"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP PRIMARY KEY, ADD PRIMARY KEY ("+indexColumns(change.Columns)+")"); err != nil {
 			return fmt.Errorf("replacing primary key: %w", err)
 		}
 		return nil
@@ -74,7 +75,7 @@ func (s *Service) ReplaceIndex(ctx context.Context, table, previous string, chan
 	if change.PrimaryKey {
 		return fmt.Errorf("create a primary key separately before replacing this index")
 	}
-	if _, err := s.db.ExecContext(ctx, "DROP INDEX "+quoteIdentifier(previous)+" ON "+quoteIdentifier(table)); err != nil {
+	if _, err := s.db.ExecContext(ctx, "DROP INDEX "+quoteIdentifier(previous)+" ON "+mysqlTableIdentifier(table)); err != nil {
 		return fmt.Errorf("dropping index: %w", err)
 	}
 	if _, err := s.db.ExecContext(ctx, mysqlCreateIndexStatement(table, change)); err != nil {
@@ -88,12 +89,12 @@ func (s *Service) DropIndex(ctx context.Context, table, name string) error {
 		return fmt.Errorf("index name is required")
 	}
 	if name == "PRIMARY" {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" DROP PRIMARY KEY"); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP PRIMARY KEY"); err != nil {
 			return fmt.Errorf("dropping primary key: %w", err)
 		}
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, "DROP INDEX "+quoteIdentifier(name)+" ON "+quoteIdentifier(table)); err != nil {
+	if _, err := s.db.ExecContext(ctx, "DROP INDEX "+quoteIdentifier(name)+" ON "+mysqlTableIdentifier(table)); err != nil {
 		return fmt.Errorf("dropping index: %w", err)
 	}
 	return nil
@@ -104,11 +105,11 @@ func mysqlCreateIndexStatement(table string, change sharedsql.IndexChange) strin
 	if change.Unique {
 		prefix = "CREATE UNIQUE INDEX "
 	}
-	return prefix + quoteIdentifier(change.Name) + " ON " + quoteIdentifier(table) + " (" + indexColumns(change.Columns) + ")"
+	return prefix + quoteIdentifier(change.Name) + " ON " + mysqlTableIdentifier(table) + " (" + indexColumns(change.Columns) + ")"
 }
 
 func mysqlAddPrimaryKeyStatement(table string, columns []string) string {
-	return "ALTER TABLE " + quoteIdentifier(table) + " ADD PRIMARY KEY (" + indexColumns(columns) + ")"
+	return "ALTER TABLE " + mysqlTableIdentifier(table) + " ADD PRIMARY KEY (" + indexColumns(columns) + ")"
 }
 
 func indexColumns(columns []string) string {

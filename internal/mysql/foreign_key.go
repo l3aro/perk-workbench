@@ -9,6 +9,7 @@ import (
 )
 
 func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsql.ForeignKeyInfo, error) {
+	database, name := mysqlTableParts(table)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT key_column_usage.constraint_name, key_column_usage.column_name,
 			key_column_usage.referenced_table_name, key_column_usage.referenced_column_name,
@@ -18,9 +19,9 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 			ON referential_constraints.constraint_schema = key_column_usage.constraint_schema
 			AND referential_constraints.table_name = key_column_usage.table_name
 			AND referential_constraints.constraint_name = key_column_usage.constraint_name
-		WHERE key_column_usage.table_schema = DATABASE() AND key_column_usage.table_name = ?
+		WHERE key_column_usage.table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND key_column_usage.table_name = ?
 			AND key_column_usage.referenced_table_name IS NOT NULL
-		ORDER BY key_column_usage.constraint_name, key_column_usage.ordinal_position`, table)
+		ORDER BY key_column_usage.constraint_name, key_column_usage.ordinal_position`, database, name)
 	if err != nil {
 		return nil, fmt.Errorf("reading foreign keys: %w", err)
 	}
@@ -47,6 +48,7 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 }
 
 func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) ([]sharedsql.ReferencingForeignKeyInfo, error) {
+	database, name := mysqlTableParts(table)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.column_name,
 			key_column_usage.referenced_table_name, key_column_usage.referenced_column_name,
@@ -56,9 +58,10 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 			ON referential_constraints.constraint_schema = key_column_usage.constraint_schema
 			AND referential_constraints.table_name = key_column_usage.table_name
 			AND referential_constraints.constraint_name = key_column_usage.constraint_name
-		WHERE key_column_usage.table_schema = DATABASE() AND key_column_usage.referenced_table_schema = DATABASE()
+		WHERE key_column_usage.table_schema = COALESCE(NULLIF(?, ''), DATABASE())
+			AND key_column_usage.referenced_table_schema = COALESCE(NULLIF(?, ''), DATABASE())
 			AND key_column_usage.referenced_table_name = ?
-		ORDER BY key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.ordinal_position`, table)
+		ORDER BY key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.ordinal_position`, database, database, name)
 	if err != nil {
 		return nil, fmt.Errorf("reading referencing foreign keys: %w", err)
 	}
@@ -88,7 +91,7 @@ func (s *Service) CreateForeignKey(ctx context.Context, table string, change sha
 	if err := sharedsql.ValidateForeignKeyChange(change); err != nil {
 		return err
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" ADD "+mysqlForeignKeyClause(change)); err != nil {
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" ADD "+mysqlForeignKeyClause(change)); err != nil {
 		return fmt.Errorf("creating foreign key: %w", err)
 	}
 	return nil
@@ -101,7 +104,7 @@ func (s *Service) ReplaceForeignKey(ctx context.Context, table, previous string,
 	if err := sharedsql.ValidateForeignKeyChange(change); err != nil {
 		return err
 	}
-	statement := "ALTER TABLE " + quoteIdentifier(table) + " DROP FOREIGN KEY " + quoteIdentifier(previous) + ", ADD " + mysqlForeignKeyClause(change)
+	statement := "ALTER TABLE " + mysqlTableIdentifier(table) + " DROP FOREIGN KEY " + quoteIdentifier(previous) + ", ADD " + mysqlForeignKeyClause(change)
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("replacing foreign key: %w", err)
 	}
@@ -112,7 +115,7 @@ func (s *Service) DropForeignKey(ctx context.Context, table, previous string) er
 	if strings.TrimSpace(previous) == "" {
 		return fmt.Errorf("foreign key is required")
 	}
-	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" DROP FOREIGN KEY "+quoteIdentifier(previous)); err != nil {
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP FOREIGN KEY "+quoteIdentifier(previous)); err != nil {
 		return fmt.Errorf("dropping foreign key: %w", err)
 	}
 	return nil

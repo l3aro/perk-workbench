@@ -14,3 +14,9 @@ func TestOpenRejectsInvalidDSN(t *testing.T) {
 		t.Fatal("Open() error = nil, want invalid DSN error")
 	}
 }
+
+func TestMySQLTableIdentifier_quotes_database_and_table_separately(t *testing.T) {
+	if got, want := mysqlTableIdentifier("analytics.events"), "`analytics`.`events`"; got != want {
+		t.Fatalf("mysqlTableIdentifier() = %q, want %q", got, want)
+	}
+}

@@ -49,22 +49,40 @@ func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT CASE table_type WHEN 'BASE TABLE' THEN 'table' ELSE 'view' END, table_name
-		FROM information_schema.tables
-		WHERE table_schema = DATABASE() AND table_type IN ('BASE TABLE', 'VIEW')
-		ORDER BY table_type, table_name`)
+		SELECT schemata.schema_name, tables.table_type, tables.table_name
+		FROM information_schema.schemata AS schemata
+		LEFT JOIN information_schema.tables AS tables
+			ON tables.table_schema = schemata.schema_name
+			AND tables.table_type IN ('BASE TABLE', 'VIEW')
+		WHERE schemata.schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+		ORDER BY schemata.schema_name, tables.table_type, tables.table_name`)
 	if err != nil {
 		return nil, fmt.Errorf("listing schema: %w", err)
 	}
 	objects := []sharedsql.SchemaObject{}
+	lastDatabase := ""
 	for rows.Next() {
-		var object sharedsql.SchemaObject
-		if err := rows.Scan(&object.Type, &object.Name); err != nil {
+		var database string
+		var tableType, tableName stdsql.NullString
+		if err := rows.Scan(&database, &tableType, &tableName); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning schema", err)
 		}
-		object.Type = sharedsql.SanitizeDisplay(object.Type)
-		object.Name = sharedsql.SanitizeDisplay(object.Name)
-		objects = append(objects, object)
+		database = sharedsql.SanitizeDisplay(database)
+		if database != lastDatabase {
+			objects = append(objects, sharedsql.SchemaObject{Database: database, Type: "database", Name: database})
+			lastDatabase = database
+		}
+		if tableName.Valid {
+			objectType := "view"
+			if tableType.String == "BASE TABLE" {
+				objectType = "table"
+			}
+			objects = append(objects, sharedsql.SchemaObject{
+				Database: database,
+				Type:     objectType,
+				Name:     sharedsql.SanitizeDisplay(tableName.String),
+			})
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, sharedsql.CloseRows(rows, "iterating schema", err)
@@ -114,16 +132,33 @@ func (s *Service) Execute(ctx context.Context, statement string) (result shareds
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
+
 	result.Duration = time.Since(started)
 	return result, nil
 }
+func mysqlTableParts(table string) (database, name string) {
+	database, name, found := strings.Cut(table, ".")
+	if !found {
+		return "", table
+	}
+	return database, name
+}
+
+func mysqlTableIdentifier(table string) string {
+	database, name := mysqlTableParts(table)
+	if database == "" {
+		return quoteIdentifier(name)
+	}
+	return quoteIdentifier(database) + "." + quoteIdentifier(name)
+}
 
 func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.ColumnInfo, error) {
+	database, table := mysqlTableParts(name)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT column_name, column_type, is_nullable, column_default, column_key
 		FROM information_schema.columns
-		WHERE table_schema = DATABASE() AND table_name = ?
-		ORDER BY ordinal_position`, name)
+		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ?
+		ORDER BY ordinal_position`, database, table)
 	if err != nil {
 		return nil, fmt.Errorf("reading table info: %w", err)
 	}
@@ -186,13 +221,13 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	}
 	if current.PrimaryKey > 0 {
 		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
-			_, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name))
+			_, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name))
 			return err
 		}
 		return errors.New("primary-key columns can only be renamed without other changes")
 	}
 	if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
-		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
+		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
 			return fmt.Errorf("renaming column: %w", err)
 		}
 		return nil
@@ -204,7 +239,7 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	if attributes.extra != "" {
 		return fmt.Errorf("column %q has unsupported attributes: %s", change.PreviousName, attributes.extra)
 	}
-	statement := "ALTER TABLE " + quoteIdentifier(table) + " CHANGE COLUMN " + quoteIdentifier(change.PreviousName) + " " + quoteIdentifier(change.Name) + " " + strings.TrimSpace(change.Type)
+	statement := "ALTER TABLE " + mysqlTableIdentifier(table) + " CHANGE COLUMN " + quoteIdentifier(change.PreviousName) + " " + quoteIdentifier(change.Name) + " " + strings.TrimSpace(change.Type)
 	if change.Nullable {
 		statement += " NULL"
 	} else {
@@ -234,11 +269,12 @@ type mysqlColumnAttributes struct {
 }
 
 func (s *Service) columnAttributes(ctx context.Context, table, column string) (mysqlColumnAttributes, error) {
+	database, name := mysqlTableParts(table)
 	var attributes mysqlColumnAttributes
 	err := s.db.QueryRowContext(ctx, `
 		SELECT extra, column_comment, character_set_name, collation_name
 		FROM information_schema.columns
-		WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`, table, column).Scan(&attributes.extra, &attributes.comment, &attributes.characterSet, &attributes.collation)
+		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ? AND column_name = ?`, database, name, column).Scan(&attributes.extra, &attributes.comment, &attributes.characterSet, &attributes.collation)
 	if err != nil {
 		return mysqlColumnAttributes{}, fmt.Errorf("reading column attributes: %w", err)
 	}
@@ -283,10 +319,10 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 		return sharedsql.Result{}, fmt.Errorf("invalid page: offset=%d limit=%d", offset, limit)
 	}
 	var totalRows int64
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+quoteIdentifier(name)).Scan(&totalRows); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+mysqlTableIdentifier(name)).Scan(&totalRows); err != nil {
 		return sharedsql.Result{}, fmt.Errorf("counting table rows: %w", err)
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+quoteIdentifier(name)+" LIMIT ? OFFSET ?", limit, offset)
+	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+mysqlTableIdentifier(name)+" LIMIT ? OFFSET ?", limit, offset)
 	if err != nil {
 		return sharedsql.Result{}, fmt.Errorf("browsing table: %w", err)
 	}
