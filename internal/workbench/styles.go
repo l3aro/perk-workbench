@@ -28,6 +28,8 @@ const (
 	colorMuted         = "#8b9bb4"
 	colorAccent        = "#55d6be"
 	colorBorder        = "#324155"
+	colorModeNormal    = "#58a6ff"
+	colorModeInsert    = "#3fb950"
 	spaceCompact       = 1
 	sqlEditorRows      = 4
 	queryLogPaneHeight = 11
@@ -76,6 +78,16 @@ var (
 	statusSuccessStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#3fb950"))
 	statusFailedStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#f85149"))
 	statusCanceledStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d29922"))
+	modeNormalStyle     = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("#000000")).
+				Background(lipgloss.Color(colorModeNormal)).
+				Bold(true).
+				Padding(0, spaceCompact)
+	modeInsertStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#000000")).
+			Background(lipgloss.Color(colorModeInsert)).
+			Bold(true).
+			Padding(0, spaceCompact)
 )
 
 func indexIcons(indexes []sharedsql.IndexKind) string {
@@ -92,6 +104,13 @@ func indexIcons(indexes []sharedsql.IndexKind) string {
 		}
 	}
 	return strings.Join(icons, " ")
+}
+
+func (m Model) modeBadge() string {
+	if m.formMode.editing() {
+		return modeInsertStyle.Render("INSERT")
+	}
+	return modeNormalStyle.Render("NORMAL")
 }
 
 func newList(title string, filtering bool) list.Model {
@@ -578,7 +597,7 @@ func (m Model) workspaceView() string {
 	case tabForeignKeys:
 		content = m.foreignKeysView()
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content)
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, m.modeBadge())
 }
 
 func (m Model) sqlPaneView() string {
@@ -586,11 +605,7 @@ func (m Model) sqlPaneView() string {
 		m.editor.text.View(),
 		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth),
 	)
-	mode := "NORMAL"
-	if m.formMode.editing() {
-		mode = "INSERT"
-	}
-	return content + "\n" + paneStatus(headerStyle.Render(mode), m.resultsStatus, m.tableViewportWidth)
+	return content + "\n" + paneStatus("", m.resultsStatus, m.tableViewportWidth)
 }
 
 func (m Model) structureView() string {

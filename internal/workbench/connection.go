@@ -238,9 +238,5 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) connectionPaneView(height int) string {
 	content := m.connection.View()
-	mode := "NORMAL"
-	if m.formMode.editing() {
-		mode = "INSERT"
-	}
-	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + headerStyle.Render(mode)
+	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + m.modeBadge()
 }
