@@ -34,6 +34,13 @@ type DatabaseInfo struct {
 	Version string
 }
 
+type Opened struct {
+	Target  string
+	Service Service
+	Info    DatabaseInfo
+	Objects []SchemaObject
+}
+
 type Result struct {
 	Columns      []string
 	ColumnTypes  []string
