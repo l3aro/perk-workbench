@@ -326,6 +326,7 @@ func (m *Model) layout(width, height int) {
 		m.tableViewportWidth = max(m.editorWidth-8, 1)
 	}
 	m.columnForm.setWidth(m.tableViewportWidth)
+	m.columnForm.setHeight(m.formViewportHeight())
 	m.browseForm.setWidth(m.tableViewportWidth)
 	m.indexForm.setWidth(m.tableViewportWidth)
 	m.foreignKeyForm.setWidth(m.tableViewportWidth)
@@ -490,6 +491,9 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString("  Duration: ")
 	b.WriteString(d.duration.Round(time.Microsecond).String())
 	b.WriteString("\n")
+	b.WriteString("  Statement:\n    ")
+	b.WriteString(ansi.Wordwrap(safeText(d.statement), innerW-4, "\n    "))
+	b.WriteString("\n")
 	b.WriteString("  Message:  ")
 	b.WriteString(ansi.Wordwrap(safeText(d.message), innerW-14, " "))
 	b.WriteString("\n\n  enter/esc to close")
@@ -609,34 +613,33 @@ func (m Model) sqlPaneView() string {
 
 func (m Model) structureView() string {
 	if m.columnForm.active() {
-		return m.columnForm.View()
+		return m.formViewport(m.columnForm.View(), m.columnForm.scrollOffset)
 	}
 	return tableViewportView(m.structure, m.structureOffset, m.tableViewportWidth)
 }
 
 func (m Model) browseView() string {
 	if m.browseForm.active() {
-		view := m.browseForm.View()
-		// workspaceView adds tabs + separator (2 lines).
-		// The pane adds border (2) + padding (1) = 3 lines.
-		// Total overhead = 5 lines before the form content.
-		// Truncate to fit within the workspace.
-		height := max(m.workspaceHeight-5, 1)
-		if m.compact {
-			height = max(m.height-9, 1)
-		}
-		lines := strings.Split(view, "\n")
-		if len(lines) > height {
-			offset := m.browseForm.scrollOffset
-			maxOffset := max(len(lines)-height, 0)
-			if offset > maxOffset {
-				offset = maxOffset
-			}
-			lines = lines[offset : offset+height]
-		}
-		return strings.Join(lines, "\n")
+		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
 	}
 	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth) + "\n" + paneStatus("", m.browseStatus, m.tableViewportWidth)
+}
+
+func (m Model) formViewportHeight() int {
+	if m.compact {
+		return max(m.height-9, 1)
+	}
+	return max(m.workspaceHeight-5, 1)
+}
+
+func (m Model) formViewport(view string, offset int) string {
+	height := m.formViewportHeight()
+	lines := strings.Split(view, "\n")
+	if len(lines) <= height {
+		return view
+	}
+	offset = min(max(offset, 0), len(lines)-height)
+	return strings.Join(lines[offset:offset+height], "\n")
 }
 
 func paneStatus(left, right string, width int) string {

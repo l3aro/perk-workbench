@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,15 +19,15 @@ const (
 )
 
 type columnForm struct {
-	form, confirmation              *huh.Form
-	values                          *columnFormValues
-	previousName, originalType      string
-	typeOptions                     []sharedsql.ColumnType
-	validationError                 string
-	width, primaryKey               int
-	formType                        string
-	hadDefault, typeChanged, saving bool
-	confirmationSave                bool
+	form, confirmation                      *huh.Form
+	values                                  *columnFormValues
+	previousName, originalType              string
+	typeOptions                             []sharedsql.ColumnType
+	validationError                         string
+	width, height, primaryKey, scrollOffset int
+	formType                                string
+	hadDefault, typeChanged, saving         bool
+	confirmationSave                        bool
 }
 
 type columnFormValues struct {
@@ -67,6 +68,7 @@ func (m *Model) openColumnForm() tea.Cmd {
 	}
 	m.columnForm = newColumnForm(m.structureColumns[row], sharedsql.ColumnTypes(m.databaseInfo))
 	m.columnForm.setWidth(m.tableViewportWidth)
+	m.columnForm.setHeight(m.formViewportHeight())
 	return m.columnForm.form.Init()
 }
 
@@ -106,6 +108,10 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		f.beginConfirmation(false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), columnFormNoAction
+	case "j", "down":
+		return f.nextField(), columnFormNoAction
+	case "k", "up":
+		return f.previousField(), columnFormNoAction
 	}
 	return nil, columnFormNoAction
 }
@@ -128,21 +134,22 @@ func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) 
 		}
 		return nil, columnFormDiscard
 	}
-	if _, ok := message.(tea.KeyPressMsg); ok {
-		f.validationError = ""
-	}
+	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" && f.values.typeName != f.formType {
 		f.typeChanged = true
 		f.selectType(f.typeIndex(), nil)
 		f.rebuildForm()
-		return f.focus(), columnFormNoAction
+		f.scrollToField(focused)
+		return f.focusField(focused), columnFormNoAction
 	}
 	if f.form.State == huh.StateCompleted {
 		f.rebuildForm()
-		return f.focus(), columnFormNoAction
+		f.scrollToField(focused)
+		return f.focusField(focused), columnFormNoAction
 	}
+	f.scrollToField(f.focusedField())
 	return command, columnFormNoAction
 }
 
@@ -170,6 +177,66 @@ func (f *columnForm) focus() tea.Cmd {
 	return f.form.GetFocusedField().Focus()
 }
 
+func (f *columnForm) nextField() tea.Cmd {
+	field := f.focusedField()
+	if field >= f.fieldCount()-1 {
+		return nil
+	}
+	_ = f.form.GetFocusedField().Blur()
+	f.scrollToField(field + 1)
+	return f.form.NextField()
+}
+
+func (f *columnForm) previousField() tea.Cmd {
+	field := f.focusedField()
+	if field == 0 {
+		return nil
+	}
+	_ = f.form.GetFocusedField().Blur()
+	f.scrollToField(field - 1)
+	return f.form.PrevField()
+}
+
+func (f columnForm) fieldCount() int { return len(f.values.parameters) + 4 }
+
+func (f columnForm) focusedField() int {
+	if f.form == nil {
+		return 0
+	}
+	key := f.form.GetFocusedField().GetKey()
+	switch {
+	case key == "name":
+		return 0
+	case key == "type":
+		return 1
+	case strings.HasPrefix(key, "parameter-"):
+		index, err := strconv.Atoi(strings.TrimPrefix(key, "parameter-"))
+		if err == nil {
+			return min(index+2, f.fieldCount()-1)
+		}
+	case key == "nullable":
+		return len(f.values.parameters) + 2
+	case key == "default":
+		return len(f.values.parameters) + 3
+	}
+	return 0
+}
+
+func (f *columnForm) focusField(field int) tea.Cmd {
+	field = min(max(field, 0), f.fieldCount()-1)
+	for f.focusedField() < field {
+		_ = f.form.NextField()
+	}
+	for f.focusedField() > field {
+		_ = f.form.PrevField()
+	}
+	return f.focus()
+}
+
+func (f *columnForm) scrollToField(field int) {
+	f.scrollOffset = max(field*2, 0)
+}
+
 func (f columnForm) change() (sharedsql.ColumnChange, error) {
 	typeDeclaration, err := f.typeDeclaration()
 	if err != nil {
@@ -195,6 +262,16 @@ func (f *columnForm) setWidth(width int) {
 	}
 }
 
+func (f *columnForm) setHeight(height int) {
+	f.height = max(height, 1)
+	if f.form != nil {
+		f.form.WithHeight(f.height)
+	}
+	if f.confirmation != nil {
+		f.confirmation.WithHeight(f.height)
+	}
+}
+
 func (f *columnForm) rebuildForm() {
 	f.formType = f.values.typeName
 	fields := []huh.Field{
@@ -203,7 +280,7 @@ func (f *columnForm) rebuildForm() {
 	}
 	for index, parameter := range f.typeOptions[f.typeIndex()].Parameters {
 		index, parameter := index, parameter
-		fields = append(fields, newEditableInput(huh.NewInput().Key("parameter").Title(parameter.Name).Value(&f.values.parameters[index]).Validate(f.validateParameter(index)), &f.values.parameters[index]))
+		fields = append(fields, newEditableInput(huh.NewInput().Key("parameter-"+strconv.Itoa(index)).Title(parameter.Name).Value(&f.values.parameters[index]).Validate(f.validateParameter(index)), &f.values.parameters[index]))
 	}
 	fields = append(fields,
 		huh.NewConfirm().Key("nullable").Title("Nullable").Affirmative("Yes").Negative("No").Value(&f.values.nullable),
@@ -212,7 +289,7 @@ func (f *columnForm) rebuildForm() {
 	if f.primaryKey > 0 {
 		fields = append(fields, huh.NewNote().Title("Primary key").Description(primaryKeyNote(f.primaryKey)))
 	}
-	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
 }
 
 func requiredColumnName(value string) error {

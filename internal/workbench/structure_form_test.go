@@ -81,6 +81,45 @@ func TestStructureForm_normalInputCannotMutateAndEscapeReturnsToNormal(t *testin
 	}
 }
 
+func TestStructureForm_normalModeNavigatesFields(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if got, want := model.columnForm.form.GetFocusedField().GetKey(), "type"; got != want {
+		t.Fatalf("focused field after j = %q, want %q", got, want)
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("mode after normal navigation = %d, want normal", model.formMode.mode)
+	}
+
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if got, want := model.columnForm.form.GetFocusedField().GetKey(), "name"; got != want {
+		t.Fatalf("focused field after k = %q, want %q", got, want)
+	}
+}
+
+func TestStructureForm_viewportTracksFocusedField(t *testing.T) {
+	model := resizeModel(openColumn(t, "name", "TEXT"), 100, 12)
+
+	for range 3 {
+		model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+	if got, want := model.columnForm.form.GetFocusedField().GetKey(), "default"; got != want {
+		t.Fatalf("focused field after navigation = %q, want %q", got, want)
+	}
+	view := model.structureView()
+	height := max(model.workspaceHeight-5, 1)
+	if model.compact {
+		height = max(model.height-9, 1)
+	}
+	if got := len(strings.Split(view, "\n")); got > height {
+		t.Fatalf("structure form viewport lines = %d, want at most %d", got, height)
+	}
+	if model.columnForm.scrollOffset == 0 {
+		t.Fatal("structure form did not scroll to the focused field")
+	}
+}
+
 func TestStructureForm_invalidValuesCannotReachConfirmation(t *testing.T) {
 	model := openColumn(t, "price", "DECIMAL(10,2)")
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
