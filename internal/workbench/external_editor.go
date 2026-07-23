@@ -9,17 +9,18 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type externalEditorFinishedMsg struct {
+type sqlEditorFinishedMsg struct {
+	tag   uint64
 	value string
 	err   error
 }
 
-func (m *Model) openExternalEditor() (tea.Cmd, bool) {
-	value, ok := m.focusedTextValue()
-	if !ok {
+func (m *Model) openSQLExternalEditor() (tea.Cmd, bool) {
+	if !m.sqlEditorActive() || !m.formMode.editing() {
 		return nil, false
 	}
-	command, err := externalEditorCommand(value)
+	m.editorEditTag++
+	command, err := sqlEditorCommand(m.editor.value, m.editorEditTag)
 	if err != nil {
 		m.Status = safeText(fmt.Sprintf("opening editor: %v", err))
 		return nil, true
@@ -27,176 +28,58 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 	return command, true
 }
 
-func externalEditorCommand(value string) (tea.Cmd, error) {
-	editor := strings.TrimSpace(os.Getenv("EDITOR"))
-	if editor == "" {
-		return nil, fmt.Errorf("$EDITOR is not set")
-	}
-	file, err := os.CreateTemp("", "perk-editor-*")
+func sqlEditorCommand(value string, tag uint64) (tea.Cmd, error) {
+	command, complete, err := sqlEditorProcess(value, tag)
 	if err != nil {
-		return nil, fmt.Errorf("creating editor file: %w", err)
+		return nil, err
+	}
+	return tea.ExecProcess(command, complete), nil
+}
+
+func sqlEditorProcess(value string, tag uint64) (*exec.Cmd, tea.ExecCallback, error) {
+	editor := strings.Fields(os.Getenv("EDITOR"))
+	if len(editor) == 0 {
+		return nil, nil, fmt.Errorf("$EDITOR is not set")
+	}
+	file, err := os.CreateTemp("", "perk-editor-*.sql")
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating editor file: %w", err)
 	}
 	name := file.Name()
 	if _, err := file.WriteString(value); err != nil {
 		file.Close()
 		os.Remove(name)
-		return nil, fmt.Errorf("writing editor file: %w", err)
+		return nil, nil, fmt.Errorf("writing editor file: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		os.Remove(name)
-		return nil, fmt.Errorf("closing editor file: %w", err)
+		return nil, nil, fmt.Errorf("closing editor file: %w", err)
 	}
-	return tea.ExecProcess(exec.Command("sh", "-c", "exec $EDITOR \"$1\"", "--", name), func(runErr error) tea.Msg {
-		value, readErr := os.ReadFile(name)
+	return exec.Command(editor[0], append(editor[1:], name)...), func(runErr error) tea.Msg {
+		updated, readErr := os.ReadFile(name)
 		removeErr := os.Remove(name)
 		if runErr != nil {
-			return externalEditorFinishedMsg{err: runErr}
+			return sqlEditorFinishedMsg{tag: tag, err: runErr}
 		}
 		if readErr != nil {
-			return externalEditorFinishedMsg{err: fmt.Errorf("reading editor file: %w", readErr)}
+			return sqlEditorFinishedMsg{tag: tag, err: fmt.Errorf("reading editor file: %w", readErr)}
 		}
 		if removeErr != nil {
-			return externalEditorFinishedMsg{err: fmt.Errorf("removing editor file: %w", removeErr)}
+			return sqlEditorFinishedMsg{tag: tag, err: fmt.Errorf("removing editor file: %w", removeErr)}
 		}
-		return externalEditorFinishedMsg{value: string(value)}
-	}), nil
+		return sqlEditorFinishedMsg{tag: tag, value: string(updated)}
+	}, nil
 }
 
-func (m Model) focusedTextValue() (string, bool) {
-	switch m.State {
-	case stateConnection:
-		if m.recent.SettingFilter() {
-			return m.recent.FilterValue(), true
-		}
-		if m.connection.mode != connectionFormInsert {
-			return "", false
-		}
-		switch m.connection.focus {
-		case connectionFocusName:
-			return m.connection.name.Value(), true
-		case connectionFocusTarget:
-			return m.connection.target.Value(), true
-		case connectionFocusHost:
-			return m.connection.host.Value(), true
-		case connectionFocusPort:
-			return m.connection.port.Value(), true
-		case connectionFocusUsername:
-			return m.connection.user.Value(), true
-		case connectionFocusPassword:
-			return m.connection.pass.Value(), true
-		}
-	case statePicking:
-		if m.picker.SettingFilter() {
-			return m.picker.FilterValue(), true
-		}
-	case stateReady:
-		if m.Focus == focusSchema && m.schema.SettingFilter() {
-			return m.schema.FilterValue(), true
-		}
-		if m.Focus != focusWorkspace {
-			return "", false
-		}
-		switch m.Tab {
-		case tabSQL:
-			if m.editor.textarea.Focused() {
-				return m.editor.textarea.Value(), true
-			}
-		case tabStructure:
-			if m.columnForm.mode == columnFormInsert {
-				if m.columnForm.name.Focused() {
-					return m.columnForm.name.Value(), true
-				}
-				if m.columnForm.preset.Focused() {
-					return m.columnForm.preset.Value(), true
-				}
-				for _, input := range m.columnForm.parameters {
-					if input.Focused() {
-						return input.Value(), true
-					}
-				}
-			}
-		case tabBrowse:
-			if m.browseForm.mode == browseFormInsert {
-				for _, input := range m.browseForm.inputs {
-					if input.Focused() {
-						return input.Value(), true
-					}
-				}
-			}
-		}
+func (m Model) updateSQLExternalEditor(message sqlEditorFinishedMsg) (tea.Model, tea.Cmd) {
+	if message.tag != m.editorEditTag || !m.sqlEditorActive() || !m.formMode.editing() {
+		m.Status = "editor target is no longer focused"
+		return m, nil
 	}
-	return "", false
-}
-
-func (m *Model) setFocusedTextValue(value string) bool {
-	switch m.State {
-	case stateConnection:
-		if m.recent.SettingFilter() {
-			m.recent.SetFilterText(value)
-			return true
-		}
-		if m.connection.mode != connectionFormInsert {
-			return false
-		}
-		switch m.connection.focus {
-		case connectionFocusName:
-			m.connection.name.SetValue(value)
-		case connectionFocusTarget:
-			m.connection.target.SetValue(value)
-		case connectionFocusHost:
-			m.connection.host.SetValue(value)
-		case connectionFocusPort:
-			m.connection.port.SetValue(value)
-		case connectionFocusUsername:
-			m.connection.user.SetValue(value)
-		case connectionFocusPassword:
-			m.connection.pass.SetValue(value)
-		default:
-			return false
-		}
-		return true
-	case statePicking:
-		if m.picker.SettingFilter() {
-			m.picker.SetFilterText(value)
-			return true
-		}
-	case stateReady:
-		if m.Focus == focusSchema && m.schema.SettingFilter() {
-			m.schema.SetFilterText(value)
-			return true
-		}
-		if m.Focus != focusWorkspace {
-			return false
-		}
-		switch m.Tab {
-		case tabSQL:
-			if m.editor.textarea.Focused() {
-				m.editor.textarea.SetValue(value)
-				return true
-			}
-		case tabStructure:
-			if m.columnForm.name.Focused() {
-				m.columnForm.name.SetValue(value)
-				return true
-			}
-			if m.columnForm.preset.Focused() {
-				m.columnForm.preset.SetValue(value)
-				return true
-			}
-			for index := range m.columnForm.parameters {
-				if m.columnForm.parameters[index].Focused() {
-					m.columnForm.parameters[index].SetValue(value)
-					return true
-				}
-			}
-		case tabBrowse:
-			for index := range m.browseForm.inputs {
-				if m.browseForm.inputs[index].Focused() {
-					m.browseForm.inputs[index].SetValue(value)
-					return true
-				}
-			}
-		}
+	if message.err != nil {
+		m.Status = safeText(fmt.Sprintf("editor failed: %v", message.err))
+		return m, nil
 	}
-	return false
+	m.editor.setValue(message.value)
+	return m, m.editor.text.Focus()
 }

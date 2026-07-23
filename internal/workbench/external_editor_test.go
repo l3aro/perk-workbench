@@ -1,110 +1,90 @@
 package workbench
 
 import (
-	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
-	"charm.land/bubbles/v2/list"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 )
 
 func TestModel_ctrlEEditsFocusedText(t *testing.T) {
-	tests := []struct {
-		name  string
-		setup func(*Model)
-		value func(Model) string
-	}{
-		{
-			name: "connection field",
-			setup: func(model *Model) {
-				model.connection.setFocus(connectionFocusName)
-				model.connection.enterInsertMode()
-				model.connection.name.SetValue("before")
-			},
-			value: func(model Model) string { return model.connection.name.Value() },
-		},
-		{
-			name: "picker filter",
-			setup: func(model *Model) {
-				model.State = statePicking
-				model.picker.SetFilterText("before")
-				model.picker.SetFilterState(list.Filtering)
-			},
-			value: func(model Model) string { return model.picker.FilterValue() },
-		},
-		{
-			name: "schema filter",
-			setup: func(model *Model) {
-				model.State, model.Focus = stateReady, focusSchema
-				model.schema.SetFilterText("before")
-				model.schema.SetFilterState(list.Filtering)
-			},
-			value: func(model Model) string { return model.schema.FilterValue() },
-		},
-		{
-			name: "SQL editor",
-			setup: func(model *Model) {
-				model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-				model.editor.textarea.Focus()
-				model.editor.textarea.SetValue("before")
-			},
-			value: func(model Model) string { return model.editor.textarea.Value() },
-		},
-		{
-			name: "column form",
-			setup: func(model *Model) {
-				input := textinput.New()
-				input.Focus()
-				input.SetValue("before")
-				model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabStructure
-				model.columnForm = columnForm{mode: columnFormInsert, name: input}
-			},
-			value: func(model Model) string { return model.columnForm.name.Value() },
-		},
-		{
-			name: "browse form",
-			setup: func(model *Model) {
-				input := textinput.New()
-				input.Focus()
-				input.SetValue("before")
-				model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabBrowse
-				model.browseForm = browseForm{mode: browseFormInsert, inputs: []textinput.Model{input}}
-			},
-			value: func(model Model) string { return model.browseForm.inputs[0].Value() },
-		},
+	// Given
+	editor := filepath.Join(t.TempDir(), "editor.sh")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'SELECT 2' > \"$1\"\n"), 0o700); err != nil {
+		t.Fatalf("writing editor script: %v", err)
 	}
+	t.Setenv("EDITOR", editor)
+	t.Setenv("TMPDIR", t.TempDir())
+	model := readyModel(t)
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Given
-			t.Setenv("EDITOR", "true")
-			model := New("", Open(context.Background()))
-			test.setup(&model)
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("SQL Huh Text Ctrl+E returned no editor command")
+	}
+	process, complete, err := sqlEditorProcess(model.editor.value, model.editorEditTag)
+	if err != nil {
+		t.Fatalf("creating SQL editor process: %v", err)
+	}
+	updated, _ = model.Update(complete(process.Run()))
+	model = updated.(Model)
 
-			// When
-			updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
-			model = updated.(Model)
-			updated, _ = model.Update(externalEditorFinishedMsg{value: "after"})
-			model = updated.(Model)
-
-			// Then
-			if command == nil {
-				t.Fatal("editor command = nil")
-			}
-			if got := test.value(model); got != "after" {
-				t.Fatalf("value = %q, want edited value", got)
-			}
-		})
+	// Then
+	if got := model.editor.value; got != "SELECT 2" {
+		t.Fatalf("SQL Huh Text editor value = %q, want SELECT 2", got)
 	}
 }
 
-func TestModel_ctrlEIgnoresConnectionFieldsInNormalMode(t *testing.T) {
+func TestModel_sqlEditorCompletionReportsError(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.formMode.beginInsert(model.editor)
+	model.editorEditTag = 1
+
+	// When
+	updated, _ := model.Update(sqlEditorFinishedMsg{tag: 1, err: errors.New("editor failed")})
+	model = updated.(Model)
+
+	// Then
+	if !strings.Contains(model.Status, "editor failed") {
+		t.Fatalf("editor error status = %q", model.Status)
+	}
+}
+
+func TestModel_sqlEditorCompletionReportsStaleTarget(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.formMode.beginInsert(model.editor)
+	model.editorEditTag = 1
+	model.Focus = focusSchema
+
+	// When
+	updated, _ := model.Update(sqlEditorFinishedMsg{tag: 1, value: "SELECT 2"})
+	model = updated.(Model)
+
+	// Then
+	if got := model.Status; got != "editor target is no longer focused" {
+		t.Fatalf("stale editor status = %q", got)
+	}
+}
+
+func TestModel_ctrlEIgnoresConnectionInput(t *testing.T) {
 	// Given
 	t.Setenv("EDITOR", "true")
-	model := New("", Open(context.Background()))
-	model.connection.setFocus(connectionFocusName)
-	model.connection.name.SetValue("before")
+	model := readyModel(t)
+	model.State = stateConnection
+	model.connection.setFocus(connectionFocusForm)
+	model.connection.values.name = "before"
+	model.formMode.beginHuh(model.connection.focusForm())
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
@@ -112,9 +92,9 @@ func TestModel_ctrlEIgnoresConnectionFieldsInNormalMode(t *testing.T) {
 
 	// Then
 	if command != nil {
-		t.Fatal("editor command = non-nil in normal mode")
+		t.Fatal("connection Ctrl+E returned an editor command")
 	}
-	if model.connection.name.Value() != "before" {
-		t.Fatalf("name = %q, want unchanged value", model.connection.name.Value())
+	if got := model.connection.values.name; got != "before" {
+		t.Fatalf("connection value = %q, want unchanged value", got)
 	}
 }
