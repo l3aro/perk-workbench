@@ -332,72 +332,38 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer()))
-	if !m.hasConfirming() {
-		view.SetContent(fullContent)
+	if m.queryLogDetail != nil {
+		// Full-screen overlay for query log detail
+		canvas := uv.NewScreenBuffer(m.width, m.height)
+		screen.Clear(canvas)
+		m.drawQueryLogDetail(canvas)
+		view.SetContent(canvas.Render())
 		return view
 	}
-	// UV overlay path: render full UI, then overlay confirmation centered.
-	canvas := uv.NewScreenBuffer(m.width, m.height)
-	screen.Clear(canvas)
-	uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-	if dialog := m.confirmContent(); dialog != "" {
-		m.drawConfirmDialog(canvas, dialog)
+	if m.columnForm.confirming() || m.indexForm.confirming() ||
+		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
+		m.connection.confirmation != nil {
+		// UV overlay path: render full UI, then overlay confirmation centered.
+		canvas := uv.NewScreenBuffer(m.width, m.height)
+		screen.Clear(canvas)
+		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
+		if dialog := m.confirmContent(); dialog != "" {
+			m.drawConfirmDialog(canvas, dialog)
+		}
+		view.SetContent(canvas.Render())
+		return view
 	}
-	view.SetContent(canvas.Render())
+	view.SetContent(fullContent)
 	return view
 }
 
 func (m Model) hasConfirming() bool {
 	return m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
-		m.connection.confirmation != nil || m.queryLogDetail != nil
+		m.connection.confirmation != nil
 }
 
 func (m Model) confirmContent() string {
-	if m.queryLogDetail != nil {
-		d := m.queryLogDetail
-		var statusStr, iconStr string
-		switch d.status {
-		case "failed":
-			statusStr = "Failed"
-			iconStr = statusFailedStyle.Render(iconFailed)
-		case "canceled":
-			statusStr = "Canceled"
-			iconStr = statusCanceledStyle.Render(iconCanceled)
-		default:
-			statusStr = "Success"
-			iconStr = statusSuccessStyle.Render(iconSuccess)
-		}
-		var b strings.Builder
-		b.WriteString("Query Log Detail")
-		b.WriteString("\n\n")
-		b.WriteString("Time:     ")
-		b.WriteString(d.startedAt.Format("2006-01-02 15:04:05"))
-		b.WriteString("\n")
-		b.WriteString("Status:   ")
-		b.WriteString(iconStr)
-		b.WriteString(" ")
-		b.WriteString(statusStr)
-		b.WriteString("\n")
-		b.WriteString("Duration: ")
-		b.WriteString(d.duration.Round(time.Microsecond).String())
-		b.WriteString("\n")
-		b.WriteString("Fetched:  ")
-		if d.fetched > 0 || d.status == "success" {
-			b.WriteString(fmt.Sprintf("%d", d.fetched))
-		} else {
-			b.WriteString("-")
-		}
-		b.WriteString("\n")
-		b.WriteString("Statement:\n")
-		b.WriteString(safeText(d.statement))
-		if d.errMsg != "" {
-			b.WriteString("\n\nError:\n")
-			b.WriteString(safeText(d.errMsg))
-		}
-		b.WriteString("\n\nenter/esc to close")
-		return b.String()
-	}
 	var raw string
 	switch {
 	case m.columnForm.confirming():
@@ -455,6 +421,78 @@ func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
 	}
 
 	dialogStr.Draw(canvas, image.Rect(x+1, y+1, x+1+dialogW, y+1+dialogH))
+}
+func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
+	d := m.queryLogDetail
+	if d == nil {
+		return
+	}
+	var statusStr, iconStr string
+	switch d.status {
+	case "failed":
+		statusStr = "Failed"
+		iconStr = statusFailedStyle.Render(iconFailed)
+	case "canceled":
+		statusStr = "Canceled"
+		iconStr = statusCanceledStyle.Render(iconCanceled)
+	default:
+		statusStr = "Success"
+		iconStr = statusSuccessStyle.Render(iconSuccess)
+	}
+
+	innerW := m.width - 4
+
+	var b strings.Builder
+	b.WriteString(headerStyle.Render("  \uf0ca Query Log Detail  "))
+	b.WriteString("\n\n")
+	b.WriteString("  Time:     ")
+	b.WriteString(d.startedAt.Format("2006-01-02 15:04:05"))
+	b.WriteString("\n")
+	b.WriteString("  Status:   ")
+	b.WriteString(iconStr)
+	b.WriteString(" ")
+	b.WriteString(statusStr)
+	b.WriteString("\n")
+	b.WriteString("  Duration: ")
+	b.WriteString(d.duration.Round(time.Microsecond).String())
+	b.WriteString("\n")
+	b.WriteString("  Fetched:  ")
+	if d.fetched > 0 || d.status == "success" {
+		b.WriteString(fmt.Sprintf("%d", d.fetched))
+	} else {
+		b.WriteString("-")
+	}
+	b.WriteString("\n\n")
+	b.WriteString("  Statement:\n")
+	b.WriteString("  ")
+	b.WriteString(ansi.Wordwrap(safeText(d.statement), innerW-4, " "))
+	if d.errMsg != "" {
+		b.WriteString("\n\n  Error:\n")
+		b.WriteString("  ")
+		b.WriteString(ansi.Wordwrap(safeText(d.errMsg), innerW-4, " "))
+	}
+	b.WriteString("\n\n  enter/esc to close")
+
+	// Fill background
+	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
+	canvas.FillArea(&dialogBg, image.Rect(1, 1, m.width-1, m.height-1))
+
+	// Border
+	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+	for x := 1; x < m.width-1; x++ {
+		canvas.SetCell(x, 0, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+		canvas.SetCell(x, m.height-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+	}
+	for y := 1; y < m.height-1; y++ {
+		canvas.SetCell(0, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+		canvas.SetCell(m.width-1, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+	}
+	canvas.SetCell(0, 0, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
+	canvas.SetCell(m.width-1, 0, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
+	canvas.SetCell(0, m.height-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
+	canvas.SetCell(m.width-1, m.height-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+
+	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, m.width-1, m.height-1))
 }
 
 func parseHex(s string) color.Color {
