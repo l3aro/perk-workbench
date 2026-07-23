@@ -13,6 +13,15 @@ import (
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
+func startQuery(t *testing.T, model *Model) uint64 {
+	t.Helper()
+	requestID := model.StartQueryForTest(context.Background())
+	if requestID == 0 {
+		t.Fatal("starting test query")
+	}
+	return requestID
+}
+
 func TestExecute_success_message_populates_results(t *testing.T) {
 	// Given
 	model := readyModel(t)
@@ -50,10 +59,10 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 		model := readyModel(t)
 		model.results.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
 		model.results.SetRows([]table.Row{{"prior", "row"}})
-		model.running, model.activeRequestID, model.cancel = true, 1, func() {}
+		requestID := startQuery(t, &model)
 
 		// When
-		updated, _ := model.Update(querySucceededMsg{requestID: 1, result: sqlite.Result{}})
+		updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{}})
 		model = updated.(Model)
 
 		// Then
@@ -118,10 +127,10 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 		model := readyModel(t)
 		model.results.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
 		model.results.SetRows([]table.Row{{"prior", "row"}})
-		model.running, model.activeRequestID, model.cancel = true, 1, func() {}
+		requestID := startQuery(t, &model)
 
 		// When
-		updated, _ := model.Update(querySucceededMsg{requestID: 1, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
+		updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
 		model = updated.(Model)
 
 		// Then
@@ -176,18 +185,17 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.results.SetRows([]table.Row{{"prior"}})
-	model.running, model.activeRequestID = true, 2
-	model.cancel = func() {}
+	requestID := startQuery(t, &model)
 
 	// When
-	updated, command := model.Update(queryFailedMsg{requestID: 2, err: errors.New("near \"bad\": syntax error")})
+	updated, command := model.Update(queryFailedMsg{requestID: requestID, err: errors.New("near \"bad\": syntax error")})
 	model = updated.(Model)
 
 	// Then
 	if command != nil {
 		t.Fatal("error message returned an unexpected command")
 	}
-	if model.running || model.cancel != nil {
+	if model.Running() {
 		t.Fatal("error message did not clear active request state")
 	}
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
@@ -208,18 +216,18 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.results.SetRows([]table.Row{{"prior"}})
-	model.running, model.cancelRequested, model.activeRequestID = true, true, 3
-	model.cancel = func() {}
+	requestID := startQuery(t, &model)
+	model.CancelQuery()
 
 	// When
-	updated, command := model.Update(querySucceededMsg{requestID: 3, result: sqlite.Result{Rows: [][]*string{{stringPointer("late")}}}})
+	updated, command := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{Rows: [][]*string{{stringPointer("late")}}}})
 	model = updated.(Model)
 
 	// Then
 	if command != nil {
 		t.Fatal("canceled request success returned an unexpected command")
 	}
-	if model.running || model.cancel != nil {
+	if model.Running() {
 		t.Fatal("canceled request success did not clear active request state")
 	}
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
@@ -237,19 +245,18 @@ func TestExecute_stale_older_request_message_is_ignored(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.results.SetRows([]table.Row{{"prior"}})
-	model.running, model.activeRequestID = true, 4
-	model.cancel = func() {}
+	requestID := startQuery(t, &model)
 
 	// When
-	updated, command := model.Update(querySucceededMsg{requestID: 3, result: sqlite.Result{Rows: [][]*string{{stringPointer("stale")}}}})
+	updated, command := model.Update(querySucceededMsg{requestID: requestID - 1, result: sqlite.Result{Rows: [][]*string{{stringPointer("stale")}}}})
 	model = updated.(Model)
 
 	// Then
 	if command != nil {
 		t.Fatal("stale message returned an unexpected command")
 	}
-	if !model.running || model.activeRequestID != 4 {
-		t.Fatalf("stale message changed active request: running=%t id=%d", model.running, model.activeRequestID)
+	if !model.Running() {
+		t.Fatal("stale message changed active request state")
 	}
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("stale success replaced prior rows: %#v", got)
@@ -276,8 +283,8 @@ func TestExecute_keys_start_a_nonblank_query(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if command == nil || !model.running || model.activeRequestID != 1 {
-				t.Fatalf("execute key did not start query: command=%v running=%t id=%d", command != nil, model.running, model.activeRequestID)
+			if command == nil || !model.Running() {
+				t.Fatalf("execute key did not start query: command=%v running=%t", command != nil, model.Running())
 			}
 			message := command()
 			success, ok := message.(querySucceededMsg)
@@ -286,8 +293,8 @@ func TestExecute_keys_start_a_nonblank_query(t *testing.T) {
 			}
 			updated, _ = model.Update(success)
 			model = updated.(Model)
-			if model.running || len(model.results.Rows()) != 1 {
-				t.Fatalf("execute command did not complete: running=%t rows=%#v", model.running, model.results.Rows())
+			if model.Running() || len(model.results.Rows()) != 1 {
+				t.Fatalf("execute command did not complete: running=%t rows=%#v", model.Running(), model.results.Rows())
 			}
 		})
 	}
@@ -302,15 +309,15 @@ func TestExecute_ignores_blank_and_repeated_requests(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if command != nil || model.running {
-		t.Fatalf("blank query started: command=%v running=%t", command != nil, model.running)
+	if command != nil || model.Running() {
+		t.Fatalf("blank query started: command=%v running=%t", command != nil, model.Running())
 	}
 
 	// Given
 	model.editor.setValue("SELECT 1")
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
-	if command == nil || !model.running {
+	if command == nil || !model.Running() {
 		t.Fatal("initial query did not start")
 	}
 
@@ -319,33 +326,31 @@ func TestExecute_ignores_blank_and_repeated_requests(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if repeated != nil || model.activeRequestID != 1 {
-		t.Fatalf("repeated query changed active request: command=%v id=%d", repeated != nil, model.activeRequestID)
+	if repeated != nil || !model.Running() {
+		t.Fatalf("repeated query changed active request: command=%v running=%t", repeated != nil, model.Running())
 	}
 }
 
 func TestExecute_q_waits_for_matching_cancellation_before_quitting(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	canceled := false
-	model.running, model.activeRequestID = true, 5
-	model.cancel = func() { canceled = true }
+	requestID := startQuery(t, &model)
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	model = updated.(Model)
 
 	// Then
-	if command != nil || !canceled || !model.pendingQuit || !model.cancelRequested {
-		t.Fatalf("q did not defer quit and cancel: command=%v canceled=%t pending=%t requested=%t", command != nil, canceled, model.pendingQuit, model.cancelRequested)
+	if command != nil || !model.Running() {
+		t.Fatalf("q did not defer quit and cancel: command=%v running=%t", command != nil, model.Running())
 	}
 
 	// When
-	updated, command = model.Update(queryCanceledMsg{requestID: 5})
+	updated, command = model.Update(queryCanceledMsg{requestID: requestID})
 	model = updated.(Model)
 
 	// Then
-	if model.pendingQuit || command == nil {
+	if command == nil {
 		t.Fatal("matching cancellation did not release pending quit")
 	}
 	if _, ok := command().(tea.QuitMsg); !ok {

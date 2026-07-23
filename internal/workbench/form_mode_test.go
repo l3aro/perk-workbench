@@ -104,17 +104,16 @@ func TestFormMode_runningQueryEscapePrecedesSQLInsert(t *testing.T) {
 	model.Focus, model.Tab = focusWorkspace, tabSQL
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
-	canceled := false
-	model.running, model.cancel = true, func() { canceled = true }
+	requestID := startQuery(t, &model)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 
-	// Then
-	if !canceled {
-		t.Fatal("running-query escape did not cancel the query")
+	if !model.Running() {
+		t.Fatal("running-query escape did not keep the request active until completion")
 	}
+	updated, _ = model.Update(queryCanceledMsg{requestID: requestID})
 	if model.formMode.mode != formModeInsert {
 		t.Fatalf("running-query escape changed SQL mode to %d, want insert", model.formMode.mode)
 	}

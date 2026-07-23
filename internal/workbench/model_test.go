@@ -9,8 +9,11 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk/internal/database"
 	"github.com/l3aro/perk/internal/sqlite"
 )
+
+var testOpen OpenDatabase = database.Open
 
 func TestOpen_existing_target_populates_schema(t *testing.T) {
 	// Given
@@ -34,7 +37,7 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 		t.Fatalf("closing fixture database before workbench open: %v", err)
 	}
 
-	model := New(target, Open(ctx))
+	model := New(target, ctx, testOpen)
 
 	// When
 	message := model.Init()()
@@ -69,7 +72,7 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 	// Given
 	target := filepath.Join(t.TempDir(), "missing.db")
-	model := New(target, Open(context.Background()))
+	model := New(target, context.Background(), testOpen)
 
 	// When
 	message := model.Init()()
@@ -86,7 +89,7 @@ func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 }
 
 func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	if model.connection.focus != connectionFocusRecent {
 		t.Fatalf("connection focus = %d, want recent connections", model.connection.focus)
 	}
@@ -94,7 +97,7 @@ func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
 
 func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	if err := model.schema.SetItems([]list.Item{schemaItem{title: "projects"}}); err != nil {
 		t.Fatalf("setting schema items: %v", err)
 	}
@@ -120,7 +123,7 @@ func readyModel(t *testing.T) Model {
 			t.Errorf("closing test service: %v", err)
 		}
 	})
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State, model.Database = stateReady, service
 	return model
 }

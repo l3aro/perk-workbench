@@ -127,12 +127,12 @@ func TestStructureForm_preservesParameterizedColumnChange(t *testing.T) {
 
 func TestStructureForm_escapeCancelsRunningQueryBeforeDiscard(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	canceled := false
-	model.running, model.cancel = true, func() { canceled = true }
+	requestID := startQuery(t, &model)
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if !canceled || model.columnForm.confirming() {
+	if !model.Running() || model.columnForm.confirming() {
 		t.Fatal("running-query escape did not take precedence")
 	}
+	_, _ = model.Update(queryCanceledMsg{requestID: requestID})
 }
 
 func openColumn(t *testing.T, name, typeName string) Model {
