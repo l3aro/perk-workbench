@@ -123,7 +123,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		formMode:     &formModeController{},
 		connection:   newConnectionForm(),
 	}
-	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Fetched"}, nil))
+	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()
 	if target == "" {
