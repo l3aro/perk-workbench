@@ -120,7 +120,7 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 	}
 }
 
-func TestQueryLog_c_copies_selected_statement(t *testing.T) {
+func TestQueryLog_y_copies_selected_statement(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.appendQueryLog(queryLogEntry{statement: "SELECT 42"})
@@ -128,7 +128,7 @@ func TestQueryLog_c_copies_selected_statement(t *testing.T) {
 	model = updated.(Model)
 
 	// When
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
 
 	// Then

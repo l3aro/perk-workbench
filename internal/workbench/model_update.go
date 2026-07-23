@@ -409,7 +409,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				switch keyPress.String() {
-				case "c":
+				case "y":
 					cursor := m.queryLog.Cursor()
 					if cursor >= 0 && cursor < len(m.queryLogEntries) {
 						m.Status = "copied query to clipboard"
