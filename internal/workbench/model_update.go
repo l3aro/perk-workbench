@@ -192,11 +192,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		name = configured
 	}
 	m.Status = safeText("ready: " + name)
-	items := make([]list.Item, len(message.objects))
-	for index, object := range message.objects {
-		items[index] = schemaItem{title: safeText(object.Name)}
-	}
-	return m, m.schema.SetItems(items)
+	return m, m.setSchemaObjects(message.objects)
 }
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -232,7 +228,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		case focusSchema:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
-					m.SelectTable(item.title)
+					if item.root {
+						m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
+						return m, m.rebuildSchemaTree()
+					}
+					m.SelectTable(m.schemaTable(item))
 					m.structureColumns = nil
 					m.foreignKeyInfo = nil
 					m.referencingForeignKeyInfo = nil

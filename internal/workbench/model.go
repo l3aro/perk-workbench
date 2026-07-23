@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"strings"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
@@ -63,6 +64,8 @@ type Model struct {
 	foreignKeyForm                                                                                 foreignKeyForm
 	connection                                                                                     connectionForm
 	recentConnections                                                                              []recentConnection
+	schemaObjects                                                                                  []sharedsql.SchemaObject
+	expandedDatabases                                                                              map[string]bool
 	recentPath                                                                                     string
 	width, height, schemaWidth, editorWidth                                                        int
 	workspaceHeight, queryLogHeight                                                                int
@@ -77,9 +80,16 @@ func (i pickerItem) FilterValue() string { return i.title }
 func (i pickerItem) Title() string       { return i.title }
 func (i pickerItem) Description() string { return i.description }
 
-type schemaItem struct{ title, description string }
+type schemaItem struct {
+	title, description string
+	database, table    string
+	root               bool
+}
 
-func (i schemaItem) FilterValue() string { return i.title }
+func (i schemaItem) FilterValue() string {
+	return strings.TrimSpace(i.database + " " + i.title)
+}
+
 func (i schemaItem) Title() string       { return i.title }
 func (i schemaItem) Description() string { return i.description }
 
@@ -107,21 +117,22 @@ type OpenDatabase func(context.Context, string) (sharedsql.Opened, error)
 
 func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 	model := Model{
-		Workflow:     core.New(target),
-		appContext:   ctx,
-		openDatabase: openDatabase,
-		schema:       newSchemaList(),
-		picker:       newList("Choose database", true),
-		recent:       newList("Recent connections", true),
-		structure:    newResultsTable(),
-		browse:       newResultsTable(),
-		results:      newResultsTable(),
-		indexes:      newResultsTable(),
-		foreignKeys:  newResultsTable(),
-		queryLog:     newResultsTable(),
-		editor:       newEditor(),
-		formMode:     &formModeController{},
-		connection:   newConnectionForm(),
+		Workflow:          core.New(target),
+		appContext:        ctx,
+		openDatabase:      openDatabase,
+		schema:            newSchemaList(),
+		picker:            newList("Choose database", true),
+		recent:            newList("Recent connections", true),
+		expandedDatabases: map[string]bool{},
+		structure:         newResultsTable(),
+		browse:            newResultsTable(),
+		results:           newResultsTable(),
+		indexes:           newResultsTable(),
+		foreignKeys:       newResultsTable(),
+		queryLog:          newResultsTable(),
+		editor:            newEditor(),
+		formMode:          &formModeController{},
+		connection:        newConnectionForm(),
 	}
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
@@ -159,4 +170,47 @@ func (m Model) Init() tea.Cmd {
 		return m.connection.form.Init()
 	}
 	return nil
+}
+
+func (m *Model) setSchemaObjects(objects []sharedsql.SchemaObject) tea.Cmd {
+	m.schemaObjects = objects
+	if m.expandedDatabases == nil {
+		m.expandedDatabases = map[string]bool{}
+	}
+	for _, object := range objects {
+		if object.Type == "database" {
+			m.expandedDatabases[object.Database] = true
+		}
+	}
+	return m.rebuildSchemaTree()
+
+}
+
+func (m *Model) rebuildSchemaTree() tea.Cmd {
+	items := make([]list.Item, 0, len(m.schemaObjects))
+	for _, object := range m.schemaObjects {
+		if object.Type == "database" {
+			description := ""
+			if !m.expandedDatabases[object.Database] {
+				description = "collapsed"
+			}
+			items = append(items, schemaItem{title: object.Database, description: description, database: object.Database, root: true})
+			continue
+		}
+		if m.expandedDatabases[object.Database] {
+			items = append(items, schemaItem{title: object.Name, description: object.Type, database: object.Database, table: object.Name})
+		}
+	}
+	return m.schema.SetItems(items)
+}
+
+func (m Model) schemaTable(item schemaItem) string {
+	table := item.table
+	if table == "" {
+		table = item.title
+	}
+	if m.databaseInfo.Product == "MySQL" {
+		return item.database + "." + table
+	}
+	return table
 }
