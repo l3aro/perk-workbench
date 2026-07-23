@@ -92,14 +92,14 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 		t.Fatalf("creating table: %v", err)
 	}
 	model.columnForm = newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(model.databaseInfo))
-	model.columnForm.name.SetValue("title")
+	model.columnForm.values.name = "title"
 
 	// When
 	updated, _ := model.Update(model.alterColumn()())
 	model = updated.(Model)
 	model.indexForm = newIndexForm(nil)
-	model.indexForm.name.SetValue("items_title")
-	model.indexForm.columns.SetValue("title")
+	model.indexForm.values.name = "items_title"
+	model.indexForm.values.columns = "title"
 	updated, _ = model.Update(model.saveIndex()())
 	model = updated.(Model)
 
@@ -127,8 +127,8 @@ func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
 		t.Fatalf("creating index: %v", err)
 	}
 	model.indexForm = newIndexForm(&sharedsql.IndexInfo{Name: "items_name", Columns: []string{"name"}})
-	model.indexForm.name.SetValue("items_title")
-	model.indexForm.columns.SetValue("title")
+	model.indexForm.values.name = "items_title"
+	model.indexForm.values.columns = "title"
 
 	// When
 	updated, _ := model.Update(model.saveIndex()())

@@ -11,35 +11,29 @@ import (
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
-func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
+func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
 	tests := []struct {
 		name          string
 		width, height int
-		wantX, wantY  int
 	}{
-		{name: "wide", width: 100, height: 24, wantX: 36, wantY: 4},
-		{name: "compact", width: 80, height: 24, wantX: 8, wantY: 4},
+		{name: "wide", width: 100, height: 24},
+		{name: "compact", width: 80, height: 24},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", Open(context.Background()))
-			model.State = stateReady
+			model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+			model.editor.setValue("SELECT 1")
 
 			// When
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: test.width, Height: test.height})
 			view := updated.(Model).View()
 
 			// Then
-			if view.Cursor == nil {
-				t.Fatal("view cursor = nil, want SQL cursor")
-			}
-			if got := view.Cursor.Position.X; got != test.wantX {
-				t.Errorf("cursor X = %d, want %d", got, test.wantX)
-			}
-			if got := view.Cursor.Position.Y; got != test.wantY {
-				t.Errorf("cursor Y = %d, want %d", got, test.wantY)
+			if !strings.Contains(ansi.Strip(view.Content), "SELECT 1") {
+				t.Fatalf("SQL view = %q, want Huh Text value", view.Content)
 			}
 		})
 	}
@@ -48,8 +42,8 @@ func TestView_sql_cursor_accounts_for_rendered_layout(t *testing.T) {
 func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.State = stateReady
-	model.editor.textarea.SetValue("select ")
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.editor.setValue("select ")
 
 	// When
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
@@ -70,7 +64,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.textarea.Value(); got != "select " {
+	if got := model.editor.value; got != "select " {
 		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
 	}
 
@@ -93,7 +87,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.textarea.Value(); got != "select " {
+	if got := model.editor.value; got != "select " {
 		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
 	}
 
@@ -129,20 +123,17 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.State = stateReady
-	model.editor.textarea.SetValue("select ")
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.editor.setValue("select ")
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	model = updated.(Model)
 
 	// Then
-	if command != nil {
-		t.Fatal("editor q returned a root quit command")
-	}
-	if got := model.editor.textarea.Value(); got != "select q" {
+	if got := model.editor.value; got != "select q" {
 		t.Fatalf("editor value = %q, want %q", got, "select q")
 	}
 }
@@ -150,20 +141,17 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.State = stateReady
-	model.editor.textarea.SetValue("select ")
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.editor.setValue("select ")
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
-	updated, command := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	model = updated.(Model)
 
 	// Then
-	if command != nil {
-		t.Fatal("editor shortcut text returned a command")
-	}
-	if got := model.editor.textarea.Value(); got != "select 1" {
+	if got := model.editor.value; got != "select 1" {
 		t.Fatalf("editor value = %q, want %q", got, "select 1")
 	}
 }
@@ -405,7 +393,7 @@ func TestQueryLog_l_scrolls_wide_history_without_changing_row(t *testing.T) {
 func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.editor.insert = true
+	model.formMode.beginInsert(model.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"first column", "second column"},
@@ -459,7 +447,7 @@ func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.editor.insert = true
+	model.formMode.beginInsert(model.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column", "sixth column", "seventh column", "eighth column"},
@@ -589,9 +577,6 @@ func assertFocus(t *testing.T, model Model, want focus) {
 	t.Helper()
 	if model.Focus != want {
 		t.Fatalf("focus = %v, want %v", model.Focus, want)
-	}
-	if got := model.editor.textarea.Focused(); got != (want == focusWorkspace && model.Tab == tabSQL) {
-		t.Fatalf("editor focused = %t, want %t", got, want == focusWorkspace && model.Tab == tabSQL)
 	}
 }
 

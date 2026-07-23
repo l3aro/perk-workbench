@@ -260,7 +260,7 @@ func TestExecute_keys_start_a_nonblank_query(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := readyModel(t)
-			model.editor.textarea.SetValue("SELECT 1")
+			model.editor.setValue("SELECT 1")
 
 			// When
 			updated, command := model.Update(test.key)
@@ -298,7 +298,7 @@ func TestExecute_ignores_blank_and_repeated_requests(t *testing.T) {
 	}
 
 	// Given
-	model.editor.textarea.SetValue("SELECT 1")
+	model.editor.setValue("SELECT 1")
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
 	if command == nil || !model.running {
