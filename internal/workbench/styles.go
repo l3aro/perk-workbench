@@ -268,15 +268,9 @@ func (m *Model) layout(width, height int) {
 	if !m.compact {
 		connectionWidth = m.editorWidth
 	}
-	m.connection.name.SetWidth(max(connectionWidth-16, 1))
-	m.connection.target.SetWidth(max(connectionWidth-16, 1))
-	m.connection.host.SetWidth(max(connectionWidth-16, 1))
-	m.connection.port.SetWidth(max(connectionWidth-16, 1))
-	m.connection.user.SetWidth(max(connectionWidth-16, 1))
-	m.connection.pass.SetWidth(max(connectionWidth-16, 1))
+	m.connection.setWidth(max(connectionWidth-4, 1))
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
-	m.editor.textarea.SetWidth(max(m.editorWidth-4, 1))
-	m.editor.textarea.SetHeight(max(m.editorHeight-2, 1))
+	m.editor.setSize(max(m.editorWidth-4, 1), max(m.editorHeight-2, 1))
 	m.tableViewportWidth = max(m.editorWidth-4, 1)
 	if m.compact {
 		m.tableViewportWidth = max(m.editorWidth-6, 1)
@@ -318,16 +312,6 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer())))
-	if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
-		if cursor := m.editor.textarea.Cursor(); cursor != nil {
-			cursor.Position.X += 2
-			cursor.Position.Y += 4
-			if !m.compact {
-				cursor.Position.X += m.schemaWidth - 2
-			}
-			view.Cursor = cursor
-		}
-	}
 	return view
 }
 
@@ -411,11 +395,11 @@ func (m Model) workspaceView() string {
 
 func (m Model) sqlPaneView() string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		m.editor.textarea.View(),
+		m.editor.text.View(),
 		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth),
 	)
 	mode := "NORMAL"
-	if m.editor.insert {
+	if m.formMode.editing() {
 		mode = "INSERT"
 	}
 	return content + "\n" + paneStatus(headerStyle.Render(mode), m.resultsStatus, m.tableViewportWidth)

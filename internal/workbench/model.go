@@ -8,7 +8,6 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk/internal/core"
 	"github.com/l3aro/perk/internal/mysql"
@@ -47,7 +46,7 @@ type Model struct {
 	appContext                                                                                     context.Context
 	openTarget                                                                                     func(string) tea.Cmd
 	running, cancelRequested, pendingQuit, browseLoading                                           bool
-	requestID, activeRequestID, browsePageTag                                                      uint64
+	requestID, activeRequestID, browsePageTag, editorEditTag                                       uint64
 	cancel                                                                                         context.CancelFunc
 	schema, picker, recent                                                                         list.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
@@ -61,7 +60,8 @@ type Model struct {
 	resultsStatus, browseStatus                                                                    string
 	queryLogEntries                                                                                []queryLogEntry
 	queryLogPendingG                                                                               bool
-	editor                                                                                         editor
+	editor                                                                                         *editor
+	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
 	browseForm                                                                                     browseForm
 	indexForm                                                                                      indexForm
@@ -114,8 +114,6 @@ type databaseOpener struct {
 }
 
 func New(target string, opener databaseOpener) Model {
-	editor := newEditor()
-	editor.textarea.SetVirtualCursor(false)
 	model := Model{
 		Workflow:    core.New(target),
 		appContext:  opener.ctx,
@@ -129,7 +127,8 @@ func New(target string, opener databaseOpener) Model {
 		indexes:     newResultsTable(),
 		foreignKeys: newResultsTable(),
 		queryLog:    newResultsTable(),
-		editor:      editor,
+		editor:      newEditor(),
+		formMode:    &formModeController{},
 		connection:  newConnectionForm(),
 	}
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Query", "Duration", "Fetch"}, nil))
@@ -189,36 +188,8 @@ func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {
 		return m.openTarget(m.Target)
 	}
+	if m.State == core.StateConnection {
+		return m.connection.form.Init()
+	}
 	return nil
-}
-
-func newConnectionForm() connectionForm {
-	name := textinput.New()
-	setConnectionPrompt(&name, "Name")
-	name.Placeholder = "Local database"
-	name.Focus()
-
-	target := textinput.New()
-	setConnectionPrompt(&target, "Target")
-	target.Placeholder = "path/to/database.db or :memory:"
-
-	host := textinput.New()
-	setConnectionPrompt(&host, "Host")
-	host.Placeholder = "localhost"
-
-	port := textinput.New()
-	setConnectionPrompt(&port, "Port")
-	port.SetValue("3306")
-
-	user := textinput.New()
-	setConnectionPrompt(&user, "Username")
-
-	pass := textinput.New()
-	setConnectionPrompt(&pass, "Password")
-	pass.EchoMode = textinput.EchoPassword
-	pass.EchoCharacter = '*'
-
-	form := connectionForm{name: name, target: target, host: host, port: port, user: user, pass: pass}
-	form.setFocus(connectionFocusRecent)
-	return form
 }

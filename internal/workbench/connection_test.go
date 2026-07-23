@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -10,15 +11,15 @@ import (
 )
 
 func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
+	// Given
 	form := newConnectionForm()
-	form.driver = driverMySQL
-	form.host.SetValue("2001:db8::1")
-	form.port.SetValue("3307")
-	form.user.SetValue("alice")
-	form.pass.SetValue("secret")
-	form.target.SetValue("app")
+	form.values.driver, form.values.host, form.values.port = driverMySQL, "2001:db8::1", "3307"
+	form.values.user, form.values.pass, form.values.target = "alice", "secret", "app"
 
+	// When
 	dsn, err := mysql.ParseDSN(form.targetValue())
+
+	// Then
 	if err != nil {
 		t.Fatalf("parsing MySQL DSN: %v", err)
 	}
@@ -27,234 +28,173 @@ func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 	}
 }
 
-func TestConnectionForm_alignsInputLabels(t *testing.T) {
-	form := newConnectionForm()
+func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
 	for _, test := range []struct {
-		label  string
-		prompt string
+		name, present, absent string
+		driver                connectionDriver
 	}{
-		{label: "Name", prompt: form.name.Prompt},
-		{label: "Target", prompt: form.target.Prompt},
-		{label: "Host", prompt: form.host.Prompt},
-		{label: "Port", prompt: form.port.Prompt},
-		{label: "Username", prompt: form.user.Prompt},
-		{label: "Password", prompt: form.pass.Prompt},
+		{name: "SQLite", driver: driverSQLite, present: "Target*", absent: "Host*"},
+		{name: "MySQL", driver: driverMySQL, present: "Database*", absent: "Target*"},
 	} {
-		t.Run(test.label, func(t *testing.T) {
-			want := test.label + strings.Repeat(" ", formLabelWidth-len(test.label)) + formFieldGap
-			if test.prompt != want {
-				t.Fatalf("prompt = %q, want %q", test.prompt, want)
-			}
-		})
-	}
-}
-
-func TestConnectionForm_showsModeAtPaneBottom(t *testing.T) {
-	for _, test := range []struct {
-		mode connectionFormMode
-		want string
-	}{
-		{mode: connectionFormNormal, want: "NORMAL"},
-		{mode: connectionFormInsert, want: "INSERT"},
-	} {
-		t.Run(test.want, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", Open(context.Background()))
-			model.connection.mode = test.mode
+			form := newConnectionForm()
+			form.values.driver = test.driver
+			form.rebuildForm()
+			_ = form.form.Init()
 
 			// When
-			view := model.connectionPaneView(12)
-			lines := strings.Split(view, "\n")
+			view := form.View()
 
 			// Then
-			if strings.Contains(view, "Tab to a control") {
-				t.Fatal("connection pane retained inline help")
-			}
-			if got := lines[len(lines)-1]; !strings.Contains(got, test.want) {
-				t.Fatalf("last pane line = %q, want mode %q", got, test.want)
-			}
-			if len(lines) != 12 {
-				t.Fatalf("pane line count = %d, want 12", len(lines))
+			if !strings.Contains(view, test.present) || strings.Contains(view, test.absent) {
+				t.Fatalf("connection view = %q, want %q and not %q", view, test.present, test.absent)
 			}
 		})
 	}
 }
 
-func TestConnectionForm_showsMySQLControls(t *testing.T) {
-	model := New("", Open(context.Background()))
-	model.connection.setFocus(connectionFocusDriver)
-
-	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	model = updated.(Model)
-	view := model.connectionView()
-	for _, label := range []string{"Host", "Port", "Username", "Password", "Database"} {
-		if !strings.Contains(view, label) {
-			t.Fatalf("MySQL connection view = %q, missing %q", view, label)
-		}
-	}
-
-	for _, want := range []int{connectionFocusName, connectionFocusHost, connectionFocusPort, connectionFocusUsername, connectionFocusPassword, connectionFocusTarget, connectionFocusTest, connectionFocusConnect} {
-		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-		model = updated.(Model)
-		if model.connection.focus != want {
-			t.Fatalf("connection focus = %d, want %d", model.connection.focus, want)
-		}
-	}
-}
-
-func TestConnectionForm_driverSwitchesWithDirectionalKeys(t *testing.T) {
-	for _, key := range []tea.KeyPressMsg{
-		{Code: tea.KeyLeft},
-		{Code: tea.KeyRight},
-		{Code: 'h', Text: "h"},
-		{Code: 'l', Text: "l"},
+func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		driver connectionDriver
+		set    func(*connectionFormValues)
+	}{
+		{name: "SQLite target", driver: driverSQLite},
+		{name: "MySQL host", driver: driverMySQL, set: func(values *connectionFormValues) { values.target, values.port, values.user = "app", "3306", "alice" }},
+		{name: "MySQL port", driver: driverMySQL, set: func(values *connectionFormValues) {
+			values.target, values.host, values.port, values.user = "app", "localhost", "", "alice"
+		}},
+		{name: "MySQL username", driver: driverMySQL, set: func(values *connectionFormValues) {
+			values.target, values.host, values.port = "app", "localhost", "3306"
+		}},
+		{name: "MySQL database", driver: driverMySQL, set: func(values *connectionFormValues) {
+			values.host, values.port, values.user = "localhost", "3306", "alice"
+		}},
 	} {
-		model := New("", Open(context.Background()))
-		model.connection.setFocus(connectionFocusDriver)
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			form := newConnectionForm()
+			form.values.driver = test.driver
+			if test.set != nil {
+				test.set(form.values)
+			}
 
-		updated, _ := model.Update(key)
-		model = updated.(Model)
-		if model.connection.driver != driverMySQL {
-			t.Fatalf("driver after %q = %d, want MySQL", key.String(), model.connection.driver)
-		}
-	}
-}
+			// When
+			err := form.validate()
 
-func TestConnectionForm_allowsQInMySQLHost(t *testing.T) {
-	model := New("", Open(context.Background()))
-	model.connection.driver = driverMySQL
-	model.connection.setFocus(connectionFocusHost)
-	model.connection.enterInsertMode()
-
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
-	model = updated.(Model)
-	if model.connection.host.Value() != "q" {
-		t.Fatalf("host = %q, want q", model.connection.host.Value())
+			// Then
+			if err == nil {
+				t.Fatal("connection validation succeeded for a missing required field")
+			}
+		})
 	}
 }
 
 func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
-	for _, key := range []tea.KeyPressMsg{
-		{Code: 'i', Text: "i"},
-		{Code: tea.KeyEnter},
-	} {
-		t.Run(key.String(), func(t *testing.T) {
-			model := New("", Open(context.Background()))
-			model.connection.setFocus(connectionFocusName)
-
-			updated, _ := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-			model = updated.(Model)
-			if model.connection.name.Value() != "" {
-				t.Fatalf("name in normal mode = %q, want empty", model.connection.name.Value())
-			}
-
-			updated, _ = model.Update(key)
-			model = updated.(Model)
-			updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
-			model = updated.(Model)
-			if model.connection.name.Value() != "a" {
-				t.Fatalf("name in insert mode = %q, want a", model.connection.name.Value())
-			}
-
-			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-			model = updated.(Model)
-			updated, _ = model.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
-			model = updated.(Model)
-			if model.connection.name.Value() != "a" {
-				t.Fatalf("name after escape = %q, want a", model.connection.name.Value())
-			}
-		})
-	}
-}
-
-func TestConnectionForm_navigatesNormalModeWithVimKeys(t *testing.T) {
-	for _, test := range []struct {
-		key  tea.KeyPressMsg
-		want int
-	}{
-		{key: tea.KeyPressMsg{Code: 'j', Text: "j"}, want: connectionFocusTarget},
-		{key: tea.KeyPressMsg{Code: 'k', Text: "k"}, want: connectionFocusDriver},
-	} {
-		t.Run(test.key.String(), func(t *testing.T) {
-			// Given
-			model := New("", Open(context.Background()))
-			model.connection.setFocus(connectionFocusName)
-
-			// When
-			updated, _ := model.Update(test.key)
-			model = updated.(Model)
-
-			// Then
-			if model.connection.focus != test.want {
-				t.Fatalf("connection focus = %d, want %d", model.connection.focus, test.want)
-			}
-		})
-	}
-}
-
-func TestConnectionForm_highlightsOnlyFocusedLabelInNormalMode(t *testing.T) {
 	// Given
 	model := New("", Open(context.Background()))
-	model.connection.setFocus(connectionFocusName)
-	model.connection.name.SetValue("value")
+	model.connection.focus = connectionFocusForm
+	_ = model.connection.form.NextField()
 
 	// When
-	got := model.connectionInputView(connectionFocusName, model.connection.name)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
 
 	// Then
-	if model.connection.name.Focused() {
-		t.Fatal("name input is focused in normal mode")
+	if model.connection.values.name != "" {
+		t.Fatalf("name in normal mode = %q, want empty", model.connection.values.name)
 	}
-	wantInput := model.connection.name
-	wantInput.Prompt = "Name" + strings.Repeat(" ", formLabelWidth-len("Name")) + formFieldGap
-	styles := wantInput.Styles()
-	styles.Focused.Prompt = headerStyle.Padding(0, 0)
-	styles.Blurred.Prompt = headerStyle.Padding(0, 0)
-	wantInput.SetStyles(styles)
-	want := wantInput.View()
-	if got != want {
-		t.Fatalf("focused connection input = %q, want %q", got, want)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'b', Text: "b"})
+	model = updated.(Model)
+
+	// Then
+	if model.connection.values.name != "a" {
+		t.Fatalf("name after insert and escape = %q, want a", model.connection.values.name)
+	}
+}
+
+func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.connection.focus = connectionFocusForm
+	model.connection.values.target = ":memory:"
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+
+	// Then
+	if model.connection.confirmation == nil {
+		t.Fatal("valid connection did not enter confirmation")
+	}
+	if model.formMode.mode != formModeConfirm {
+		t.Fatalf("form mode = %v, want confirmation", model.formMode.mode)
+	}
+}
+
+func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.connection.focus = connectionFocusForm
+	model.connection.values.driver, model.connection.values.host = driverMySQL, ""
+	model.connection.values.port, model.connection.values.user, model.connection.values.target = "3306", "alice", "app"
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	model = resolveConnectionCommand(model, command)
+
+	// Then
+	if model.connection.confirmation != nil || model.State != stateConnection {
+		t.Fatal("invalid connection advanced to an action")
+	}
+	if model.connection.values.target != "app" || model.connection.values.user != "alice" {
+		t.Fatal("invalid connection cleared populated fields")
 	}
 }
 
 func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
+	// Given
 	model := New("", Open(context.Background()))
-	model.connection.name.SetValue("Scratch")
-	model.connection.target.SetValue(":memory:")
+	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
+	// When
 	message := model.testConnection()()
 	updated, _ := model.Update(message)
 	model = updated.(Model)
 
+	// Then
 	if model.Status != "connection test succeeded: Scratch" {
 		t.Fatalf("connection status = %q, want successful test", model.Status)
 	}
 }
 
 func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
+	// Given
 	model := New("", Open(context.Background()))
-	model.connection.name.SetValue("Scratch")
-	model.connection.target.SetValue(":memory:")
+	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
+	// When
 	updated, command := model.openConnection()
 	model = updated.(Model)
-	if model.State != stateOpening {
-		t.Fatalf("model state = %v, want opening", model.State)
-	}
 	if command == nil {
 		t.Fatal("open connection command = nil")
 	}
-
 	updated, _ = model.Update(command())
 	model = updated.(Model)
-	if model.State != stateReady {
-		t.Fatalf("model state = %v, want ready", model.State)
-	}
-	if model.Database == nil {
-		t.Fatal("model service = nil, want opened service")
-	}
-	if model.Status != "ready: Scratch" {
-		t.Fatalf("connection status = %q, want connection name", model.Status)
+
+	// Then
+	if model.State != stateReady || model.Database == nil || model.Status != "ready: Scratch" {
+		t.Fatalf("SQLite open = state %v, database %v, status %q", model.State, model.Database, model.Status)
 	}
 	t.Cleanup(func() {
 		if err := model.Database.Close(); err != nil {
@@ -264,28 +204,115 @@ func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 }
 
 func TestConnectionForm_opensMySQLConnection(t *testing.T) {
+	// Given
 	var openedTarget string
-	model := New("", databaseOpener{
-		ctx: context.Background(),
-		command: func(target string) tea.Cmd {
-			openedTarget = target
-			return nil
-		},
-	})
-	model.connection.driver = driverMySQL
-	model.connection.host.SetValue("localhost")
-	model.connection.port.SetValue("3306")
-	model.connection.target.SetValue("app")
+	model := New("", databaseOpener{ctx: context.Background(), command: func(target string) tea.Cmd { openedTarget = target; return nil }})
+	model.connection.values.driver, model.connection.values.host = driverMySQL, "localhost"
+	model.connection.values.port, model.connection.values.target = "3306", "app"
+	model.connection.values.user = "alice"
 
+	// When
 	updated, command := model.openConnection()
 	model = updated.(Model)
-	if model.State != stateOpening {
-		t.Fatalf("model state = %v, want opening", model.State)
+
+	// Then
+	if model.State != stateOpening || command != nil || !strings.HasPrefix(openedTarget, "mysql:") {
+		t.Fatalf("MySQL open = state %v, command %v, target %q", model.State, command, openedTarget)
 	}
-	if command != nil {
-		t.Fatal("open command = non-nil, want nil from test opener")
+}
+
+func TestConnectionForm_doesNotRecordMySQLConnections(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.recentConnections = nil
+	model.connection.values.driver, model.connection.values.target = driverMySQL, "app"
+
+	// When
+	model.recordConnection()
+
+	// Then
+	if len(model.recentConnections) != 0 {
+		t.Fatalf("recent MySQL connections = %#v, want none", model.recentConnections)
 	}
-	if !strings.HasPrefix(openedTarget, "mysql:") {
-		t.Fatalf("opened target = %q, want mysql DSN prefix", openedTarget)
+}
+
+func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.connection.focus = connectionFocusForm
+	model = resolveConnectionCommand(model, model.connection.form.Init())
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	model = resolveConnectionCommand(model, command)
+
+	// When
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	model = updated.(Model)
+	message := command()
+	value := reflect.ValueOf(message)
+	if value.Kind() != reflect.Slice || value.Type().Elem() != reflect.TypeFor[tea.Cmd]() {
+		t.Fatalf("driver switch command message = %T, want rebuilt Huh form initialization sequence", message)
+	}
+	model = resolveConnectionMessage(model, message, 16)
+
+	// Then
+	if model.connection.values.driver != driverMySQL || !strings.Contains(model.connection.View(), "Host*") {
+		t.Fatalf("driver switch form = driver %v, view %q", model.connection.values.driver, model.connection.View())
+	}
+}
+
+func TestConnectionForm_f5ShowsDatabaseErrorWhenOnlyMySQLDatabaseIsBlank(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.connection.focus = connectionFocusForm
+	model.connection.values.driver = driverMySQL
+	model.connection.values.host, model.connection.values.port, model.connection.values.user = "localhost", "3306", "alice"
+	_ = model.connection.rebuildForm()
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	model = resolveConnectionCommand(model, command)
+
+	// Then
+	field := model.connection.form.GetFocusedField()
+	if field.GetKey() != "database" || field.Error() == nil {
+		t.Fatalf("MySQL database validation = field %q, error %v, want database/error", field.GetKey(), field.Error())
+	}
+}
+
+func TestConnectionForm_completionSequencesInitBeforeConnectionAction(t *testing.T) {
+	// Given
+	form := newConnectionForm()
+	form.values.target = ":memory:"
+	init := form.rebuildForm()
+
+	// When
+	command := sequenceConnectionAction(init, connectionActionTest)
+	message := command()
+
+	// Then
+	value := reflect.ValueOf(message)
+	if value.Kind() != reflect.Slice || value.Type().Elem() != reflect.TypeFor[tea.Cmd]() || value.Len() != 2 {
+		t.Fatalf("completion command = %T, want init/action sequence", message)
+	}
+}
+
+func TestConnectionForm_retainsRejectedSQLiteConnection(t *testing.T) {
+	// Given
+	model := New("", Open(context.Background()))
+	model.connection.focus = connectionFocusForm
+	model.connection.values.name = "Missing"
+	model.connection.values.target = t.TempDir() + "/missing.db"
+
+	// When
+	updated, command := model.openConnection()
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+
+	// Then
+	if model.State != stateConnection || model.connection.values.name != "Missing" || model.connection.values.target == "" {
+		t.Fatalf("rejected connection = state %v, name %q, target %q", model.State, model.connection.values.name, model.connection.values.target)
 	}
 }
