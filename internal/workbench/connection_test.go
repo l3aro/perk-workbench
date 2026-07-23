@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/go-sql-driver/mysql"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
 func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
@@ -93,7 +94,7 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 
 func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
 	_ = model.connection.form.NextField()
 
@@ -124,7 +125,7 @@ func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
 
 func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.target = ":memory:"
 
@@ -143,7 +144,7 @@ func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T)
 
 func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.driver, model.connection.values.host = driverMySQL, ""
 	model.connection.values.port, model.connection.values.user, model.connection.values.target = "3306", "alice", "app"
@@ -164,7 +165,7 @@ func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing
 
 func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When
@@ -180,7 +181,7 @@ func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 
 func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When
@@ -206,7 +207,10 @@ func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 	// Given
 	var openedTarget string
-	model := New("", databaseOpener{ctx: context.Background(), command: func(target string) tea.Cmd { openedTarget = target; return nil }})
+	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+		openedTarget = target
+		return sharedsql.Opened{}, nil
+	})
 	model.connection.values.driver, model.connection.values.host = driverMySQL, "localhost"
 	model.connection.values.port, model.connection.values.target = "3306", "app"
 	model.connection.values.user = "alice"
@@ -214,16 +218,19 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 	// When
 	updated, command := model.openConnection()
 	model = updated.(Model)
+	if command != nil {
+		_ = command()
+	}
 
 	// Then
-	if model.State != stateOpening || command != nil || !strings.HasPrefix(openedTarget, "mysql:") {
+	if model.State != stateOpening || command == nil || !strings.HasPrefix(openedTarget, "mysql:") {
 		t.Fatalf("MySQL open = state %v, command %v, target %q", model.State, command, openedTarget)
 	}
 }
 
 func TestConnectionForm_doesNotRecordMySQLConnections(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.recentConnections = nil
 	model.connection.values.driver, model.connection.values.target = driverMySQL, "app"
 
@@ -238,7 +245,7 @@ func TestConnectionForm_doesNotRecordMySQLConnections(t *testing.T) {
 
 func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
 	model = resolveConnectionCommand(model, model.connection.form.Init())
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
@@ -263,7 +270,7 @@ func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 
 func TestConnectionForm_f5ShowsDatabaseErrorWhenOnlyMySQLDatabaseIsBlank(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.driver = driverMySQL
 	model.connection.values.host, model.connection.values.port, model.connection.values.user = "localhost", "3306", "alice"
@@ -300,7 +307,7 @@ func TestConnectionForm_completionSequencesInitBeforeConnectionAction(t *testing
 
 func TestConnectionForm_retainsRejectedSQLiteConnection(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.name = "Missing"
 	model.connection.values.target = t.TempDir() + "/missing.db"

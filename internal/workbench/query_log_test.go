@@ -52,7 +52,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 
 func TestNew_queryLog_has_history_columns(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 
 	// When
 	columns := model.queryLog.Columns()

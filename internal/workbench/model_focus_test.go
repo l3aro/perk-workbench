@@ -23,7 +23,7 @@ func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", Open(context.Background()))
+			model := New("", context.Background(), testOpen)
 			model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 			model.editor.setValue("SELECT 1")
 
@@ -41,7 +41,7 @@ func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
 
 func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.editor.setValue("select ")
 
@@ -122,7 +122,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 
 func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.editor.setValue("select ")
 
@@ -140,7 +140,7 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 
 func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.editor.setValue("select ")
 
@@ -158,7 +158,7 @@ func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
 
 func TestView_sqlShowsModeBadge(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.layout(100, 24)
 
@@ -185,7 +185,7 @@ func TestView_sqlShowsModeBadge(t *testing.T) {
 
 func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State, model.Focus = stateReady, focusSchema
 	model.schema.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table"},
@@ -231,7 +231,7 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 
 func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 	// Given
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.State = stateReady
 
 	// When

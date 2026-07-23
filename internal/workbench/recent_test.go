@@ -31,7 +31,7 @@ func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
 }
 
 func TestConnectionForm_recentConnectionActions(t *testing.T) {
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 	model.recentPath = filepath.Join(t.TempDir(), "recent.json")
 	model.setRecentConnections([]recentConnection{
 		{Driver: driverSQLite, Name: "Alpha", Target: "/tmp/alpha.db"},
@@ -71,7 +71,7 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 }
 
 func TestConnectionForm_paneKeysKeepTabInTheForm(t *testing.T) {
-	model := New("", Open(context.Background()))
+	model := New("", context.Background(), testOpen)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	model = updated.(Model)
@@ -96,7 +96,7 @@ func TestConnectionForm_recentAddAndEditInitializeUsableHuhForms(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", Open(context.Background()))
+			model := New("", context.Background(), testOpen)
 			model.recentConnections = []recentConnection{{Driver: driverSQLite, Name: "Alpha", Target: ":memory:"}}
 			_ = model.recent.SetItems(recentListItems(model.recentConnections))
 			model.connection.setFocus(connectionFocusRecent)
