@@ -1,70 +1,74 @@
 package workbench
 
 import (
+	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
+	"charm.land/huh/v2"
 )
 
 func (f *columnForm) selectType(index int, values []string) {
-	f.typeIndex, f.typePicker = index, index
+	if index < 0 || index >= len(f.typeOptions) {
+		return
+	}
+	f.values.typeName = f.typeOptions[index].Name
 	parameters := f.typeOptions[index].Parameters
-	f.parameters = make([]textinput.Model, len(parameters))
+	f.values.parameters = make([]string, len(parameters))
 	for parameterIndex, parameter := range parameters {
-		input := textinput.New()
-		input.Prompt = ""
-		input.SetValue(parameter.Default)
+		f.values.parameters[parameterIndex] = parameter.Default
 		if parameterIndex < len(values) {
-			input.SetValue(strings.TrimSpace(values[parameterIndex]))
+			f.values.parameters[parameterIndex] = strings.TrimSpace(values[parameterIndex])
 		}
-		f.parameters[parameterIndex] = input
 	}
 }
 
-func (f columnForm) fieldCount() int { return f.defaultField() + 1 }
-
-func (f columnForm) nullableField() int { return columnFieldParameterStart + len(f.parameters) }
-
-func (f columnForm) defaultField() int { return f.nullableField() + 1 }
-
-func (f columnForm) parameterIndex() int {
-	index := f.focus - columnFieldParameterStart
-	if index < 0 || index >= len(f.parameters) {
-		return -1
+func (f columnForm) typeIndex() int {
+	for index, option := range f.typeOptions {
+		if option.Name == f.values.typeName {
+			return index
+		}
 	}
-	return index
+	return 0
+}
+
+func (f columnForm) typeChoices() []huh.Option[string] {
+	choices := make([]huh.Option[string], len(f.typeOptions))
+	for index, option := range f.typeOptions {
+		choices[index] = huh.NewOption(option.Name, option.Name)
+	}
+	return choices
+}
+
+func (f columnForm) validateType(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("column type is required")
+	}
+	for _, option := range f.typeOptions {
+		if option.Name == value {
+			return nil
+		}
+	}
+	return fmt.Errorf("column type is invalid")
+}
+
+func (f columnForm) validateParameter(index int) func(string) error {
+	return func(value string) error {
+		values := append([]string(nil), f.values.parameters...)
+		values[index] = value
+		_, err := f.typeOptions[f.typeIndex()].Declaration(values)
+		return err
+	}
 }
 
 func (f columnForm) typeDeclaration() (string, error) {
 	if !f.typeChanged && strings.TrimSpace(f.originalType) != "" {
+		if _, err := f.typeOptions[f.typeIndex()].Declaration(f.values.parameters); err != nil {
+			return "", err
+		}
 		return f.originalType, nil
 	}
-	values := make([]string, len(f.parameters))
-	for index, parameter := range f.parameters {
-		values[index] = parameter.Value()
+	if err := f.validateType(f.values.typeName); err != nil {
+		return "", err
 	}
-	return f.typeOptions[f.typeIndex].Declaration(values)
-}
-
-func (f columnForm) typeValue() string {
-	declaration, err := f.typeDeclaration()
-	if err != nil {
-		return f.typeOptions[f.typeIndex].Name
-	}
-	return declaration
-}
-
-func (f columnForm) typePickerView() string {
-	const visibleOptions = 7
-	start := min(max(f.typePicker-visibleOptions/2, 0), max(len(f.typeOptions)-visibleOptions, 0))
-	end := min(start+visibleOptions, len(f.typeOptions))
-	options := make([]string, 0, end-start)
-	for index := start; index < end; index++ {
-		option := f.typeOptions[index].Name
-		if index == f.typePicker {
-			option = headerStyle.Render(option)
-		}
-		options = append(options, option)
-	}
-	return headerStyle.Render("Select type") + "\n" + strings.Join(options, "\n") + "\n" + statusStyle.Render("j/k choose | Enter select | Esc return")
+	return f.typeOptions[f.typeIndex()].Declaration(f.values.parameters)
 }

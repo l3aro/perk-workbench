@@ -5,267 +5,195 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
-func TestStructureForm_savesColumnOnlyAfterTrueConfirmation(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.SelectedTable, model.Tab = "items", tabStructure
-	if _, err := model.Database.Execute(model.appContext, `CREATE TABLE items (name TEXT)`); err != nil {
-		t.Fatalf("creating table: %v", err)
+func TestStructureForm_usesHuhControlsForColumnEditing(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.form == nil {
+		t.Fatal("column editor did not create a Huh form")
 	}
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
-	model = updated.(Model)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-
-	// Then
-	if !model.columnForm.active() {
-		t.Fatal("structure enter did not open the column form")
+	if form.form.GetFocusedField().GetKey() != "name" || form.primaryKey != 1 {
+		t.Fatalf("column Huh form has unexpected initial state: %#v", form)
 	}
+}
 
-	// Given
-	model.columnForm.name.SetValue("title")
+func TestStructureForm_huhInputUpdatesPersistedChange(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if got := model.columnForm.values.name; got != "namex" {
+		t.Fatalf("Huh name = %q, want namex", got)
+	}
+	change, err := model.columnForm.change()
+	if err != nil || change.Name != "namex" {
+		t.Fatalf("change/error = %#v/%v", change, err)
+	}
+}
 
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
+func TestStructureForm_positiveSaveConfirmationPersistsChange(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model = typeColumnText(model, "title")
 
-	// Then
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
 	if !model.columnForm.active() || model.columnForm.confirming() {
-		t.Fatal("false confirmation changed the form")
+		t.Fatal("negative save confirmation changed the form")
 	}
 
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	model = updated.(Model)
-	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	updated, refresh := model.Update(command())
-	model = updated.(Model)
-	model = updateFromCommand(model, refresh)
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
+	if model.columnForm.active() || model.structure.Rows()[0][0] != "title" {
+		t.Fatalf("saved form/rows = %#v/%#v", model.columnForm, model.structure.Rows())
+	}
+}
 
-	// Then
+func TestStructureForm_positiveDiscardConfirmationClosesForm(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if !model.columnForm.active() || model.columnForm.confirming() {
+		t.Fatal("negative discard confirmation changed the form")
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if model.columnForm.active() {
-		t.Fatal("true confirmation did not close the form after saving")
-	}
-	if got := model.structure.Rows(); len(got) != 1 || got[0][0] != "title" {
-		t.Fatalf("structure rows = %#v, want saved title column", got)
+		t.Fatal("positive discard confirmation did not close the form")
 	}
 }
 
-func TestStructureForm_escapeConfirmsDiscard(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	model = updated.(Model)
-
-	// Then
-	if !model.columnForm.confirming() {
-		t.Fatal("escape did not request discard confirmation")
+func TestStructureForm_normalInputCannotMutateAndEscapeReturnsToNormal(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if model.columnForm.values.name != "name" {
+		t.Fatalf("normal mode changed name to %q", model.columnForm.values.name)
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	if model.formMode.mode != formModeInsert {
+		t.Fatalf("column mode = %d, want insert", model.formMode.mode)
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if model.columnForm.values.name != "namex" || model.formMode.mode != formModeNormal {
+		t.Fatalf("name/mode = %q/%d", model.columnForm.values.name, model.formMode.mode)
 	}
 }
 
-func TestStructureForm_iOpensSelectedColumn(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
-	model = updated.(Model)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updated.(Model)
-
-	// Then
-	if !model.columnForm.active() || model.columnForm.previousName != "name" {
-		t.Fatalf("column form = %#v, want selected name column", model.columnForm)
+func TestStructureForm_invalidValuesCannotReachConfirmation(t *testing.T) {
+	model := openColumn(t, "price", "DECIMAL(10,2)")
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	if model.columnForm.confirmation != nil || model.columnForm.validationError == "" {
+		t.Fatal("invalid decimal parameters reached confirmation")
+	}
+	model.columnForm.values.typeName, model.columnForm.typeChanged = "", true
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	if model.columnForm.confirmation != nil || !strings.Contains(model.columnForm.validationError, "type") {
+		t.Fatalf("invalid type error = %q", model.columnForm.validationError)
 	}
 }
 
-func TestStructureForm_typeSelectionBuildsDecimalDeclaration(t *testing.T) {
-	// Given
-	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "INTEGER", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.focus = columnFieldType
-
-	// When
-	_, _ = form.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	for form.typeOptions[form.typePicker].Name != "DECIMAL" {
-		_, _ = form.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+func TestStructureForm_blankNameCannotReachConfirmation(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	for range "name" {
+		model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	}
-	_, _ = form.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	form.parameters[0].SetValue("12")
-	form.parameters[1].SetValue("2")
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	if model.columnForm.confirmation != nil || !strings.Contains(model.columnForm.validationError, "name") {
+		t.Fatalf("blank name validation = %q", model.columnForm.validationError)
+	}
+}
+
+func TestStructureForm_preservesParameterizedColumnChange(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true, DefaultValue: ptr("0")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if !equalStrings(form.values.parameters, []string{"10", "2"}) {
+		t.Fatalf("parameters = %#v", form.values.parameters)
+	}
+	form.values.typeName, form.typeChanged, form.values.parameters, form.values.name = "DECIMAL", true, []string{"12", "2"}, "price"
 	change, err := form.change()
-
-	// Then
-	if err != nil {
-		t.Fatalf("change() error = %v", err)
-	}
-	if change.Type != "DECIMAL(12,2)" {
-		t.Errorf("type = %q, want DECIMAL(12,2)", change.Type)
+	if err != nil || change.Type != "DECIMAL(12,2)" || change.DefaultValue == nil || *change.DefaultValue != "0" {
+		t.Fatalf("change/error = %#v/%v", change, err)
 	}
 }
 
-func TestStructureForm_keepsExistingTypeWhenOnlyRenamingColumn(t *testing.T) {
-	// Given
-	form := newColumnForm(sqlite.ColumnInfo{Name: "title", Type: "varchar(120)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.name.SetValue("name")
-
-	// When
-	change, err := form.change()
-
-	// Then
-	if err != nil {
-		t.Fatalf("change() error = %v", err)
-	}
-	if change.Type != "varchar(120)" {
-		t.Errorf("type = %q, want existing declaration", change.Type)
-	}
-}
-
-func TestStructureForm_parsesSpacedNumericDeclaration(t *testing.T) {
-	// Given
-	form := newColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-
-	// Then
-	if len(form.parameters) != 2 || form.parameters[0].Value() != "10" || form.parameters[1].Value() != "2" {
-		t.Fatalf("parameters = %#v, want editable precision 10 and scale 2", form.parameters)
-	}
-}
-
-func TestStructureForm_replacesNumericParameterOnEdit(t *testing.T) {
-	// Given
-	form := newColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.focus = columnFieldParameterStart
-
-	// When
-	_, _ = form.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	_, _ = form.Update(tea.KeyPressMsg{Code: '9', Text: "9"})
-
-	// Then
-	if got := form.parameters[0].Value(); got != "9" {
-		t.Errorf("precision = %q, want replacement value 9", got)
-	}
-}
-
-func TestStructureForm_usesNormalAndInsertModeNavigation(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'G', Text: "G"})
-	model = updated.(Model)
-
-	// Then
-	if model.columnForm.mode != columnFormNormal || model.columnForm.name.Value() != "namex" {
-		t.Fatalf("form state = mode:%d name:%q, want normal mode and edited name", model.columnForm.mode, model.columnForm.name.Value())
-	}
-	if model.columnForm.focus != model.columnForm.defaultField() {
-		t.Fatalf("form focus = %d, want default field after G", model.columnForm.focus)
-	}
-}
-
-func TestStructureForm_escapeDoesNotCancelRunningQuery(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
+func TestStructureForm_escapeCancelsRunningQueryBeforeDiscard(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
 	canceled := false
 	model.running, model.cancel = true, func() { canceled = true }
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	model = updated.(Model)
-
-	// Then
-	if canceled {
-		t.Fatal("escape canceled the running query instead of opening discard confirmation")
-	}
-	if !model.columnForm.confirming() {
-		t.Fatal("escape did not open discard confirmation")
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if !canceled || model.columnForm.confirming() {
+		t.Fatal("running-query escape did not take precedence")
 	}
 }
 
-func TestStructureForm_defaultDisplayDistinguishesNoneFromCleared(t *testing.T) {
-	// Given
-	noDefault := newColumnForm(sqlite.ColumnInfo{Name: "a", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	hasDefault := newColumnForm(sqlite.ColumnInfo{Name: "a", Type: "TEXT", DefaultValue: ptr("now")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-
-	// Then
-	if got, want := noDefault.defaultDisplay(), "(none)"; !strings.Contains(got, want) {
-		t.Errorf("no-default display = %q, want contains %q", got, want)
+func openColumn(t *testing.T, name, typeName string) Model {
+	t.Helper()
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items ("+name+" "+typeName+")"); err != nil {
+		t.Fatalf("creating table: %v", err)
 	}
-	if got, want := hasDefault.defaultDisplay(), "now"; !strings.Contains(got, want) {
-		t.Errorf("with-default display = %q, want contains %q", got, want)
-	}
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: name, Type: typeName, Nullable: true}}})
+	model = updateColumn(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
+	_ = model.columnForm.form.Init()
+	return model
+}
 
-	// When — user clears an existing default
-	hasDefault.preset.SetValue("")
+func updateColumn(model Model, message tea.Msg) Model {
+	updated, _ := model.Update(message)
+	return updated.(Model)
+}
 
-	// Then
-	if got, want := hasDefault.defaultDisplay(), "(cleared)"; !strings.Contains(got, want) {
-		t.Errorf("cleared display = %q, want contains %q", got, want)
+func resolveColumnCommand(model Model, message tea.Msg) Model {
+	updated, command := model.Update(message)
+	model = updated.(Model)
+	for range 4 {
+		if command == nil {
+			return model
+		}
+		message = command()
+		if batch, ok := message.(tea.BatchMsg); ok {
+			for _, next := range batch {
+				model = resolveColumnCommand(model, next())
+			}
+			return model
+		}
+		updated, command = model.Update(message)
+		model = updated.(Model)
 	}
+	return model
+}
+
+func typeColumnText(model Model, value string) Model {
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	for range "name" {
+		model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	}
+	for _, character := range value {
+		model = updateColumn(model, tea.KeyPressMsg{Code: character, Text: string(character)})
+	}
+	return updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func ptr[T any](value T) *T { return &value }
-
-func TestStructureForm_viewHasNoStrayPromptBetweenLabelAndValue(t *testing.T) {
-	// Given
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1, Nullable: false}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.setWidth(40)
-
-	// When
-	plain := ansi.Strip(form.View())
-
-	// Then
-	for _, row := range strings.Split(plain, "\n") {
-		if strings.Contains(row, " > ") {
-			t.Errorf("row %q still contains the textinput default prompt", row)
-		}
-	}
-	expectedNameRow := "Name" + strings.Repeat(" ", formLabelWidth-len("Name")+len(formFieldGap)) + "id"
-	if !strings.Contains(plain, expectedNameRow) {
-		t.Errorf("form view = %q, want a gap between the label and value", plain)
-	}
-	if !strings.Contains(form.View(), headerStyle.Padding(0, 0).Width(formLabelWidth).Render("Name")) {
-		t.Errorf("form view = %q, want the focused label highlighted", form.View())
-	}
-}
