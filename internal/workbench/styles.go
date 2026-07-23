@@ -2,6 +2,8 @@ package workbench
 
 import (
 	"fmt"
+	"image"
+	"image/color"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +13,8 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
@@ -320,8 +324,92 @@ func (m Model) View() tea.View {
 		return view
 	}
 	content := m.contentView()
-	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer())))
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer()))
+	if !m.hasConfirming() {
+		view.SetContent(fullContent)
+		return view
+	}
+	// UV overlay path: render full UI, then overlay confirmation centered.
+	canvas := uv.NewScreenBuffer(m.width, m.height)
+	screen.Clear(canvas)
+	uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
+	if dialog := m.confirmContent(); dialog != "" {
+		m.drawConfirmDialog(canvas, dialog)
+	}
+	view.SetContent(canvas.Render())
 	return view
+}
+
+func (m Model) hasConfirming() bool {
+	return m.columnForm.confirming() || m.indexForm.confirming() ||
+		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
+		m.connection.confirmation != nil
+}
+
+func (m Model) confirmContent() string {
+	var raw string
+	switch {
+	case m.columnForm.confirming():
+		raw = m.columnForm.confirmation.View()
+	case m.browseForm.confirming():
+		raw = m.browseForm.confirmation.View()
+	case m.indexForm.confirming():
+		raw = m.indexForm.confirmation.View()
+	case m.foreignKeyForm.confirming():
+		raw = m.foreignKeyForm.confirmation.View()
+	case m.connection.confirmation != nil:
+		raw = m.connection.confirmation.View()
+	}
+	if raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	for i, line := range strings.Split(raw, "\n") {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(strings.TrimRight(line, " "))
+	}
+	return b.String()
+}
+
+func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
+	dialogStr := uv.NewStyledString(dialog)
+	dialogW := min(dialogStr.UnicodeWidth(), canvas.Bounds().Dx()-6)
+	dialogH := min(dialogStr.Height(), canvas.Bounds().Dy()-6)
+	if dialogW <= 0 || dialogH <= 0 {
+		return
+	}
+	bounds := canvas.Bounds()
+	borderW := dialogW + 2
+	borderH := dialogH + 2
+	x := max(0, (bounds.Dx()-borderW)/2)
+	y := max(0, (bounds.Dy()-borderH)/2)
+
+	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
+	canvas.FillArea(&dialogBg, image.Rect(x, y, x+borderW, y+borderH))
+
+	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+	canvas.SetCell(x, y, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
+	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+	for cx := x + 1; cx < x+borderW-1; cx++ {
+		canvas.SetCell(cx, y, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+		canvas.SetCell(cx, y+borderH-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+	}
+	for cy := y + 1; cy < y+borderH-1; cy++ {
+		canvas.SetCell(x, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+		canvas.SetCell(x+borderW-1, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+	}
+
+	dialogStr.Draw(canvas, image.Rect(x+1, y+1, x+1+dialogW, y+1+dialogH))
+}
+
+func parseHex(s string) color.Color {
+	var r, g, b uint8
+	fmt.Sscanf(s, "#%02x%02x%02x", &r, &g, &b)
+	return color.RGBA{R: r, G: g, B: b, A: 255}
 }
 
 func (m Model) contentView() string {
