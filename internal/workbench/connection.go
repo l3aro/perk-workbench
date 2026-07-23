@@ -114,6 +114,10 @@ func (m Model) openConnection() (tea.Model, tea.Cmd) {
 	return m, m.openTarget(target)
 }
 
+func (m Model) connectionActionFocused() bool {
+	return m.connection.form != nil && m.connection.form.GetFocusedField().GetKey() == "action"
+}
+
 func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := message.(connectionValidationMsg); ok {
 		m.connection.focusValidationError()
@@ -156,6 +160,15 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, command
 	}
 	keyPress, isKeyPress := message.(tea.KeyPressMsg)
+	if isKeyPress && m.connection.confirmation == nil && m.connectionActionFocused() &&
+		keyPress.Key().Code == tea.KeyEnter && keyPress.Key().Mod == 0 {
+		m.formMode.mode = formModeNormal
+		m.connection.blur()
+		if m.connection.values.action == connectionActionTest {
+			return m, m.testConnection()
+		}
+		return m.openConnection()
+	}
 	if isKeyPress && m.connection.confirmation == nil && m.executeKey(keyPress) {
 		if err := m.connection.validate(); err != nil {
 			m.Status = safeText(err.Error())

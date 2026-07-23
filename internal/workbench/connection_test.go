@@ -182,6 +182,62 @@ func TestConnectionForm_executeKeysWorkWhileEditing(t *testing.T) {
 	}
 }
 
+func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		action  string
+		editing bool
+	}{
+		{name: "test normal", action: connectionActionTest},
+		{name: "connect normal", action: connectionActionConnect},
+		{name: "test insert", action: connectionActionTest, editing: true},
+		{name: "connect insert", action: connectionActionConnect, editing: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			model := New("", context.Background(), testOpen)
+			model.connection.focus = connectionFocusForm
+			model.connection.values.target = ":memory:"
+			for range 3 {
+				_ = model.connection.form.NextField()
+			}
+			if got := model.connection.form.GetFocusedField().GetKey(); got != "action" {
+				t.Fatalf("focused field = %q, want action", got)
+			}
+			if test.action == connectionActionConnect {
+				updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+				model = updated.(Model)
+			}
+			model.connection.values.target = ":memory:"
+			if test.editing {
+				model.formMode.beginHuh(model.connection.focusForm())
+			}
+
+			// When
+			updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			if command == nil {
+				t.Fatal("action button returned no command")
+			}
+			if test.action == connectionActionTest {
+				message := command()
+				if _, ok := message.(connectionTestMsg); !ok {
+					t.Fatalf("action button message = %T, want connection test", message)
+				}
+			} else if model.State != stateOpening {
+				t.Fatalf("connection state = %v, want opening", model.State)
+			}
+
+			// Then
+			if model.formMode.mode != formModeNormal {
+				t.Fatalf("form mode = %v, want normal", model.formMode.mode)
+			}
+			if model.connection.values.action != test.action {
+				t.Fatalf("selected action = %q, want %q", model.connection.values.action, test.action)
+			}
+		})
+	}
+}
 func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)
