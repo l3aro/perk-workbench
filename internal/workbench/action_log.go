@@ -10,6 +10,9 @@ func (m Model) actionIdentifier(name string) string {
 	quote := `"`
 	if m.databaseInfo.Product == "MySQL" {
 		quote = "`"
+		if database, table, found := strings.Cut(name, "."); found {
+			return quote + strings.ReplaceAll(database, quote, quote+quote) + quote + "." + quote + strings.ReplaceAll(table, quote, quote+quote) + quote
+		}
 	}
 	return quote + strings.ReplaceAll(name, quote, quote+quote) + quote
 }

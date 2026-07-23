@@ -9,10 +9,14 @@ func (f browseForm) updateStatement(table string) (string, error) {
 	if !f.active() || len(f.primary) == 0 {
 		return "", fmt.Errorf("selected row cannot be updated")
 	}
+	identifier := f.identifier
+	if identifier == nil {
+		identifier = quoteBrowseIdentifier
+	}
 	var sets []string
 	for index, column := range f.columns {
 		if f.isDirty(index) {
-			sets = append(sets, quoteBrowseIdentifier(column)+" = "+f.value(index))
+			sets = append(sets, identifier(column)+" = "+f.value(index))
 		}
 	}
 	if len(sets) == 0 {
@@ -21,12 +25,12 @@ func (f browseForm) updateStatement(table string) (string, error) {
 	where := make([]string, len(f.primary))
 	for index, primary := range f.primary {
 		if f.original[primary] == nil {
-			where[index] = quoteBrowseIdentifier(f.columns[primary]) + " IS NULL"
+			where[index] = identifier(f.columns[primary]) + " IS NULL"
 		} else {
-			where[index] = quoteBrowseIdentifier(f.columns[primary]) + " = " + quoteBrowseValue(*f.original[primary])
+			where[index] = identifier(f.columns[primary]) + " = " + quoteBrowseValue(*f.original[primary])
 		}
 	}
-	return "UPDATE " + quoteBrowseIdentifier(table) + " SET " + strings.Join(sets, ", ") + " WHERE " + strings.Join(where, " AND "), nil
+	return "UPDATE " + identifier(table) + " SET " + strings.Join(sets, ", ") + " WHERE " + strings.Join(where, " AND "), nil
 }
 
 func (f browseForm) isDirty(index int) bool {

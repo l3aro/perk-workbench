@@ -203,11 +203,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if !message.startedAt.IsZero() {
 		duration = time.Since(message.startedAt)
 	}
-	quote := `"`
-	if m.databaseInfo.Product == "MySQL" {
-		quote = "`"
-	}
-	quotedTable := quote + strings.ReplaceAll(message.table, quote, quote+quote) + quote
+	quotedTable := m.actionIdentifier(message.table)
 	statement := fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, browsePageSize, message.page*browsePageSize)
 	m.appendQueryLog(queryLogEntry{
 		startedAt: message.startedAt,

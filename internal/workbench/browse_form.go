@@ -24,6 +24,7 @@ type browseForm struct {
 	original           []*string
 	primary            []int
 	table              string
+	identifier         func(string) string
 	width              int
 	pendingG, saving   bool
 	confirmationSave   bool
@@ -49,6 +50,9 @@ func (m *Model) openBrowseForm() tea.Cmd {
 	}
 	m.browseForm = form
 	m.browseForm.table = m.SelectedTable
+	if m.databaseInfo.Product == "MySQL" {
+		m.browseForm.identifier = m.actionIdentifier
+	}
 	m.browseForm.setWidth(m.tableViewportWidth)
 	return m.browseForm.form.Init()
 }
