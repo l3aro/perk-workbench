@@ -423,7 +423,20 @@ func (m Model) structureView() string {
 
 func (m Model) browseView() string {
 	if m.browseForm.active() {
-		return m.browseForm.View()
+		view := m.browseForm.View()
+		// workspaceView adds tabs + separator (2 lines).
+		// The pane adds border (2) + padding (1) = 3 lines.
+		// Total overhead = 5 lines before the form content.
+		// Truncate to fit within the workspace.
+		height := max(m.workspaceHeight-5, 1)
+		if m.compact {
+			height = max(m.height-9, 1)
+		}
+		lines := strings.Split(view, "\n")
+		if len(lines) > height {
+			lines = lines[:height]
+		}
+		return strings.Join(lines, "\n")
 	}
 	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth) + "\n" + paneStatus("", m.browseStatus, m.tableViewportWidth)
 }

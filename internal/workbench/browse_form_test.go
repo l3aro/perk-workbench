@@ -47,39 +47,43 @@ func TestBrowseForm_normalModeNavigatesWithoutMutatingValues(t *testing.T) {
 	}
 }
 
-func TestBrowseForm_huhValueAndNULLControlsProduceOriginalPredicateStatement(t *testing.T) {
+func TestBrowseForm_nKeySetsFocusedColumnToNull(t *testing.T) {
 	// Given
 	model := openBrowseRow(t, 1)
 
-	// When
+	// When — focus name column (index 1) and press n
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'e', Text: "e"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 't', Text: "t"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'e', Text: "e"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	statement, err := model.browseForm.updateStatement("items")
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
 
 	// Then
+	if !model.browseForm.values.nulls[1] {
+		t.Fatal("name field nulls[1] should be true after pressing n")
+	}
+	statement, err := model.browseForm.updateStatement("items")
 	if err != nil {
 		t.Fatalf("update statement: %v", err)
 	}
 	if want := "UPDATE `items` SET `id` = '2', `name` = NULL WHERE `id` = '2'"; statement != want {
 		t.Fatalf("statement = %q, want %q", statement, want)
+	}
+}
+
+func TestBrowseForm_enterEditModeClearsNullFlag(t *testing.T) {
+	// Given
+	model := openBrowseRow(t, 0)
+
+	// Mark id column (field 0) as NULL
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if !model.browseForm.values.nulls[0] {
+		t.Fatal("id nulls[0] should be true before entering edit mode")
+	}
+
+	// When — enter edit mode (clears null for focused field, enters huh)
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+
+	// Then
+	if model.browseForm.values.nulls[0] {
+		t.Fatal("nulls[0] should be false after entering edit mode on that field")
 	}
 }
 
@@ -113,6 +117,29 @@ func TestBrowseForm_savesOnlyAfterPositiveHuhConfirmation(t *testing.T) {
 	}
 	if got := model.browse.Cursor(); got != 1 {
 		t.Fatalf("browse cursor = %d, want saved row cursor 1", got)
+	}
+}
+
+func TestBrowseForm_nThenF5ThenYSavesRowWithNull(t *testing.T) {
+	// Given — open row, focus name field, press n to null it
+	model := openBrowseRow(t, 1)
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
+
+	// When — F5, then y to confirm save
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
+
+	// Then — form closed, name is NULL in database
+	if model.browseForm.active() {
+		t.Fatal("form should be closed after save")
+	}
+	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
+	if err != nil {
+		t.Fatalf("selecting saved row: %v", err)
+	}
+	if result.Rows[0][0] != nil {
+		t.Fatalf("name = %q, want NULL", *result.Rows[0][0])
 	}
 }
 

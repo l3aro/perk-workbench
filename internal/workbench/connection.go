@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	dbmysql "github.com/l3aro/perk/internal/mysql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
@@ -191,6 +192,14 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	keyPress, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return m, nil
+	}
+	switch keyPress.Key().Code {
+	case tea.KeyLeft, 'h', tea.KeyRight, 'l':
+		if m.connection.form != nil && m.connection.form.GetFocusedField().GetKey() == "action" {
+			model, cmd := m.connection.form.Update(message)
+			m.connection.form = model.(*huh.Form)
+			return m, cmd
+		}
 	}
 	switch keyPress.String() {
 	case "1":

@@ -31,7 +31,11 @@ type columnAlteredMsg struct {
 	err       error
 }
 
-type browseRowUpdatedMsg struct{ err error }
+type browseRowUpdatedMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
 
 func (m *Model) setResults(result sharedsql.Result) {
 	m.resultsNumericColumns = numericColumns(result.ColumnTypes)
@@ -108,13 +112,13 @@ func (m Model) updateBrowseRow() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: err} }
 	}
-	service := m.Database
+	service, startedAt := m.Database, time.Now()
 	return func() tea.Msg {
 		result, err := service.Execute(m.appContext, statement)
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return browseRowUpdatedMsg{err: err}
+		return browseRowUpdatedMsg{statement: statement, startedAt: startedAt, err: err}
 	}
 }
 
@@ -161,6 +165,9 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 		m.browseForm.saving = false
 		m.Status = safeText(fmt.Sprintf("updating row: %v", message.err))
 		return m, nil
+	}
+	if message.statement != "" {
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
 	}
 	m.browseForm = browseForm{}
 	m.Status = "row updated"

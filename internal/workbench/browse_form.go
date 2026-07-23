@@ -105,7 +105,20 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 	}
 	switch keyPress.String() {
 	case "i", "enter":
+		col := f.focusedColumn()
+		if col >= 0 {
+			f.values.nulls[col] = false
+		}
 		return controller.beginHuh(f.focus()), browseFormNoAction
+	case "n":
+		col := f.focusedColumn()
+		if col >= 0 {
+			f.values.nulls[col] = true
+			f.values.fields[col] = ""
+		}
+		f.pendingG = false
+		f.rebuildForm()
+		return f.form.Init(), browseFormNoAction
 	case "ctrl+enter", "f5":
 		f.beginConfirmation(true)
 		controller.beginConfirm()
@@ -175,11 +188,10 @@ func (f *browseForm) beginConfirmation(save bool) {
 }
 
 func (f *browseForm) rebuildForm() {
-	fields := make([]huh.Field, 0, len(f.columns)*2)
+	fields := make([]huh.Field, 0, len(f.columns))
 	for index, column := range f.columns {
 		fields = append(fields,
 			huh.NewInput().Key(f.valueKey(index)).Title(column).Value(&f.values.fields[index]),
-			huh.NewConfirm().Key(f.nullKey(index)).Title(column+" NULL").Affirmative("NULL").Negative("Value").Value(&f.values.nulls[index]),
 		)
 	}
 	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
@@ -187,47 +199,42 @@ func (f *browseForm) rebuildForm() {
 
 func (f browseForm) valueKey(index int) string { return fmt.Sprintf("value-%d", index) }
 
-func (f browseForm) nullKey(index int) string { return fmt.Sprintf("null-%d", index) }
-
-func (f browseForm) focusedIndex() int {
+func (f browseForm) focusedColumn() int {
 	if f.form == nil {
 		return 0
 	}
 	key := f.form.GetFocusedField().GetKey()
 	for index := range f.columns {
 		if key == f.valueKey(index) {
-			return index * 2
-		}
-		if key == f.nullKey(index) {
-			return index*2 + 1
+			return index
 		}
 	}
 	return 0
 }
 
 func (f *browseForm) nextField() tea.Cmd {
-	if f.focusedIndex() == len(f.columns)*2-1 {
+	if f.focusedColumn() == len(f.columns)-1 {
 		return nil
 	}
 	return f.form.NextField()
 }
 
 func (f *browseForm) previousField() tea.Cmd {
-	if f.focusedIndex() == 0 {
+	if f.focusedColumn() == 0 {
 		return nil
 	}
 	return f.form.PrevField()
 }
 
 func (f *browseForm) firstField() tea.Cmd {
-	for f.focusedIndex() > 0 {
+	for f.focusedColumn() > 0 {
 		_ = f.form.PrevField()
 	}
 	return f.focus()
 }
 
 func (f *browseForm) lastField() tea.Cmd {
-	for f.focusedIndex() < len(f.columns)*2-1 {
+	for f.focusedColumn() < len(f.columns)-1 {
 		_ = f.form.NextField()
 	}
 	return f.focus()
