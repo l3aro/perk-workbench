@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/table"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const queryLogLimit = 100
@@ -15,6 +16,8 @@ type queryLogEntry struct {
 	statement string
 	duration  time.Duration
 	fetched   int
+	status    string // "success", "failed", "canceled"
+	errMsg    string
 }
 
 func (m *Model) appendQueryLog(entry queryLogEntry) {
@@ -24,16 +27,45 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 	}
 	rows := make([]table.Row, len(m.queryLogEntries))
 	for index, item := range m.queryLogEntries {
+		var statusStr string
+		switch item.status {
+		case "failed":
+			statusStr = statusFailedStyle.Render(iconFailed)
+		case "canceled":
+			statusStr = statusCanceledStyle.Render(iconCanceled)
+		default:
+			statusStr = statusSuccessStyle.Render(iconSuccess)
+		}
+		statement := safeText(item.statement)
+		if len(statement) > 80 {
+			statement = statement[:80] + "..."
+		}
+		fetchedStr := fmt.Sprintf("%d", item.fetched)
+		if item.fetched == 0 && item.status == "failed" {
+			fetchedStr = "-"
+		}
 		rows[index] = table.Row{
 			item.startedAt.Format("15:04:05"),
-			safeText(strings.Join(strings.Fields(item.statement), " ")),
+			statusStr,
+			statement,
 			item.duration.Round(time.Microsecond).String(),
-			fmt.Sprintf("%d", item.fetched),
+			fetchedStr,
+		}
+	}
+	// Center status icons within column
+	statusColWidth := ansi.StringWidth("Status")
+	for _, row := range rows {
+		statusColWidth = max(statusColWidth, ansi.StringWidth(row[1]))
+	}
+	for _, row := range rows {
+		contentWidth := ansi.StringWidth(row[1])
+		if contentWidth < statusColWidth {
+			row[1] = strings.Repeat(" ", (statusColWidth-contentWidth)/2) + row[1]
 		}
 	}
 	height := m.queryLog.Height()
 	m.queryLog.SetRows(nil)
-	m.queryLog.SetColumns(tableColumns([]string{"Time", "Query", "Duration", "Fetch"}, rows))
+	m.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Fetched"}, rows))
 	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(height+1, 2))
 	m.queryLog.SetRows(rows)
 }

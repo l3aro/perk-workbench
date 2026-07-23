@@ -207,6 +207,16 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.queryLogDetail != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok {
+			if keyPress.String() == "enter" || keyPress.String() == "esc" {
+				m.queryLogDetail = nil
+				return m, nil
+			}
+		}
+		return m, nil
+	}
+
 	switch m.State {
 	case stateConnection:
 		return m.updateConnection(message)
@@ -422,6 +432,13 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				case "G":
 					m.queryLog.SetCursor(len(rows) - 1)
+					return m, nil
+				case "enter":
+					cursor := m.queryLog.Cursor()
+					if cursor >= 0 && cursor < len(m.queryLogEntries) {
+						entry := m.queryLogEntries[cursor]
+						m.queryLogDetail = &entry
+					}
 					return m, nil
 				}
 			}

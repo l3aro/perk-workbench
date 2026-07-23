@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -65,11 +64,10 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 	canceled, quit := m.Workflow.FinishQuery()
 	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
 	if canceled {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
-		m.Status = "query canceled"
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "canceled"})
 	} else {
 		m.setResults(message.result)
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, fetched: len(message.result.Rows)})
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, fetched: len(message.result.Rows), status: "success"})
 	}
 	if quit {
 		return m, tea.Quit
@@ -83,8 +81,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 	}
 	_, quit := m.Workflow.FinishQuery()
 	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
-	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
-	m.Status = safeText(fmt.Sprintf("query failed: %v", message.err))
+	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "failed", errMsg: message.err.Error()})
 	if quit {
 		return m, tea.Quit
 	}
@@ -97,8 +94,7 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 	}
 	_, quit := m.Workflow.FinishQuery()
 	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
-	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
-	m.Status = "query canceled"
+	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "canceled"})
 	if quit {
 		return m, tea.Quit
 	}

@@ -59,6 +59,7 @@ type Model struct {
 	browseResult                                                                                   sharedsql.Result
 	resultsStatus, browseStatus                                                                    string
 	queryLogEntries                                                                                []queryLogEntry
+	queryLogDetail                                                                                 *queryLogEntry
 	queryLogPendingG                                                                               bool
 	editor                                                                                         *editor
 	formMode                                                                                       *formModeController
@@ -131,7 +132,7 @@ func New(target string, opener databaseOpener) Model {
 		formMode:    &formModeController{},
 		connection:  newConnectionForm(),
 	}
-	model.queryLog.SetColumns(tableColumns([]string{"Time", "Query", "Duration", "Fetch"}, nil))
+	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Fetched"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()
 	if target == "" {
