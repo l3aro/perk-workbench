@@ -76,7 +76,7 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 	} else {
 		fields = append(fields, huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget))
 	}
-	fields = append(fields, huh.NewSelect[string]().Key("action").Title("Action").Options(huh.NewOption(connectionActionTest, connectionActionTest), huh.NewOption(connectionActionConnect, connectionActionConnect)).Value(&f.values.action))
+	fields = append(fields, newConnectionActionButtons(&f.values.action))
 	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 	return f.form.Init()
 }

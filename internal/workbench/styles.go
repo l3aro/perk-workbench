@@ -53,6 +53,15 @@ var (
 			BorderForeground(lipgloss.Color(colorBorder)).
 			Foreground(lipgloss.Color(colorInk)).
 			Padding(0, spaceCompact)
+	connectionActionStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorInk)).
+				Background(lipgloss.Color(colorStripe)).
+				Padding(0, spaceCompact)
+	connectionActionSelectedStyle = lipgloss.NewStyle().
+					Foreground(lipgloss.Color(colorCanvas)).
+					Background(lipgloss.Color(colorAccent)).
+					Bold(true).
+					Padding(0, spaceCompact)
 	primaryIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
 	uniqueIndexStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
 	regularIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
