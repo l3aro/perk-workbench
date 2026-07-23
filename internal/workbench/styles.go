@@ -310,6 +310,9 @@ func (m *Model) layout(width, height int) {
 	m.browseForm.setWidth(m.tableViewportWidth)
 	m.indexForm.setWidth(m.tableViewportWidth)
 	m.foreignKeyForm.setWidth(m.tableViewportWidth)
+	if m.explainPicker != nil {
+		m.explainPicker.setWidth(m.tableViewportWidth)
+	}
 	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.foreignKeys, &m.queryLog} {
 		columns := resultTable.Columns()
 		titles := make([]string, len(columns))
@@ -350,7 +353,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.explainPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil {
 		// UV overlay path: render full UI, then overlay confirmation centered.
@@ -368,7 +371,7 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) hasConfirming() bool {
-	return m.columnForm.confirming() || m.indexForm.confirming() ||
+	return m.explainPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil
 }
@@ -376,6 +379,8 @@ func (m Model) hasConfirming() bool {
 func (m Model) confirmContent() string {
 	var raw string
 	switch {
+	case m.explainPicker != nil:
+		raw = m.explainPicker.form.View()
 	case m.columnForm.confirming():
 		raw = m.columnForm.confirmation.View()
 	case m.browseForm.confirming():
@@ -653,7 +658,7 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "tab switch view")
+		parts = append(parts, "1 tables", "2 tabs", "3 history", "e explain", "f fullscreen", "tab view")
 		parts = append(parts, "q quit")
 		return safeText(strings.Join(parts, " | "))
 	}

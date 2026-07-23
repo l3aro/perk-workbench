@@ -57,6 +57,7 @@ type Model struct {
 	queryLogDetail                                                                                 *queryLogEntry
 	queryLogPendingG                                                                               bool
 	editor                                                                                         *editor
+	explainPicker                                                                                  *explainPicker
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
 	browseForm                                                                                     browseForm

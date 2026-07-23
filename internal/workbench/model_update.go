@@ -20,6 +20,25 @@ type browseDebounceMsg struct {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if window, ok := message.(tea.WindowSizeMsg); ok {
+		m.layout(window.Width, window.Height)
+		return m, nil
+	}
+	if m.explainPicker != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.explainPicker = nil
+			return m, nil
+		}
+		command := m.explainPicker.Update(message)
+		if !m.explainPicker.completed() {
+			return m, command
+		}
+		m.editor.setValue(m.explainPicker.query())
+		m.explainPicker = nil
+		m.Focus, m.Tab = focusWorkspace, tabSQL
+		m.blurTables()
+		return m, m.formMode.beginInsert(m.editor)
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
@@ -416,6 +435,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, copyQueryLogStatement(m.queryLogEntries[cursor].statement)
 					}
 					return m, nil
+				case "e":
+					cursor := m.queryLog.Cursor()
+					if cursor < 0 || cursor >= len(m.queryLogEntries) {
+						return m, nil
+					}
+					m.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLogEntries[cursor].statement, m.tableViewportWidth)
+					if m.explainPicker == nil {
+						return m, nil
+					}
+					return m, m.explainPicker.form.Init()
 				case "j":
 					m.queryLog.SetCursor(min(m.queryLog.Cursor()+1, len(rows)-1))
 					return m, nil
