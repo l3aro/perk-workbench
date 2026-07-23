@@ -70,7 +70,7 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 			huh.NewInput().Key("port").Title("Port*").Value(&f.values.port).Validate(requiredConnectionPort),
 			huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser),
 			huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword),
-			huh.NewInput().Key("database").Title("Database*").Placeholder("database").Value(&f.values.target).Validate(requiredConnectionTarget),
+			huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target),
 			huh.NewNote().Title("Privacy").Description("MySQL connections are not saved."),
 		)
 	} else {
@@ -186,7 +186,7 @@ func (f connectionForm) validate() error {
 	if err := requiredConnectionUser(f.values.user); err != nil {
 		return err
 	}
-	return requiredConnectionTarget(f.values.target)
+	return nil
 }
 
 func requiredConnectionTarget(value string) error {

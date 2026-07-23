@@ -35,7 +35,7 @@ func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
 		driver                connectionDriver
 	}{
 		{name: "SQLite", driver: driverSQLite, present: "Target*", absent: "Host*"},
-		{name: "MySQL", driver: driverMySQL, present: "Database*", absent: "Target*"},
+		{name: "MySQL", driver: driverMySQL, present: "Database", absent: "Database*"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
@@ -62,15 +62,12 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 		set    func(*connectionFormValues)
 	}{
 		{name: "SQLite target", driver: driverSQLite},
-		{name: "MySQL host", driver: driverMySQL, set: func(values *connectionFormValues) { values.target, values.port, values.user = "app", "3306", "alice" }},
+		{name: "MySQL host", driver: driverMySQL, set: func(values *connectionFormValues) { values.port, values.user = "3306", "alice" }},
 		{name: "MySQL port", driver: driverMySQL, set: func(values *connectionFormValues) {
-			values.target, values.host, values.port, values.user = "app", "localhost", "", "alice"
+			values.host, values.port, values.user = "localhost", "", "alice"
 		}},
 		{name: "MySQL username", driver: driverMySQL, set: func(values *connectionFormValues) {
-			values.target, values.host, values.port = "app", "localhost", "3306"
-		}},
-		{name: "MySQL database", driver: driverMySQL, set: func(values *connectionFormValues) {
-			values.host, values.port, values.user = "localhost", "3306", "alice"
+			values.host, values.port = "localhost", "3306"
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -364,7 +361,7 @@ func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 	}
 }
 
-func TestConnectionForm_f5ShowsDatabaseErrorWhenOnlyMySQLDatabaseIsBlank(t *testing.T) {
+func TestConnectionForm_f5AllowsBlankMySQLDatabase(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)
 	model.connection.focus = connectionFocusForm
@@ -373,14 +370,12 @@ func TestConnectionForm_f5ShowsDatabaseErrorWhenOnlyMySQLDatabaseIsBlank(t *test
 	_ = model.connection.rebuildForm()
 
 	// When
-	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
-	model = resolveConnectionCommand(model, command)
 
 	// Then
-	field := model.connection.form.GetFocusedField()
-	if field.GetKey() != "database" || field.Error() == nil {
-		t.Fatalf("MySQL database validation = field %q, error %v, want database/error", field.GetKey(), field.Error())
+	if model.connection.confirmation == nil {
+		t.Fatal("blank MySQL database did not reach connection confirmation")
 	}
 }
 
