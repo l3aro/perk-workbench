@@ -8,6 +8,15 @@ services:
     volumes:
       - ${DEMO_DIR:-../demo}/office.sql:/docker-entrypoint-initdb.d/office.sql:ro
 
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: employees
+    volumes:
+      - ${DEMO_DIR:-../demo}/employees.sql.gz:/init-data/employees.sql.gz:ro
+      - ${DEMO_DIR:-../demo}/init-employees.sh:/docker-entrypoint-initdb.d/init-employees.sh:ro
+
   dev:
     image: golang:1.25
     working_dir: /workspace
