@@ -140,20 +140,20 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 			defaultValue = safeText(*column.DefaultValue)
 		}
 		nullable := booleanValue(column.Nullable)
-		rows[index] = table.Row{safeText(column.Name), indexIcons(column.Indexes), safeText(column.Type), nullable, defaultValue}
+		rows[index] = table.Row{safeText(column.Name), indexIcons(column.Indexes), safeText(column.Type), safeText(column.Attributes), nullable, defaultValue}
 	}
 	// Center Nullable icons within column
 	nullableColWidth := ansi.StringWidth("Nullable")
 	for _, row := range rows {
-		nullableColWidth = max(nullableColWidth, ansi.StringWidth(row[3]))
+		nullableColWidth = max(nullableColWidth, ansi.StringWidth(row[4]))
 	}
 	for _, row := range rows {
-		contentWidth := ansi.StringWidth(row[3])
+		contentWidth := ansi.StringWidth(row[4])
 		if contentWidth < nullableColWidth {
-			row[3] = strings.Repeat(" ", (nullableColWidth-contentWidth)/2) + row[3]
+			row[4] = strings.Repeat(" ", (nullableColWidth-contentWidth)/2) + row[4]
 		}
 	}
-	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Nullable", "Default"}, rows))
+	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"}, rows))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
 	m.structure.SetRows(rows)
 	m.structureColumns = message.columns
