@@ -26,6 +26,7 @@ type browseForm struct {
 	width              int
 	pendingG, saving   bool
 	confirmationSave   bool
+	scrollOffset       int
 }
 
 type browseFormValues struct {
@@ -173,6 +174,7 @@ func (f *browseForm) updateHuh(message tea.Msg, controller *formModeController) 
 		f.rebuildForm()
 		return f.focus(), browseFormNoAction
 	}
+	f.scrollToColumn(f.focusedColumn())
 	return command, browseFormNoAction
 }
 
@@ -216,6 +218,7 @@ func (f *browseForm) nextField() tea.Cmd {
 	if f.focusedColumn() == len(f.columns)-1 {
 		return nil
 	}
+	f.scrollToColumn(f.focusedColumn() + 1)
 	return f.form.NextField()
 }
 
@@ -223,6 +226,7 @@ func (f *browseForm) previousField() tea.Cmd {
 	if f.focusedColumn() == 0 {
 		return nil
 	}
+	f.scrollToColumn(f.focusedColumn() - 1)
 	return f.form.PrevField()
 }
 
@@ -230,6 +234,7 @@ func (f *browseForm) firstField() tea.Cmd {
 	for f.focusedColumn() > 0 {
 		_ = f.form.PrevField()
 	}
+	f.scrollOffset = 0
 	return f.focus()
 }
 
@@ -237,7 +242,12 @@ func (f *browseForm) lastField() tea.Cmd {
 	for f.focusedColumn() < len(f.columns)-1 {
 		_ = f.form.NextField()
 	}
+	f.scrollToColumn(len(f.columns) - 1)
 	return f.focus()
+}
+
+func (f *browseForm) scrollToColumn(col int) {
+	f.scrollOffset = col * 2
 }
 
 func (f *browseForm) blur() {

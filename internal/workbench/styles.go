@@ -434,7 +434,12 @@ func (m Model) browseView() string {
 		}
 		lines := strings.Split(view, "\n")
 		if len(lines) > height {
-			lines = lines[:height]
+			offset := m.browseForm.scrollOffset
+			maxOffset := max(len(lines)-height, 0)
+			if offset > maxOffset {
+				offset = maxOffset
+			}
+			lines = lines[offset : offset+height]
 		}
 		return strings.Join(lines, "\n")
 	}
