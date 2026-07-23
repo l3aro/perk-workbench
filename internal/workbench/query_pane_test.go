@@ -28,9 +28,9 @@ func TestWideLayout_renders_query_log_in_its_own_pane(t *testing.T) {
 	if strings.Contains(ansi.Strip(model.workspaceView()), "Duration/fetch") {
 		t.Fatal("workspace view embeds the query log")
 	}
-	if !strings.Contains(ansi.Strip(model.queryLogPaneView()), "Fetch") {
-		t.Fatal("query log pane does not render its table")
-	}
+	if !strings.Contains(ansi.Strip(model.queryLogPaneView()), "Message") {
+			t.Fatal("query log pane does not render its table")
+		}
 }
 
 func TestWideLayout_shows_completed_query_in_lower_pane(t *testing.T) {
