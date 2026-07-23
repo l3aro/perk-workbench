@@ -57,10 +57,10 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 	}
 	canceled, quit := m.Workflow.FinishQuery()
 	if canceled {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "canceled"})
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: "canceled", status: "canceled"})
 	} else {
 		m.setResults(message.result)
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, fetched: len(message.result.Rows), status: "success"})
+		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), status: "success"})
 	}
 	if quit {
 		return m, tea.Quit
@@ -73,7 +73,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "failed", errMsg: message.err.Error()})
+	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: message.err.Error(), status: "failed"})
 	if quit {
 		return m, tea.Quit
 	}
@@ -85,7 +85,7 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "canceled"})
+	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: "canceled", status: "canceled"})
 	if quit {
 		return m, tea.Quit
 	}

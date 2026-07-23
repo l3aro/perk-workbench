@@ -102,7 +102,7 @@ func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoaded
 
 func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated foreign key"))
 	}
 	if message.err != nil {
 		m.foreignKeyForm.saving = false
@@ -116,7 +116,7 @@ func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model,
 
 func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped foreign key"))
 	}
 	if message.err != nil {
 		m.foreignKeyForm.saving = false

@@ -80,7 +80,7 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 }
 func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated index"))
 	}
 	if message.err != nil {
 		m.indexForm.saving = false
@@ -93,7 +93,7 @@ func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) 
 }
 func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped index"))
 	}
 	if message.err != nil {
 		m.indexForm.saving = false

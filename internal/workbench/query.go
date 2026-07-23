@@ -163,7 +163,7 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "altered column"))
 	}
 	if message.err != nil {
 		m.columnForm.saving = false
@@ -176,13 +176,13 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 }
 
 func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated 1 row"))
+	}
 	if message.err != nil {
 		m.browseForm.saving = false
 		m.Status = safeText(fmt.Sprintf("updating row: %v", message.err))
 		return m, nil
-	}
-	if message.statement != "" {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt)})
 	}
 	m.browseForm = browseForm{}
 	m.Status = "row updated"
@@ -203,17 +203,17 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if !message.startedAt.IsZero() {
 		duration = time.Since(message.startedAt)
 	}
-	fetched := len(message.result.Rows)
 	quote := `"`
 	if m.databaseInfo.Product == "MySQL" {
 		quote = "`"
 	}
 	quotedTable := quote + strings.ReplaceAll(message.table, quote, quote+quote) + quote
+	statement := fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, browsePageSize, message.page*browsePageSize)
 	m.appendQueryLog(queryLogEntry{
 		startedAt: message.startedAt,
-		statement: fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, browsePageSize, message.page*browsePageSize),
+		statement: statement,
 		duration:  duration,
-		fetched:   fetched,
+		message:   queryLogMessage(statement, message.result.RowsAffected, len(message.result.Rows)),
 	})
 	start, end := message.page*browsePageSize+1, message.page*browsePageSize+len(message.result.Rows)
 	if len(message.result.Rows) == 0 {
