@@ -22,6 +22,7 @@ func TestExplainOptions_matchesDriverAndStatementCapabilities(t *testing.T) {
 		{name: "older MySQL", product: "MySQL", version: "8.0.17", statement: "SELECT 1", want: []string{"EXPLAIN"}},
 		{name: "MariaDB", product: "MySQL", version: "10.11.4-MariaDB", statement: "SELECT 1", want: []string{"EXPLAIN"}},
 		{name: "unsupported MySQL statement", product: "MySQL", version: "8.0.36", statement: "CREATE TABLE projects (id INTEGER)"},
+		{name: "PostgreSQL query", product: "PostgreSQL", statement: "SELECT 1", want: []string{"EXPLAIN", "EXPLAIN ANALYZE"}},
 	}
 
 	for _, test := range tests {

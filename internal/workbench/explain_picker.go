@@ -64,6 +64,10 @@ func explainOptions(product, version, statement string) []string {
 			options = append(options, "EXPLAIN ANALYZE")
 		}
 		return options
+	case "PostgreSQL":
+		if mysqlExplainable(statement) {
+			return []string{"EXPLAIN", "EXPLAIN ANALYZE"}
+		}
 	}
 	return nil
 }
