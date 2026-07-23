@@ -193,8 +193,14 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("error replaced prior rows: %#v", got)
 	}
-	if !strings.Contains(model.Status, "query failed") {
-		t.Fatalf("error status = %q, want inline failure", model.Status)
+	if len(model.queryLogEntries) == 0 {
+		t.Fatal("no query log entry recorded for failure")
+	}
+	if got, want := model.queryLogEntries[0].status, "failed"; got != want {
+		t.Fatalf("query log status = %q, want %q", got, want)
+	}
+	if got, want := model.queryLogEntries[0].errMsg, "near \"bad\": syntax error"; got != want {
+		t.Fatalf("query log error = %q, want %q", got, want)
 	}
 }
 
@@ -219,8 +225,11 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	if got := model.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("late success replaced prior rows: %#v", got)
 	}
-	if !strings.Contains(model.Status, "canceled") {
-		t.Fatalf("late success status = %q, want cancellation", model.Status)
+	if len(model.queryLogEntries) == 0 {
+		t.Fatal("no query log entry recorded for cancellation")
+	}
+	if got, want := model.queryLogEntries[0].status, "canceled"; got != want {
+		t.Fatalf("query log status = %q, want %q", got, want)
 	}
 }
 

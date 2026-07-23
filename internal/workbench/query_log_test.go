@@ -7,8 +7,10 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/table"
+	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
+	"strings"
 )
 
 func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing.T) {
@@ -37,11 +39,13 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	if got, want := len(rows), queryLogLimit; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
-	want := table.Row{"09:01:40", "SELECT many", "1ms", "97"}
-	if got := rows[0]; !equalTableRow(got, want) {
-		t.Fatalf("latest query log row = %#v, want %#v", got, want)
+	if got := strings.TrimSpace(ansi.Strip(rows[0][1])); got != iconSuccess {
+		t.Fatalf("latest query log status = %q, want %q", got, iconSuccess)
 	}
-	if got := rows[len(rows)-1][1]; got != "bad SQL" {
+	if got, want := rows[0][2], "SELECT many"; got != want {
+		t.Fatalf("latest query log statement = %q, want %q", got, want)
+	}
+	if got := rows[len(rows)-1][2]; got != "bad SQL" {
 		t.Fatalf("oldest retained query = %q, want failed query after capped entries", got)
 	}
 }
@@ -54,10 +58,10 @@ func TestNew_queryLog_has_history_columns(t *testing.T) {
 	columns := model.queryLog.Columns()
 
 	// Then
-	if got, want := len(columns), 4; got != want {
+	if got, want := len(columns), 5; got != want {
 		t.Fatalf("query log columns = %d, want %d", got, want)
 	}
-	for index, want := range []string{"Time", "Query", "Duration", "Fetch"} {
+	for index, want := range []string{"Time", "Status", "Statement", "Duration", "Fetched"} {
 		if got := columns[index].Title; got != want {
 			t.Errorf("query log column %d = %q, want %q", index, got, want)
 		}
@@ -78,9 +82,17 @@ func TestQueryLog_records_browse_page_load(t *testing.T) {
 	if got, want := len(rows), 1; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
-	want := table.Row{"SELECT * FROM \"projects\" LIMIT 25 OFFSET 25", "2ms", "1"}
-	if got := rows[0][1:]; !equalTableRow(got, want) {
-		t.Fatalf("browse query log row = %#v, want %#v", got, want)
+	if got := strings.TrimSpace(ansi.Strip(rows[0][1])); got != iconSuccess {
+		t.Fatalf("browse query log status = %q, want %q", got, iconSuccess)
+	}
+	if got, want := rows[0][2], `SELECT * FROM "projects" LIMIT 25 OFFSET 25`; got != want {
+		t.Fatalf("browse query log statement = %q, want %q", got, want)
+	}
+	if got, want := rows[0][3], "2ms"; got != want {
+		t.Fatalf("browse query log duration = %q, want %q", got, want)
+	}
+	if got, want := rows[0][4], "1"; got != want {
+		t.Fatalf("browse query log fetched = %q, want %q", got, want)
 	}
 }
 
@@ -108,10 +120,10 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 	if got, want := len(rows), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
-	if got, want := rows[0][1], `CREATE INDEX "items_title" ON "items" ("title")`; got != want {
+	if got, want := rows[0][2], `CREATE INDEX "items_title" ON "items" ("title")`; got != want {
 		t.Fatalf("index action log = %q, want %q", got, want)
 	}
-	if got, want := rows[1][1], `ALTER TABLE "items" RENAME COLUMN "name" TO "title"`; got != want {
+	if got, want := rows[1][2], `ALTER TABLE "items" RENAME COLUMN "name" TO "title"`; got != want {
 		t.Fatalf("structure action log = %q, want %q", got, want)
 	}
 }
@@ -142,10 +154,10 @@ func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
 	if got, want := len(rows), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
-	if got, want := rows[0][1], `DROP INDEX "items_title"`; got != want {
+	if got, want := rows[0][2], `DROP INDEX "items_title"`; got != want {
 		t.Fatalf("index deletion log = %q, want %q", got, want)
 	}
-	if got, want := rows[1][1], `DROP INDEX "items_name"; CREATE INDEX "items_title" ON "items" ("title")`; got != want {
+	if got, want := rows[1][2], `DROP INDEX "items_name"; CREATE INDEX "items_title" ON "items" ("title")`; got != want {
 		t.Fatalf("index replacement log = %q, want %q", got, want)
 	}
 }
@@ -160,7 +172,7 @@ func TestQueryLog_shows_browse_fetch_count(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.Rows()[0][3], "2"; got != want {
+	if got, want := model.queryLog.Rows()[0][4], "2"; got != want {
 		t.Fatalf("browse log fetch = %q, want %q", got, want)
 	}
 }
@@ -176,7 +188,7 @@ func TestQueryLog_uses_mysql_identifier_quoting_for_browse_statement(t *testing.
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.Rows()[0][1], "SELECT * FROM `projects` LIMIT 25 OFFSET 0"; got != want {
+	if got, want := model.queryLog.Rows()[0][2], "SELECT * FROM `projects` LIMIT 25 OFFSET 0"; got != want {
 		t.Fatalf("browse statement = %q, want %q", got, want)
 	}
 }
