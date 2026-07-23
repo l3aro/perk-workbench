@@ -128,6 +128,8 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
 
-func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) {
+func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd {
 	m.foreignKeyForm = newForeignKeyForm(foreignKey)
+	m.foreignKeyForm.setWidth(m.tableViewportWidth)
+	return m.foreignKeyForm.form.Init()
 }

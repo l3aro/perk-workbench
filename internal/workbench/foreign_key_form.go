@@ -1,21 +1,12 @@
 package workbench
 
 import (
+	"fmt"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	sharedsql "github.com/l3aro/perk/internal/sql"
-)
-
-type foreignKeyFormMode uint8
-
-const (
-	foreignKeyFormNormal foreignKeyFormMode = iota
-	foreignKeyFormInsert
-	foreignKeyFormConfirmSave
-	foreignKeyFormConfirmDiscard
-	foreignKeyFormConfirmDelete
 )
 
 type foreignKeyFormAction uint8
@@ -28,151 +19,221 @@ const (
 )
 
 type foreignKeyForm struct {
-	mode                                                          foreignKeyFormMode
-	focus                                                         int
-	confirmed, saving, open                                       bool
-	previous                                                      string
-	columns, referenceTable, referenceColumns, onDelete, onUpdate textinput.Model
+	form, confirmation                   *huh.Form
+	values                               *foreignKeyFormValues
+	previous                             string
+	width                                int
+	saving                               bool
+	confirmationSave, confirmationDelete bool
+}
+
+type foreignKeyFormValues struct {
+	columns, referenceTable, referenceColumns string
+	onDelete, onUpdate                        string
+	confirmed                                 bool
 }
 
 func newForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) foreignKeyForm {
-	columns, referenceTable, referenceColumns, onDelete, onUpdate := textinput.New(), textinput.New(), textinput.New(), textinput.New(), textinput.New()
-	columns.Prompt, referenceTable.Prompt, referenceColumns.Prompt, onDelete.Prompt, onUpdate.Prompt = "", "", "", "", ""
-	form := foreignKeyForm{columns: columns, referenceTable: referenceTable, referenceColumns: referenceColumns, onDelete: onDelete, onUpdate: onUpdate, open: true}
-	form.onDelete.SetValue("NO ACTION")
-	form.onUpdate.SetValue("NO ACTION")
+	form := foreignKeyForm{values: &foreignKeyFormValues{onDelete: "NO ACTION", onUpdate: "NO ACTION"}}
 	if foreignKey != nil {
 		form.previous = foreignKey.ID
-		form.columns.SetValue(strings.Join(foreignKey.Columns, ", "))
-		form.referenceTable.SetValue(foreignKey.ReferenceTable)
-		form.referenceColumns.SetValue(strings.Join(foreignKey.ReferenceColumns, ", "))
-		form.onDelete.SetValue(foreignKey.OnDelete)
-		form.onUpdate.SetValue(foreignKey.OnUpdate)
+		form.values.columns = strings.Join(foreignKey.Columns, ", ")
+		form.values.referenceTable = foreignKey.ReferenceTable
+		form.values.referenceColumns = strings.Join(foreignKey.ReferenceColumns, ", ")
+		form.values.onDelete = foreignKey.OnDelete
+		form.values.onUpdate = foreignKey.OnUpdate
 	}
+	form.rebuildForm()
 	return form
 }
 
-func (f foreignKeyForm) active() bool { return f.open }
+func (f foreignKeyForm) active() bool { return f.values != nil }
 
-func (f foreignKeyForm) confirming() bool {
-	return f.mode == foreignKeyFormConfirmSave || f.mode == foreignKeyFormConfirmDiscard || f.mode == foreignKeyFormConfirmDelete
-}
+func (f foreignKeyForm) confirming() bool { return f.confirmation != nil }
 
-func (f *foreignKeyForm) close() { f.open = false }
+func (f *foreignKeyForm) close() { *f = foreignKeyForm{} }
 
-func (f *foreignKeyForm) Update(message tea.Msg) (tea.Cmd, foreignKeyFormAction) {
-	key, ok := message.(tea.KeyPressMsg)
+func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController) (tea.Cmd, foreignKeyFormAction) {
 	if f.saving {
 		return nil, foreignKeyFormNoAction
 	}
-	if !ok && f.mode == foreignKeyFormInsert {
-		return f.updateInput(message), foreignKeyFormNoAction
+	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+		if route == formRouteConsumed && f.confirmation != nil && controller.mode == formModeNormal {
+			f.confirmation = nil
+		}
+		if route == formRouteHuh {
+			return f.updateHuh(message, controller)
+		}
+		return nil, foreignKeyFormNoAction
 	}
+	keyPress, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return nil, foreignKeyFormNoAction
 	}
-	if f.confirming() {
-		if key.Key().Code == tea.KeyEscape {
-			f.mode, f.confirmed = foreignKeyFormNormal, false
-			return nil, foreignKeyFormNoAction
-		}
-		switch key.String() {
-		case "tab", "shift+tab":
-			f.confirmed = !f.confirmed
-		case "enter":
-			if !f.confirmed {
-				f.mode = foreignKeyFormNormal
-				return nil, foreignKeyFormNoAction
-			}
-			switch f.mode {
-			case foreignKeyFormConfirmSave:
-				return nil, foreignKeyFormSave
-			case foreignKeyFormConfirmDelete:
-				return nil, foreignKeyFormDelete
-			default:
-				return nil, foreignKeyFormDiscard
-			}
-		}
-		return nil, foreignKeyFormNoAction
-	}
-	if f.mode == foreignKeyFormInsert {
-		if key.Key().Code == tea.KeyEscape {
-			f.mode = foreignKeyFormNormal
-			f.blurInputs()
-			return nil, foreignKeyFormNoAction
-		}
-		return f.updateInput(message), foreignKeyFormNoAction
-	}
-	if key.Key().Code == tea.KeyEscape {
-		f.mode = foreignKeyFormConfirmDiscard
-		return nil, foreignKeyFormNoAction
-	}
-	switch key.String() {
-	case "j", "down":
-		f.focus = (f.focus + 1) % 5
-	case "k", "up":
-		f.focus = (f.focus + 4) % 5
+	switch keyPress.String() {
 	case "i", "enter":
-		f.mode = foreignKeyFormInsert
-		return f.focusInput(), foreignKeyFormNoAction
+		return controller.beginHuh(f.focus()), foreignKeyFormNoAction
 	case "ctrl+enter", "f5":
-		f.mode, f.confirmed = foreignKeyFormConfirmSave, false
+		if _, err := f.change(); err != nil {
+			f.showValidationError()
+			return nil, foreignKeyFormNoAction
+		}
+		f.beginConfirmation(true, false)
+		controller.beginConfirm()
+		return f.confirmation.Init(), foreignKeyFormNoAction
+	case "esc", "escape":
+		f.beginConfirmation(false, false)
+		controller.beginConfirm()
+		return f.confirmation.Init(), foreignKeyFormNoAction
 	case "d":
 		if f.previous != "" {
-			f.mode, f.confirmed = foreignKeyFormConfirmDelete, false
+			f.beginConfirmation(false, true)
+			controller.beginConfirm()
+			return f.confirmation.Init(), foreignKeyFormNoAction
 		}
+	case "j", "down":
+		return f.form.NextField(), foreignKeyFormNoAction
+	case "k", "up":
+		return f.form.PrevField(), foreignKeyFormNoAction
 	}
 	return nil, foreignKeyFormNoAction
 }
 
-func (f *foreignKeyForm) blurInputs() {
-	f.columns.Blur()
-	f.referenceTable.Blur()
-	f.referenceColumns.Blur()
-	f.onDelete.Blur()
-	f.onUpdate.Blur()
+func (f *foreignKeyForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, foreignKeyFormAction) {
+	if f.confirmation != nil {
+		model, command := f.confirmation.Update(message)
+		f.confirmation = model.(*huh.Form)
+		if f.confirmation.State != huh.StateCompleted {
+			return command, foreignKeyFormNoAction
+		}
+		confirmed := f.values.confirmed || f.confirmation.GetBool("confirm")
+		f.confirmation = nil
+		controller.mode = formModeNormal
+		if !confirmed {
+			return nil, foreignKeyFormNoAction
+		}
+		if f.confirmationDelete {
+			return nil, foreignKeyFormDelete
+		}
+		if f.confirmationSave {
+			return nil, foreignKeyFormSave
+		}
+		return nil, foreignKeyFormDiscard
+	}
+	model, command := f.form.Update(message)
+	f.form = model.(*huh.Form)
+	if f.form.State == huh.StateCompleted {
+		f.rebuildForm()
+		return f.focus(), foreignKeyFormNoAction
+	}
+	return command, foreignKeyFormNoAction
 }
 
-func (f *foreignKeyForm) focusInput() tea.Cmd {
-	f.blurInputs()
-	switch f.focus {
-	case 0:
-		return f.columns.Focus()
-	case 1:
-		return f.referenceTable.Focus()
-	case 2:
-		return f.referenceColumns.Focus()
-	case 3:
-		return f.onDelete.Focus()
-	default:
-		return f.onUpdate.Focus()
+func (f *foreignKeyForm) beginConfirmation(save, delete bool) {
+	f.values.confirmed, f.confirmationSave, f.confirmationDelete = false, save, delete
+	title := "Discard foreign-key changes?"
+	if save {
+		title = "Save foreign-key changes?"
+	}
+	if delete {
+		title = "Delete foreign key?"
+	}
+	f.confirmation = huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
+	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+}
+
+func (f *foreignKeyForm) rebuildForm() {
+	actions := []huh.Option[string]{
+		huh.NewOption("NO ACTION", "NO ACTION"),
+		huh.NewOption("RESTRICT", "RESTRICT"),
+		huh.NewOption("SET NULL", "SET NULL"),
+		huh.NewOption("SET DEFAULT", "SET DEFAULT"),
+		huh.NewOption("CASCADE", "CASCADE"),
+	}
+	f.form = huh.NewForm(huh.NewGroup(
+		huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredForeignKeyColumns),
+		huh.NewInput().Key("reference-table").Title("Reference table*").Value(&f.values.referenceTable).Validate(requiredReferenceTable),
+		huh.NewInput().Key("reference-columns").Title("Reference columns*").Value(&f.values.referenceColumns).Validate(f.validateReferenceColumns),
+		huh.NewSelect[string]().Key("on-delete").Title("On delete").Options(actions...).Value(&f.values.onDelete),
+		huh.NewSelect[string]().Key("on-update").Title("On update").Options(actions...).Value(&f.values.onUpdate),
+	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+}
+
+func requiredForeignKeyColumns(value string) error {
+	columns := splitForeignKeyColumns(value)
+	referenceColumns := make([]string, len(columns))
+	for index := range referenceColumns {
+		referenceColumns[index] = fmt.Sprintf("reference-%d", index)
+	}
+	return sharedsql.ValidateForeignKeyChange(sharedsql.ForeignKeyChange{
+		Columns: columns, ReferenceTable: "reference", ReferenceColumns: referenceColumns,
+		OnDelete: "NO ACTION", OnUpdate: "NO ACTION",
+	})
+}
+
+func requiredReferenceTable(value string) error {
+	return sharedsql.ValidateForeignKeyChange(sharedsql.ForeignKeyChange{
+		Columns: []string{"column"}, ReferenceTable: value, ReferenceColumns: []string{"reference"},
+		OnDelete: "NO ACTION", OnUpdate: "NO ACTION",
+	})
+}
+
+func requiredReferenceColumns(value string) error {
+	referenceColumns := splitForeignKeyColumns(value)
+	columns := make([]string, len(referenceColumns))
+	for index := range columns {
+		columns[index] = fmt.Sprintf("column-%d", index)
+	}
+	return sharedsql.ValidateForeignKeyChange(sharedsql.ForeignKeyChange{
+		Columns: columns, ReferenceTable: "reference", ReferenceColumns: referenceColumns,
+		OnDelete: "NO ACTION", OnUpdate: "NO ACTION",
+	})
+}
+
+func (f foreignKeyForm) validateReferenceColumns(value string) error {
+	if err := requiredReferenceColumns(value); err != nil {
+		return err
+	}
+	_, err := f.change()
+	return err
+}
+
+func (f *foreignKeyForm) showValidationError() {
+	f.rebuildForm()
+	if requiredForeignKeyColumns(f.values.columns) != nil {
+		_ = f.form.GetFocusedField().Blur()
+		return
+	}
+	_ = f.form.NextField()
+	if requiredReferenceTable(f.values.referenceTable) != nil {
+		_ = f.form.GetFocusedField().Blur()
+		return
+	}
+	_ = f.form.NextField()
+	_ = f.form.GetFocusedField().Blur()
+}
+
+func (f *foreignKeyForm) blur() {
+	if f.form != nil {
+		_ = f.form.GetFocusedField().Blur()
 	}
 }
 
-func (f *foreignKeyForm) updateInput(message tea.Msg) tea.Cmd {
-	var command tea.Cmd
-	switch f.focus {
-	case 0:
-		f.columns, command = f.columns.Update(message)
-	case 1:
-		f.referenceTable, command = f.referenceTable.Update(message)
-	case 2:
-		f.referenceColumns, command = f.referenceColumns.Update(message)
-	case 3:
-		f.onDelete, command = f.onDelete.Update(message)
-	default:
-		f.onUpdate, command = f.onUpdate.Update(message)
+func (f *foreignKeyForm) focus() tea.Cmd {
+	if f.form == nil {
+		return nil
 	}
-	return command
+	return f.form.GetFocusedField().Focus()
 }
 
 func (f foreignKeyForm) change() (sharedsql.ForeignKeyChange, error) {
 	change := sharedsql.ForeignKeyChange{
-		Columns:          splitForeignKeyColumns(f.columns.Value()),
-		ReferenceTable:   strings.TrimSpace(f.referenceTable.Value()),
-		ReferenceColumns: splitForeignKeyColumns(f.referenceColumns.Value()),
-		OnDelete:         strings.ToUpper(strings.TrimSpace(f.onDelete.Value())),
-		OnUpdate:         strings.ToUpper(strings.TrimSpace(f.onUpdate.Value())),
+		Columns:          splitForeignKeyColumns(f.values.columns),
+		ReferenceTable:   strings.TrimSpace(f.values.referenceTable),
+		ReferenceColumns: splitForeignKeyColumns(f.values.referenceColumns),
+		OnDelete:         strings.ToUpper(strings.TrimSpace(f.values.onDelete)),
+		OnUpdate:         strings.ToUpper(strings.TrimSpace(f.values.onUpdate)),
 	}
 	if err := sharedsql.ValidateForeignKeyChange(change); err != nil {
 		return sharedsql.ForeignKeyChange{}, err
@@ -189,44 +250,24 @@ func splitForeignKeyColumns(value string) []string {
 }
 
 func (f *foreignKeyForm) setWidth(width int) {
-	fieldWidth := max(width-formLabelWidth-len(formFieldGap)-1, 1)
-	f.columns.SetWidth(fieldWidth)
-	f.referenceTable.SetWidth(fieldWidth)
-	f.referenceColumns.SetWidth(fieldWidth)
-	f.onDelete.SetWidth(fieldWidth)
-	f.onUpdate.SetWidth(fieldWidth)
+	f.width = max(width, 1)
+	if f.form != nil {
+		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
+	}
+	if f.confirmation != nil {
+		f.confirmation.WithWidth(f.width).WithShowHelp(f.width >= 40)
+	}
 }
 
 func (f foreignKeyForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving foreign-key changes")
 	}
-	if f.confirming() {
-		action := "Discard foreign-key changes?"
-		if f.mode == foreignKeyFormConfirmSave {
-			action = "Save foreign-key changes?"
-		}
-		if f.mode == foreignKeyFormConfirmDelete {
-			action = "Delete foreign key?"
-		}
-		choices := "[" + booleanValue(false) + "] " + booleanValue(true)
-		if f.confirmed {
-			choices = booleanValue(false) + " [" + booleanValue(true) + "]"
-		}
-		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
+	if f.confirmation != nil {
+		return f.confirmation.View()
 	}
-	rows := []formRow{{label: "Columns", value: f.columns.View(), focusKey: 0}, {label: "Reference table", value: f.referenceTable.View(), focusKey: 1}, {label: "Reference columns", value: f.referenceColumns.View(), focusKey: 2}, {label: "On delete", value: f.onDelete.View(), focusKey: 3}, {label: "On update", value: f.onUpdate.View(), focusKey: 4}}
-	lines := make([]string, len(rows))
-	for index, row := range rows {
-		label := formLabel(row.label, formLabelWidth)
-		if f.mode == foreignKeyFormNormal && f.focus == row.focusKey {
-			label = focusedFormLabel(row.label, formLabelWidth)
-		}
-		lines[index] = label + formFieldGap + row.value
+	if f.form == nil {
+		return ""
 	}
-	help := "j/k fields | i edit | F5 save | d delete | Esc discard"
-	if f.mode == foreignKeyFormInsert {
-		help = "insert mode | Esc normal mode"
-	}
-	return strings.Join(lines, "\n") + "\n" + statusStyle.Render(help)
+	return f.form.View()
 }
