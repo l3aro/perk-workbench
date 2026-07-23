@@ -23,6 +23,7 @@ type browseForm struct {
 	columns            []string
 	original           []*string
 	primary            []int
+	table              string
 	width              int
 	pendingG, saving   bool
 	confirmationSave   bool
@@ -47,6 +48,7 @@ func (m *Model) openBrowseForm() tea.Cmd {
 		return nil
 	}
 	m.browseForm = form
+	m.browseForm.table = m.SelectedTable
 	m.browseForm.setWidth(m.tableViewportWidth)
 	return m.browseForm.form.Init()
 }
@@ -120,7 +122,7 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 		f.pendingG = false
 		f.rebuildForm()
 		return f.form.Init(), browseFormNoAction
-	case "ctrl+enter", "f5":
+	case "ctrl+enter", "ctrl+s", "f5":
 		f.beginConfirmation(true)
 		controller.beginConfirm()
 		return f.confirmation.Init(), browseFormNoAction
@@ -183,6 +185,13 @@ func (f *browseForm) beginConfirmation(save bool) {
 	title := "Discard row changes?"
 	if save {
 		title = "Save row changes?"
+		if statement, err := f.updateStatement(f.table); err == nil && statement != "" {
+			f.confirmation = huh.NewForm(huh.NewGroup(
+				huh.NewNote().Title(title).Description(statement).Height(8),
+				huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
+			)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+			return
+		}
 	}
 	f.confirmation = huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
