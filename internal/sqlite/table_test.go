@@ -46,6 +46,22 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	}
 }
 
+func TestServiceTableInfo_reportsGeneratedColumnAttribute(t *testing.T) {
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, `CREATE TABLE metrics (quantity INTEGER, doubled INTEGER GENERATED ALWAYS AS (quantity * 2) STORED)`); err != nil {
+		t.Fatalf("creating generated-column table: %v", err)
+	}
+
+	columns, err := service.TableInfo(ctx, "metrics")
+	if err != nil {
+		t.Fatalf("TableInfo() error = %v", err)
+	}
+	if len(columns) != 2 || columns[1].Name != "doubled" || columns[1].Attributes != "GENERATED STORED" {
+		t.Fatalf("TableInfo() = %#v, want generated stored attribute", columns)
+	}
+}
+
 func TestServiceAlterColumn_rebuildsSchemaAndRetainsRows(t *testing.T) {
 	// Given
 	service := newMemoryService(t)

@@ -19,23 +19,29 @@ type tableInfoQuerier interface {
 }
 
 func tableInfo(ctx context.Context, queryer tableInfoQuerier, name string) ([]sharedsql.ColumnInfo, error) {
-	rows, err := queryer.QueryContext(ctx, "PRAGMA table_info("+quoteIdentifier(name)+")")
+	rows, err := queryer.QueryContext(ctx, "PRAGMA table_xinfo("+quoteIdentifier(name)+")")
 	if err != nil {
 		return nil, fmt.Errorf("reading table info: %w", err)
 	}
 
 	columns := []sharedsql.ColumnInfo{}
 	for rows.Next() {
-		var cid, notNull, primaryKey int
+		var cid, notNull, primaryKey, hidden int
 		var column sharedsql.ColumnInfo
 		var defaultValue stdsql.NullString
-		if err := rows.Scan(&cid, &column.Name, &column.Type, &notNull, &defaultValue, &primaryKey); err != nil {
+		if err := rows.Scan(&cid, &column.Name, &column.Type, &notNull, &defaultValue, &primaryKey, &hidden); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning table info", err)
 		}
 		column.Name = sharedsql.SanitizeDisplay(column.Name)
 		column.Type = sharedsql.SanitizeDisplay(column.Type)
 		column.Nullable = notNull == 0
 		column.PrimaryKey = primaryKey
+		switch hidden {
+		case 2:
+			column.Attributes = "GENERATED VIRTUAL"
+		case 3:
+			column.Attributes = "GENERATED STORED"
+		}
 		if primaryKey > 0 {
 			column.Indexes = []sharedsql.IndexKind{sharedsql.IndexPrimaryKey}
 		}

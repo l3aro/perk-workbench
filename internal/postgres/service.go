@@ -210,7 +210,7 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.Colum
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT attributes.attname, pg_catalog.format_type(attributes.atttypid, attributes.atttypmod),
 			NOT attributes.attnotnull, pg_get_expr(defaults.adbin, defaults.adrelid),
-			COALESCE(primary_key.ordinality, 0)
+			COALESCE(primary_key.ordinality, 0), attributes.attidentity, attributes.attgenerated
 		FROM pg_attribute AS attributes
 		JOIN pg_class AS relation ON relation.oid = attributes.attrelid
 		JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
@@ -230,10 +230,20 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.Colum
 	for rows.Next() {
 		var column sharedsql.ColumnInfo
 		var defaultValue stdsql.NullString
-		if err := rows.Scan(&column.Name, &column.Type, &column.Nullable, &defaultValue, &column.PrimaryKey); err != nil {
+		var identity, generated string
+		if err := rows.Scan(&column.Name, &column.Type, &column.Nullable, &defaultValue, &column.PrimaryKey, &identity, &generated); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning table info", err)
 		}
 		column.Name, column.Type = sharedsql.SanitizeDisplay(column.Name), sharedsql.SanitizeDisplay(column.Type)
+		switch identity {
+		case "a":
+			column.Attributes = "IDENTITY ALWAYS"
+		case "d":
+			column.Attributes = "IDENTITY BY DEFAULT"
+		}
+		if generated == "s" {
+			column.Attributes = strings.TrimSpace(column.Attributes + " GENERATED STORED")
+		}
 		if column.PrimaryKey > 0 {
 			column.Indexes = []sharedsql.IndexKind{sharedsql.IndexPrimaryKey}
 		}

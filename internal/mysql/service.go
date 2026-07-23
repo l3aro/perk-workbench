@@ -155,7 +155,7 @@ func mysqlTableIdentifier(table string) string {
 func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.ColumnInfo, error) {
 	database, table := mysqlTableParts(name)
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT column_name, column_type, is_nullable, column_default, column_key
+		SELECT column_name, column_type, is_nullable, column_default, column_key, extra
 		FROM information_schema.columns
 		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ?
 		ORDER BY ordinal_position`, database, table)
@@ -167,11 +167,12 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.Colum
 		var column sharedsql.ColumnInfo
 		var nullable, key string
 		var defaultValue stdsql.NullString
-		if err := rows.Scan(&column.Name, &column.Type, &nullable, &defaultValue, &key); err != nil {
+		if err := rows.Scan(&column.Name, &column.Type, &nullable, &defaultValue, &key, &column.Attributes); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning table info", err)
 		}
 		column.Name = sharedsql.SanitizeDisplay(column.Name)
 		column.Type = sharedsql.SanitizeDisplay(column.Type)
+		column.Attributes = sharedsql.SanitizeDisplay(column.Attributes)
 		column.Nullable = nullable == "YES"
 		switch key {
 		case "PRI":
