@@ -326,6 +326,7 @@ func (m *Model) layout(width, height int) {
 func (m Model) View() tea.View {
 	var view tea.View
 	view.AltScreen = true
+	view.KeyboardEnhancements.ReportEventTypes = true
 	if m.height < 4 || m.width < 1 {
 		view.SetContent(headerStyle.Render("BUBBLE WORKBENCH"))
 		return view

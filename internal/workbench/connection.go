@@ -155,6 +155,15 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.recent, command = m.recent.Update(message)
 		return m, command
 	}
+	keyPress, isKeyPress := message.(tea.KeyPressMsg)
+	if isKeyPress && m.connection.confirmation == nil && m.executeKey(keyPress) {
+		if err := m.connection.validate(); err != nil {
+			m.Status = safeText(err.Error())
+			return m, m.connection.showValidationError()
+		}
+		m.formMode.beginConfirm()
+		return m, m.connection.beginConfirmation()
+	}
 	if route := m.formMode.routeHuh(message, m.connection.blur); route != formRouteParent {
 		if route == formRouteConsumed && m.connection.confirmation != nil && m.formMode.mode == formModeNormal {
 			m.connection.confirmation = nil
@@ -180,8 +189,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, command
 	}
-	keyPress, ok := message.(tea.KeyPressMsg)
-	if !ok {
+	if !isKeyPress {
 		return m, nil
 	}
 	switch keyPress.Key().Code {
@@ -202,13 +210,6 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.connection.form.NextField()
 	case "k", "up":
 		return m, m.connection.form.PrevField()
-	case "ctrl+enter", "f5":
-		if err := m.connection.validate(); err != nil {
-			m.Status = safeText(err.Error())
-			return m, m.connection.showValidationError()
-		}
-		m.formMode.beginConfirm()
-		return m, m.connection.beginConfirmation()
 	}
 	return m, nil
 }

@@ -474,7 +474,9 @@ func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPr
 }
 
 func (m Model) executeKey(key tea.KeyPressMsg) bool {
-	return (key.Key().Code == tea.KeyEnter && key.Key().Mod == tea.ModCtrl) || key.Key().Code == tea.KeyF5
+	return (key.Key().Code == tea.KeyEnter && key.Key().Mod == tea.ModCtrl) ||
+		(key.Key().Code == 's' && key.Key().Mod == tea.ModCtrl) ||
+		key.Key().Code == tea.KeyF5
 }
 
 func (m *Model) toggleTab(forward bool) {
