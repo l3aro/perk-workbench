@@ -3,6 +3,7 @@ package workbench
 import (
 	"errors"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,7 @@ type connectionDriver int
 const (
 	driverSQLite connectionDriver = iota
 	driverMySQL
+	driverPostgreSQL
 )
 
 const (
@@ -61,17 +63,21 @@ func (f *connectionForm) setFocus(index int) tea.Cmd {
 
 func (f *connectionForm) rebuildForm() tea.Cmd {
 	fields := []huh.Field{
-		huh.NewSelect[connectionDriver]().Key("driver").Title("Driver").Options(huh.NewOption("SQLite", driverSQLite), huh.NewOption("MySQL", driverMySQL)).Value(&f.values.driver),
+		huh.NewSelect[connectionDriver]().Key("driver").Title("Driver").Options(
+			huh.NewOption("SQLite", driverSQLite),
+			huh.NewOption("MySQL", driverMySQL),
+			huh.NewOption("PostgreSQL", driverPostgreSQL),
+		).Value(&f.values.driver),
 		huh.NewInput().Key("name").Title("Name").Placeholder("Local database").Value(&f.values.name),
 	}
-	if f.values.driver == driverMySQL {
+	if f.values.driver != driverSQLite {
 		fields = append(fields,
 			huh.NewInput().Key("host").Title("Host*").Placeholder("localhost").Value(&f.values.host).Validate(requiredConnectionHost),
 			huh.NewInput().Key("port").Title("Port*").Value(&f.values.port).Validate(requiredConnectionPort),
 			huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser),
 			huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword),
 			huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target),
-			huh.NewNote().Title("Privacy").Description("MySQL connections are not saved."),
+			huh.NewNote().Title("Privacy").Description("Remote connections are not saved."),
 		)
 	} else {
 		fields = append(fields, huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget))
@@ -100,6 +106,11 @@ func (f *connectionForm) updateHuh(message tea.Msg, controller *formModeControll
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if f.values.driver != driver {
+		if f.values.driver == driverPostgreSQL && f.values.port == "3306" {
+			f.values.port = "5432"
+		} else if f.values.driver == driverMySQL && f.values.port == "5432" {
+			f.values.port = "3306"
+		}
 		return f.rebuildForm(), ""
 	}
 	if f.form.State != huh.StateCompleted {
@@ -154,10 +165,14 @@ func (f *connectionForm) setWidth(width int) {
 }
 
 func (f connectionForm) driverName() string {
-	if f.values.driver == driverMySQL {
+	switch f.values.driver {
+	case driverMySQL:
 		return "MySQL"
+	case driverPostgreSQL:
+		return "PostgreSQL"
+	default:
+		return "SQLite"
 	}
-	return "SQLite"
 }
 
 func (f connectionForm) targetValue() string {
@@ -169,6 +184,15 @@ func (f connectionForm) targetValue() string {
 		config.Addr = net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port))
 		config.DBName = strings.TrimSpace(f.values.target)
 		return config.FormatDSN()
+	}
+	if f.values.driver == driverPostgreSQL {
+		target := &url.URL{
+			Scheme: "postgres",
+			User:   url.UserPassword(strings.TrimSpace(f.values.user), f.values.pass),
+			Host:   net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port)),
+			Path:   strings.TrimSpace(f.values.target),
+		}
+		return target.String()
 	}
 	return strings.TrimSpace(f.values.target)
 }

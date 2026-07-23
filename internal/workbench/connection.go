@@ -86,7 +86,7 @@ func (m *Model) newConnection() tea.Cmd {
 }
 
 func (m Model) testConnection() tea.Cmd {
-	target := m.connection.targetValue()
+	target := m.connectionTarget()
 	return func() tea.Msg {
 		if err := m.connection.validate(); err != nil {
 			return connectionTestMsg{err: err}
@@ -101,16 +101,25 @@ func (m Model) testConnection() tea.Cmd {
 	}
 }
 
+func (m Model) connectionTarget() string {
+	target := m.connection.targetValue()
+	switch m.connection.values.driver {
+	case driverMySQL:
+		return "mysql:" + target
+	case driverPostgreSQL:
+		return "postgres:" + target
+	default:
+		return target
+	}
+}
+
 func (m Model) openConnection() (tea.Model, tea.Cmd) {
 	if err := m.connection.validate(); err != nil {
 		m.Status = safeText(err.Error())
 		return m, nil
 	}
-	target := m.connection.targetValue()
+	target := m.connectionTarget()
 	m.BeginOpening(target, "opening "+safeText(m.connection.connectionName()))
-	if m.connection.values.driver == driverMySQL {
-		return m, m.openTarget("mysql:" + target)
-	}
 	return m, m.openTarget(target)
 }
 

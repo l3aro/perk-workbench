@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -318,6 +319,42 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 	// Then
 	if model.State != stateOpening || command == nil || !strings.HasPrefix(openedTarget, "mysql:") {
 		t.Fatalf("MySQL open = state %v, command %v, target %q", model.State, command, openedTarget)
+	}
+}
+
+func TestConnectionForm_buildsPostgreSQLURLFromSeparateFields(t *testing.T) {
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "2001:db8::1", "5433"
+	form.values.user, form.values.pass, form.values.target = "alice", "secret", "app data"
+
+	target, err := url.Parse(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing PostgreSQL URL: %v", err)
+	}
+	password, hasPassword := target.User.Password()
+	if target.Scheme != "postgres" || target.User.Username() != "alice" || !hasPassword || password != "secret" || target.Host != "[2001:db8::1]:5433" || target.Path != "/app data" {
+		t.Fatalf("PostgreSQL URL = %#v, want separate field values", target)
+	}
+}
+
+func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
+	var openedTarget string
+	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+		openedTarget = target
+		return sharedsql.Opened{}, nil
+	})
+	model.connection.values.driver, model.connection.values.host = driverPostgreSQL, "localhost"
+	model.connection.values.port, model.connection.values.target = "5432", "app"
+	model.connection.values.user = "alice"
+
+	updated, command := model.openConnection()
+	model = updated.(Model)
+	if command != nil {
+		_ = command()
+	}
+
+	if model.State != stateOpening || command == nil || !strings.HasPrefix(openedTarget, "postgres:") {
+		t.Fatalf("PostgreSQL open = state %v, command %v, target %q", model.State, command, openedTarget)
 	}
 }
 
