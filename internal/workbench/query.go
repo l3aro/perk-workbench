@@ -112,6 +112,9 @@ func (m Model) updateBrowseRow() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: err} }
 	}
+	if statement == "" {
+		return func() tea.Msg { return browseRowUpdatedMsg{} }
+	}
 	service, startedAt := m.Database, time.Now()
 	return func() tea.Msg {
 		result, err := service.Execute(m.appContext, statement)

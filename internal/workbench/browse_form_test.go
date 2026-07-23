@@ -63,7 +63,7 @@ func TestBrowseForm_nKeySetsFocusedColumnToNull(t *testing.T) {
 	if err != nil {
 		t.Fatalf("update statement: %v", err)
 	}
-	if want := "UPDATE `items` SET `id` = '2', `name` = NULL WHERE `id` = '2'"; statement != want {
+	if want := "UPDATE `items` SET `name` = NULL WHERE `id` = '2'"; statement != want {
 		t.Fatalf("statement = %q, want %q", statement, want)
 	}
 }
@@ -186,6 +186,7 @@ func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
 		t.Run("affected="+strconv.FormatInt(affected, 10), func(t *testing.T) {
 			// Given
 			model := openBrowseRow(t, 1)
+			model.browseForm.values.fields[1] = "changed" // dirty a field so a real UPDATE reaches the mock DB
 			model.browseForm.saving = true
 			model.Database = browseExecuteService{result: sharedsql.Result{RowsAffected: affected}}
 
