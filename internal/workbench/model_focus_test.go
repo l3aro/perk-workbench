@@ -183,6 +183,19 @@ func TestView_sqlShowsModeBadge(t *testing.T) {
 	}
 }
 
+func TestView_requestsKeyboardEnhancements(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+
+	// When
+	view := model.View()
+
+	// Then
+	if !view.KeyboardEnhancements.ReportEventTypes {
+		t.Fatal("view did not request enhanced keyboard event types")
+	}
+}
+
 func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)

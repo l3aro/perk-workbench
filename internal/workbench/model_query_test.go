@@ -272,6 +272,7 @@ func TestExecute_keys_start_a_nonblank_query(t *testing.T) {
 		key  tea.KeyPressMsg
 	}{
 		{name: "ctrl enter", key: tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}},
+		{name: "ctrl s", key: tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}},
 		{name: "f5", key: tea.KeyPressMsg{Code: tea.KeyF5}},
 	}
 

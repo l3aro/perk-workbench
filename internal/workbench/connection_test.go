@@ -124,21 +124,61 @@ func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
 }
 
 func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T) {
-	// Given
-	model := New("", context.Background(), testOpen)
-	model.connection.focus = connectionFocusForm
-	model.connection.values.target = ":memory:"
+	for _, test := range []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{name: "ctrl enter", key: tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}},
+		{name: "ctrl s", key: tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}},
+		{name: "f5", key: tea.KeyPressMsg{Code: tea.KeyF5}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			model := New("", context.Background(), testOpen)
+			model.connection.focus = connectionFocusForm
+			model.connection.values.target = ":memory:"
 
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
-	model = updated.(Model)
+			// When
+			updated, _ := model.Update(test.key)
+			model = updated.(Model)
 
-	// Then
-	if model.connection.confirmation == nil {
-		t.Fatal("valid connection did not enter confirmation")
+			// Then
+			if model.connection.confirmation == nil {
+				t.Fatal("valid connection did not enter confirmation")
+			}
+			if model.formMode.mode != formModeConfirm {
+				t.Fatalf("form mode = %v, want confirmation", model.formMode.mode)
+			}
+		})
 	}
-	if model.formMode.mode != formModeConfirm {
-		t.Fatalf("form mode = %v, want confirmation", model.formMode.mode)
+}
+
+func TestConnectionForm_executeKeysWorkWhileEditing(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		key  tea.KeyPressMsg
+	}{
+		{name: "ctrl enter", key: tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModCtrl}},
+		{name: "ctrl s", key: tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}},
+		{name: "f5", key: tea.KeyPressMsg{Code: tea.KeyF5}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			model := New("", context.Background(), testOpen)
+			model.connection.focus = connectionFocusForm
+			model.connection.values.target = ":memory:"
+			updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+			model = updated.(Model)
+
+			// When
+			updated, _ = model.Update(test.key)
+			model = updated.(Model)
+
+			// Then
+			if model.connection.confirmation == nil || model.formMode.mode != formModeConfirm {
+				t.Fatalf("execute key did not enter confirmation: confirmation=%t mode=%v", model.connection.confirmation != nil, model.formMode.mode)
+			}
+		})
 	}
 }
 
