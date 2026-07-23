@@ -10,6 +10,8 @@ func (m Model) actionIdentifier(name string) string {
 	quote := `"`
 	if m.databaseInfo.Product == "MySQL" {
 		quote = "`"
+	}
+	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
 		if database, table, found := strings.Cut(name, "."); found {
 			return quote + strings.ReplaceAll(database, quote, quote+quote) + quote + "." + quote + strings.ReplaceAll(table, quote, quote+quote) + quote
 		}
@@ -27,6 +29,9 @@ func (m Model) indexChangeStatement(table, previous string, change sharedsql.Ind
 		if previous == "" {
 			return "ALTER TABLE " + quotedTable + " ADD PRIMARY KEY (" + strings.Join(columns, ", ") + ")"
 		}
+		if m.databaseInfo.Product == "PostgreSQL" {
+			return "ALTER TABLE " + quotedTable + " DROP CONSTRAINT " + m.actionIdentifier(previous) + "; ALTER TABLE " + quotedTable + " ADD PRIMARY KEY (" + strings.Join(columns, ", ") + ")"
+		}
 		return "ALTER TABLE " + quotedTable + " DROP PRIMARY KEY, ADD PRIMARY KEY (" + strings.Join(columns, ", ") + ")"
 	}
 	statement := "CREATE INDEX "
@@ -41,6 +46,9 @@ func (m Model) indexChangeStatement(table, previous string, change sharedsql.Ind
 }
 
 func (m Model) dropIndexStatement(table, name string) string {
+	if m.databaseInfo.Product == "PostgreSQL" && strings.HasSuffix(name, "_pkey") {
+		return "ALTER TABLE " + m.actionIdentifier(table) + " DROP CONSTRAINT " + m.actionIdentifier(name)
+	}
 	if name == "PRIMARY" {
 		return "ALTER TABLE " + m.actionIdentifier(table) + " DROP PRIMARY KEY"
 	}
@@ -66,6 +74,9 @@ func (m Model) foreignKeyChangeStatement(table, previous string, change sharedsq
 }
 
 func (m Model) dropForeignKeyStatement(table, previous string) string {
+	if m.databaseInfo.Product == "PostgreSQL" {
+		return "ALTER TABLE " + m.actionIdentifier(table) + " DROP CONSTRAINT " + m.actionIdentifier(previous)
+	}
 	return "ALTER TABLE " + m.actionIdentifier(table) + " DROP FOREIGN KEY " + m.actionIdentifier(previous)
 }
 

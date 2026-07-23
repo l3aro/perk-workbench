@@ -50,7 +50,7 @@ func (m *Model) openBrowseForm() tea.Cmd {
 	}
 	m.browseForm = form
 	m.browseForm.table = m.SelectedTable
-	if m.databaseInfo.Product == "MySQL" {
+	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
 		m.browseForm.identifier = m.actionIdentifier
 	}
 	m.browseForm.setWidth(m.tableViewportWidth)

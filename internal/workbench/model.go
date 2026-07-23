@@ -210,7 +210,7 @@ func (m Model) schemaTable(item schemaItem) string {
 	if table == "" {
 		table = item.title
 	}
-	if m.databaseInfo.Product == "MySQL" {
+	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
 		return item.database + "." + table
 	}
 	return table

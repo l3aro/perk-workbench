@@ -23,10 +23,14 @@ func (c recentConnection) Description() string {
 }
 
 func (c recentConnection) driverName() string {
-	if c.Driver == driverMySQL {
+	switch c.Driver {
+	case driverMySQL:
 		return "MySQL"
+	case driverPostgreSQL:
+		return "PostgreSQL"
+	default:
+		return "SQLite"
 	}
-	return "SQLite"
 }
 
 func recentConnectionsPath() (string, error) {
