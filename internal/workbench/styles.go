@@ -122,17 +122,26 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 	if !ok {
 		return
 	}
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)).PaddingLeft(2)
-	if index == model.Index() {
-		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).PaddingLeft(2)
-		fmt.Fprint(writer, style.Render("> "+schema.Title()))
-		return
+	label := schema.Title()
+	if schema.root {
+		if schema.description == "collapsed" {
+			label = "▸ " + label
+		} else {
+			label = "▾ " + label
+		}
+	} else if schema.table != "" {
+		label = "  └ " + label
 	}
-	fmt.Fprint(writer, style.Render(schema.Title()))
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
+	if index == model.Index() {
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
+		label = "> " + label
+	}
+	fmt.Fprint(writer, style.Render(label))
 }
 
 func newSchemaList() list.Model {
-	model := newList("Tables", true)
+	model := newList("Databases", true)
 	model.SetDelegate(schemaItemDelegate{})
 	return model
 }

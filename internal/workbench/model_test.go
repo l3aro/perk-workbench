@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk/internal/database"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
@@ -51,8 +53,8 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 	if model.Focus != focusSchema {
 		t.Fatalf("model focus = %v, want schema", model.Focus)
 	}
-	if got := model.schema.Items(); len(got) != 1 {
-		t.Fatalf("schema items = %d, want 1", len(got))
+	if got := model.schema.Items(); len(got) != 2 {
+		t.Fatalf("schema items = %d, want database root and table", len(got))
 	}
 	if model.Database == nil {
 		t.Fatal("model service = nil, want opened service")
@@ -109,6 +111,35 @@ func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
 	// Then
 	if !strings.Contains(view, "> projects") {
 		t.Fatalf("schema list = %q, want simple selected row", view)
+	}
+}
+
+func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.State, model.Focus = stateReady, focusSchema
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "analytics", Type: "database", Name: "analytics"},
+		{Database: "analytics", Type: "table", Name: "events"},
+		{Database: "app", Type: "database", Name: "app"},
+		{Database: "app", Type: "table", Name: "accounts"},
+	})
+	model.schema.SetSize(30, 8)
+
+	// When
+	expanded := ansi.Strip(model.schema.View())
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	collapsed := ansi.Strip(model.schema.View())
+
+	// Then
+	for _, label := range []string{"▾ analytics", "└ events", "▾ app", "└ accounts"} {
+		if !strings.Contains(expanded, label) {
+			t.Fatalf("expanded schema tree = %q, want %q", expanded, label)
+		}
+	}
+	if !strings.Contains(collapsed, "▸ analytics") || strings.Contains(collapsed, "└ events") {
+		t.Fatalf("collapsed schema tree = %q, want analytics root without child tables", collapsed)
 	}
 }
 
