@@ -35,7 +35,7 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	}
 
 	// When
-	updated, command := model.Update(querySucceededMsg{requestID: requestID, result: result})
+	updated, command := model.Update(querySucceededMsg{requestID: requestID, statement: "INSERT INTO projects VALUES ('projects')", result: result})
 	model = updated.(Model)
 
 	// Then
@@ -50,6 +50,9 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	}
 	if !strings.Contains(model.resultsStatus, "1 row affected") || !strings.Contains(model.resultsStatus, "truncated") {
 		t.Fatalf("result status = %q, want row count and truncation", model.resultsStatus)
+	}
+	if got, want := model.queryLogEntries[0].message, "inserted 1 row"; got != want {
+		t.Fatalf("query log message = %q, want %q", got, want)
 	}
 }
 
@@ -207,8 +210,8 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	if got, want := model.queryLogEntries[0].status, "failed"; got != want {
 		t.Fatalf("query log status = %q, want %q", got, want)
 	}
-	if got, want := model.queryLogEntries[0].errMsg, "near \"bad\": syntax error"; got != want {
-		t.Fatalf("query log error = %q, want %q", got, want)
+	if got, want := model.queryLogEntries[0].message, "near \"bad\": syntax error"; got != want {
+		t.Fatalf("query log message = %q, want %q", got, want)
 	}
 }
 

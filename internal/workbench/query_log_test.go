@@ -31,7 +31,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	model = updated.(Model)
 
 	for index := 0; index < queryLogLimit-2; index++ {
-		model.appendQueryLog(queryLogEntry{startedAt: started.Add(time.Duration(index+3) * time.Second), statement: "SELECT many", duration: time.Millisecond, fetched: index})
+		model.appendQueryLog(queryLogEntry{startedAt: started.Add(time.Duration(index+3) * time.Second), statement: "SELECT many", duration: time.Millisecond})
 	}
 
 	// Then
@@ -61,7 +61,7 @@ func TestNew_queryLog_has_history_columns(t *testing.T) {
 	if got, want := len(columns), 5; got != want {
 		t.Fatalf("query log columns = %d, want %d", got, want)
 	}
-	for index, want := range []string{"Time", "Status", "Statement", "Duration", "Fetched"} {
+	for index, want := range []string{"Time", "Status", "Statement", "Duration", "Message"} {
 		if got := columns[index].Title; got != want {
 			t.Errorf("query log column %d = %q, want %q", index, got, want)
 		}
@@ -91,8 +91,8 @@ func TestQueryLog_records_browse_page_load(t *testing.T) {
 	if got, want := rows[0][3], "2ms"; got != want {
 		t.Fatalf("browse query log duration = %q, want %q", got, want)
 	}
-	if got, want := rows[0][4], "1"; got != want {
-		t.Fatalf("browse query log fetched = %q, want %q", got, want)
+	if got, want := rows[0][4], "fetched 1 row"; got != want {
+		t.Fatalf("browse query log message = %q, want %q", got, want)
 	}
 }
 
@@ -125,6 +125,12 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 	}
 	if got, want := rows[1][2], `ALTER TABLE "items" RENAME COLUMN "name" TO "title"`; got != want {
 		t.Fatalf("structure action log = %q, want %q", got, want)
+	}
+	if got, want := rows[0][4], "updated index"; got != want {
+		t.Fatalf("index action message = %q, want %q", got, want)
+	}
+	if got, want := rows[1][4], "altered column"; got != want {
+		t.Fatalf("structure action message = %q, want %q", got, want)
 	}
 }
 
@@ -162,7 +168,7 @@ func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
 	}
 }
 
-func TestQueryLog_shows_browse_fetch_count(t *testing.T) {
+func TestQueryLog_shows_browse_message(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable = "projects"
@@ -172,8 +178,8 @@ func TestQueryLog_shows_browse_fetch_count(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.Rows()[0][4], "2"; got != want {
-		t.Fatalf("browse log fetch = %q, want %q", got, want)
+	if got, want := model.queryLog.Rows()[0][4], "fetched 2 rows"; got != want {
+		t.Fatalf("browse log message = %q, want %q", got, want)
 	}
 }
 
@@ -212,17 +218,38 @@ func TestQueryLog_summary_reports_session_extrema(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.queryLogEntries = []queryLogEntry{
-		{duration: 8 * time.Millisecond, fetched: 25},
-		{duration: 2 * time.Millisecond, fetched: 3},
-		{duration: 15 * time.Millisecond, fetched: 12},
+		{duration: 8 * time.Millisecond},
+		{duration: 2 * time.Millisecond},
+		{duration: 15 * time.Millisecond},
 	}
 
 	// When
 	summary := model.queryLogSummary()
 
 	// Then
-	if got, want := summary, "fastest 2ms | slowest 15ms | most fetch 25 | least fetch 3"; got != want {
+	if got, want := summary, "fastest 2ms | slowest 15ms"; got != want {
 		t.Fatalf("query log summary = %q, want %q", got, want)
+	}
+}
+
+func TestQueryLogMessage_describes_statement_results(t *testing.T) {
+	tests := []struct {
+		statement    string
+		rowsAffected int64
+		rows         int
+		want         string
+	}{
+		{statement: "SELECT * FROM projects", rows: 10, want: "fetched 10 rows"},
+		{statement: "INSERT INTO projects VALUES (1)", rowsAffected: 1, want: "inserted 1 row"},
+		{statement: "UPDATE projects SET name = 'new'", rowsAffected: 3, want: "updated 3 rows"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.statement, func(t *testing.T) {
+			if got := queryLogMessage(test.statement, test.rowsAffected, test.rows); got != test.want {
+				t.Fatalf("query log message = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
