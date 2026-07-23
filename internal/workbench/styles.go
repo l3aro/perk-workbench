@@ -720,24 +720,6 @@ func selectPickerItem(raw string) tea.Cmd {
 	}
 }
 
-func resolveTarget(target string) (string, error) {
-	if target == ":memory:" {
-		return target, nil
-	}
-	resolved, err := filepath.EvalSymlinks(target)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("database target is not a regular file")
-	}
-	return resolved, nil
-}
-
 func databaseSuffix(name string) bool {
 	name = strings.ToLower(name)
 	return strings.HasSuffix(name, ".db") || strings.HasSuffix(name, ".sqlite") || strings.HasSuffix(name, ".sqlite3")

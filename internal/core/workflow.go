@@ -96,13 +96,6 @@ func (w *Workflow) StartQueryForTest(ctx context.Context) uint64 {
 	return query.RequestID
 }
 
-func (w *Workflow) RestoreQuery(ctx context.Context, requestID uint64, canceled bool) {
-	queryContext, cancel := context.WithCancel(ctx)
-	w.requestID, w.activeRequestID = requestID, requestID
-	w.running, w.cancelRequested, w.cancel = true, canceled, cancel
-	_ = queryContext
-}
-
 func (w *Workflow) CancelQuery() {
 	if w.cancelRequested || !w.running {
 		return
