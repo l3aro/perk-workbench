@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/clipboard"
 	"github.com/l3aro/perk/internal/database"
 	"github.com/l3aro/perk/internal/workbench"
 )
@@ -38,6 +39,9 @@ func main() {
 
 func run(target string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Native clipboard support is optional: OSC 52 remains available in
+	// headless environments such as the development container.
+	_ = clipboard.Init()
 	model := workbench.New(target, ctx, database.Open)
 	final, runErr := tea.NewProgram(
 		model,
