@@ -104,4 +104,8 @@ func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) 
 	m.Status = "index deleted"
 	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
 }
-func (m *Model) openIndexForm(index *sharedsql.IndexInfo) { m.indexForm = newIndexForm(index) }
+func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {
+	m.indexForm = newIndexForm(index)
+	m.indexForm.setWidth(m.tableViewportWidth)
+	return m.indexForm.form.Init()
+}

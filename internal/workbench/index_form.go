@@ -3,19 +3,15 @@ package workbench
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
-type indexFormMode uint8
-
 const (
-	indexFormNormal indexFormMode = iota
-	indexFormInsert
-	indexFormConfirmSave
-	indexFormConfirmDiscard
-	indexFormConfirmDelete
+	indexKindNormal  = "Index"
+	indexKindUnique  = "Unique"
+	indexKindPrimary = "Primary key"
 )
 
 type indexFormAction uint8
@@ -28,152 +24,205 @@ const (
 )
 
 type indexForm struct {
-	mode               indexFormMode
-	focus              int
-	confirmed, saving  bool
-	open               bool
+	form, confirmation *huh.Form
+	values             *indexFormValues
 	previous           string
-	name, columns      textinput.Model
-	unique, primaryKey bool
+	width              int
+	saving             bool
+	confirmationSave   bool
+	confirmationDelete bool
+}
+
+type indexFormValues struct {
+	name, columns string
+	kind          string
+	confirmed     bool
 }
 
 func newIndexForm(index *sharedsql.IndexInfo) indexForm {
-	name, columns := textinput.New(), textinput.New()
-	name.Prompt, columns.Prompt = "", ""
-	form := indexForm{name: name, columns: columns, open: true}
+	form := indexForm{values: &indexFormValues{kind: indexKindNormal}}
 	if index != nil {
-		form.previous, form.unique, form.primaryKey = index.Name, index.Unique, index.PrimaryKey
-		form.name.SetValue(index.Name)
-		form.columns.SetValue(strings.Join(index.Columns, ", "))
+		form.previous, form.values.name, form.values.columns = index.Name, index.Name, strings.Join(index.Columns, ", ")
+		switch {
+		case index.PrimaryKey:
+			form.values.kind = indexKindPrimary
+		case index.Unique:
+			form.values.kind = indexKindUnique
+		}
 	}
+	form.rebuildForm()
 	return form
 }
 
-func (f indexForm) active() bool { return f.open }
+func (f indexForm) active() bool { return f.values != nil }
 
-func (f indexForm) confirming() bool {
-	return f.mode == indexFormConfirmSave || f.mode == indexFormConfirmDiscard || f.mode == indexFormConfirmDelete
-}
+func (f indexForm) confirming() bool { return f.confirmation != nil }
 
-func (f *indexForm) close() { f.open = false }
+func (f *indexForm) close() { *f = indexForm{} }
 
-func (f *indexForm) Update(message tea.Msg) (tea.Cmd, indexFormAction) {
-	key, ok := message.(tea.KeyPressMsg)
+func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea.Cmd, indexFormAction) {
 	if f.saving {
 		return nil, indexFormNoAction
 	}
-	if !ok && f.mode == indexFormInsert {
-		return f.updateInput(message), indexFormNoAction
+	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+		if route == formRouteConsumed && f.confirmation != nil && controller.mode == formModeNormal {
+			f.confirmation = nil
+		}
+		if route == formRouteHuh {
+			return f.updateHuh(message, controller)
+		}
+		return nil, indexFormNoAction
 	}
+	keyPress, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return nil, indexFormNoAction
 	}
-	if f.confirming() {
-		if key.Key().Code == tea.KeyEscape {
-			f.mode, f.confirmed = indexFormNormal, false
-			return nil, indexFormNoAction
-		}
-		switch key.String() {
-		case "tab", "shift+tab":
-			f.confirmed = !f.confirmed
-		case "enter":
-			if !f.confirmed {
-				f.mode = indexFormNormal
-				return nil, indexFormNoAction
-			}
-			switch f.mode {
-			case indexFormConfirmSave:
-				return nil, indexFormSave
-			case indexFormConfirmDelete:
-				return nil, indexFormDelete
-			default:
-				return nil, indexFormDiscard
-			}
-		}
-		return nil, indexFormNoAction
-	}
-	if f.mode == indexFormInsert {
-		if key.Key().Code == tea.KeyEscape {
-			f.mode = indexFormNormal
-			f.name.Blur()
-			f.columns.Blur()
-			return nil, indexFormNoAction
-		}
-		return f.updateInput(message), indexFormNoAction
-	}
-	if key.Key().Code == tea.KeyEscape {
-		f.mode = indexFormConfirmDiscard
-		return nil, indexFormNoAction
-	}
-	switch key.String() {
-	case "j", "down":
-		f.focus = (f.focus + 1) % 4
-	case "k", "up":
-		f.focus = (f.focus + 3) % 4
+	switch keyPress.String() {
 	case "i", "enter":
-		if f.focus == 2 {
-			f.unique = !f.unique
-			if f.unique {
-				f.primaryKey = false
-			}
-		} else if f.focus == 3 {
-			f.primaryKey = !f.primaryKey
-			if f.primaryKey {
-				f.unique = false
-			}
-		} else {
-			f.mode = indexFormInsert
-			return f.focusInput(), indexFormNoAction
-		}
-	case " ", "space":
-		if f.focus == 2 {
-			f.unique = !f.unique
-			if f.unique {
-				f.primaryKey = false
-			}
-		} else if f.focus == 3 {
-			f.primaryKey = !f.primaryKey
-			if f.primaryKey {
-				f.unique = false
-			}
-		}
+		return controller.beginHuh(f.focus()), indexFormNoAction
 	case "ctrl+enter", "f5":
-		f.mode, f.confirmed = indexFormConfirmSave, false
+		if _, err := f.change(); err != nil {
+			f.showValidationError()
+			return nil, indexFormNoAction
+		}
+		f.beginConfirmation(true, false)
+		controller.beginConfirm()
+		return f.confirmation.Init(), indexFormNoAction
+	case "esc", "escape":
+		f.beginConfirmation(false, false)
+		controller.beginConfirm()
+		return f.confirmation.Init(), indexFormNoAction
 	case "d":
 		if f.previous != "" {
-			f.mode, f.confirmed = indexFormConfirmDelete, false
+			f.beginConfirmation(false, true)
+			controller.beginConfirm()
+			return f.confirmation.Init(), indexFormNoAction
 		}
+	case "j", "down":
+		return f.form.NextField(), indexFormNoAction
+	case "k", "up":
+		return f.form.PrevField(), indexFormNoAction
 	}
 	return nil, indexFormNoAction
 }
 
-func (f *indexForm) focusInput() tea.Cmd {
-	f.name.Blur()
-	f.columns.Blur()
-	if f.focus == 0 {
-		return f.name.Focus()
+func (f *indexForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, indexFormAction) {
+	if f.confirmation != nil {
+		model, command := f.confirmation.Update(message)
+		f.confirmation = model.(*huh.Form)
+		if f.confirmation.State != huh.StateCompleted {
+			return command, indexFormNoAction
+		}
+		confirmed := f.values.confirmed || f.confirmation.GetBool("confirm")
+		f.confirmation = nil
+		controller.mode = formModeNormal
+		if !confirmed {
+			return nil, indexFormNoAction
+		}
+		if f.confirmationDelete {
+			return nil, indexFormDelete
+		}
+		if f.confirmationSave {
+			return nil, indexFormSave
+		}
+		return nil, indexFormDiscard
 	}
-	return f.columns.Focus()
+	model, command := f.form.Update(message)
+	f.form = model.(*huh.Form)
+	if f.form.State == huh.StateCompleted {
+		f.rebuildForm()
+		return f.focus(), indexFormNoAction
+	}
+	return command, indexFormNoAction
 }
 
-func (f *indexForm) updateInput(message tea.Msg) tea.Cmd {
-	var command tea.Cmd
-	if f.focus == 0 {
-		f.name, command = f.name.Update(message)
-	} else {
-		f.columns, command = f.columns.Update(message)
+func (f *indexForm) beginConfirmation(save, delete bool) {
+	f.values.confirmed, f.confirmationSave, f.confirmationDelete = false, save, delete
+	title := "Discard index changes?"
+	if save {
+		title = "Save index changes?"
 	}
-	return command
+	if delete {
+		title = "Delete index?"
+	}
+	f.confirmation = huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
+	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+}
+
+func (f *indexForm) rebuildForm() {
+	f.form = huh.NewForm(huh.NewGroup(
+		huh.NewInput().Key("name").Title("Name*").Value(&f.values.name).Validate(f.validateName),
+		huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredIndexColumns),
+		huh.NewSelect[string]().Key("kind").Title("Kind").Options(
+			huh.NewOption(indexKindNormal, indexKindNormal),
+			huh.NewOption(indexKindUnique, indexKindUnique),
+			huh.NewOption(indexKindPrimary, indexKindPrimary),
+		).Value(&f.values.kind),
+	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+}
+
+func (f indexForm) validateName(value string) error {
+	if f.values.kind == indexKindPrimary {
+		return nil
+	}
+	return requiredIndexName(value)
+}
+
+func requiredIndexName(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return sharedsql.ValidateIndexChange(sharedsql.IndexChange{Name: value, Columns: []string{"column"}})
+	}
+	return nil
+}
+
+func requiredIndexColumns(value string) error {
+	columns := strings.Split(value, ",")
+	return sharedsql.ValidateIndexChange(sharedsql.IndexChange{Name: "index", Columns: columns})
+}
+
+func (f *indexForm) showValidationError() {
+	f.rebuildForm()
+	if f.values.kind != indexKindPrimary && requiredIndexName(f.values.name) != nil {
+		_ = f.form.GetFocusedField().Blur()
+		return
+	}
+	_ = f.form.NextField()
+	_ = f.form.GetFocusedField().Blur()
+}
+
+func (f *indexForm) blur() {
+	if f.form != nil {
+		_ = f.form.GetFocusedField().Blur()
+	}
+}
+
+func (f *indexForm) focus() tea.Cmd {
+	if f.form == nil {
+		return nil
+	}
+	return f.form.GetFocusedField().Focus()
 }
 
 func (f indexForm) change() (sharedsql.IndexChange, error) {
-	columns := strings.Split(f.columns.Value(), ",")
+	if f.values.kind != indexKindPrimary {
+		if err := requiredIndexName(f.values.name); err != nil {
+			return sharedsql.IndexChange{}, err
+		}
+	}
+	if err := requiredIndexColumns(f.values.columns); err != nil {
+		return sharedsql.IndexChange{}, err
+	}
+	columns := strings.Split(f.values.columns, ",")
 	for index := range columns {
 		columns[index] = strings.TrimSpace(columns[index])
 	}
-	change := sharedsql.IndexChange{Name: strings.TrimSpace(f.name.Value()), Unique: f.unique, PrimaryKey: f.primaryKey, Columns: columns}
-	if change.PrimaryKey {
-		change.Name = "PRIMARY"
+	change := sharedsql.IndexChange{Name: strings.TrimSpace(f.values.name), Columns: columns}
+	switch f.values.kind {
+	case indexKindUnique:
+		change.Unique = true
+	case indexKindPrimary:
+		change.Name, change.PrimaryKey = "PRIMARY", true
 	}
 	if err := sharedsql.ValidateIndexChange(change); err != nil {
 		return sharedsql.IndexChange{}, err
@@ -182,40 +231,24 @@ func (f indexForm) change() (sharedsql.IndexChange, error) {
 }
 
 func (f *indexForm) setWidth(width int) {
-	f.name.SetWidth(max(width-formLabelWidth-len(formFieldGap)-1, 1))
-	f.columns.SetWidth(max(width-formLabelWidth-len(formFieldGap)-1, 1))
+	f.width = max(width, 1)
+	if f.form != nil {
+		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
+	}
+	if f.confirmation != nil {
+		f.confirmation.WithWidth(f.width).WithShowHelp(f.width >= 40)
+	}
 }
 
 func (f indexForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving index changes")
 	}
-	if f.confirming() {
-		action := "Discard index changes?"
-		if f.mode == indexFormConfirmSave {
-			action = "Save index changes?"
-		}
-		if f.mode == indexFormConfirmDelete {
-			action = "Delete index?"
-		}
-		choices := "[" + booleanValue(false) + "] " + booleanValue(true)
-		if f.confirmed {
-			choices = booleanValue(false) + " [" + booleanValue(true) + "]"
-		}
-		return headerStyle.Render(action) + "\n" + choices + "\n" + statusStyle.Render("Tab selects true | Enter confirms | Esc returns to the form")
+	if f.confirmation != nil {
+		return f.confirmation.View()
 	}
-	rows := []formRow{{label: "Name", value: f.name.View(), focusKey: 0}, {label: "Columns", value: f.columns.View(), focusKey: 1}, {label: "Unique", value: booleanValue(f.unique), focusKey: 2}, {label: "Primary key", value: booleanValue(f.primaryKey), focusKey: 3}}
-	lines := make([]string, len(rows))
-	for index, row := range rows {
-		label := formLabel(row.label, formLabelWidth)
-		if f.mode == indexFormNormal && f.focus == row.focusKey {
-			label = focusedFormLabel(row.label, formLabelWidth)
-		}
-		lines[index] = label + formFieldGap + row.value
+	if f.form == nil {
+		return ""
 	}
-	help := "j/k fields | i edit | space toggle kind | F5 save | d delete | Esc discard"
-	if f.mode == indexFormInsert {
-		help = "insert mode | Esc normal mode"
-	}
-	return strings.Join(lines, "\n") + "\n" + statusStyle.Render(help)
+	return f.form.View()
 }
