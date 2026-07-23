@@ -73,7 +73,7 @@ func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT type, name
+		SELECT 'main', type, name
 		FROM sqlite_schema
 		WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
 		ORDER BY type, name`)
@@ -81,10 +81,10 @@ func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, err
 		return nil, fmt.Errorf("listing schema: %w", err)
 	}
 
-	objects := []sharedsql.SchemaObject{}
+	objects := []sharedsql.SchemaObject{{Database: "main", Type: "database", Name: "main"}}
 	for rows.Next() {
 		var object sharedsql.SchemaObject
-		if err := rows.Scan(&object.Type, &object.Name); err != nil {
+		if err := rows.Scan(&object.Database, &object.Type, &object.Name); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning schema", err)
 		}
 		object.Type = sharedsql.SanitizeDisplay(object.Type)

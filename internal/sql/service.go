@@ -52,8 +52,9 @@ type Result struct {
 }
 
 type SchemaObject struct {
-	Type string
-	Name string
+	Database string
+	Type     string
+	Name     string
 }
 
 type IndexKind uint8

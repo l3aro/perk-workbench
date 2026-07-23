@@ -72,7 +72,7 @@ func TestListSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSchema() error = %v", err)
 	}
-	want := []SchemaObject{{Type: "table", Name: "alpha"}, {Type: "table", Name: "zebra"}, {Type: "view", Name: "visible"}}
+	want := []SchemaObject{{Database: "main", Type: "database", Name: "main"}, {Database: "main", Type: "table", Name: "alpha"}, {Database: "main", Type: "table", Name: "zebra"}, {Database: "main", Type: "view", Name: "visible"}}
 	if !schemaEqual(objects, want) {
 		t.Fatalf("ListSchema() = %#v, want %#v", objects, want)
 	}
