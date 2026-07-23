@@ -2,17 +2,12 @@ package workbench
 
 import (
 	"context"
-	"errors"
-	"fmt"
-	"strings"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk/internal/core"
-	"github.com/l3aro/perk/internal/mysql"
 	sharedsql "github.com/l3aro/perk/internal/sql"
-	"github.com/l3aro/perk/internal/sqlite"
 )
 
 const compactWidth = 90
@@ -44,10 +39,9 @@ type Model struct {
 	core.Workflow
 	pickerDir                                                                                      string
 	appContext                                                                                     context.Context
-	openTarget                                                                                     func(string) tea.Cmd
-	running, cancelRequested, pendingQuit, browseLoading                                           bool
-	requestID, activeRequestID, browsePageTag, editorEditTag                                       uint64
-	cancel                                                                                         context.CancelFunc
+	openDatabase                                                                                   OpenDatabase
+	browseLoading                                                                                  bool
+	browsePageTag, editorEditTag                                                                   uint64
 	schema, picker, recent                                                                         list.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
 	structureColumns                                                                               []sharedsql.ColumnInfo
@@ -109,28 +103,25 @@ type pickerSelectionMsg struct {
 	err    error
 }
 
-type databaseOpener struct {
-	ctx     context.Context
-	command func(string) tea.Cmd
-}
+type OpenDatabase func(context.Context, string) (sharedsql.Opened, error)
 
-func New(target string, opener databaseOpener) Model {
+func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 	model := Model{
-		Workflow:    core.New(target),
-		appContext:  opener.ctx,
-		openTarget:  opener.command,
-		schema:      newSchemaList(),
-		picker:      newList("Choose database", true),
-		recent:      newList("Recent connections", true),
-		structure:   newResultsTable(),
-		browse:      newResultsTable(),
-		results:     newResultsTable(),
-		indexes:     newResultsTable(),
-		foreignKeys: newResultsTable(),
-		queryLog:    newResultsTable(),
-		editor:      newEditor(),
-		formMode:    &formModeController{},
-		connection:  newConnectionForm(),
+		Workflow:     core.New(target),
+		appContext:   ctx,
+		openDatabase: openDatabase,
+		schema:       newSchemaList(),
+		picker:       newList("Choose database", true),
+		recent:       newList("Recent connections", true),
+		structure:    newResultsTable(),
+		browse:       newResultsTable(),
+		results:      newResultsTable(),
+		indexes:      newResultsTable(),
+		foreignKeys:  newResultsTable(),
+		queryLog:     newResultsTable(),
+		editor:       newEditor(),
+		formMode:     &formModeController{},
+		connection:   newConnectionForm(),
 	}
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Fetched"}, nil))
 	model.queryLog.Blur()
@@ -143,43 +134,18 @@ func New(target string, opener databaseOpener) Model {
 	return model
 }
 
-func Open(ctx context.Context) databaseOpener {
-	return databaseOpener{
-		ctx: ctx,
-		command: func(target string) tea.Cmd {
-			return func() tea.Msg {
-				if dsn, ok := strings.CutPrefix(target, "mysql:"); ok {
-					service, err := mysql.Open(ctx, dsn)
-					if err != nil {
-						return databaseOpenedMsg{err: fmt.Errorf("opening database: %w", err)}
-					}
-					objects, err := service.ListSchema(ctx)
-					if err != nil {
-						if closeErr := service.Close(); closeErr != nil {
-							return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", errors.Join(err, closeErr))}
-						}
-						return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", err)}
-					}
-					return databaseOpenedMsg{target: dsn, service: service, info: service.Info(), objects: objects}
-				}
-				resolved, err := resolveTarget(target)
-				if err != nil {
-					return databaseOpenedMsg{err: err}
-				}
-				service, err := sqlite.Open(ctx, resolved)
-				if err != nil {
-					return databaseOpenedMsg{err: fmt.Errorf("opening database: %w", err)}
-				}
-				objects, err := service.ListSchema(ctx)
-				if err != nil {
-					if closeErr := service.Close(); closeErr != nil {
-						return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", errors.Join(err, closeErr))}
-					}
-					return databaseOpenedMsg{err: fmt.Errorf("listing schema: %w", err)}
-				}
-				return databaseOpenedMsg{target: resolved, service: service, info: service.Info(), objects: objects}
-			}
-		},
+func (m Model) openTarget(target string) tea.Cmd {
+	return func() tea.Msg {
+		opened, err := m.openDatabase(m.appContext, target)
+		if err != nil {
+			return databaseOpenedMsg{err: err}
+		}
+		return databaseOpenedMsg{
+			target:  opened.Target,
+			service: opened.Service,
+			info:    opened.Info,
+			objects: opened.Objects,
+		}
 	}
 }
 

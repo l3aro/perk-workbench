@@ -20,12 +20,6 @@ type browseDebounceMsg struct {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	if m.running && !m.Workflow.Running() {
-		m.Workflow.RestoreQuery(m.appContext, m.activeRequestID, m.cancelRequested)
-		if m.pendingQuit {
-			m.Workflow.RequestQuit()
-		}
-	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
@@ -51,7 +45,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.String() == "ctrl+c" || (message.String() == "q" && !m.formActive() && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) && !(m.sqlEditorActive() && m.formMode.editing()) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.value == "")) {
 			if m.Running() {
 				m.RequestQuit()
-				m.pendingQuit = true
 				m.cancelQuery()
 				return m, nil
 			}

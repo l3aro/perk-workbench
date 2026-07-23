@@ -35,8 +35,6 @@ func (m Model) startQuery() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	startedAt := time.Now()
-	m.running, m.activeRequestID, m.cancelRequested = true, query.RequestID, false
-	m.cancel = func() { m.Workflow.CancelQuery() }
 	return m, func() tea.Msg {
 		result, err := query.Service.Execute(query.Context, query.Statement)
 		if err == nil {
@@ -50,11 +48,7 @@ func (m Model) startQuery() (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) cancelQuery() {
-	if m.cancel != nil {
-		m.cancel()
-	}
 	m.Workflow.CancelQuery()
-	m.cancelRequested = true
 }
 
 func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd) {
@@ -62,7 +56,6 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	canceled, quit := m.Workflow.FinishQuery()
-	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
 	if canceled {
 		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "canceled"})
 	} else {
@@ -80,7 +73,6 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
 	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "failed", errMsg: message.err.Error()})
 	if quit {
 		return m, tea.Quit
@@ -93,7 +85,6 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.running, m.cancel, m.cancelRequested, m.pendingQuit = false, nil, false, false
 	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), status: "canceled"})
 	if quit {
 		return m, tea.Quit
