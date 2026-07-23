@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dustin/go-humanize"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
@@ -140,6 +141,17 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 		}
 		nullable := booleanValue(column.Nullable)
 		rows[index] = table.Row{safeText(column.Name), indexIcons(column.Indexes), safeText(column.Type), nullable, defaultValue}
+	}
+	// Center Nullable icons within column
+	nullableColWidth := ansi.StringWidth("Nullable")
+	for _, row := range rows {
+		nullableColWidth = max(nullableColWidth, ansi.StringWidth(row[3]))
+	}
+	for _, row := range rows {
+		contentWidth := ansi.StringWidth(row[3])
+		if contentWidth < nullableColWidth {
+			row[3] = strings.Repeat(" ", (nullableColWidth-contentWidth)/2) + row[3]
+		}
 	}
 	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Nullable", "Default"}, rows))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
