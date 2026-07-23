@@ -7,8 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	dbmysql "github.com/l3aro/perk/internal/mysql"
-	"github.com/l3aro/perk/internal/sqlite"
 )
 
 type connectionActionMsg struct{ action string }
@@ -88,25 +86,18 @@ func (m *Model) newConnection() tea.Cmd {
 }
 
 func (m Model) testConnection() tea.Cmd {
-	driver, target := m.connection.values.driver, m.connection.targetValue()
+	target := m.connection.targetValue()
 	return func() tea.Msg {
 		if err := m.connection.validate(); err != nil {
 			return connectionTestMsg{err: err}
 		}
 		ctx, cancel := context.WithTimeout(m.appContext, 5*time.Second)
 		defer cancel()
-		if driver == driverSQLite {
-			service, err := sqlite.Open(ctx, target)
-			if err != nil {
-				return connectionTestMsg{err: err}
-			}
-			return connectionTestMsg{err: service.Close()}
-		}
-		database, err := dbmysql.Open(ctx, target)
+		opened, err := m.openDatabase(ctx, target)
 		if err != nil {
 			return connectionTestMsg{err: err}
 		}
-		return connectionTestMsg{err: database.Close()}
+		return connectionTestMsg{err: opened.Service.Close()}
 	}
 }
 

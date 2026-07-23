@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk/internal/database"
 	"github.com/l3aro/perk/internal/workbench"
 )
 
@@ -37,7 +38,7 @@ func main() {
 
 func run(target string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	model := workbench.New(target, workbench.Open(ctx))
+	model := workbench.New(target, ctx, database.Open)
 	final, runErr := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
