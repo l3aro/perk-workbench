@@ -70,6 +70,7 @@ docker compose run --rm dev gofmt -l cmd internal
 - `Shift+Tab` moves focus backward through the same three panes.
 - `F5` runs the editor contents.
 - `Ctrl+Enter` runs the editor contents when the terminal reports the modified Enter key.
+- `Ctrl+S` runs the editor contents and works in terminals that cannot distinguish modified Enter keys.
 - `Enter` in the schema pane loads and runs the selected table or view's DDL query.
 - `Escape` cancels an active query. In the editor, `Escape` switches from insert mode to normal mode.
 - `q` quits when the editor is empty or another pane owns focus. In an editor with text, `q` is inserted as text.
