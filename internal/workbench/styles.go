@@ -653,7 +653,8 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "tab switch view", "q quit")
+		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "tab switch view")
+		parts = append(parts, "q quit")
 		return safeText(strings.Join(parts, " | "))
 	}
 	return safeText(m.Status + " | q quit")
