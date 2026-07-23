@@ -77,9 +77,9 @@ docker compose run --rm dev gofmt -l cmd internal
 
 ### Editor
 
-The editor has insert mode and a small normal-mode Vim subset. Insert mode accepts SQL text. In normal mode, the available keys are `i`, `a`, `h`, `j`, `k`, `l`, `w`, `b`, `0`, `$`, `gg`, and `G`.
+The SQL editor starts in normal mode. Press `i` to enter text, `Escape` to return to normal mode, and `Ctrl+E` in insert mode to edit SQL through `$EDITOR`.
 
-There are no operators, visual mode, command mode, registers, or syntax highlighting.
+The editor does not provide inline Vim motions, operators, visual mode, command mode, registers, or syntax highlighting.
 
 ## SQL behavior
 
