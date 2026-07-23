@@ -67,6 +67,21 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 	}
 }
 
+func TestConnectionForm_rendersActionsAsButtonGroup(t *testing.T) {
+	// Given
+	form := newConnectionForm()
+	view := ansi.Strip(form.View())
+
+	// When
+	testIndex := strings.Index(view, connectionActionTest)
+	connectIndex := strings.Index(view, connectionActionConnect)
+
+	// Then
+	if testIndex < 0 || connectIndex < 0 || strings.Contains(view[testIndex:connectIndex], "\n") {
+		t.Fatalf("connection action group = %q", view)
+	}
+}
+
 func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 	for _, width := range []int{24, 72} {
 		t.Run("width", func(t *testing.T) {
