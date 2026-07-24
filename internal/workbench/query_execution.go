@@ -3,7 +3,9 @@ package workbench
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk/internal/sql"
@@ -30,10 +32,15 @@ type queryCanceledMsg struct {
 }
 
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
-	query, ok := m.Workflow.StartQuery(m.appContext, m.editor.value)
+	return m.startQueryStatement(m.editor.value)
+}
+
+func (m Model) startQueryStatement(statement string) (tea.Model, tea.Cmd) {
+	query, ok := m.Workflow.StartQuery(m.appContext, statement)
 	if !ok {
 		return m, nil
 	}
+	m.recordQueryHistory(query.Statement)
 	startedAt := time.Now()
 	return m, func() tea.Msg {
 		result, err := query.Service.Execute(query.Context, query.Statement)
@@ -45,6 +52,47 @@ func (m Model) startQuery() (tea.Model, tea.Cmd) {
 		}
 		return queryFailedMsg{requestID: query.RequestID, statement: query.Statement, startedAt: startedAt, err: err}
 	}
+}
+
+func (m *Model) recordQueryHistory(statement string) {
+	m.queryHistory = append([]string{statement}, m.queryHistory...)
+	if len(m.queryHistory) > queryLogLimit {
+		m.queryHistory = m.queryHistory[:queryLogLimit]
+	}
+	m.historyIndex = -1
+}
+
+func (m *Model) recallQueryHistory() bool {
+	if len(m.queryHistory) == 0 {
+		return false
+	}
+	m.historyIndex = (m.historyIndex + 1) % len(m.queryHistory)
+	m.editor.setValue(m.queryHistory[m.historyIndex])
+	return true
+}
+
+func (m *Model) saveQuery() (bool, error) {
+	statement := m.editor.value
+	if strings.TrimSpace(statement) == "" {
+		return false, nil
+	}
+	if utf8.RuneCountInString(statement) > maxSavedQueryRunes {
+		return false, nil
+	}
+	for _, saved := range m.savedQueries {
+		if saved == statement {
+			return false, nil
+		}
+	}
+	queries := append(append([]string(nil), m.savedQueries...), statement)
+	if len(queries) > maxSavedQueries {
+		queries = queries[len(queries)-maxSavedQueries:]
+	}
+	if err := saveSavedQueries(m.savedQueriesPath, queries); err != nil {
+		return false, err
+	}
+	m.savedQueries = queries
+	return true, nil
 }
 
 func (m *Model) cancelQuery() {

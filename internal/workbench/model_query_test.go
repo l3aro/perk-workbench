@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -301,6 +302,283 @@ func TestExecute_keys_start_a_nonblank_query(t *testing.T) {
 				t.Fatalf("execute command did not complete: running=%t rows=%#v", model.Running(), model.results.Rows())
 			}
 		})
+	}
+}
+
+func TestExecute_history_recall_cycles_executed_statements(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	for _, statement := range []string{"SELECT 1", "SELECT 2"} {
+		model.editor.setValue(statement)
+		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+		model = updated.(Model)
+		updated, _ = model.Update(command())
+		model = updated.(Model)
+	}
+	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
+	model.editor.setValue("")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 2"; got != want {
+		t.Fatalf("first recalled statement = %q, want %q", got, want)
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 1"; got != want {
+		t.Fatalf("second recalled statement = %q, want %q", got, want)
+	}
+}
+
+func TestSavedQueries_save_and_select_restores_editor(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.savedQueriesPath = t.TempDir() + "/saved-queries.json"
+	model.editor.setValue("SELECT name FROM projects")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if got, want := model.Status, "saved query"; got != want {
+		t.Fatalf("save status = %q, want %q", got, want)
+	}
+	model.editor.setValue("SELECT changed")
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if model.savedQueryPicker == nil {
+		t.Fatal("open saved queries did not show a picker")
+	}
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = resolveYankCommand(model, command)
+
+	// Then
+	if got, want := model.editor.value, "SELECT name FROM projects"; got != want {
+		t.Fatalf("selected saved statement = %q, want %q", got, want)
+	}
+}
+
+func TestSavedQueries_persistAndReload(t *testing.T) {
+	// Given
+	path := t.TempDir() + "/saved-queries.json"
+	model := readyModel(t)
+	model.savedQueriesPath = path
+	model.editor.setValue("SELECT name FROM projects")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	reloaded := loadSavedQueries(path)
+
+	// Then
+	if got, want := reloaded, []string{"SELECT name FROM projects"}; !slices.Equal(got, want) {
+		t.Fatalf("reloaded saved queries = %#v, want %#v", got, want)
+	}
+}
+
+func TestExecute_destructive_statement_requires_confirmation(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.editor.setValue("CREATE TABLE projects (id INTEGER PRIMARY KEY)")
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+
+	// Then
+	if command == nil || model.Running() || model.queryConfirmation == nil {
+		t.Fatalf("destructive query = command:%t running:%t confirmation:%t, want confirmation before execution", command != nil, model.Running(), model.queryConfirmation != nil)
+	}
+}
+
+func TestExecute_destructive_statement_declined_does_not_run(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE projects (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatalf("creating fixture table: %v", err)
+	}
+	if _, err := model.Database.Execute(model.appContext, "INSERT INTO projects VALUES (1)"); err != nil {
+		t.Fatalf("creating fixture row: %v", err)
+	}
+	model.editor.setValue("DELETE FROM projects")
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+
+	// When
+	result, err := model.Database.Execute(model.appContext, "SELECT COUNT(*) FROM projects")
+	if err != nil {
+		t.Fatalf("counting fixture rows: %v", err)
+	}
+	if got := *result.Rows[0][0]; got != "1" {
+		t.Fatalf("row count = %q, want 1 after declined delete", got)
+	}
+}
+
+func TestExecute_history_recall_cycles_executed_statements_merged_2(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	for _, statement := range []string{"SELECT 1", "SELECT 2"} {
+		model.editor.setValue(statement)
+		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+		model = updated.(Model)
+		updated, _ = model.Update(command())
+		model = updated.(Model)
+	}
+	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
+	model.editor.setValue("")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 2"; got != want {
+		t.Fatalf("first recalled statement = %q, want %q", got, want)
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 1"; got != want {
+		t.Fatalf("second recalled statement = %q, want %q", got, want)
+	}
+}
+
+func TestSavedQueries_save_and_select_restores_editor_merged_2(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.savedQueriesPath = t.TempDir() + "/saved-queries.json"
+	model.editor.setValue("SELECT name FROM projects")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if got, want := model.Status, "saved query"; got != want {
+		t.Fatalf("save status = %q, want %q", got, want)
+	}
+	model.editor.setValue("SELECT changed")
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if model.savedQueryPicker == nil {
+		t.Fatal("open saved queries did not show a picker")
+	}
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = resolveYankCommand(model, command)
+
+	// Then
+	if got, want := model.editor.value, "SELECT name FROM projects"; got != want {
+		t.Fatalf("selected saved statement = %q, want %q", got, want)
+	}
+}
+
+func TestSavedQueries_persistAndReload_merged_2(t *testing.T) {
+	// Given
+	path := t.TempDir() + "/saved-queries.json"
+	model := readyModel(t)
+	model.savedQueriesPath = path
+	model.editor.setValue("SELECT name FROM projects")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	reloaded := loadSavedQueries(path)
+
+	// Then
+	if got, want := reloaded, []string{"SELECT name FROM projects"}; !slices.Equal(got, want) {
+		t.Fatalf("reloaded saved queries = %#v, want %#v", got, want)
+	}
+}
+
+func TestExecute_history_recall_cycles_executed_statements_merged_3(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	for _, statement := range []string{"SELECT 1", "SELECT 2"} {
+		model.editor.setValue(statement)
+		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+		model = updated.(Model)
+		updated, _ = model.Update(command())
+		model = updated.(Model)
+	}
+	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
+	model.editor.setValue("")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 2"; got != want {
+		t.Fatalf("first recalled statement = %q, want %q", got, want)
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 1"; got != want {
+		t.Fatalf("second recalled statement = %q, want %q", got, want)
+	}
+}
+
+func TestSavedQueries_save_and_select_restores_editor_merged_3(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.savedQueriesPath = t.TempDir() + "/saved-queries.json"
+	model.editor.setValue("SELECT name FROM projects")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if got, want := model.Status, "saved query"; got != want {
+		t.Fatalf("save status = %q, want %q", got, want)
+	}
+	model.editor.setValue("SELECT changed")
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if model.savedQueryPicker == nil {
+		t.Fatal("open saved queries did not show a picker")
+	}
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = resolveYankCommand(model, command)
+
+	// Then
+	if got, want := model.editor.value, "SELECT name FROM projects"; got != want {
+		t.Fatalf("selected saved statement = %q, want %q", got, want)
+	}
+}
+
+func TestSavedQueries_persistAndReload_merged_3(t *testing.T) {
+	// Given
+	path := t.TempDir() + "/saved-queries.json"
+	model := readyModel(t)
+	model.savedQueriesPath = path
+	model.editor.setValue("SELECT name FROM projects")
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	reloaded := loadSavedQueries(path)
+
+	// Then
+	if got, want := reloaded, []string{"SELECT name FROM projects"}; !slices.Equal(got, want) {
+		t.Fatalf("reloaded saved queries = %#v, want %#v", got, want)
 	}
 }
 

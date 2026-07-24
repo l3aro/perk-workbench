@@ -57,8 +57,11 @@ type Model struct {
 	queryLogEntries                                                                                []queryLogEntry
 	queryLogDetail                                                                                 *queryLogEntry
 	queryLogPendingG                                                                               bool
+	queryHistory, savedQueries                                                                     []string
+	historyIndex                                                                                   int
 	editor                                                                                         *editor
 	explainPicker                                                                                  *explainPicker
+	savedQueryPicker                                                                               *savedQueryPicker
 	yankPicker                                                                                     *yankPicker
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
@@ -71,7 +74,8 @@ type Model struct {
 	expandedDatabases                                                                              map[string]bool
 	commandPalette                                                                                 *commandPalette
 	quitDialog                                                                                     *huh.Form
-	recentPath                                                                                     string
+	queryConfirmation                                                                              *queryConfirmation
+	recentPath, savedQueriesPath                                                                   string
 	keybindings                                                                                    Keybindings
 	width, height, schemaWidth, editorWidth                                                        int
 	workspaceHeight, queryLogHeight                                                                int
@@ -128,7 +132,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		openDatabase:      openDatabase,
 		schema:            newSchemaList(),
 		picker:            newList("Choose database", true),
-		recent:            newList("Recent connections", true),
+		recent:            newList("Connection profiles", true),
 		expandedDatabases: map[string]bool{},
 		structure:         newResultsTable(),
 		browse:            newResultsTable(),
@@ -140,11 +144,14 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		formMode:          &formModeController{},
 		connection:        newConnectionForm(),
 		keybindings:       DefaultKeybindings(),
+		historyIndex:      -1,
 	}
 	model.commandPalette = newCommandPalette(model)
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()
+	model.savedQueriesPath, _ = savedQueriesPath()
+	model.savedQueries = loadSavedQueries(model.savedQueriesPath)
 	if target == "" {
 		model.recentPath, _ = recentConnectionsPath()
 		model.recentConnections = loadRecentConnections(model.recentPath)
@@ -185,6 +192,8 @@ func (m *Model) disconnect() {
 	m.BrowsePage = 0
 	m.Status = ""
 	m.queryLogEntries = nil
+	m.queryHistory = nil
+	m.historyIndex = -1
 	m.queryLog.SetRows(nil)
 	m.editor.setValue("")
 	m.schemaObjects = nil

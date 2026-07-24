@@ -11,6 +11,9 @@ var defaultDefs = []commandDef{
 	{id: "editor.external", scope: scopeGlobal, keys: []string{"ctrl+e"}, label: "edit"},
 	{id: "query.execute", scope: scopeGlobal, keys: []string{"f5", "ctrl+enter", "ctrl+s"}, label: "run"},
 	{id: "query.cancel", scope: scopeGlobal, keys: []string{"esc"}, label: "cancel"},
+	{id: "query.history", scope: scopeGlobal, keys: []string{"ctrl+r"}, label: "recall query"},
+	{id: "query.save", scope: scopeGlobal, keys: []string{"ctrl+k"}, label: "save query"},
+	{id: "query.saved", scope: scopeGlobal, keys: []string{"ctrl+o"}, label: "saved queries"},
 	{id: "focus.schema", scope: scopeGlobal, keys: []string{"1"}, label: "schema"},
 	{id: "app.palette", scope: scopeGlobal, keys: []string{"ctrl+p"}, label: "palette"},
 	{id: "focus.workspace", scope: scopeGlobal, keys: []string{"2"}, label: "workspace"},
@@ -83,7 +86,7 @@ var defaultDefs = []commandDef{
 	{id: "connection.edit_field", scope: scopeView, keys: []string{"i", "enter"}, label: "edit"},
 	{id: "connection.field_next", scope: scopeView, keys: []string{"j", "down"}, label: "↓"},
 	{id: "connection.field_prev", scope: scopeView, keys: []string{"k", "up"}, label: "↑"},
-	{id: "connection.switch_to_list", scope: scopeView, keys: []string{"1"}, label: "recent"},
+	{id: "connection.switch_to_list", scope: scopeView, keys: []string{"1"}, label: "profiles"},
 
 	// ── Connection: action buttons (view, narrower focus) ───────
 	{id: "connection.action_enter", scope: scopeView, keys: []string{"enter"}, label: "action"},
