@@ -124,8 +124,7 @@ func newList(title string, filtering bool) list.Model {
 	model.SetFilteringEnabled(filtering)
 	model.SetShowPagination(false)
 	model.SetShowHelp(false)
-	model.KeyMap.Quit.SetEnabled(false)
-	model.KeyMap.ForceQuit.SetEnabled(false)
+	model.DisableQuitKeybindings()
 	model.Styles.Title = headerStyle
 	model.Styles.NoItems = statusStyle
 	return model
@@ -381,7 +380,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.explainPicker != nil || m.yankPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil {
 		// UV overlay path: render full UI, then overlay confirmation centered.
@@ -399,13 +398,13 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) hasConfirming() bool {
-	return m.explainPicker != nil || m.yankPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	return m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -415,6 +414,8 @@ func (m Model) confirmContent() string {
 		raw = m.explainPicker.form.View()
 	case m.yankPicker != nil:
 		raw = m.yankPicker.form.View()
+	case m.quitDialog != nil:
+		raw = m.quitDialog.View()
 	case m.columnForm.confirming():
 		raw = m.columnForm.confirmation.View()
 	case m.browseForm.confirming():
@@ -679,9 +680,13 @@ func (m Model) foreignKeysView() string {
 
 func (m Model) footer() string {
 	if m.State == stateConnection {
-		return safeText(m.Status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | q quit")
+		quitKey := m.keybindings.DisplayKey("app.quit")
+		quitHint := formatFooterKey(quitKey) + " quit"
+		return safeText(m.Status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | " + quitHint)
 	}
 	if m.State == stateReady {
+		quitKey := m.keybindings.DisplayKey("app.quit_dialog")
+		quitHint := formatFooterKey(quitKey) + " quit"
 		parts := []string{}
 		if m.Status != "" {
 			parts = append(parts, m.Status)
@@ -690,10 +695,20 @@ func (m Model) footer() string {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
 		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "^p palette")
-		parts = append(parts, "q quit")
+		parts = append(parts, quitHint)
 		return safeText(strings.Join(parts, " | "))
 	}
-	return safeText(m.Status + " | q quit")
+	quitKey := m.keybindings.DisplayKey("app.quit")
+	quitHint := formatFooterKey(quitKey) + " quit"
+	return safeText(m.Status + " | " + quitHint)
+}
+
+func formatFooterKey(key string) string {
+	// "Ctrl+C" → "^c", "q" → "q", "F5" → "f5"
+	if strings.HasPrefix(key, "Ctrl+") {
+		return "^" + strings.ToLower(key[5:])
+	}
+	return strings.ToLower(key)
 }
 
 func readDirectory(dir string) tea.Cmd {

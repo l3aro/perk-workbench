@@ -6,7 +6,8 @@ package workbench
 // NewKeybindings also uses defaultDefs as a base before applying overrides.
 var defaultDefs = []commandDef{
 	// ── Global ──────────────────────────────────────────────────
-	{id: "app.quit", scope: scopeGlobal, keys: []string{"q", "ctrl+c"}, label: "quit"},
+	{id: "app.quit", scope: scopeGlobal, keys: []string{"ctrl+c"}, label: "quit"},
+	{id: "app.quit_dialog", scope: scopeGlobal, keys: []string{"ctrl+q"}, label: "quit with confirm"},
 	{id: "editor.external", scope: scopeGlobal, keys: []string{"ctrl+e"}, label: "edit"},
 	{id: "query.execute", scope: scopeGlobal, keys: []string{"f5", "ctrl+enter", "ctrl+s"}, label: "run"},
 	{id: "query.cancel", scope: scopeGlobal, keys: []string{"esc"}, label: "cancel"},

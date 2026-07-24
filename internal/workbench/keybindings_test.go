@@ -26,7 +26,7 @@ func TestKeybindings_defaults_resolve_registered_commands(t *testing.T) {
 		want    string
 		wantHit bool
 	}{
-		{name: "app.quit via q", stroke: "q", scopes: []scope{scopeGlobal}, want: "app.quit", wantHit: true},
+		{name: "app.quit via ctrl+c", stroke: "ctrl+c", scopes: []scope{scopeGlobal}, want: "app.quit", wantHit: true},
 		{name: "query.execute via f5", stroke: "f5", scopes: []scope{scopeGlobal}, want: "query.execute", wantHit: true},
 		{name: "focus.schema via 1", stroke: "1", scopes: []scope{scopeGlobal}, want: "focus.schema", wantHit: true},
 		{name: "editor.external via ctrl+e", stroke: "ctrl+e", scopes: []scope{scopeGlobal}, want: "editor.external", wantHit: true},
@@ -128,19 +128,21 @@ func TestKeybindings_keystroke_matches(t *testing.T) {
 	// The Keystroke method is how Bubble Tea v2 represents keys at runtime.
 	// Verify our bindings match against real KeyPressMsg values.
 	tests := []struct {
-		msg    tea.KeyPressMsg
-		wantId string
+		name    string
+		msg     tea.KeyPressMsg
+		wantID  string
+		wantHit bool
 	}{
-		{msg: tea.KeyPressMsg{Code: 'q'}, wantId: "app.quit"},
-		{msg: tea.KeyPressMsg{Code: tea.KeyF5}, wantId: "query.execute"},
+		{name: "q does not quit", msg: tea.KeyPressMsg{Code: 'q'}, wantID: "", wantHit: false},
+		{name: "query.execute via f5", msg: tea.KeyPressMsg{Code: tea.KeyF5}, wantID: "query.execute", wantHit: true},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.wantId, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			stroke := tt.msg.Keystroke()
 			got, hit := b.resolve(stroke, []scope{scopeGlobal})
-			if !hit || got != tt.wantId {
-				t.Errorf("resolve(%q) = (%q, %t), want (%q, true)", stroke, got, hit, tt.wantId)
+			if got != tt.wantID || hit != tt.wantHit {
+				t.Errorf("resolve(%q) = (%q, %t), want (%q, %t)", stroke, got, hit, tt.wantID, tt.wantHit)
 			}
 		})
 	}

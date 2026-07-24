@@ -31,7 +31,7 @@ func TestLoadKeybindings_empty_config_returns_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadKeybindings on empty config: %v", err)
 	}
-	if b.DisplayKey("app.quit") != "q" {
+	if b.DisplayKey("app.quit") != "Ctrl+C" {
 		t.Fatalf("empty config should use defaults, got DisplayKey(app.quit) = %q", b.DisplayKey("app.quit"))
 	}
 }

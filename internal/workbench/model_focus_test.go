@@ -363,6 +363,8 @@ func TestFocus_tab_and_brackets_cycle_panes(t *testing.T) {
 func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 	// Given
 	model := readyModel(t)
+	model.Focus = focusSchema
+	model.schema.SetItems([]list.Item{schemaItem{title: "main", root: true}})
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"ID"},
@@ -665,6 +667,54 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 	if firstTimer == nil || secondTimer == nil || staleCommand != nil || loadCommand == nil || model.BrowsePage != 1 {
 		t.Fatalf("page = %d, commands = %t/%t/%t/%t, want one debounced load for page 2", model.BrowsePage, firstTimer != nil, secondTimer != nil, staleCommand != nil, loadCommand != nil)
 	}
+}
+
+func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.schema.SetItems([]list.Item{schemaItem{title: "main", root: true}})
+	_, listCommand := model.schema.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if commandQuits(listCommand) {
+		t.Fatal("schema list returned a quit command for plain q")
+	}
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+
+	// Then
+	if commandQuits(command) {
+		t.Fatal("plain q returned a quit command")
+	}
+	if model.quitDialog != nil {
+		t.Fatal("plain q opened the quit dialog")
+	}
+
+	// When
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if command == nil || model.quitDialog == nil {
+		t.Fatal("ctrl+q did not open the quit dialog")
+	}
+}
+
+func commandQuits(command tea.Cmd) bool {
+	if command == nil {
+		return false
+	}
+	switch message := command().(type) {
+	case tea.QuitMsg:
+		return true
+	case tea.BatchMsg:
+		for _, child := range message {
+			if commandQuits(child) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func updateFromCommand(model Model, command tea.Cmd) Model {

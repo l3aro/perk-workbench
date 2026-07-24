@@ -340,7 +340,6 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	boxX := (width - palW) / 2
 	boxY := (height - palH) / 2
 
-
 	// Fill background.
 	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
 	canvas.FillArea(&dialogBg, image.Rect(boxX, boxY, boxX+palW, boxY+palH))
@@ -373,7 +372,6 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	canvas.SetCell(boxX+palW-1, boxY, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
 	canvas.SetCell(boxX, boxY+palH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
 	canvas.SetCell(boxX+palW-1, boxY+palH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
-
 
 	// Build full text.
 	innerW := palW - 2

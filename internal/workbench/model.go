@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"github.com/l3aro/perk/internal/core"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
@@ -69,6 +70,7 @@ type Model struct {
 	schemaObjects                                                                                  []sharedsql.SchemaObject
 	expandedDatabases                                                                              map[string]bool
 	commandPalette                                                                                 *commandPalette
+	quitDialog                                                                                     *huh.Form
 	recentPath                                                                                     string
 	keybindings                                                                                    Keybindings
 	width, height, schemaWidth, editorWidth                                                        int
@@ -173,6 +175,30 @@ func (m *Model) SetKeybindings(b Keybindings) {
 	m.commandPalette = newCommandPalette(*m)
 }
 
+func (m *Model) disconnect() {
+	if m.Database != nil {
+		_ = m.Database.Close()
+	}
+	m.State = stateConnection
+	m.Database = nil
+	m.SelectedTable = ""
+	m.BrowsePage = 0
+	m.Status = ""
+	m.queryLogEntries = nil
+	m.queryLog.SetRows(nil)
+	m.editor.setValue("")
+	m.schemaObjects = nil
+	m.expandedDatabases = map[string]bool{}
+	m.schema.SetItems(nil)
+	m.structure.SetRows(nil)
+	m.browse.SetRows(nil)
+	m.results.SetRows(nil)
+	m.indexes.SetRows(nil)
+	m.foreignKeys.SetRows(nil)
+	m.recentPath, _ = recentConnectionsPath()
+	m.recentConnections = loadRecentConnections(m.recentPath)
+	_ = m.recent.SetItems(recentListItems(m.recentConnections))
+}
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {
 		return m.openTarget(m.Target)

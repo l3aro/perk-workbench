@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 )
 
 const browseDebounceDuration = 150 * time.Millisecond
@@ -105,6 +106,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, tea.Quit
+		}
+		if m.State == stateReady && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
+			!m.hasOverlay() && !m.formActive() && !m.Running() {
+			m.quitDialog = huh.NewForm(huh.NewGroup(
+				huh.NewSelect[string]().
+					Key("action").
+					Title("Quit?").
+				Options(
+					huh.NewOption("Disconnect", "disconnect"),
+					huh.NewOption("Quit", "quit"),
+					huh.NewOption("Cancel", "cancel"),
+				),
+			)).WithShowHelp(false).WithWidth(max(m.width/2, 40))
+			return m, m.quitDialog.Init()
 		}
 		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) {
 			switch {
@@ -265,6 +280,27 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
+	if m.quitDialog != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.quitDialog = nil
+			return m, nil
+		}
+		model, command := m.quitDialog.Update(message)
+		m.quitDialog = model.(*huh.Form)
+		if m.quitDialog.State != huh.StateCompleted {
+			return m, command
+		}
+		action := m.quitDialog.GetString("action")
+		m.quitDialog = nil
+		switch action {
+		case "quit":
+			return m, tea.Quit
+		case "disconnect":
+			m.disconnect()
+		}
+		return m, nil
+	}
+
 	if m.queryLogDetail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			switch {

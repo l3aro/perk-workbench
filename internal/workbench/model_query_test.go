@@ -335,18 +335,18 @@ func TestExecute_ignores_blank_and_repeated_requests(t *testing.T) {
 	}
 }
 
-func TestExecute_q_waits_for_matching_cancellation_before_quitting(t *testing.T) {
+func TestExecute_ctrlC_waits_for_matching_cancellation_before_quitting(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	requestID := startQuery(t, &model)
 
 	// When
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 	model = updated.(Model)
 
 	// Then
 	if command != nil || !model.Running() {
-		t.Fatalf("q did not defer quit and cancel: command=%v running=%t", command != nil, model.Running())
+		t.Fatalf("ctrl+c did not defer quit and cancel: command=%v running=%t", command != nil, model.Running())
 	}
 
 	// When

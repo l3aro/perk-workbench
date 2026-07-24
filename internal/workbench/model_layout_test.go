@@ -139,7 +139,7 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	if got := lipgloss.Height(view.Content); got > 5 {
 		t.Fatalf("compact view height = %d, want at most 5", got)
 	}
-	if !strings.Contains(view.Content, "BUBBLE WORKBENCH") || !strings.Contains(view.Content, "q quit") {
+	if !strings.Contains(view.Content, "BUBBLE WORKBENCH") || !strings.Contains(view.Content, "quit") {
 		t.Fatal("compact view does not retain header and footer")
 	}
 }
