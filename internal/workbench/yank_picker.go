@@ -51,7 +51,7 @@ func (p *yankPicker) value() string {
 	case yankStatement:
 		return p.entry.statement
 	case yankMessage:
-		return p.entry.message
+		return detailValue(p.entry.message)
 	case yankDuration:
 		return p.entry.duration.Round(time.Microsecond).String()
 	}

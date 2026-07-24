@@ -87,6 +87,43 @@ func TestQueryLogDetail_shows_statement(t *testing.T) {
 	}
 }
 
+func TestQueryLogDetail_prettyPrintsJSONAndYanksIt(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	value := `{"customer":{"name":"Ada"},"ids":[1,2]}`
+	model.queryLogDetail = &queryLogEntry{message: value}
+
+	// When
+	view := ansi.Strip(model.View().Content)
+	picker := newYankPicker(*model.queryLogDetail, 80)
+	picker.selection = string(yankMessage)
+
+	// Then
+	for _, want := range []string{"\"customer\": {", "\"name\": \"Ada\"", "\"ids\": ["} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("query log detail = %q, want formatted JSON containing %q", view, want)
+		}
+	}
+	if got, want := picker.value(), "{\n  \"customer\": {\n    \"name\": \"Ada\"\n  },\n  \"ids\": [\n    1,\n    2\n  ]\n}"; got != want {
+		t.Fatalf("copied JSON = %q, want %q", got, want)
+	}
+}
+
+func TestWorkspaceTabs_labelSchemaInspectionViews(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+
+	// When
+	view := ansi.Strip(model.workspaceView())
+
+	// Then
+	for _, want := range []string{"Columns", "Indexes", "Foreign Keys"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("workspace tabs = %q, want %q", view, want)
+		}
+	}
+}
+
 func TestQueryLogDetail_y_opens_yank_picker(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)

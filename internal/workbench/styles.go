@@ -380,7 +380,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.explainPicker != nil || m.savedQueryPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil {
 		// UV overlay path: render full UI, then overlay confirmation centered.
@@ -398,7 +398,7 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) hasConfirming() bool {
-	return m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	return m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil
 }
@@ -412,6 +412,8 @@ func (m Model) confirmContent() string {
 	switch {
 	case m.explainPicker != nil:
 		raw = m.explainPicker.form.View()
+	case m.savedQueryPicker != nil:
+		raw = m.savedQueryPicker.form.View()
 	case m.yankPicker != nil:
 		raw = m.yankPicker.form.View()
 	case m.quitDialog != nil:
@@ -507,10 +509,10 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString(d.duration.Round(time.Microsecond).String())
 	b.WriteString("\n")
 	b.WriteString("  Statement:\n    ")
-	b.WriteString(ansi.Wordwrap(safeText(d.statement), innerW-4, "\n    "))
+	b.WriteString(ansi.Wordwrap(safeText(detailValue(d.statement)), innerW-4, "\n    "))
 	b.WriteString("\n")
 	b.WriteString("  Message:  ")
-	b.WriteString(ansi.Wordwrap(safeText(d.message), innerW-14, " "))
+	b.WriteString(ansi.Wordwrap(safeText(detailValue(d.message)), innerW-14, " "))
 	b.WriteString("\n\n  y copy | e explain | enter/esc close")
 
 	// Fill background
@@ -594,7 +596,7 @@ func (m Model) queryLogContentView() string {
 }
 
 func (m Model) workspaceView() string {
-	tabs := []string{"Structure", "Browse", "SQL", "Indexes", "Foreign Keys"}
+	tabs := []string{"Columns", "Browse", "SQL", "Indexes", "Foreign Keys"}
 	for index := range tabs {
 		if workspaceTab(index) == m.Tab {
 			tabs[index] = headerStyle.Render(tabs[index])
@@ -682,7 +684,7 @@ func (m Model) footer() string {
 	if m.State == stateConnection {
 		quitKey := m.keybindings.DisplayKey("app.quit")
 		quitHint := formatFooterKey(quitKey) + " quit"
-		return safeText(m.Status + " | 1 recent | 2 form | tab controls | a add | e edit | d delete | / filter | " + quitHint)
+		return safeText(m.Status + " | 1 profiles | 2 form | tab controls | a add | e edit | d delete | / filter | " + quitHint)
 	}
 	if m.State == stateReady {
 		quitKey := m.keybindings.DisplayKey("app.quit_dialog")
