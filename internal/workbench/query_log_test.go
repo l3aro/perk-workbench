@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/table"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
@@ -83,6 +84,49 @@ func TestQueryLogDetail_shows_statement(t *testing.T) {
 	}
 	if !strings.Contains(view, statement) {
 		t.Fatalf("query log detail = %q, want statement %q", view, statement)
+	}
+}
+
+func TestQueryLogDetail_y_opens_yank_picker(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	model.queryLogDetail = &queryLogEntry{statement: "SELECT 1"}
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then
+	if model.queryLogDetail != nil {
+		t.Fatal("y did not close the detail overlay")
+	}
+	if model.yankPicker == nil {
+		t.Fatal("y did not open the yank picker")
+	}
+	if command == nil {
+		t.Fatal("yank picker init command is nil")
+	}
+}
+
+func TestQueryLogDetail_e_opens_explain_picker(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 80, 24)
+	model.databaseInfo.Product = "SQLite"
+	model.queryLogDetail = &queryLogEntry{statement: "SELECT 1"}
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+
+	// Then
+	if model.queryLogDetail != nil {
+		t.Fatal("e did not close the detail overlay")
+	}
+	if model.explainPicker == nil {
+		t.Fatal("e did not open the explain picker")
+	}
+	if command == nil {
+		t.Fatal("explain picker init command is nil")
 	}
 }
 

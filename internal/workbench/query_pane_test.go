@@ -119,23 +119,47 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 		}
 	}
 }
-
-func TestQueryLog_y_copies_selected_statement(t *testing.T) {
+func TestQueryLog_y_opens_yank_picker_and_copies_default_statement(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.appendQueryLog(queryLogEntry{statement: "SELECT 42"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 
-	// When
+	// When — y opens the yank picker
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.Status, "copied query to clipboard"; got != want {
+	if model.yankPicker == nil {
+		t.Fatal("y did not open the yank picker")
+	}
+	model = resolveYankCommand(model, command)
+
+	// When — press enter with default "Copy query statement"
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = resolveYankCommand(model, command)
+
+	// Then — copied statement to clipboard
+	if model.yankPicker != nil {
+		t.Fatal("selection did not close the yank picker")
+	}
+	if got, want := model.Status, "copied to clipboard"; got != want {
 		t.Fatalf("status = %q, want %q", got, want)
 	}
 	if command == nil {
 		t.Fatal("copy command = nil, want clipboard command")
 	}
+}
+
+func resolveYankCommand(model Model, command tea.Cmd) Model {
+	for range 4 {
+		if command == nil {
+			return model
+		}
+		updated, next := model.Update(command())
+		model, command = updated.(Model), next
+	}
+	return model
 }
