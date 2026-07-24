@@ -183,6 +183,7 @@ func (f connectionForm) targetValue() string {
 		config.Net = "tcp"
 		config.Addr = net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port))
 		config.DBName = strings.TrimSpace(f.values.target)
+		config.TLSConfig = "true"
 		return config.FormatDSN()
 	}
 	if f.values.driver == driverPostgreSQL {
@@ -192,6 +193,7 @@ func (f connectionForm) targetValue() string {
 			Host:   net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port)),
 			Path:   strings.TrimSpace(f.values.target),
 		}
+		target.RawQuery = url.Values{"sslmode": {"verify-full"}}.Encode()
 		return target.String()
 	}
 	return strings.TrimSpace(f.values.target)
