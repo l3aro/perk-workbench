@@ -152,7 +152,7 @@ func (b Keybindings) resolve(stroke string, scopes []scope) (string, bool) {
 // Match checks whether a key press triggers the given command in the
 // given scope priority order.
 func (b Keybindings) Match(msg tea.KeyPressMsg, id CommandID, scopes []scope) bool {
-	stroke := msg.Keystroke()
+	stroke := msg.String()
 	for _, s := range scopes {
 		candidates, ok := b.index[s][stroke]
 		if !ok {
@@ -170,7 +170,7 @@ func (b Keybindings) Match(msg tea.KeyPressMsg, id CommandID, scopes []scope) bo
 // ResolveAny finds any command matching a key press in the given scopes.
 // Returns ("", false) if unmatched. Prefer Match for specific commands.
 func (b Keybindings) ResolveAny(msg tea.KeyPressMsg, scopes []scope) (string, bool) {
-	stroke := msg.Keystroke()
+	stroke := msg.String()
 	for _, s := range scopes {
 		candidates, ok := b.index[s][stroke]
 		if !ok || len(candidates) == 0 {
@@ -210,7 +210,8 @@ func normalizeKeystroke(raw string) (string, error) {
 	}
 
 	// Last part is the key; everything before is modifiers.
-	key := strings.ToLower(parts[len(parts)-1])
+	key := parts[len(parts)-1]
+	keyLower := strings.ToLower(key)
 	modStrs := make([]string, 0, len(parts)-1)
 	for _, p := range parts[:len(parts)-1] {
 		p = strings.ToLower(p)
@@ -221,8 +222,8 @@ func normalizeKeystroke(raw string) (string, error) {
 	}
 
 	// Validate key.
-	isRune := len([]rune(key)) == 1
-	if !isRune && !validNamedKeys[key] {
+	isRune := len([]rune(keyLower)) == 1
+	if !isRune && !validNamedKeys[keyLower] {
 		return "", fmt.Errorf("unknown key %q in keystroke %q", parts[len(parts)-1], raw)
 	}
 	if isRune && len(modStrs) > 0 {
@@ -256,8 +257,8 @@ func normalizeKeystroke(raw string) (string, error) {
 		seen[m] = true
 	}
 
-	// Map "escape" to "esc" to match Keystroke() output.
-	if key == "escape" {
+	// Map "escape" / "ESCAPE" / "Escape" to "esc" to match Keystroke() output.
+	if keyLower == "escape" {
 		key = "esc"
 	}
 
