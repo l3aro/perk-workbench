@@ -24,6 +24,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(window.Width, window.Height)
 		return m, nil
 	}
+	if m.commandPalette.visible {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok {
+			selectMsg, close, consumed := m.commandPalette.handleKey(keyPress)
+			if consumed && !close && selectMsg.id == "" {
+				return m, nil
+			}
+			if close && selectMsg.id == "" {
+				return m, nil
+			}
+			if selectMsg.id != "" {
+				return m.handlePaletteCommand(selectMsg.id)
+			}
+		}
+	}
 	if m.explainPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
 			m.explainPicker = nil
@@ -74,6 +88,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if command, handled := m.openExternalEditor(); handled {
 				return m, command
 			}
+		}
+		if m.keybindings.Match(message, "app.palette", []scope{scopeGlobal}) && !m.hasOverlay() {
+			m.commandPalette = newCommandPalette(m)
+			m.commandPalette.visible = true
+			return m, nil
 		}
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schema.SettingFilter() &&
@@ -541,6 +560,190 @@ func (m Model) formActive() bool {
 	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active() || m.foreignKeyForm.active()
 }
 
+// handlePaletteCommand dispatches a command selected from the palette.
+// It returns a (potentially mutated) model and any command to run.
+func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
+	m.commandPalette.visible = false
+
+	switch id {
+	case "app.quit":
+		return m, tea.Quit
+	case "editor.external":
+		if cmd, handled := m.openExternalEditor(); handled {
+			return m, cmd
+		}
+		return m, nil
+	case "query.execute":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
+			return m.startQuery()
+		}
+		return m, nil
+	case "query.cancel":
+		if m.Running() {
+			m.cancelQuery()
+		}
+		return m, nil
+	case "focus.schema":
+		if m.State == stateReady {
+			m.Focus = focusSchema
+			m.queryLogPendingG = false
+			m.editor.text.Blur()
+			m.blurTables()
+		}
+		return m, nil
+	case "focus.workspace":
+		if m.State == stateReady {
+			m.Focus = focusWorkspace
+			m.queryLogPendingG = false
+			m.focusActiveTable()
+		}
+		return m, nil
+	case "focus.query_log":
+		if m.State == stateReady {
+			m.Focus = focusQueryLog
+			m.queryLogPendingG = false
+			m.editor.text.Blur()
+			m.blurTables()
+			m.queryLog.Focus()
+			if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
+				m.queryLog.SetCursor(0)
+			}
+		}
+		return m, nil
+	case "focus.toggle_fullscreen":
+		m.fullscreen = !m.fullscreen
+		m.layout(m.width, m.height)
+		return m, nil
+	case "focus.cycle_forward":
+		m.cycleFocus(true)
+		return m, nil
+	case "focus.cycle_backward":
+		m.cycleFocus(false)
+		return m, nil
+	case "workspace.escape_to_schema":
+		if m.State == stateReady && m.Focus == focusWorkspace && !m.formActive() {
+			m.Focus = focusSchema
+			m.editor.text.Blur()
+			m.blurTables()
+		}
+		return m, nil
+	case "workspace.tab_next":
+		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
+			m.toggleTab(true)
+		}
+		return m, nil
+	case "workspace.tab_prev":
+		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
+			m.toggleTab(false)
+		}
+		return m, nil
+	case "schema.select_table":
+		if m.State == stateReady && m.Focus == focusSchema {
+			if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+				if item.root {
+					m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
+					return m, m.rebuildSchemaTree()
+				}
+				m.SelectTable(m.schemaTable(item))
+				m.structureColumns = nil
+				m.foreignKeyInfo = nil
+				m.referencingForeignKeyInfo = nil
+				m.relationshipDiagram = false
+				m.focusActiveTable()
+				return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+			}
+		}
+		return m, nil
+	case "picker.reload":
+		if m.State == statePicking {
+			m.Status = "reloading picker"
+			return m, readDirectory(m.pickerDir)
+		}
+		return m, nil
+	case "picker.select":
+		if m.State == statePicking {
+			if item, ok := m.picker.SelectedItem().(pickerItem); ok {
+				return m, selectPickerItem(item.raw)
+			}
+		}
+		return m, nil
+	case "failure.return_to_picker":
+		if m.State == stateFailure {
+			m.RecoverToPicker("choose another database")
+			return m, readDirectory(m.pickerDir)
+		}
+		return m, nil
+	case "browse.next_page":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() {
+			if m.browseLoading {
+				return m, nil
+			}
+			m.browsePageTag++
+			tag := m.browsePageTag
+			table := m.SelectedTable
+			return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
+				return browseDebounceMsg{tag: tag, delta: 1, table: table}
+			})
+		}
+		return m, nil
+	case "browse.prev_page":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() {
+			if m.browseLoading {
+				return m, nil
+			}
+			m.browsePageTag++
+			tag := m.browsePageTag
+			table := m.SelectedTable
+			return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
+				return browseDebounceMsg{tag: tag, delta: -1, table: table}
+			})
+		}
+		return m, nil
+	case "foreign_keys.toggle_diagram":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys {
+			m.relationshipDiagram = !m.relationshipDiagram
+		}
+		return m, nil
+	case "indexes.create":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.indexForm.active() {
+			return m, m.openIndexForm(nil)
+		}
+		return m, nil
+	case "foreign_keys.create":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.foreignKeyForm.active() {
+			return m, m.openForeignKeyForm(nil)
+		}
+		return m, nil
+	case "connection.switch_to_form":
+		if m.State == stateConnection && m.connection.focus == connectionFocusRecent {
+			m.connection.focus = connectionFocusForm
+		}
+		return m, nil
+	case "connection.switch_to_list":
+		if m.State == stateConnection && m.connection.focus == connectionFocusForm {
+			m.connection.setFocus(connectionFocusRecent)
+		}
+		return m, nil
+	case "connection.add":
+		if m.State == stateConnection && m.connection.focus == connectionFocusRecent {
+			return m, m.newConnection()
+		}
+		return m, nil
+	case "connection.edit":
+		if m.State == stateConnection && m.connection.focus == connectionFocusRecent {
+			return m, m.editSelectedRecentConnection()
+		}
+		return m, nil
+	case "connection.delete":
+		if m.State == stateConnection && m.connection.focus == connectionFocusRecent {
+			m.deleteSelectedRecentConnection()
+			return m, nil
+		}
+		return m, nil
+	default:
+		return m, nil
+	}
+}
 func (m Model) sqlEditorActive() bool {
 	return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
 }

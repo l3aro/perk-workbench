@@ -68,6 +68,7 @@ type Model struct {
 	recentConnections                                                                              []recentConnection
 	schemaObjects                                                                                  []sharedsql.SchemaObject
 	expandedDatabases                                                                              map[string]bool
+	commandPalette                                                                                 *commandPalette
 	recentPath                                                                                     string
 	keybindings                                                                                    Keybindings
 	width, height, schemaWidth, editorWidth                                                        int
@@ -138,6 +139,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		connection:        newConnectionForm(),
 		keybindings:       DefaultKeybindings(),
 	}
+	model.commandPalette = newCommandPalette(model)
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()
@@ -166,7 +168,10 @@ func (m Model) openTarget(target string) tea.Cmd {
 
 func (m *Model) Service() sharedsql.Service { return m.Database }
 
-func (m *Model) SetKeybindings(b Keybindings) { m.keybindings = b }
+func (m *Model) SetKeybindings(b Keybindings) {
+	m.keybindings = b
+	m.commandPalette = newCommandPalette(*m)
+}
 
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {

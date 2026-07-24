@@ -365,6 +365,14 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer()))
+	if m.commandPalette.visible {
+		canvas := uv.NewScreenBuffer(m.width, m.height)
+		screen.Clear(canvas)
+		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
+		m.commandPalette.paletteDraw(canvas, m.width, m.height)
+		view.SetContent(canvas.Render())
+		return view
+	}
 	if m.queryLogDetail != nil {
 		// Full-screen overlay for query log detail
 		canvas := uv.NewScreenBuffer(m.width, m.height)
@@ -394,6 +402,10 @@ func (m Model) hasConfirming() bool {
 	return m.explainPicker != nil || m.yankPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil
+}
+
+func (m Model) hasOverlay() bool {
+	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -677,7 +689,7 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen")
+		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "^p palette")
 		parts = append(parts, "q quit")
 		return safeText(strings.Join(parts, " | "))
 	}

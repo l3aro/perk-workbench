@@ -11,6 +11,7 @@ var defaultDefs = []commandDef{
 	{id: "query.execute", scope: scopeGlobal, keys: []string{"f5", "ctrl+enter", "ctrl+s"}, label: "run"},
 	{id: "query.cancel", scope: scopeGlobal, keys: []string{"esc"}, label: "cancel"},
 	{id: "focus.schema", scope: scopeGlobal, keys: []string{"1"}, label: "schema"},
+	{id: "app.palette", scope: scopeGlobal, keys: []string{"ctrl+p"}, label: "palette"},
 	{id: "focus.workspace", scope: scopeGlobal, keys: []string{"2"}, label: "workspace"},
 	{id: "focus.query_log", scope: scopeGlobal, keys: []string{"3"}, label: "log"},
 	{id: "focus.toggle_fullscreen", scope: scopeGlobal, keys: []string{"f"}, label: "fullscreen"},
