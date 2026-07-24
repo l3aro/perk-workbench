@@ -28,6 +28,7 @@ type columnForm struct {
 	formType                                string
 	hadDefault, typeChanged, saving         bool
 	confirmationSave                        bool
+	keybindings                             Keybindings
 }
 
 type columnFormValues struct {
@@ -44,6 +45,7 @@ func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnTy
 		primaryKey:   column.PrimaryKey,
 		typeOptions:  typeOptions,
 		values:       &columnFormValues{name: column.Name, nullable: column.Nullable},
+		keybindings:  DefaultKeybindings(),
 	}
 	if index, values, ok := sharedsql.MatchColumnType(typeOptions, column.Type); ok {
 		form.selectType(index, values)
@@ -67,6 +69,7 @@ func (m *Model) openColumnForm() tea.Cmd {
 		return nil
 	}
 	m.columnForm = newColumnForm(m.structureColumns[row], sharedsql.ColumnTypes(m.databaseInfo))
+	m.columnForm.keybindings = m.keybindings
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
 	return m.columnForm.form.Init()
@@ -93,10 +96,10 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	if !ok {
 		return nil, columnFormNoAction
 	}
-	switch keyPress.String() {
-	case "i", "enter":
+	switch {
+	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), columnFormNoAction
-	case "ctrl+enter", "ctrl+s", "f5":
+	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {
 			f.validationError = err.Error()
 			return nil, columnFormNoAction
@@ -104,13 +107,13 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		f.beginConfirmation(true)
 		controller.beginConfirm()
 		return f.confirmation.Init(), columnFormNoAction
-	case "esc", "escape":
+	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), columnFormNoAction
-	case "j", "down":
+	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.nextField(), columnFormNoAction
-	case "k", "up":
+	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.previousField(), columnFormNoAction
 	}
 	return nil, columnFormNoAction

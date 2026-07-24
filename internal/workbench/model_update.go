@@ -70,12 +70,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.browseLoading = true
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
-		if message.Key().Code == 'e' && message.Key().Mod == tea.ModCtrl {
+		if m.keybindings.Match(message, "editor.external", []scope{scopeGlobal}) {
 			if command, handled := m.openExternalEditor(); handled {
 				return m, command
 			}
 		}
-		if message.String() == "ctrl+c" || (message.String() == "q" && !m.formActive() && !m.schema.SettingFilter() && !(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) && !(m.sqlEditorActive() && m.formMode.editing()) && (m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.value == "")) {
+		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
+		if quit && !m.formActive() && !m.schema.SettingFilter() &&
+			!(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
+			!(m.sqlEditorActive() && m.formMode.editing()) &&
+			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.value == "") {
 			if m.Running() {
 				m.RequestQuit()
 				m.cancelQuery()
@@ -84,19 +88,19 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) {
-			switch message.String() {
-			case "1":
+			switch {
+			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
 				m.queryLogPendingG = false
 				m.editor.text.Blur()
 				m.blurTables()
 				return m, nil
-			case "2":
+			case m.keybindings.Match(message, "focus.workspace", []scope{scopeGlobal}):
 				m.Focus = focusWorkspace
 				m.queryLogPendingG = false
 				m.focusActiveTable()
 				return m, nil
-			case "3":
+			case m.keybindings.Match(message, "focus.query_log", []scope{scopeGlobal}):
 				m.Focus = focusQueryLog
 				m.queryLogPendingG = false
 				m.editor.text.Blur()
@@ -106,22 +110,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.queryLog.SetCursor(0)
 				}
 				return m, nil
-			case "f":
+			case m.keybindings.Match(message, "focus.toggle_fullscreen", []scope{scopeGlobal}):
 				m.fullscreen = !m.fullscreen
 				m.layout(m.width, m.height)
 				return m, nil
-			case "tab", "]":
+			case m.keybindings.Match(message, "focus.cycle_forward", []scope{scopeGlobal}):
 				m.cycleFocus(true)
 				return m, nil
-			case "shift+tab", "[":
+			case m.keybindings.Match(message, "focus.cycle_backward", []scope{scopeGlobal}):
 				m.cycleFocus(false)
 				return m, nil
 			}
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && m.executeKey(message) {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL &&
+			m.keybindings.Match(message, "query.execute", []scope{scopeGlobal}) {
 			return m.startQuery()
 		}
-		if m.Running() && message.Key().Code == tea.KeyEscape {
+		if m.Running() && m.keybindings.Match(message, "query.cancel", []scope{scopeGlobal}) {
 			m.cancelQuery()
 			return m, nil
 		}
@@ -132,17 +137,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case formRouteHuh:
 				return m, m.editor.update(message)
 			case formRouteParent:
-				if message.String() == "i" {
+				if m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
 					return m, m.formMode.beginInsert(m.editor)
 				}
 			}
 		}
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
-			switch message.String() {
-			case "L":
+			switch {
+			case m.keybindings.Match(message, "workspace.tab_next", []scope{scopeView}):
 				m.toggleTab(true)
 				return m, nil
-			case "H":
+			case m.keybindings.Match(message, "workspace.tab_prev", []scope{scopeView}):
 				m.toggleTab(false)
 				return m, nil
 			}
@@ -243,12 +248,12 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.queryLogDetail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
-			switch keyPress.String() {
-			case "y":
+			switch {
+			case m.keybindings.Match(keyPress, "detail.yank", []scope{scopeView, scopeGlobal}):
 				m.yankPicker = newYankPicker(*m.queryLogDetail, m.tableViewportWidth)
 				m.queryLogDetail = nil
 				return m, m.yankPicker.form.Init()
-			case "e":
+			case m.keybindings.Match(keyPress, "detail.explain", []scope{scopeView, scopeGlobal}):
 				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLogDetail.statement, m.tableViewportWidth)
 				if explain == nil {
 					return m, nil
@@ -256,7 +261,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.explainPicker = explain
 				m.queryLogDetail = nil
 				return m, m.explainPicker.form.Init()
-			case "enter", "esc":
+			case m.keybindings.Match(keyPress, "detail.close", []scope{scopeView, scopeGlobal}):
 				m.queryLogDetail = nil
 				return m, nil
 			}
@@ -268,11 +273,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	case stateConnection:
 		return m.updateConnection(message)
 	case statePicking:
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "r" {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.reload", []scope{scopeView, scopeGlobal}) {
 			m.Status = "reloading picker"
 			return m, readDirectory(m.pickerDir)
 		}
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.select", []scope{scopeView, scopeGlobal}) {
 			if item, ok := m.picker.SelectedItem().(pickerItem); ok {
 				return m, selectPickerItem(item.raw)
 			}
@@ -284,7 +289,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		var command tea.Cmd
 		switch m.Focus {
 		case focusSchema:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.String() == "enter" {
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}) {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					if item.root {
 						m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
@@ -302,7 +307,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.schema, command = m.schema.Update(message)
 			return m, command
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.formMode.editing()) && keyPress.String() == "esc" {
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.formMode.editing()) &&
+				m.keybindings.Match(keyPress, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
 				m.Focus = focusSchema
 				m.editor.text.Blur()
 				m.blurTables()
@@ -321,7 +327,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, command
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "i") {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}) {
 					return m, m.openColumnForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
@@ -340,23 +346,32 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, command
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "i") {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "n" || keyPress.String() == "p") {
-					if m.browseLoading {
-						return m, nil
+				if keyPress, ok := message.(tea.KeyPressMsg); ok {
+					switch {
+					case m.keybindings.Match(keyPress, "browse.next_page", []scope{scopeView, scopeGlobal}):
+						if m.browseLoading {
+							return m, nil
+						}
+						m.browsePageTag++
+						tag := m.browsePageTag
+						table := m.SelectedTable
+						return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
+							return browseDebounceMsg{tag: tag, delta: 1, table: table}
+						})
+					case m.keybindings.Match(keyPress, "browse.prev_page", []scope{scopeView, scopeGlobal}):
+						if m.browseLoading {
+							return m, nil
+						}
+						m.browsePageTag++
+						tag := m.browsePageTag
+						table := m.SelectedTable
+						return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
+							return browseDebounceMsg{tag: tag, delta: -1, table: table}
+						})
 					}
-					delta := 1
-					if keyPress.String() == "p" {
-						delta = -1
-					}
-					m.browsePageTag++
-					tag := m.browsePageTag
-					table := m.SelectedTable
-					return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
-						return browseDebounceMsg{tag: tag, delta: delta, table: table}
-					})
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.browse, &m.browseOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
@@ -385,16 +400,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, command
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch keyPress.String() {
-					case "n":
+					switch {
+					case m.keybindings.Match(keyPress, "indexes.create", []scope{scopeView, scopeGlobal}):
 						return m, m.openIndexForm(nil)
-					case "enter", "i":
+					case m.keybindings.Match(keyPress, "indexes.edit", []scope{scopeView, scopeGlobal}):
 						row := m.indexes.Cursor()
 						if row >= 0 && row < len(m.indexInfo) {
 							return m, m.openIndexForm(&m.indexInfo[row])
 						}
 						return m, nil
-					case "d":
+					case m.keybindings.Match(keyPress, "indexes.delete", []scope{scopeView, scopeGlobal}):
 						row := m.indexes.Cursor()
 						if row >= 0 && row < len(m.indexInfo) {
 							_ = m.openIndexForm(&m.indexInfo[row])
@@ -425,19 +440,19 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, command
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch keyPress.String() {
-					case "g":
+					switch {
+					case m.keybindings.Match(keyPress, "foreign_keys.toggle_diagram", []scope{scopeView, scopeGlobal}):
 						m.relationshipDiagram = !m.relationshipDiagram
 						return m, nil
-					case "n":
+					case m.keybindings.Match(keyPress, "foreign_keys.create", []scope{scopeView, scopeGlobal}):
 						return m, m.openForeignKeyForm(nil)
-					case "enter", "i":
+					case m.keybindings.Match(keyPress, "foreign_keys.edit", []scope{scopeView, scopeGlobal}):
 						row := m.foreignKeys.Cursor()
 						if row >= 0 && row < len(m.foreignKeyInfo) {
 							return m, m.openForeignKeyForm(&m.foreignKeyInfo[row])
 						}
 						return m, nil
-					case "d":
+					case m.keybindings.Match(keyPress, "foreign_keys.delete", []scope{scopeView, scopeGlobal}):
 						row := m.foreignKeys.Cursor()
 						if row >= 0 && row < len(m.foreignKeyInfo) {
 							_ = m.openForeignKeyForm(&m.foreignKeyInfo[row])
@@ -456,7 +471,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, command
 		case focusQueryLog:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok {
-				if keyPress.String() != "g" {
+				if !m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}) {
 					m.queryLogPendingG = false
 				}
 				if scrollTable(&m.queryLog, &m.queryLogOffset, m.tableViewportWidth, keyPress) {
@@ -466,15 +481,15 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if len(rows) == 0 {
 					return m, nil
 				}
-				switch keyPress.String() {
-				case "y":
+				switch {
+				case m.keybindings.Match(keyPress, "query_log.yank", []scope{scopeView, scopeGlobal}):
 					cursor := m.queryLog.Cursor()
 					if cursor < 0 || cursor >= len(m.queryLogEntries) {
 						return m, nil
 					}
 					m.yankPicker = newYankPicker(m.queryLogEntries[cursor], m.tableViewportWidth)
 					return m, m.yankPicker.form.Init()
-				case "e":
+				case m.keybindings.Match(keyPress, "query_log.explain", []scope{scopeView, scopeGlobal}):
 					cursor := m.queryLog.Cursor()
 					if cursor < 0 || cursor >= len(m.queryLogEntries) {
 						return m, nil
@@ -484,13 +499,13 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 					return m, m.explainPicker.form.Init()
-				case "j":
+				case m.keybindings.Match(keyPress, "query_log.cursor_down", []scope{scopeView, scopeGlobal}):
 					m.queryLog.SetCursor(min(m.queryLog.Cursor()+1, len(rows)-1))
 					return m, nil
-				case "k":
+				case m.keybindings.Match(keyPress, "query_log.cursor_up", []scope{scopeView, scopeGlobal}):
 					m.queryLog.SetCursor(max(m.queryLog.Cursor()-1, 0))
 					return m, nil
-				case "g":
+				case m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}):
 					if m.queryLogPendingG {
 						m.queryLog.SetCursor(0)
 						m.queryLogPendingG = false
@@ -498,10 +513,10 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.queryLogPendingG = true
 					}
 					return m, nil
-				case "G":
+				case m.keybindings.Match(keyPress, "query_log.top_last", []scope{scopeView, scopeGlobal}):
 					m.queryLog.SetCursor(len(rows) - 1)
 					return m, nil
-				case "enter":
+				case m.keybindings.Match(keyPress, "query_log.detail", []scope{scopeView, scopeGlobal}):
 					cursor := m.queryLog.Cursor()
 					if cursor >= 0 && cursor < len(m.queryLogEntries) {
 						entry := m.queryLogEntries[cursor]
@@ -514,7 +529,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, command
 		}
 	case stateFailure:
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && (keyPress.String() == "enter" || keyPress.String() == "esc") {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "failure.return_to_picker", []scope{scopeView, scopeGlobal}) {
 			m.RecoverToPicker("choose another database")
 			return m, readDirectory(m.pickerDir)
 		}

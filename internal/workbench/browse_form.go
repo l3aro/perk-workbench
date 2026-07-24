@@ -29,6 +29,7 @@ type browseForm struct {
 	pendingG, saving   bool
 	confirmationSave   bool
 	scrollOffset       int
+	keybindings        Keybindings
 }
 
 type browseFormValues struct {
@@ -49,6 +50,7 @@ func (m *Model) openBrowseForm() tea.Cmd {
 		return nil
 	}
 	m.browseForm = form
+	m.browseForm.keybindings = m.keybindings
 	m.browseForm.table = m.SelectedTable
 	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
 		m.browseForm.identifier = m.actionIdentifier
@@ -68,9 +70,10 @@ func newBrowseForm(columns []string, original []*string, info []sharedsql.Column
 		}
 	}
 	form := browseForm{
-		columns:  append([]string(nil), columns...),
-		original: append([]*string(nil), original...),
-		values:   &browseFormValues{fields: make([]string, len(original)), nulls: make([]bool, len(original))},
+		columns:     append([]string(nil), columns...),
+		original:    append([]*string(nil), original...),
+		values:      &browseFormValues{fields: make([]string, len(original)), nulls: make([]bool, len(original))},
+		keybindings: DefaultKeybindings(),
 	}
 	for index, value := range original {
 		if value == nil {
@@ -110,14 +113,14 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 	if !ok {
 		return nil, browseFormNoAction
 	}
-	switch keyPress.String() {
-	case "i", "enter":
+	switch {
+	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		col := f.focusedColumn()
 		if col >= 0 {
 			f.values.nulls[col] = false
 		}
 		return controller.beginHuh(f.focus()), browseFormNoAction
-	case "n":
+	case f.keybindings.Match(keyPress, "browse_form.set_null", []scope{scopeView, scopeGlobal}):
 		col := f.focusedColumn()
 		if col >= 0 {
 			f.values.nulls[col] = true
@@ -126,28 +129,28 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 		f.pendingG = false
 		f.rebuildForm()
 		return f.form.Init(), browseFormNoAction
-	case "ctrl+enter", "ctrl+s", "f5":
+	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(true)
 		controller.beginConfirm()
 		return f.confirmation.Init(), browseFormNoAction
-	case "esc", "escape":
+	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), browseFormNoAction
-	case "j", "down":
+	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.pendingG = false
 		return f.nextField(), browseFormNoAction
-	case "k", "up":
+	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.pendingG = false
 		return f.previousField(), browseFormNoAction
-	case "g":
+	case f.keybindings.Match(keyPress, "browse_form.field_top", []scope{scopeView, scopeGlobal}):
 		if f.pendingG {
 			f.pendingG = false
 			return f.firstField(), browseFormNoAction
 		}
 		f.pendingG = true
 		return nil, browseFormNoAction
-	case "G":
+	case f.keybindings.Match(keyPress, "browse_form.field_bottom", []scope{scopeView, scopeGlobal}):
 		f.pendingG = false
 		return f.lastField(), browseFormNoAction
 	default:

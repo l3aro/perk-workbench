@@ -69,6 +69,7 @@ type Model struct {
 	schemaObjects                                                                                  []sharedsql.SchemaObject
 	expandedDatabases                                                                              map[string]bool
 	recentPath                                                                                     string
+	keybindings                                                                                    Keybindings
 	width, height, schemaWidth, editorWidth                                                        int
 	workspaceHeight, queryLogHeight                                                                int
 	editorHeight, resultsHeight, tableViewportWidth                                                int
@@ -135,6 +136,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		editor:            newEditor(),
 		formMode:          &formModeController{},
 		connection:        newConnectionForm(),
+		keybindings:       DefaultKeybindings(),
 	}
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
@@ -162,7 +164,9 @@ func (m Model) openTarget(target string) tea.Cmd {
 	}
 }
 
-func (m Model) Service() sharedsql.Service { return m.Database }
+func (m *Model) Service() sharedsql.Service { return m.Database }
+
+func (m *Model) SetKeybindings(b Keybindings) { m.keybindings = b }
 
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {

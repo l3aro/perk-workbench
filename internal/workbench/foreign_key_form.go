@@ -25,6 +25,7 @@ type foreignKeyForm struct {
 	width                                int
 	saving                               bool
 	confirmationSave, confirmationDelete bool
+	keybindings                          Keybindings
 }
 
 type foreignKeyFormValues struct {
@@ -34,7 +35,7 @@ type foreignKeyFormValues struct {
 }
 
 func newForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) foreignKeyForm {
-	form := foreignKeyForm{values: &foreignKeyFormValues{onDelete: "NO ACTION", onUpdate: "NO ACTION"}}
+	form := foreignKeyForm{values: &foreignKeyFormValues{onDelete: "NO ACTION", onUpdate: "NO ACTION"}, keybindings: DefaultKeybindings()}
 	if foreignKey != nil {
 		form.previous = foreignKey.ID
 		form.values.columns = strings.Join(foreignKey.Columns, ", ")
@@ -70,10 +71,10 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 	if !ok {
 		return nil, foreignKeyFormNoAction
 	}
-	switch keyPress.String() {
-	case "i", "enter":
+	switch {
+	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), foreignKeyFormNoAction
-	case "ctrl+enter", "ctrl+s", "f5":
+	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {
 			f.showValidationError()
 			return nil, foreignKeyFormNoAction
@@ -81,19 +82,19 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 		f.beginConfirmation(true, false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), foreignKeyFormNoAction
-	case "esc", "escape":
+	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(false, false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), foreignKeyFormNoAction
-	case "d":
+	case f.keybindings.Match(keyPress, "form.delete", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.previous != "" {
 			f.beginConfirmation(false, true)
 			controller.beginConfirm()
 			return f.confirmation.Init(), foreignKeyFormNoAction
 		}
-	case "j", "down":
+	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.form.NextField(), foreignKeyFormNoAction
-	case "k", "up":
+	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.form.PrevField(), foreignKeyFormNoAction
 	}
 	return nil, foreignKeyFormNoAction

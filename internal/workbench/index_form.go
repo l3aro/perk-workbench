@@ -31,6 +31,7 @@ type indexForm struct {
 	saving             bool
 	confirmationSave   bool
 	confirmationDelete bool
+	keybindings        Keybindings
 }
 
 type indexFormValues struct {
@@ -40,7 +41,7 @@ type indexFormValues struct {
 }
 
 func newIndexForm(index *sharedsql.IndexInfo) indexForm {
-	form := indexForm{values: &indexFormValues{kind: indexKindNormal}}
+	form := indexForm{values: &indexFormValues{kind: indexKindNormal}, keybindings: DefaultKeybindings()}
 	if index != nil {
 		form.previous, form.values.name, form.values.columns = index.Name, index.Name, strings.Join(index.Columns, ", ")
 		switch {
@@ -77,10 +78,10 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 	if !ok {
 		return nil, indexFormNoAction
 	}
-	switch keyPress.String() {
-	case "i", "enter":
+	switch {
+	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), indexFormNoAction
-	case "ctrl+enter", "ctrl+s", "f5":
+	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {
 			f.showValidationError()
 			return nil, indexFormNoAction
@@ -88,19 +89,19 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 		f.beginConfirmation(true, false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), indexFormNoAction
-	case "esc", "escape":
+	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(false, false)
 		controller.beginConfirm()
 		return f.confirmation.Init(), indexFormNoAction
-	case "d":
+	case f.keybindings.Match(keyPress, "form.delete", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.previous != "" {
 			f.beginConfirmation(false, true)
 			controller.beginConfirm()
 			return f.confirmation.Init(), indexFormNoAction
 		}
-	case "j", "down":
+	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.form.NextField(), indexFormNoAction
-	case "k", "up":
+	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.form.PrevField(), indexFormNoAction
 	}
 	return nil, indexFormNoAction

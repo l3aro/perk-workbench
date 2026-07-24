@@ -151,15 +151,15 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.connection.focus == connectionFocusRecent {
 		keyPress, ok := message.(tea.KeyPressMsg)
 		if ok {
-			switch keyPress.String() {
-			case "2":
+			switch {
+			case m.keybindings.Match(keyPress, "connection.switch_to_form", []scope{scopeView, scopeGlobal}):
 				m.connection.focus = connectionFocusForm
 				return m, nil
-			case "a":
+			case m.keybindings.Match(keyPress, "connection.add", []scope{scopeView, scopeGlobal}):
 				return m, m.newConnection()
-			case "e", "enter":
+			case m.keybindings.Match(keyPress, "connection.edit", []scope{scopeView, scopeGlobal}):
 				return m, m.editSelectedRecentConnection()
-			case "d":
+			case m.keybindings.Match(keyPress, "connection.delete", []scope{scopeView, scopeGlobal}):
 				m.deleteSelectedRecentConnection()
 				return m, nil
 			}
@@ -170,7 +170,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	keyPress, isKeyPress := message.(tea.KeyPressMsg)
 	if isKeyPress && m.connection.confirmation == nil && m.connectionActionFocused() &&
-		keyPress.Key().Code == tea.KeyEnter && keyPress.Key().Mod == 0 {
+		m.keybindings.Match(keyPress, "connection.action_enter", []scope{scopeView, scopeGlobal}) {
 		m.formMode.mode = formModeNormal
 		m.connection.blur()
 		if m.connection.values.action == connectionActionTest {
@@ -178,7 +178,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.openConnection()
 	}
-	if isKeyPress && m.connection.confirmation == nil && m.executeKey(keyPress) {
+	if isKeyPress && m.connection.confirmation == nil && m.keybindings.Match(keyPress, "connection.execute", []scope{scopeView, scopeGlobal}) {
 		if err := m.connection.validate(); err != nil {
 			m.Status = safeText(err.Error())
 			return m, m.connection.showValidationError()
@@ -222,15 +222,15 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	}
-	switch keyPress.String() {
-	case "1":
+	switch {
+	case m.keybindings.Match(keyPress, "connection.switch_to_list", []scope{scopeView, scopeGlobal}):
 		m.connection.setFocus(connectionFocusRecent)
 		return m, nil
-	case "i", "enter":
+	case m.keybindings.Match(keyPress, "connection.edit_field", []scope{scopeView, scopeGlobal}):
 		return m, m.formMode.beginHuh(m.connection.focusForm())
-	case "j", "down":
+	case m.keybindings.Match(keyPress, "connection.field_next", []scope{scopeView, scopeGlobal}):
 		return m, m.connection.form.NextField()
-	case "k", "up":
+	case m.keybindings.Match(keyPress, "connection.field_prev", []scope{scopeView, scopeGlobal}):
 		return m, m.connection.form.PrevField()
 	}
 	return m, nil

@@ -130,6 +130,7 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 
 func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd {
 	m.foreignKeyForm = newForeignKeyForm(foreignKey)
+	m.foreignKeyForm.keybindings = m.keybindings
 	m.foreignKeyForm.setWidth(m.tableViewportWidth)
 	return m.foreignKeyForm.form.Init()
 }

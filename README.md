@@ -96,6 +96,43 @@ The container cannot access the native desktop clipboard; the terminal forwards 
 - `q` quits when the editor is empty or another pane owns focus. In an editor with text, `q` is inserted as text.
 - Raw `Ctrl+C` requests quit. If a query is running, the query is canceled first and the program exits after cancellation completes.
 
+### Custom key bindings
+
+Key bindings are configurable through `$XDG_CONFIG_HOME/perk/keybindings.json`. The file path is
+`~/.config/perk/keybindings.json` on Linux, and the platform equivalent on macOS and Windows.
+
+Commands can be grouped by their dotted prefix:
+
+```json
+{
+  "app": {
+    "quit": ["ctrl+q"]
+  },
+  "query": {
+    "execute": ["f1"],
+    "cancel": ["esc"]
+  },
+  "form": {
+    "save": []
+  }
+}
+```
+
+Commands with no group, or a mix of both formats, also work:
+
+```json
+{
+  "focus.schema": ["f1"],
+  "query": { "execute": ["f5"] }
+}
+```
+
+- Omitted commands retain their built-in defaults.
+- A listed array replaces the command's default key aliases.
+- An empty array (`[]`) disables the command.
+- Unknown command IDs, invalid key names, or malformed JSON cause the program to print an error and exit.
+- Keys active in narrower scopes (forms, active pane) take precedence over global bindings.
+
 ### Editor
 
 The SQL editor starts in normal mode. Press `i` to enter text, `Escape` to return to normal mode, and `Ctrl+E` in insert mode to edit SQL through `$EDITOR`.

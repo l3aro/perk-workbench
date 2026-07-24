@@ -79,6 +79,7 @@ func TestForeignKeysTab_loadsAndManagesForeignKeys(t *testing.T) {
 func TestForeignKeyForm_requiredFieldsRenderAndBlockConfirmation(t *testing.T) {
 	// Given
 	form := newForeignKeyForm(nil)
+	form.keybindings = DefaultKeybindings()
 	form.setWidth(80)
 	_ = form.form.Init()
 
@@ -99,6 +100,7 @@ func TestForeignKeyForm_requiredFieldsRenderAndBlockConfirmation(t *testing.T) {
 		t.Run(test.field, func(t *testing.T) {
 			// Given
 			form := newForeignKeyForm(nil)
+			form.keybindings = DefaultKeybindings()
 			form.setWidth(80)
 			_ = form.form.Init()
 			form.values.columns, form.values.referenceTable, form.values.referenceColumns = test.columns, test.referenceTable, test.referenceColumns
@@ -127,6 +129,7 @@ func TestForeignKeyForm_invalidColumnListsBlockConfirmation(t *testing.T) {
 		t.Run(test.field, func(t *testing.T) {
 			// Given
 			form := newForeignKeyForm(nil)
+			form.keybindings = DefaultKeybindings()
 			form.values.columns, form.values.referenceTable, form.values.referenceColumns = test.columns, "parents", test.referenceColumns
 
 			// When
@@ -144,6 +147,7 @@ func TestForeignKeyForm_invalidColumnListsBlockConfirmation(t *testing.T) {
 func TestForeignKeyForm_huhInputsBuildForeignKeyChange(t *testing.T) {
 	// Given
 	form := newForeignKeyForm(nil)
+	form.keybindings = DefaultKeybindings()
 	controller := &formModeController{}
 	_ = form.form.Init()
 

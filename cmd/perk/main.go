@@ -25,6 +25,14 @@ func parseTarget(args []string) (string, error) {
 	}
 }
 
+func loadKeybindings() (workbench.Keybindings, error) {
+	path := workbench.KeybindingsPath()
+	if path == "" {
+		return workbench.DefaultKeybindings(), nil
+	}
+	return workbench.LoadKeybindings(path)
+}
+
 func main() {
 	target, err := parseTarget(os.Args[1:])
 	if err != nil {
@@ -39,10 +47,20 @@ func main() {
 
 func run(target string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// Native clipboard support is optional: OSC 52 remains available in
 	// headless environments such as the development container.
 	_ = clipboard.Init()
+
+	keybindings, err := loadKeybindings()
+	if err != nil {
+		return err
+	}
+
 	model := workbench.New(target, ctx, database.Open)
+	model.SetKeybindings(keybindings)
+
 	final, runErr := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
