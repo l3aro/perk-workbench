@@ -39,6 +39,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if m.queryConfirmation != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.queryConfirmation = nil
+			return m, nil
+		}
+		form, command := m.queryConfirmation.form.Update(message)
+		m.queryConfirmation.form = form.(*huh.Form)
+		if m.queryConfirmation.form.State != huh.StateCompleted {
+			return m, command
+		}
+		statement, confirmed := m.queryConfirmation.statement, m.queryConfirmation.confirmed || m.queryConfirmation.form.GetBool("confirm")
+		m.queryConfirmation = nil
+		if !confirmed {
+			return m, nil
+		}
+		return m.startQueryStatement(statement)
+	}
 	if m.explainPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
 			m.explainPicker = nil
@@ -50,6 +67,57 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.editor.setValue(m.explainPicker.query())
 		m.explainPicker = nil
+		m.Focus, m.Tab = focusWorkspace, tabSQL
+		m.blurTables()
+		return m, m.formMode.beginInsert(m.editor)
+	}
+	if m.savedQueryPicker != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.savedQueryPicker = nil
+			return m, nil
+		}
+		form, command := m.savedQueryPicker.form.Update(message)
+		m.savedQueryPicker.form = form.(*huh.Form)
+		if m.savedQueryPicker.form.State != huh.StateCompleted {
+			return m, command
+		}
+		m.editor.setValue(m.savedQueryPicker.selection)
+		m.savedQueryPicker = nil
+		m.Status = "loaded saved query"
+		m.Focus, m.Tab = focusWorkspace, tabSQL
+		m.blurTables()
+		return m, m.formMode.beginInsert(m.editor)
+	}
+	if m.savedQueryPicker != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.savedQueryPicker = nil
+			return m, nil
+		}
+		form, command := m.savedQueryPicker.form.Update(message)
+		m.savedQueryPicker.form = form.(*huh.Form)
+		if m.savedQueryPicker.form.State != huh.StateCompleted {
+			return m, command
+		}
+		m.editor.setValue(m.savedQueryPicker.selection)
+		m.savedQueryPicker = nil
+		m.Status = "loaded saved query"
+		m.Focus, m.Tab = focusWorkspace, tabSQL
+		m.blurTables()
+		return m, m.formMode.beginInsert(m.editor)
+	}
+	if m.savedQueryPicker != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.savedQueryPicker = nil
+			return m, nil
+		}
+		form, command := m.savedQueryPicker.form.Update(message)
+		m.savedQueryPicker.form = form.(*huh.Form)
+		if m.savedQueryPicker.form.State != huh.StateCompleted {
+			return m, command
+		}
+		m.editor.setValue(m.savedQueryPicker.selection)
+		m.savedQueryPicker = nil
+		m.Status = "loaded saved query"
 		m.Focus, m.Tab = focusWorkspace, tabSQL
 		m.blurTables()
 		return m, m.formMode.beginInsert(m.editor)
@@ -113,11 +181,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				huh.NewSelect[string]().
 					Key("action").
 					Title("Quit?").
-				Options(
-					huh.NewOption("Disconnect", "disconnect"),
-					huh.NewOption("Quit", "quit"),
-					huh.NewOption("Cancel", "cancel"),
-				),
+					Options(
+						huh.NewOption("Disconnect", "disconnect"),
+						huh.NewOption("Quit", "quit"),
+						huh.NewOption("Cancel", "cancel"),
+					),
 			)).WithShowHelp(false).WithWidth(max(m.width/2, 40))
 			return m, m.quitDialog.Init()
 		}
@@ -158,10 +226,30 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL &&
 			m.keybindings.Match(message, "query.execute", []scope{scopeGlobal}) {
-			return m.startQuery()
+			return m.executeQuery()
 		}
 		if m.Running() && m.keybindings.Match(message, "query.cancel", []scope{scopeGlobal}) {
 			m.cancelQuery()
+			return m, nil
+		}
+		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory() {
+			m.Focus, m.Tab = focusWorkspace, tabSQL
+			m.blurTables()
+			return m, m.formMode.beginInsert(m.editor)
+		}
+		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.save", []scope{scopeGlobal}) {
+			if saved, err := m.saveQuery(); err != nil {
+				m.Status = safeText(fmt.Sprintf("saving query: %v", err))
+			} else if saved {
+				m.Status = "saved query"
+			}
+			return m, nil
+		}
+		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.saved", []scope{scopeGlobal}) {
+			m.savedQueryPicker = newSavedQueryPicker(m.savedQueries, m.tableViewportWidth)
+			if m.savedQueryPicker != nil {
+				return m, m.savedQueryPicker.form.Init()
+			}
 			return m, nil
 		}
 		if m.sqlEditorActive() {
@@ -611,7 +699,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "query.execute":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
-			return m.startQuery()
+			return m.executeQuery()
 		}
 		return m, nil
 	case "query.cancel":
@@ -780,6 +868,14 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 }
+func (m Model) executeQuery() (tea.Model, tea.Cmd) {
+	if requiresQueryConfirmation(m.editor.value) {
+		m.queryConfirmation = newQueryConfirmation(m.editor.value, m.width)
+		return m, m.queryConfirmation.form.Init()
+	}
+	return m.startQuery()
+}
+
 func (m Model) sqlEditorActive() bool {
 	return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
 }
