@@ -110,6 +110,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.fullscreen = !m.fullscreen
 				m.layout(m.width, m.height)
 				return m, nil
+			case "tab", "]":
+				m.cycleFocus(true)
+				return m, nil
+			case "shift+tab", "[":
+				m.cycleFocus(false)
+				return m, nil
 			}
 		}
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && m.executeKey(message) {
@@ -133,10 +139,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
 			switch message.String() {
-			case "tab", "]":
+			case "L":
 				m.toggleTab(true)
 				return m, nil
-			case "shift+tab", "[":
+			case "H":
 				m.toggleTab(false)
 				return m, nil
 			}
@@ -579,4 +585,27 @@ func (m *Model) blurTables() {
 	m.indexes.Blur()
 	m.foreignKeys.Blur()
 	m.queryLog.Blur()
+}
+
+func (m *Model) cycleFocus(forward bool) {
+	m.editor.text.Blur()
+	m.blurTables()
+	m.queryLogPendingG = false
+
+	if forward {
+		m.Focus = (m.Focus + 1) % 3
+	} else {
+		m.Focus = (m.Focus + 2) % 3
+	}
+
+	switch m.Focus {
+	case focusSchema:
+	case focusWorkspace:
+		m.focusActiveTable()
+	case focusQueryLog:
+		m.queryLog.Focus()
+		if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
+			m.queryLog.SetCursor(0)
+		}
+	}
 }

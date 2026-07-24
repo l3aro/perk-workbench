@@ -53,14 +53,14 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	assertFocus(t, model, focusWorkspace)
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 
 	// Then
 	assertTab(t, model, tabIndexes)
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 
 	// Then
@@ -69,20 +69,20 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	}
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	model = updated.(Model)
-
-	// Then
-	assertTab(t, model, tabForeignKeys)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 
 	// Then
 	assertTab(t, model, tabStructure)
 
 	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
+	model = updated.(Model)
+
+	// Then
+	assertTab(t, model, tabBrowse)
+
+	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updated.(Model)
 
@@ -92,48 +92,48 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	}
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	model = updated.(Model)
-
-	// Then
-	assertTab(t, model, tabBrowse)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 
 	// Then
 	assertTab(t, model, tabSQL)
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	model = updated.(Model)
-
-	// Then
-	assertTab(t, model, tabBrowse)
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	model = updated.(Model)
-
-	// Then
-	assertTab(t, model, tabStructure)
-}
-
-func TestWorkspace_bracketsNavigateTabs(t *testing.T) {
-	// Given
-	model := New("", context.Background(), testOpen)
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 
 	// Then
 	assertTab(t, model, tabIndexes)
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
+	model = updated.(Model)
+
+	// Then
+	assertTab(t, model, tabSQL)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
+	model = updated.(Model)
+
+	// Then
+	assertTab(t, model, tabBrowse)
+}
+
+func TestWorkspace_HLNavigateTabs(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
+	model = updated.(Model)
+
+	// Then
+	assertTab(t, model, tabIndexes)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
 	model = updated.(Model)
 
 	// Then
@@ -222,13 +222,13 @@ func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	footer := ansi.Strip(model.footer())
 
 	// Then
-	if bottom := strings.TrimSpace(workspace[strings.LastIndex(workspace, "\n")+1:]); !strings.HasPrefix(bottom, "NORMAL") || !strings.HasSuffix(bottom, "tab view") {
+	if bottom := strings.TrimSpace(workspace[strings.LastIndex(workspace, "\n")+1:]); !strings.HasPrefix(bottom, "NORMAL") || !strings.HasSuffix(bottom, "L/H tabs") {
 		t.Fatalf("workspace hint = %q, want bottom-left NORMAL followed by tab view", workspace)
 	}
 	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); bottom != "y copy | enter detail | e explain" {
 		t.Fatalf("history hint = %q, want query-history shortcuts", history)
 	}
-	if strings.Contains(footer, "e explain") || strings.Contains(footer, "tab view") {
+	if strings.Contains(footer, "e explain") || strings.Contains(footer, "L/H tabs") {
 		t.Fatalf("footer = %q, want contextual hints omitted", footer)
 	}
 }
@@ -310,6 +310,54 @@ func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 
 	// Then
 	assertFocus(t, model, focusWorkspace)
+}
+
+func TestFocus_tab_and_brackets_cycle_panes(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.State, model.Focus = stateReady, focusSchema
+
+	// When — Tab forward cycles to workspace
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusWorkspace)
+
+	// When — Tab forward cycles to query log
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusQueryLog)
+
+	// When — Tab forward wraps to schema
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusSchema)
+
+	// When — `]` also cycles forward
+	updated, _ = model.Update(tea.KeyPressMsg{Code: ']', Text: "]"})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusWorkspace)
+
+	// When — Shift+Tab cycles backward
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusSchema)
+
+	// When — `[` also cycles backward
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '[', Text: "["})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusQueryLog)
 }
 
 func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
@@ -465,15 +513,15 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	model = updated.(Model)
 
 	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	model = updated.(Model)

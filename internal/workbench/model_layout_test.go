@@ -32,7 +32,7 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	}
 
 	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 	model = resizeModel(model, 80, 24)
 

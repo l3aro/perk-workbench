@@ -602,7 +602,7 @@ func (m Model) workspaceView() string {
 	case tabForeignKeys:
 		content = m.foreignKeysView()
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, m.modeBadge()+" "+statusStyle.Render("tab view"))
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, m.modeBadge()+" "+statusStyle.Render("L/H tabs"))
 }
 
 func (m Model) sqlPaneView() string {
