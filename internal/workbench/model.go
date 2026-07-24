@@ -58,6 +58,7 @@ type Model struct {
 	queryLogPendingG                                                                               bool
 	editor                                                                                         *editor
 	explainPicker                                                                                  *explainPicker
+	yankPicker                                                                                     *yankPicker
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
 	browseForm                                                                                     browseForm

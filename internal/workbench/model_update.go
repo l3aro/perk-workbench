@@ -39,6 +39,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.blurTables()
 		return m, m.formMode.beginInsert(m.editor)
 	}
+	if m.yankPicker != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.yankPicker = nil
+			return m, nil
+		}
+		command := m.yankPicker.Update(message)
+		if !m.yankPicker.completed() {
+			return m, command
+		}
+		content := m.yankPicker.value()
+		m.yankPicker = nil
+		m.Status = "copied to clipboard"
+		return m, copyQueryLogStatement(content)
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
@@ -223,7 +237,20 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.queryLogDetail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
-			if keyPress.String() == "enter" || keyPress.String() == "esc" {
+			switch keyPress.String() {
+			case "y":
+				m.yankPicker = newYankPicker(*m.queryLogDetail, m.tableViewportWidth)
+				m.queryLogDetail = nil
+				return m, m.yankPicker.form.Init()
+			case "e":
+				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLogDetail.statement, m.tableViewportWidth)
+				if explain == nil {
+					return m, nil
+				}
+				m.explainPicker = explain
+				m.queryLogDetail = nil
+				return m, m.explainPicker.form.Init()
+			case "enter", "esc":
 				m.queryLogDetail = nil
 				return m, nil
 			}
@@ -436,11 +463,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				switch keyPress.String() {
 				case "y":
 					cursor := m.queryLog.Cursor()
-					if cursor >= 0 && cursor < len(m.queryLogEntries) {
-						m.Status = "copied query to clipboard"
-						return m, copyQueryLogStatement(m.queryLogEntries[cursor].statement)
+					if cursor < 0 || cursor >= len(m.queryLogEntries) {
+						return m, nil
 					}
-					return m, nil
+					m.yankPicker = newYankPicker(m.queryLogEntries[cursor], m.tableViewportWidth)
+					return m, m.yankPicker.form.Init()
 				case "e":
 					cursor := m.queryLog.Cursor()
 					if cursor < 0 || cursor >= len(m.queryLogEntries) {

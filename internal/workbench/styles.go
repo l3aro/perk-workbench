@@ -373,7 +373,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.explainPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.explainPicker != nil || m.yankPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil {
 		// UV overlay path: render full UI, then overlay confirmation centered.
@@ -391,7 +391,7 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) hasConfirming() bool {
-	return m.explainPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	return m.explainPicker != nil || m.yankPicker != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil
 }
@@ -401,6 +401,8 @@ func (m Model) confirmContent() string {
 	switch {
 	case m.explainPicker != nil:
 		raw = m.explainPicker.form.View()
+	case m.yankPicker != nil:
+		raw = m.yankPicker.form.View()
 	case m.columnForm.confirming():
 		raw = m.columnForm.confirmation.View()
 	case m.browseForm.confirming():
@@ -496,7 +498,7 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString("\n")
 	b.WriteString("  Message:  ")
 	b.WriteString(ansi.Wordwrap(safeText(d.message), innerW-14, " "))
-	b.WriteString("\n\n  enter/esc to close")
+	b.WriteString("\n\n  y copy | e explain | enter/esc close")
 
 	// Fill background
 	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
@@ -575,7 +577,7 @@ func (m Model) queryLogContentView() string {
 	summary := m.queryLogSummary()
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
-		paneStatus(statusStyle.Render("y copy query | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
+		paneStatus(statusStyle.Render("y copy | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {
