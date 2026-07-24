@@ -38,6 +38,10 @@ func ValidateStatement(input string) error {
 				return errors.New("trigger statements are not supported")
 			case "TEMP", "TEMPORARY":
 				triggerState = 2
+			case "OR":
+				triggerState = 4
+			case "IF":
+				triggerState = 5
 			default:
 				triggerState = 3
 			}
@@ -46,6 +50,24 @@ func ValidateStatement(input string) error {
 				return errors.New("trigger statements are not supported")
 			}
 			triggerState = 3
+		case 4:
+			if word == "REPLACE" {
+				triggerState = 1
+			} else {
+				triggerState = 3
+			}
+		case 5:
+			if word == "NOT" {
+				triggerState = 6
+			} else {
+				triggerState = 3
+			}
+		case 6:
+			if word == "EXISTS" {
+				triggerState = 1
+			} else {
+				triggerState = 3
+			}
 		}
 		return nil
 	}

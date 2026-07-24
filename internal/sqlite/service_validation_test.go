@@ -23,6 +23,8 @@ func TestServiceRejects(t *testing.T) {
 		{"second semicolon", "SELECT 1;;"},
 		{"trigger", "CREATE TRIGGER guard_insert AFTER INSERT ON guard BEGIN SELECT 1; END"},
 		{"temporary trigger", "CREATE TEMP TRIGGER guard_insert AFTER INSERT ON guard BEGIN SELECT 1; END"},
+		{"or replace trigger", "CREATE OR REPLACE TRIGGER guard_insert AFTER INSERT ON guard BEGIN SELECT 1; END"},
+		{"if not exists trigger", "CREATE IF NOT EXISTS TRIGGER guard_insert AFTER INSERT ON guard BEGIN SELECT 1; END"},
 		{"malformed sql", "SELEC 1"},
 	}
 	for _, test := range tests {
@@ -45,6 +47,7 @@ func TestServiceRejects(t *testing.T) {
 		"CREATE TABLE [semi;colon] (value INTEGER)",
 		"CREATE TABLE `tick``;name` (value INTEGER)",
 		"CREATE TABLE \"quote\"\";name\" (value INTEGER)",
+		"CREATE INDEX guard_idx ON guard (value)",
 	} {
 		if _, err := service.Execute(context.Background(), statement); err != nil {
 			t.Fatalf("Execute(%q) error = %v, want semicolon accepted", statement, err)
