@@ -14,11 +14,17 @@ type recentConnection struct {
 	Driver connectionDriver `json:"driver"`
 	Name   string           `json:"name"`
 	Target string           `json:"target"`
+	Host   string           `json:"host,omitempty"`
+	Port   string           `json:"port,omitempty"`
+	User   string           `json:"user,omitempty"`
 }
 
 func (c recentConnection) FilterValue() string { return c.Name + " " + c.Target }
 func (c recentConnection) Title() string       { return safeText(c.Name) }
 func (c recentConnection) Description() string {
+	if c.Driver != driverSQLite {
+		return safeText(c.driverName() + ": " + c.User + "@" + c.Host + ":" + c.Port + "/" + c.Target)
+	}
 	return safeText(c.driverName() + ": " + c.Target)
 }
 
@@ -52,7 +58,7 @@ func loadRecentConnections(path string) []recentConnection {
 	}
 	result := make([]recentConnection, 0, min(len(connections), maxRecentConnections))
 	for _, connection := range connections {
-		if connection.Driver != driverSQLite || connection.Name == "" || connection.Target == "" {
+		if !connection.valid() {
 			continue
 		}
 		result = append(result, connection)
@@ -66,8 +72,7 @@ func loadRecentConnections(path string) []recentConnection {
 func saveRecentConnections(path string, connections []recentConnection) error {
 	persisted := make([]recentConnection, 0, len(connections))
 	for _, connection := range connections {
-		// ponytail: MySQL DSNs may contain passwords; persist SQLite only until a credential store exists.
-		if connection.Driver == driverSQLite {
+		if connection.valid() {
 			persisted = append(persisted, connection)
 		}
 	}
@@ -97,6 +102,20 @@ func saveRecentConnections(path string, connections []recentConnection) error {
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+func (c recentConnection) valid() bool {
+	if c.Name == "" {
+		return false
+	}
+	switch c.Driver {
+	case driverSQLite:
+		return c.Target != ""
+	case driverMySQL, driverPostgreSQL:
+		return c.Host != "" && c.Port != "" && c.User != ""
+	default:
+		return false
+	}
 }
 
 func recentListItems(connections []recentConnection) []list.Item {

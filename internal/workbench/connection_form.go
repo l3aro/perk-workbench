@@ -77,7 +77,7 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 			newEditableInput(huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser), &f.values.user),
 			newEditableInput(huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword), &f.values.pass),
 			newEditableInput(huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target), &f.values.target),
-			huh.NewNote().Title("Privacy").Description("Remote connections are not saved."),
+			huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are requested each time and never saved."),
 		)
 	} else {
 		fields = append(fields, newEditableInput(huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget), &f.values.target))

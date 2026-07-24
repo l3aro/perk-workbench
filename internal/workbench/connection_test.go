@@ -358,18 +358,39 @@ func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
 	}
 }
 
-func TestConnectionForm_doesNotRecordMySQLConnections(t *testing.T) {
+func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)
 	model.recentConnections = nil
 	model.connection.values.driver, model.connection.values.target = driverMySQL, "app"
+	model.connection.values.host, model.connection.values.port, model.connection.values.user = "db.example.test", "3307", "alice"
+	model.connection.values.pass = "secret"
 
 	// When
 	model.recordConnection()
 
 	// Then
-	if len(model.recentConnections) != 0 {
-		t.Fatalf("recent MySQL connections = %#v, want none", model.recentConnections)
+	if len(model.recentConnections) != 1 {
+		t.Fatalf("recent MySQL profiles = %#v, want one", model.recentConnections)
+	}
+	profile := model.recentConnections[0]
+	if profile.Driver != driverMySQL || profile.Host != "db.example.test" || profile.Port != "3307" || profile.User != "alice" || profile.Target != "app" {
+		t.Fatalf("remote profile = %#v, want non-secret connection fields", profile)
+	}
+}
+
+func TestConnectionForm_recordsSQLiteProfileWithoutRemoteFields(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+
+	// When
+	model.recordConnection()
+
+	// Then
+	profile := model.recentConnections[0]
+	if profile.Host != "" || profile.Port != "" || profile.User != "" {
+		t.Fatalf("SQLite profile = %#v, want no remote connection fields", profile)
 	}
 }
 

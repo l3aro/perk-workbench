@@ -182,7 +182,7 @@ func commandLabel(id CommandID, raw string) string {
 	case "connection.switch_to_form":
 		return "connection form"
 	case "connection.switch_to_list":
-		return "connection recent"
+		return "connection profiles"
 	case "connection.edit_field":
 		return "edit field"
 	case "connection.field_next":

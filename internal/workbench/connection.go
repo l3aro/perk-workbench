@@ -25,14 +25,20 @@ func (m *Model) setRecentConnections(connections []recentConnection) {
 }
 
 func (m *Model) recordConnection() {
-	if m.connection.values.driver != driverSQLite {
-		return
+	connection := recentConnection{
+		Driver: m.connection.values.driver,
+		Name:   m.connection.connectionName(),
+		Target: strings.TrimSpace(m.connection.values.target),
 	}
-	connection := recentConnection{Driver: driverSQLite, Name: m.connection.connectionName(), Target: m.connection.targetValue()}
+	if connection.Driver != driverSQLite {
+		connection.Host = strings.TrimSpace(m.connection.values.host)
+		connection.Port = strings.TrimSpace(m.connection.values.port)
+		connection.User = strings.TrimSpace(m.connection.values.user)
+	}
 	connections := make([]recentConnection, 0, min(len(m.recentConnections)+1, maxRecentConnections))
 	connections = append(connections, connection)
 	for _, existing := range m.recentConnections {
-		if existing.Driver != connection.Driver || existing.Target != connection.Target {
+		if existing.Driver != connection.Driver || existing.Target != connection.Target || existing.Host != connection.Host || existing.Port != connection.Port || existing.User != connection.User {
 			connections = append(connections, existing)
 		}
 		if len(connections) == maxRecentConnections {
@@ -50,10 +56,12 @@ func (m *Model) selectedRecentConnection() (recentConnection, bool) {
 func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
-		m.Status = "select a recent connection"
+		m.Status = "select a connection profile"
 		return nil
 	}
 	m.connection.values.driver, m.connection.values.name, m.connection.values.target = connection.Driver, connection.Name, connection.Target
+	m.connection.values.host, m.connection.values.port, m.connection.values.user = connection.Host, connection.Port, connection.User
+	m.connection.values.pass = ""
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.Status = "editing " + safeText(connection.Name)
@@ -63,7 +71,7 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 func (m *Model) deleteSelectedRecentConnection() {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
-		m.Status = "select a recent connection"
+		m.Status = "select a connection profile"
 		return
 	}
 	connections := make([]recentConnection, 0, len(m.recentConnections)-1)

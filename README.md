@@ -25,7 +25,7 @@ go run ./cmd/perk :memory:
 
 With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
 
-Select MySQL in the connection form to enter the server, credentials, and database. MySQL connections use the Go driver's normal DSN format internally and are not saved because that DSN can contain a password. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
+Select MySQL or PostgreSQL in the connection form to enter the server, credentials, and database. Successful connections are available as named profiles in `$XDG_CONFIG_HOME/perk/recent.json`; profiles store only the driver, name, host, port, username, and database target. Passwords are never written to disk and must be entered each time a remote profile connects. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
 
 ```bash
 go run ./cmd/perk 'mysql:alice:secret@tcp(127.0.0.1:3306)/app'
@@ -91,6 +91,8 @@ The container cannot access the native desktop clipboard; the terminal forwards 
 - `F5` runs the editor contents.
 - `Ctrl+Enter` runs the editor contents when the terminal reports the modified Enter key.
 - `Ctrl+S` runs the editor contents and works in terminals that cannot distinguish modified Enter keys.
+- `Ctrl+R` recalls earlier executed statements.
+- `Ctrl+K` saves the editor contents for this session; `Ctrl+O` selects a saved query.
 - `Enter` in the schema pane loads and runs the selected table or view's DDL query.
 - `Escape` cancels an active query. In the editor, `Escape` switches from insert mode to normal mode.
 - `q` quits when the editor is empty or another pane owns focus. In an editor with text, `q` is inserted as text.

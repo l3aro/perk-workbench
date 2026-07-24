@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -27,6 +28,90 @@ func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
 	}
 	if loaded[0] != connections[0] {
 		t.Fatalf("loaded connection = %#v, want %#v", loaded[0], connections[0])
+	}
+}
+
+func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	model := New("", context.Background(), testOpen)
+	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
+	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
+	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
+	model.recordConnection()
+
+	// When
+	if err := saveRecentConnections(path, model.recentConnections); err != nil {
+		t.Fatalf("saving connection profiles: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading connection profiles: %v", err)
+	}
+	loaded := loadRecentConnections(path)
+
+	// Then
+	if strings.Contains(string(contents), "secret") {
+		t.Fatalf("profile contents = %q, must not include a password", contents)
+	}
+	if !reflect.DeepEqual(loaded, model.recentConnections) {
+		t.Fatalf("loaded profiles = %#v, want %#v", loaded, model.recentConnections)
+	}
+}
+
+func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	model := New("", context.Background(), testOpen)
+	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
+	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
+	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
+	model.recordConnection()
+
+	// When
+	if err := saveRecentConnections(path, model.recentConnections); err != nil {
+		t.Fatalf("saving connection profiles: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading connection profiles: %v", err)
+	}
+	loaded := loadRecentConnections(path)
+
+	// Then
+	if strings.Contains(string(contents), "secret") {
+		t.Fatalf("profile contents = %q, must not include a password", contents)
+	}
+	if !reflect.DeepEqual(loaded, model.recentConnections) {
+		t.Fatalf("loaded profiles = %#v, want %#v", loaded, model.recentConnections)
+	}
+}
+
+func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_3(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	model := New("", context.Background(), testOpen)
+	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
+	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
+	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
+	model.recordConnection()
+
+	// When
+	if err := saveRecentConnections(path, model.recentConnections); err != nil {
+		t.Fatalf("saving connection profiles: %v", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading connection profiles: %v", err)
+	}
+	loaded := loadRecentConnections(path)
+
+	// Then
+	if strings.Contains(string(contents), "secret") {
+		t.Fatalf("profile contents = %q, must not include a password", contents)
+	}
+	if !reflect.DeepEqual(loaded, model.recentConnections) {
+		t.Fatalf("loaded profiles = %#v, want %#v", loaded, model.recentConnections)
 	}
 }
 
@@ -67,6 +152,93 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model = updated.(Model)
 	if model.connection.focus != connectionFocusForm || model.connection.values.name != "" || model.connection.values.target != "" {
 		t.Fatalf("new connection form = focus %d, name %q, target %q", model.connection.focus, model.connection.values.name, model.connection.values.target)
+	}
+}
+
+func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.recentConnections = []recentConnection{{
+		Driver: driverMySQL,
+		Name:   "Production",
+		Target: "app",
+		Host:   "db.example.test",
+		Port:   "3307",
+		User:   "alice",
+	}}
+	_ = model.recent.SetItems(recentListItems(model.recentConnections))
+	model.connection.values.pass = "previous-password"
+	model.connection.setFocus(connectionFocusRecent)
+
+	// When
+	command := model.editSelectedRecentConnection()
+	model = resolveConnectionCommand(model, command)
+
+	// Then
+	values := model.connection.values
+	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
+		t.Fatalf("connection form = %#v, want selected profile fields", values)
+	}
+	if values.pass != "" {
+		t.Fatalf("selected profile password = %q, want empty", values.pass)
+	}
+}
+
+func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword_merged_2(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.recentConnections = []recentConnection{{
+		Driver: driverMySQL,
+		Name:   "Production",
+		Target: "app",
+		Host:   "db.example.test",
+		Port:   "3307",
+		User:   "alice",
+	}}
+	_ = model.recent.SetItems(recentListItems(model.recentConnections))
+	model.connection.values.pass = "previous-password"
+	model.connection.setFocus(connectionFocusRecent)
+
+	// When
+	command := model.editSelectedRecentConnection()
+	model = resolveConnectionCommand(model, command)
+
+	// Then
+	values := model.connection.values
+	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
+		t.Fatalf("connection form = %#v, want selected profile fields", values)
+	}
+	if values.pass != "" {
+		t.Fatalf("selected profile password = %q, want empty", values.pass)
+	}
+}
+
+func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword_merged_3(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen)
+	model.recentConnections = []recentConnection{{
+		Driver: driverMySQL,
+		Name:   "Production",
+		Target: "app",
+		Host:   "db.example.test",
+		Port:   "3307",
+		User:   "alice",
+	}}
+	_ = model.recent.SetItems(recentListItems(model.recentConnections))
+	model.connection.values.pass = "previous-password"
+	model.connection.setFocus(connectionFocusRecent)
+
+	// When
+	command := model.editSelectedRecentConnection()
+	model = resolveConnectionCommand(model, command)
+
+	// Then
+	values := model.connection.values
+	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
+		t.Fatalf("connection form = %#v, want selected profile fields", values)
+	}
+	if values.pass != "" {
+		t.Fatalf("selected profile password = %q, want empty", values.pass)
 	}
 }
 
