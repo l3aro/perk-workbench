@@ -18,6 +18,9 @@ func TestPaletteThemeCommandsApplySharedPalette(t *testing.T) {
 		{"theme.dracula", themeDracula, "#bd93f9"},
 		{"theme.catppuccin", themeCatppuccin, "#cba6f7"},
 		{"theme.ocean", themeOcean, "#55d6be"},
+		{"theme.nord", themeNord, "#88c0d0"},
+		{"theme.monokai", themeMonokai, "#a6e22e"},
+		{"theme.solarized", themeSolarized, "#268bd2"},
 	} {
 		updated, _ := model.handlePaletteCommand(test.command)
 		model = updated.(Model)

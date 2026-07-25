@@ -39,6 +39,9 @@ const (
 	themeOcean      appTheme = "ocean"
 	themeDracula    appTheme = "dracula"
 	themeCatppuccin appTheme = "catppuccin"
+	themeNord       appTheme = "nord"
+	themeMonokai    appTheme = "monokai"
+	themeSolarized  appTheme = "solarized"
 )
 
 var (
@@ -68,10 +71,22 @@ func setTheme(name appTheme) {
 		colorCanvas, colorPanel, colorStripe = "#282a36", "#343746", "#44475a"
 		colorInk, colorMuted, colorAccent = "#f8f8f2", "#b1b2c7", "#bd93f9"
 		colorBorder, colorModeNormal, colorModeInsert = "#6272a4", "#8be9fd", "#50fa7b"
+	case themeNord:
+		colorCanvas, colorPanel, colorStripe = "#2e3440", "#3b4252", "#434c5e"
+		colorInk, colorMuted, colorAccent = "#eceff4", "#d8dee9", "#88c0d0"
+		colorBorder, colorModeNormal, colorModeInsert = "#4c566a", "#81a1c1", "#a3be8c"
+	case themeMonokai:
+		colorCanvas, colorPanel, colorStripe = "#272822", "#2f302a", "#3e3d32"
+		colorInk, colorMuted, colorAccent = "#f8f8f2", "#75715e", "#a6e22e"
+		colorBorder, colorModeNormal, colorModeInsert = "#49483e", "#66d9ef", "#fd971f"
 	case themeCatppuccin:
 		colorCanvas, colorPanel, colorStripe = "#1e1e2e", "#313244", "#45475a"
 		colorInk, colorMuted, colorAccent = "#cdd6f4", "#a6adc8", "#cba6f7"
 		colorBorder, colorModeNormal, colorModeInsert = "#6c7086", "#89b4fa", "#a6e3a1"
+	case themeSolarized:
+		colorCanvas, colorPanel, colorStripe = "#002b36", "#073642", "#123f4a"
+		colorInk, colorMuted, colorAccent = "#839496", "#657b83", "#268bd2"
+		colorBorder, colorModeNormal, colorModeInsert = "#0e5553", "#268bd2", "#859900"
 	default:
 		colorCanvas, colorPanel, colorStripe = "#10151f", "#17202e", "#1c2838"
 		colorInk, colorMuted, colorAccent = "#e6edf3", "#8b9bb4", "#55d6be"

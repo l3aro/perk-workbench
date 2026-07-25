@@ -2,7 +2,7 @@ package workbench
 
 import "strings"
 
-var themeChoices = []appTheme{themeOcean, themeDracula, themeCatppuccin}
+var themeChoices = []appTheme{themeOcean, themeNord, themeMonokai, themeDracula, themeCatppuccin, themeSolarized}
 
 type themePicker struct {
 	original appTheme

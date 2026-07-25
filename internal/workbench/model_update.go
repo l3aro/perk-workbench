@@ -921,6 +921,18 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		m.applyTheme(themeCatppuccin)
 		m.Status = "theme: catppuccin"
 		return m, nil
+	case "theme.nord":
+		m.applyTheme(themeNord)
+		m.Status = "theme: nord"
+		return m, nil
+	case "theme.monokai":
+		m.applyTheme(themeMonokai)
+		m.Status = "theme: monokai"
+		return m, nil
+	case "theme.solarized":
+		m.applyTheme(themeSolarized)
+		m.Status = "theme: solarized"
+		return m, nil
 	case "app.quit":
 		return m, tea.Quit
 	case "editor.external":

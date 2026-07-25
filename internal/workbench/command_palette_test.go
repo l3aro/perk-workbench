@@ -96,8 +96,8 @@ func TestThemePicker_previewsAndCancelsTheme(t *testing.T) {
 	model.themePicker = newThemePicker()
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = updated.(Model)
-	if activeTheme != themeDracula {
-		t.Fatalf("previewed theme = %q, want %q", activeTheme, themeDracula)
+	if activeTheme != themeNord {
+		t.Fatalf("previewed theme = %q, want %q", activeTheme, themeNord)
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -123,7 +123,7 @@ func TestThemePicker_commitsPreviewedTheme(t *testing.T) {
 	if model.themePicker != nil {
 		t.Fatal("theme picker remained visible after selection")
 	}
-	if activeTheme != themeDracula {
-		t.Fatalf("committed theme = %q, want %q", activeTheme, themeDracula)
+	if activeTheme != themeNord {
+		t.Fatalf("committed theme = %q, want %q", activeTheme, themeNord)
 	}
 }
