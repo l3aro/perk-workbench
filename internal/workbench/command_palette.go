@@ -39,6 +39,9 @@ func newCommandPalette(m Model) *commandPalette {
 	keybindings := m.keybindings
 	items := make([]commandPaletteItem, 0, len(keybindings.commands))
 	for id, def := range keybindings.commands {
+		if id == "app.palette" {
+			continue
+		}
 		if !commandAvailable(id, def, m) {
 			continue
 		}
