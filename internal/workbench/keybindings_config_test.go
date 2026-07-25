@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,6 +20,20 @@ func TestLoadKeybindings_missing_file_returns_defaults(t *testing.T) {
 	// Should have written the default config file.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Fatal("LoadKeybindings did not create the config file")
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading generated config: %v", err)
+	}
+	var config map[string]map[string][]string
+	if err := json.Unmarshal(contents, &config); err != nil {
+		t.Fatalf("parsing generated config: %v", err)
+	}
+	if _, ok := config["query_log"]["cursor_down"]; ok {
+		t.Fatal("generated config includes fixed grid navigation")
+	}
+	if got := config["form"]["edit"]; len(got) != 1 || got[0] != "enter" {
+		t.Fatalf("generated config form.edit = %#v, want [enter]", got)
 	}
 }
 

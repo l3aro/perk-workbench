@@ -793,12 +793,6 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 					return m, m.explainPicker.form.Init()
-				case m.keybindings.Match(keyPress, "query_log.cursor_down", []scope{scopeView, scopeGlobal}):
-					m.queryLog.SetCursor(min(m.queryLog.Cursor()+1, len(rows)-1))
-					return m, nil
-				case m.keybindings.Match(keyPress, "query_log.cursor_up", []scope{scopeView, scopeGlobal}):
-					m.queryLog.SetCursor(max(m.queryLog.Cursor()-1, 0))
-					return m, nil
 				case m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}):
 					if m.queryLogPendingG {
 						m.queryLog.SetCursor(0)

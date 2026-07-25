@@ -61,8 +61,6 @@ var defaultDefs = []commandDef{
 	{id: "query_log.yank", scope: scopeView, keys: []string{"y"}, label: "copy"},
 	{id: "query_log.explain", scope: scopeView, keys: []string{"e"}, label: "explain"},
 	{id: "query_log.detail", scope: scopeView, keys: []string{"enter"}, label: "detail"},
-	{id: "query_log.cursor_down", scope: scopeView, keys: []string{"j"}, label: "↓"},
-	{id: "query_log.cursor_up", scope: scopeView, keys: []string{"k"}, label: "↑"},
 	{id: "query_log.top_first", scope: scopeView, keys: []string{"g"}, label: "top"},
 	{id: "query_log.top_last", scope: scopeView, keys: []string{"G"}, label: "bottom"},
 
@@ -86,7 +84,7 @@ var defaultDefs = []commandDef{
 
 	// ── Connection: form (view) ─────────────────────────────────
 	{id: "connection.execute", scope: scopeView, keys: []string{"f5", "ctrl+enter", "ctrl+s"}, label: "connect"},
-	{id: "connection.edit_field", scope: scopeView, keys: []string{"i", "enter"}, label: "edit"},
+	{id: "connection.edit_field", scope: scopeView, keys: []string{"enter"}, label: "edit"},
 	{id: "connection.field_next", scope: scopeView, keys: []string{"j", "down"}, label: "↓"},
 	{id: "connection.field_prev", scope: scopeView, keys: []string{"k", "up"}, label: "↑"},
 	{id: "connection.switch_to_list", scope: scopeView, keys: []string{"1"}, label: "profiles"},
@@ -95,7 +93,7 @@ var defaultDefs = []commandDef{
 	{id: "connection.action_enter", scope: scopeView, keys: []string{"enter"}, label: "action"},
 
 	// ── Forms (edit forms: columnForm, browseForm, indexForm, FK) ─
-	{id: "form.edit", scope: scopeForm, keys: []string{"i", "enter"}, label: "edit"},
+	{id: "form.edit", scope: scopeForm, keys: []string{"enter"}, label: "edit"},
 	{id: "form.save", scope: scopeForm, keys: []string{"ctrl+enter", "ctrl+s", "f5"}, label: "save"},
 	{id: "form.discard", scope: scopeForm, keys: []string{"esc"}, label: "discard"},
 	{id: "form.field_next", scope: scopeForm, keys: []string{"j", "down"}, label: "↓"},
