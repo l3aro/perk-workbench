@@ -2,9 +2,10 @@
 
 ## Scope
 
-- Go 1.25 module; the executable is `cmd/perk`. `internal/workbench` owns Bubble Tea state, layout, and async commands; `internal/sqlite` owns SQLite access, statement validation, and display-safe results.
-- Preserve the database contract: only existing SQLite databases open (`:memory:` is the exception); non-memory targets use read-write mode and must not create files. The app supports one SQL statement per run and rejects trigger creation.
-- Preserve query behavior when touching the workbench or SQLite layer: queries are asynchronous and cancelable, failed queries retain the prior result table, and results are limited to 500 rows and 300 runes per display cell.
+- Go 1.25 module; the executable is `cmd/perk`. `internal/workbench` owns Bubble Tea state, layout decisions, and async commands. `internal/chrome` owns stateless terminal rendering helpers and must not import `workbench` or hold Bubble Tea state.
+- `internal/database` selects SQLite, MySQL, or PostgreSQL; `internal/sql` defines their shared service and display contracts. Keep driver-specific SQL in `internal/sqlite`, `internal/mysql`, or `internal/postgres`.
+- Preserve the SQLite contract: only existing files open (`:memory:` is the exception); non-memory targets use read-write mode and must not create files. The shared statement validator accepts one statement and rejects trigger creation.
+- Preserve query behavior in `workbench` and driver services: execution is asynchronous and cancelable, failed queries retain the prior result table, and display results cap at 500 rows and 300 runes per cell.
 
 ## Development
 
@@ -27,6 +28,9 @@ go test -race ./cmd/perk -run TestParseTarget
 go run ./cmd/perk :memory:
 go run ./cmd/perk path/to/database.db
 docker compose run --rm dev
+make sqlite                 # demo SQLite database
+make mysql                  # starts MySQL and opens its demo database
+make postgres               # starts PostgreSQL and opens its demo database
 ```
 
 - Compose mounts this repository at `/workspace` and `${DEMO_DIR:-../demo}` at `/demo`; its default command opens `/demo/chinook.db`.
