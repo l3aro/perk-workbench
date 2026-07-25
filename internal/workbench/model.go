@@ -75,6 +75,7 @@ type Model struct {
 	schemaObjects                                                                                  []sharedsql.SchemaObject
 	expandedDatabases                                                                              map[string]bool
 	commandPalette                                                                                 *commandPalette
+	themePicker                                                                                    *themePicker
 	quitDialog                                                                                     *huh.Form
 	queryConfirmation                                                                              *queryConfirmation
 	recentPath, savedQueriesPath                                                                   string

@@ -25,6 +25,37 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(window.Width, window.Height)
 		return m, nil
 	}
+	if m.themePicker != nil {
+		keyPress, ok := message.(tea.KeyPressMsg)
+		if !ok {
+			return m, nil
+		}
+		switch keyPress.Key().Code {
+		case tea.KeyEscape:
+			m.applyTheme(m.themePicker.original)
+			m.themePicker = nil
+			return m, nil
+		case tea.KeyEnter:
+			m.Status = "theme: " + string(m.themePicker.theme())
+			m.themePicker = nil
+			return m, nil
+		case tea.KeyUp:
+			m.themePicker.move(-1)
+		case tea.KeyDown:
+			m.themePicker.move(1)
+		default:
+			switch keyPress.Keystroke() {
+			case "j":
+				m.themePicker.move(1)
+			case "k":
+				m.themePicker.move(-1)
+			default:
+				return m, nil
+			}
+		}
+		m.applyTheme(m.themePicker.theme())
+		return m, nil
+	}
 	if m.commandPalette.visible {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			selectMsg, close, consumed := m.commandPalette.handleKey(keyPress)
@@ -847,6 +878,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	m.commandPalette.visible = false
 
 	switch id {
+	case "theme.select":
+		m.themePicker = newThemePicker()
+		return m, nil
 	case "theme.ocean":
 		m.applyTheme(themeOcean)
 		m.Status = "theme: ocean"

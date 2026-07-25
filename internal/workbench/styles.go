@@ -535,11 +535,15 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer()))
-	if m.commandPalette.visible {
+	if m.commandPalette.visible || m.themePicker != nil {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		m.commandPalette.paletteDraw(canvas, m.width, m.height)
+		if m.themePicker != nil {
+			m.drawConfirmDialog(canvas, m.themePicker.content())
+		} else {
+			m.commandPalette.paletteDraw(canvas, m.width, m.height)
+		}
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -577,7 +581,7 @@ func (m Model) hasConfirming() bool {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
