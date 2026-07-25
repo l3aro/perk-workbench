@@ -12,7 +12,7 @@ import (
 )
 
 func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	path := filepath.Join(t.TempDir(), "perk", "connections.json")
 	connections := []recentConnection{
 		{Driver: driverSQLite, Name: "Local", Target: "/tmp/local.db"},
 		{Driver: driverMySQL, Name: "Remote", Target: "user:password@tcp(host:3306)/app"},
@@ -68,7 +68,7 @@ func TestNew_targetInitializesRecentConnectionPersistence(t *testing.T) {
 
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	// Given
-	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	path := filepath.Join(t.TempDir(), "perk", "connections.json")
 	model := New("", context.Background(), testOpen)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
@@ -96,7 +96,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testing.T) {
 	// Given
-	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	path := filepath.Join(t.TempDir(), "perk", "connections.json")
 	model := New("", context.Background(), testOpen)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
@@ -124,7 +124,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testi
 
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_3(t *testing.T) {
 	// Given
-	path := filepath.Join(t.TempDir(), "perk", "recent.json")
+	path := filepath.Join(t.TempDir(), "perk", "connections.json")
 	model := New("", context.Background(), testOpen)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
@@ -152,7 +152,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_3(t *testi
 
 func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model := New("", context.Background(), testOpen)
-	model.recentPath = filepath.Join(t.TempDir(), "recent.json")
+	model.recentPath = filepath.Join(t.TempDir(), "connections.json")
 	model.setRecentConnections([]recentConnection{
 		{Driver: driverSQLite, Name: "Alpha", Target: "/tmp/alpha.db"},
 		{Driver: driverSQLite, Name: "Beta", Target: "/tmp/beta.db"},

@@ -25,7 +25,7 @@ go run ./cmd/perk :memory:
 
 With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
 
-Select MySQL or PostgreSQL in the connection form to enter the server, credentials, and database. Successful connections are available as named profiles in `$XDG_CONFIG_HOME/perk/recent.json`; profiles store only the driver, name, host, port, username, and database target. Passwords are never written to disk and must be entered each time a remote profile connects. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
+Select MySQL or PostgreSQL in the connection form to enter the server, credentials, and database. Successful connections are available as named profiles in `$XDG_CONFIG_HOME/perk/connections.json`; profiles store only the driver, name, host, port, username, and database target. Passwords are never written to disk and must be entered each time a remote profile connects. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
 
 ```bash
 go run ./cmd/perk 'mysql:alice:secret@tcp(127.0.0.1:3306)/app'
