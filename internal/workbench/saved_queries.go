@@ -29,7 +29,7 @@ func newSavedQueryPicker(queries []string, width int) *savedQueryPicker {
 	for index, query := range queries {
 		options[index] = huh.NewOption(safeText(query), query)
 	}
-	picker.form = huh.NewForm(huh.NewGroup(
+	picker.form = newForm(huh.NewGroup(
 		huh.NewSelect[string]().Key("saved-query").Title("Saved queries").Options(options...).Value(&picker.selection),
 	)).WithShowHelp(width >= 40).WithWidth(max(width, 1))
 	return picker

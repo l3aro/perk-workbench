@@ -193,14 +193,14 @@ func (f *browseForm) beginConfirmation(save bool) {
 	if save {
 		title = "Save row changes?"
 		if statement, err := f.updateStatement(f.table); err == nil && statement != "" {
-			f.confirmation = huh.NewForm(huh.NewGroup(
+			f.confirmation = newForm(huh.NewGroup(
 				huh.NewNote().Title(title).Description(statement).Height(8),
 				huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
 			)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 			return
 		}
 	}
-	f.confirmation = huh.NewForm(huh.NewGroup(
+	f.confirmation = newForm(huh.NewGroup(
 		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
 	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 }
@@ -212,7 +212,7 @@ func (f *browseForm) rebuildForm() {
 			newEditableInput(huh.NewInput().Key(f.valueKey(index)).Title(column).Value(&f.values.fields[index]), &f.values.fields[index]),
 		)
 	}
-	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 }
 
 func (f browseForm) valueKey(index int) string { return fmt.Sprintf("value-%d", index) }

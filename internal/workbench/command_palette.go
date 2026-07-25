@@ -53,6 +53,11 @@ func newCommandPalette(m Model) *commandPalette {
 			scope:    def.scope,
 		})
 	}
+	items = append(items,
+		commandPaletteItem{id: "theme.ocean", label: "theme: ocean", scope: scopeGlobal},
+		commandPaletteItem{id: "theme.dracula", label: "theme: dracula", scope: scopeGlobal},
+		commandPaletteItem{id: "theme.catppuccin", label: "theme: catppuccin", scope: scopeGlobal},
+	)
 
 	// Compute context title from current model state
 	contextTitle := contextLabel(m)

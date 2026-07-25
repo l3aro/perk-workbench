@@ -184,7 +184,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.State == stateReady && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
 			!m.hasOverlay() && !m.formActive() && !m.Running() {
-			m.quitDialog = huh.NewForm(huh.NewGroup(
+			m.quitDialog = newForm(huh.NewGroup(
 				huh.NewSelect[string]().
 					Key("action").
 					Title("Quit?").
@@ -847,6 +847,18 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	m.commandPalette.visible = false
 
 	switch id {
+	case "theme.ocean":
+		m.applyTheme(themeOcean)
+		m.Status = "theme: ocean"
+		return m, nil
+	case "theme.dracula":
+		m.applyTheme(themeDracula)
+		m.Status = "theme: dracula"
+		return m, nil
+	case "theme.catppuccin":
+		m.applyTheme(themeCatppuccin)
+		m.Status = "theme: catppuccin"
+		return m, nil
 	case "app.quit":
 		return m, tea.Quit
 	case "editor.external":

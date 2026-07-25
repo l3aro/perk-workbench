@@ -83,7 +83,7 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 		fields = append(fields, newEditableInput(huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget), &f.values.target))
 	}
 	fields = append(fields, newConnectionActionButtons(&f.values.action))
-	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 	return f.form.Init()
 }
 
@@ -122,7 +122,7 @@ func (f *connectionForm) updateHuh(message tea.Msg, controller *formModeControll
 
 func (f *connectionForm) beginConfirmation() tea.Cmd {
 	f.values.confirmed = false
-	f.confirmation = huh.NewForm(huh.NewGroup(huh.NewConfirm().Key("confirm").Title("Connect to " + f.connectionName() + "?").Affirmative("Yes").Negative("No").Value(&f.values.confirmed))).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	f.confirmation = newForm(huh.NewGroup(huh.NewConfirm().Key("confirm").Title("Connect to " + f.connectionName() + "?").Affirmative("Yes").Negative("No").Value(&f.values.confirmed))).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 	return f.confirmation.Init()
 }
 

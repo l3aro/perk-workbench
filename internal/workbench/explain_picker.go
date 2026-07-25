@@ -29,7 +29,7 @@ func newExplainPicker(product, version, statement string, width int) *explainPic
 	for index, option := range options {
 		choices[index] = huh.NewOption(option, option)
 	}
-	picker.form = huh.NewForm(huh.NewGroup(
+	picker.form = newForm(huh.NewGroup(
 		huh.NewSelect[string]().Key("explain").Title("Explain query with").Options(choices...).Value(&picker.selection),
 	)).WithShowHelp(width >= 40).WithWidth(max(width, 1))
 	return picker

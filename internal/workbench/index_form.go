@@ -146,13 +146,13 @@ func (f *indexForm) beginConfirmation(save, delete bool) {
 	if delete {
 		title = "Delete index?"
 	}
-	f.confirmation = huh.NewForm(huh.NewGroup(
+	f.confirmation = newForm(huh.NewGroup(
 		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
 	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 }
 
 func (f *indexForm) rebuildForm() {
-	f.form = huh.NewForm(huh.NewGroup(
+	f.form = newForm(huh.NewGroup(
 		newEditableInput(huh.NewInput().Key("name").Title("Name*").Value(&f.values.name).Validate(f.validateName), &f.values.name),
 		newEditableInput(huh.NewInput().Key("columns").Title("Columns*").Value(&f.values.columns).Validate(requiredIndexColumns), &f.values.columns),
 		huh.NewSelect[string]().Key("kind").Title("Kind").Options(

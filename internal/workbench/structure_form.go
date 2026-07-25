@@ -162,7 +162,7 @@ func (f *columnForm) beginConfirmation(save bool) {
 	if save {
 		title = "Save column changes?"
 	}
-	f.confirmation = huh.NewForm(huh.NewGroup(
+	f.confirmation = newForm(huh.NewGroup(
 		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
 	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 }
@@ -292,7 +292,7 @@ func (f *columnForm) rebuildForm() {
 	if f.primaryKey > 0 {
 		fields = append(fields, huh.NewNote().Title("Primary key").Description(primaryKeyNote(f.primaryKey)))
 	}
-	f.form = huh.NewForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
+	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
 }
 
 func requiredColumnName(value string) error {

@@ -28,7 +28,7 @@ func newYankPicker(entry queryLogEntry, width int) *yankPicker {
 		huh.NewOption(string(yankDuration), string(yankDuration)),
 	}
 	picker := &yankPicker{entry: entry, selection: string(yankStatement)}
-	picker.form = huh.NewForm(huh.NewGroup(
+	picker.form = newForm(huh.NewGroup(
 		huh.NewSelect[string]().Key("yank").Title("Copy to clipboard").Options(choices...).Value(&picker.selection),
 	)).WithShowHelp(width >= 40).WithWidth(max(width, 1))
 	return picker

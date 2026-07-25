@@ -106,7 +106,7 @@ func (m *Model) openCellEditor() tea.Cmd {
 		editedVal:   editedVal,
 	}
 
-	e.input = huh.NewForm(
+	e.input = newForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Key("value").
@@ -157,7 +157,7 @@ func (e *cellEditor) beginConfirmation() tea.Cmd {
 	e.confirmed = false
 	e.confirming = true
 	title := "Save cell change?"
-	e.confirm = huh.NewForm(huh.NewGroup(
+	e.confirm = newForm(huh.NewGroup(
 		huh.NewNote().Title(title).Description(statement).Height(8),
 		huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&e.confirmed),
 	)).WithShowHelp(false).WithWidth(40)

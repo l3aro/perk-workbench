@@ -10,7 +10,7 @@ type queryConfirmation struct {
 
 func newQueryConfirmation(statement string, width int) *queryConfirmation {
 	confirmation := &queryConfirmation{statement: statement}
-	confirmation.form = huh.NewForm(huh.NewGroup(
+	confirmation.form = newForm(huh.NewGroup(
 		huh.NewNote().Title("Run destructive SQL?").Description(statement).Height(8),
 		huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&confirmation.confirmed),
 	)).WithShowHelp(width >= 40).WithWidth(max(width, 1))
