@@ -34,7 +34,8 @@ var defaultDefs = []commandDef{
 	{id: "structure.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit column"},
 
 	// ── Browse tab (view) ───────────────────────────────────────
-	{id: "browse.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit row"},
+	{id: "browse.edit", scope: scopeView, keys: []string{"enter"}, label: "edit row"},
+	{id: "browse.edit_cell", scope: scopeView, keys: []string{"i"}, label: "edit cell"},
 	{id: "browse.next_page", scope: scopeView, keys: []string{"n"}, label: "next"},
 	{id: "browse.prev_page", scope: scopeView, keys: []string{"p"}, label: "prev"},
 

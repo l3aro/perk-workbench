@@ -56,6 +56,47 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.startQueryStatement(statement)
 	}
+	if m.cellEditor != nil {
+		keyPress, isKeyPress := message.(tea.KeyPressMsg)
+		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
+			if m.cellEditor.confirming {
+				m.cellEditor.confirming = false
+				m.cellEditor.confirm = nil
+				m.formMode.mode = formModeNormal
+				return m, m.cellEditor.input.Init()
+			}
+			m.cellEditor = nil
+			return m, nil
+		}
+		if m.cellEditor.confirming {
+			if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
+				m.cellEditor.confirmed = true
+				m.cellEditor.confirm.State = huh.StateCompleted
+			}
+			model, command := m.cellEditor.confirm.Update(message)
+			m.cellEditor.confirm = model.(*huh.Form)
+			if m.cellEditor.confirm.State != huh.StateCompleted {
+				return m, command
+			}
+			confirmed := m.cellEditor.confirmed || m.cellEditor.confirm.GetBool("confirm")
+			if !confirmed {
+				m.cellEditor = nil
+				return m, nil
+			}
+			cmd := m.executeCellUpdate()
+			m.cellEditor = nil
+			return m, cmd
+		}
+		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
+			return m, m.cellEditor.beginConfirmation()
+		}
+		model, command := m.cellEditor.input.Update(message)
+		m.cellEditor.input = model.(*huh.Form)
+		if m.cellEditor.input.State != huh.StateCompleted {
+			return m, command
+		}
+		return m, m.cellEditor.beginConfirmation()
+	}
 	if m.explainPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
 			m.explainPicker = nil
@@ -341,6 +382,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateColumnAltered(message)
 	case browseRowUpdatedMsg:
 		return m.updateBrowseRowUpdated(message)
+	case cellEditorUpdatedMsg:
+		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
 	}
@@ -502,6 +545,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.browseForm = browseForm{}
 					}
 					return m, command
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
+					return m, m.openCellEditor()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseForm()

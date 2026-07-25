@@ -464,7 +464,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.explainPicker != nil || m.savedQueryPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil {
 		// UV overlay path: render full UI, then overlay confirmation centered.
@@ -483,19 +483,20 @@ func (m Model) View() tea.View {
 
 func (m Model) hasConfirming() bool {
 	return m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
-		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
-		m.connection.confirmation != nil
+		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil ||
+		(m.cellEditor != nil && m.cellEditor.confirming)
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
 	var raw string
 	switch {
+	case m.cellEditor != nil:
+		return m.cellEditor.confirmContent()
 	case m.explainPicker != nil:
-		raw = m.explainPicker.form.View()
 	case m.savedQueryPicker != nil:
 		raw = m.savedQueryPicker.form.View()
 	case m.yankPicker != nil:
