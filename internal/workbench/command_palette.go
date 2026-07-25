@@ -53,11 +53,7 @@ func newCommandPalette(m Model) *commandPalette {
 			scope:    def.scope,
 		})
 	}
-	items = append(items,
-		commandPaletteItem{id: "theme.ocean", label: "theme: ocean", scope: scopeGlobal},
-		commandPaletteItem{id: "theme.dracula", label: "theme: dracula", scope: scopeGlobal},
-		commandPaletteItem{id: "theme.catppuccin", label: "theme: catppuccin", scope: scopeGlobal},
-	)
+	items = append(items, commandPaletteItem{id: "theme.select", label: "theme", scope: scopeGlobal})
 
 	// Compute context title from current model state
 	contextTitle := contextLabel(m)
@@ -291,9 +287,23 @@ func (p *commandPalette) handleKey(msg tea.KeyPressMsg) (commandPaletteSelectMsg
 		return commandPaletteSelectMsg{}, false, true
 	default:
 		stroke := msg.Keystroke()
-		if len(stroke) == 1 && stroke[0] >= ' ' && stroke[0] <= '~' {
-			p.query = append(p.query, rune(stroke[0]))
-			p.applyFilter()
+		if len(stroke) == 1 {
+			switch stroke[0] {
+			case 'j':
+				if p.cursor < len(p.filtered)-1 {
+					p.cursor++
+				}
+				return commandPaletteSelectMsg{}, false, true
+			case 'k':
+				if p.cursor > 0 {
+					p.cursor--
+				}
+				return commandPaletteSelectMsg{}, false, true
+			}
+			if stroke[0] >= ' ' && stroke[0] <= '~' {
+				p.query = append(p.query, rune(stroke[0]))
+				p.applyFilter()
+			}
 		}
 		return commandPaletteSelectMsg{}, false, true
 	}
@@ -320,6 +330,7 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 		scopeForm:   "Form",
 	}
 	lastScope := scope(-1)
+	selectedLine := 0
 	for i, item := range p.filtered {
 		if item.scope != lastScope {
 			if i > 0 {
@@ -329,16 +340,24 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 			lastScope = item.scope
 		}
 
+		prefix := "  "
 		label := item.label
 		if i == p.cursor {
+			selectedLine = len(listLines)
+			prefix = "> "
 			label = selectedItemStyle.Render(label)
 		}
 		spacer := strings.Repeat(" ", max(1, 24-ansi.StringWidth(label)))
-		line := " " + label + spacer + mutedStyle.Render(item.shortcut)
+		line := prefix + label + spacer + mutedStyle.Render(item.shortcut)
 		listLines = append(listLines, line)
 	}
 	if len(p.filtered) == 0 {
 		listLines = append(listLines, mutedStyle.Render("  no matching commands"))
+	} else {
+		visibleLines := max(1, palH-6)
+		start := max(0, min(selectedLine-visibleLines/2, len(listLines)-visibleLines))
+		end := min(start+visibleLines, len(listLines))
+		listLines = listLines[start:end]
 	}
 
 	// Center the palette box.
@@ -368,7 +387,7 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	}
 
 	// Help line.
-	helpLine := mutedStyle.Render(" \uf0a8\uf0a7 navigate | enter select | esc close")
+	helpLine := mutedStyle.Render(" j/k or arrows navigate | enter select | esc close")
 	for cy := boxY + 1; cy < boxY+palH-1; cy++ {
 		canvas.SetCell(boxX, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 		canvas.SetCell(boxX+palW-1, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
