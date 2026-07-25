@@ -317,3 +317,60 @@ func readyBrowseModel(t *testing.T) Model {
 	model.browse.SetCursor(0)
 	return model
 }
+
+func TestBrowse_y_yanks_current_cell_value(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1 // select the "name" column
+	model.browse.SetCursor(0)
+
+	// When — y yanks current cell
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — cell value copied to clipboard, no picker opened
+	if model.yankPicker != nil {
+		t.Fatal("y in browse tab should not open yank picker")
+	}
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("expected copy command")
+	}
+}
+
+func TestBrowse_y_yanks_cursor_start_column_by_default(t *testing.T) {
+	model := readyBrowseModel(t)
+	// browseColumn defaults to 0 (id column)
+	model.browse.SetCursor(0)
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — copies "1" (value of id column)
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("expected copy command")
+	}
+}
+
+func TestBrowse_y_yanks_moved_cell_value(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1    // name column
+	model.browse.SetCursor(1) // second row "second"
+
+	// When
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — copies "second"
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("expected copy command")
+	}
+}

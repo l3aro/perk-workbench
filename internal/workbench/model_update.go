@@ -677,6 +677,19 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
+					case m.keybindings.Match(keyPress, "browse.yank_cell", []scope{scopeView, scopeGlobal}):
+						row := m.browse.Cursor()
+						col := m.browseColumn
+						if row < 0 || row >= len(m.browseResult.Rows) || col < 0 || col >= len(m.browseResult.Columns) {
+							return m, nil
+						}
+						cell := m.browseResult.Rows[row][col]
+						val := ""
+						if cell != nil {
+							val = *cell
+						}
+						m.Status = "copied to clipboard"
+						return m, copyQueryLogStatement(val)
 					case m.keybindings.Match(keyPress, "browse.next_page", []scope{scopeView, scopeGlobal}):
 						if m.browseLoading {
 							return m, nil
