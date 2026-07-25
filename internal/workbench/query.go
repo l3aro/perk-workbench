@@ -73,6 +73,7 @@ func (m *Model) setResults(result sharedsql.Result) {
 		affectedLabel = "row"
 	}
 	m.resultsStatus = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
+	m.resultsStatus += colsHint(m.results.Columns(), m.tableViewportWidth)
 	if result.Truncated {
 		m.resultsStatus += " | truncated"
 	}

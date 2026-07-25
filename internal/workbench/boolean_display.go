@@ -3,8 +3,8 @@ package workbench
 import "charm.land/lipgloss/v2"
 
 const (
-	iconBooleanTrue  = "\uf00c" // nf-fa-check
-	iconBooleanFalse = "\uf00d" // nf-fa-times
+	iconBooleanTrue  = "✓"
+	iconBooleanFalse = "✗"
 )
 
 var (

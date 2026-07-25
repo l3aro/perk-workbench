@@ -179,6 +179,7 @@ func newResultsTable() table.Model {
 }
 
 func resizeResultsTable(resultTable *table.Model, width, height int) {
+	resultTable.SetColumns(fitColumns(resultTable.Columns(), width))
 	tableWidth := max(width, tableContentWidth(resultTable.Columns()))
 	resultTable.SetWidth(tableWidth)
 	resultTable.SetHeight(height)
@@ -190,6 +191,55 @@ func resizeResultsTable(resultTable *table.Model, width, height int) {
 			Foreground(lipgloss.Color(colorAccent)).
 			Background(lipgloss.Color(colorStripe)),
 	})
+}
+
+func fitColumns(columns []table.Column, maxWidth int) []table.Column {
+	totalWidth := tableContentWidth(columns)
+	if totalWidth <= maxWidth || len(columns) == 0 {
+		return columns
+	}
+	adjusted := make([]table.Column, len(columns))
+	copy(adjusted, columns)
+	paddingTotal := 2 * spaceCompact * len(adjusted)
+	available := maxWidth - paddingTotal
+	if available < len(adjusted) {
+		available = len(adjusted)
+	}
+	// Give each column a minimum of its title width, then distribute remainder proportionally.
+	titleTotal := 0
+	for _, c := range adjusted {
+		titleTotal += ansi.StringWidth(c.Title)
+	}
+	if titleTotal >= available {
+		// Even titles don't fit — give every column at least 1
+		for i := range adjusted {
+			adjusted[i].Width = 1
+		}
+		return adjusted
+	}
+	surplus := available - titleTotal
+	dataTotal := 0
+	for _, c := range adjusted {
+		dataTotal += max(c.Width-ansi.StringWidth(c.Title), 0)
+	}
+	for i := range adjusted {
+		titleW := ansi.StringWidth(adjusted[i].Title)
+		dataW := max(adjusted[i].Width-titleW, 0)
+		if dataTotal > 0 {
+			adjusted[i].Width = titleW + max(dataW*surplus/dataTotal, 0)
+		} else {
+			adjusted[i].Width = titleW + surplus/len(adjusted)
+		}
+	}
+	// Fix rounding
+	actual := tableContentWidth(adjusted)
+	if actual > maxWidth {
+		adjusted[len(adjusted)-1].Width -= actual - maxWidth
+		if adjusted[len(adjusted)-1].Width < 1 {
+			adjusted[len(adjusted)-1].Width = 1
+		}
+	}
+	return adjusted
 }
 
 func tableContentWidth(columns []table.Column) int {
@@ -264,14 +314,17 @@ func tableLine(columns []table.Column, row table.Row, numericColumns []bool, off
 
 func cropTableLine(line string, offset, width int) string {
 	var visible strings.Builder
-	position, end := 0, offset+width
-	for len(line) > 0 && position < end {
-		cluster, clusterWidth := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
-		nextPosition := position + clusterWidth
-		if position >= offset && nextPosition <= end {
+	var buf strings.Builder
+	total := offset + width
+	for len(line) > 0 {
+		cluster, _ := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
+		buf.WriteString(cluster)
+		if ansi.StringWidth(buf.String()) > total {
+			break
+		}
+		if ansi.StringWidth(buf.String()) > offset {
 			visible.WriteString(cluster)
 		}
-		position = nextPosition
 		line = line[len(cluster):]
 	}
 	return visible.String() + strings.Repeat(" ", max(width-ansi.StringWidth(visible.String()), 0))
@@ -279,6 +332,20 @@ func cropTableLine(line string, offset, width int) string {
 
 func tableOffset(resultTable table.Model, offset, viewportWidth int) int {
 	return min(max(offset, 0), max(resultTable.Width()-viewportWidth, 0))
+}
+
+func colsHint(columns []table.Column, viewportWidth int) string {
+	if len(columns) <= 1 {
+		return ""
+	}
+	totalWidth := 0
+	for _, c := range columns {
+		totalWidth += c.Width + 2*spaceCompact
+	}
+	if totalWidth <= viewportWidth {
+		return ""
+	}
+	return fmt.Sprintf(" | %d cols", len(columns))
 }
 
 func paneStyle(focused bool) lipgloss.Style {
@@ -589,7 +656,7 @@ func (m Model) queryLogPaneView() string {
 
 func (m Model) queryLogContentView() string {
 	content := tableViewportView(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
-	summary := m.queryLogSummary()
+	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
 		paneStatus(statusStyle.Render("y copy | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
@@ -617,7 +684,11 @@ func (m Model) workspaceView() string {
 	case tabForeignKeys:
 		content = m.foreignKeysView()
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, m.modeBadge()+" "+statusStyle.Render("L/H tabs"))
+	modeLine := m.modeBadge()
+	if m.compact && m.SelectedTable != "" {
+		modeLine += "  " + statusStyle.Render(m.SelectedTable)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, modeLine+" "+statusStyle.Render("L/H tabs"))
 }
 
 func (m Model) sqlPaneView() string {
