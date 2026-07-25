@@ -4,6 +4,7 @@ import (
 	"context"
 	stdsql "database/sql"
 	"fmt"
+	"slices"
 	"strings"
 
 	sharedsql "github.com/l3aro/perk/internal/sql"
@@ -15,8 +16,9 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 		return nil, fmt.Errorf("reading indexes: %w", err)
 	}
 	type listedIndex struct {
-		name   string
-		unique bool
+		name       string
+		unique     bool
+		primaryKey bool
 	}
 	listed := []listedIndex{}
 	for rows.Next() {
@@ -25,10 +27,10 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
 		}
-		if origin != "c" {
+		if origin != "c" && origin != "pk" {
 			continue
 		}
-		listed = append(listed, listedIndex{name: name, unique: unique != 0})
+		listed = append(listed, listedIndex{name: name, unique: unique != 0, primaryKey: origin == "pk"})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, sharedsql.CloseRows(rows, "iterating indexes", err)
@@ -38,21 +40,73 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 	}
 
 	indexes := make([]sharedsql.IndexInfo, 0, len(listed))
+	var primary sharedsql.IndexInfo
 	for _, index := range listed {
 		columns, err := sqliteIndexColumns(ctx, s.db, index.name)
 		if err != nil {
 			return nil, err
 		}
-		indexes = append(indexes, sharedsql.IndexInfo{Name: sharedsql.SanitizeDisplay(index.name), Unique: index.unique, Columns: columns})
+		info := sharedsql.IndexInfo{
+			Name:       sharedsql.SanitizeDisplay(index.name),
+			Unique:     index.unique,
+			PrimaryKey: index.primaryKey,
+			Columns:    columns,
+		}
+		if info.PrimaryKey {
+			info.Name = "PRIMARY"
+			primary = info
+		} else {
+			indexes = append(indexes, info)
+		}
 	}
-	primary, err := s.primaryKeyColumns(ctx, table)
-	if err != nil {
-		return nil, err
+	if len(primary.Columns) == 0 {
+		pk, err := tablePKColumns(ctx, s.db, table)
+		if err != nil {
+			return nil, err
+		}
+		if len(pk) > 0 {
+			primary = sharedsql.IndexInfo{Name: "PRIMARY", PrimaryKey: true, Columns: pk}
+		}
 	}
-	if len(primary) > 0 {
-		indexes = append([]sharedsql.IndexInfo{{Name: "PRIMARY", PrimaryKey: true, Columns: primary}}, indexes...)
+	if len(primary.Columns) > 0 {
+		indexes = append([]sharedsql.IndexInfo{primary}, indexes...)
 	}
 	return indexes, nil
+}
+
+func tablePKColumns(ctx context.Context, queryer tableInfoQuerier, table string) ([]string, error) {
+	rows, err := queryer.QueryContext(ctx, "PRAGMA table_xinfo("+quoteIdentifier(table)+")")
+	if err != nil {
+		return nil, fmt.Errorf("reading table info: %w", err)
+	}
+	type pkCol struct {
+		name     string
+		position int
+	}
+	var pks []pkCol
+	for rows.Next() {
+		var cid, notNull, primaryKey, hidden int
+		var name, colType string
+		var defaultValue stdsql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultValue, &primaryKey, &hidden); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning table info", err)
+		}
+		if primaryKey > 0 {
+			pks = append(pks, pkCol{name: sharedsql.SanitizeDisplay(name), position: primaryKey})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating table info", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing table info rows: %w", err)
+	}
+	slices.SortFunc(pks, func(a, b pkCol) int { return a.position - b.position })
+	columns := make([]string, len(pks))
+	for index, primaryKey := range pks {
+		columns[index] = primaryKey.name
+	}
+	return columns, nil
 }
 
 func sqliteIndexColumns(ctx context.Context, queryer interface {
