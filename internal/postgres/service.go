@@ -189,11 +189,7 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 		return sharedsql.Result{}, fmt.Errorf("invalid page: offset=%d limit=%d", offset, limit)
 	}
 	identifier := postgresTableIdentifier(name)
-	var totalRows int64
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+identifier).Scan(&totalRows); err != nil {
-		return sharedsql.Result{}, fmt.Errorf("counting table rows: %w", err)
-	}
-	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+identifier+" LIMIT $1 OFFSET $2", limit, offset)
+	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+identifier+" LIMIT $1 OFFSET $2", limit+1, offset)
 	if err != nil {
 		return sharedsql.Result{}, fmt.Errorf("browsing table: %w", err)
 	}
@@ -201,7 +197,10 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	result.TotalRows = totalRows
+	result.HasMore = len(result.Rows) > limit
+	if result.HasMore {
+		result.Rows = result.Rows[:limit]
+	}
 	return result, nil
 }
 

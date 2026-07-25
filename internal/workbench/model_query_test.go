@@ -169,18 +169,18 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 	})
 }
 
-func TestBrowse_status_shows_current_batch_and_total(t *testing.T) {
+func TestBrowse_status_shows_current_batch_without_total(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.BrowsePage = "projects", 1
 	rows := make([][]*string, browsePageSize)
 
 	// When
-	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, TotalRows: 1000}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, HasMore: true}})
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.browseStatus, "projects | 26-50 of 1,000"; got != want {
+	if got, want := model.browseStatus, "projects | 26-50"; got != want {
 		t.Fatalf("browse status = %q, want %q", got, want)
 	}
 }

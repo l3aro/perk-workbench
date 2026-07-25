@@ -631,7 +631,7 @@ func TestBrowse_next_stays_on_final_page(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.BrowsePage = "projects", tabBrowse, 2
-	model.browseResult.TotalRows = 55
+	model.browseResult.HasMore = false
 	model.focusActiveTable()
 
 	// When
@@ -650,7 +650,7 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "projects", tabBrowse
-	model.browseResult.TotalRows = 100
+	model.browseResult.HasMore = true
 	model.focusActiveTable()
 
 	// When

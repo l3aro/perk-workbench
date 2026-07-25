@@ -37,12 +37,20 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 		t.Fatalf("TableInfo() indexes = %#v, want primary, unique, and regular index metadata", columns)
 	}
 
-	result, err := service.BrowseTable(ctx, "items", 25, 25)
+	result, err := service.BrowseTable(ctx, "items", 0, 25)
 	if err != nil {
 		t.Fatalf("BrowseTable() error = %v", err)
 	}
-	if len(result.Rows) != 1 || result.Columns[0] != "id" || result.TotalRows != 26 {
-		t.Fatalf("BrowseTable() = %#v, want second page with one row", result)
+	if len(result.Rows) != 25 || result.Columns[0] != "id" || !result.HasMore {
+		t.Fatalf("BrowseTable() = %#v, want first page without a total row count", result)
+	}
+
+	result, err = service.BrowseTable(ctx, "items", 25, 25)
+	if err != nil {
+		t.Fatalf("BrowseTable() second page error = %v", err)
+	}
+	if len(result.Rows) != 1 || result.HasMore {
+		t.Fatalf("BrowseTable() = %#v, want final page with no next page", result)
 	}
 }
 
