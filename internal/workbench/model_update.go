@@ -129,40 +129,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.blurTables()
 		return m, m.formMode.beginInsert(m.editor)
 	}
-	if m.savedQueryPicker != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.savedQueryPicker = nil
-			return m, nil
-		}
-		form, command := m.savedQueryPicker.form.Update(message)
-		m.savedQueryPicker.form = form.(*huh.Form)
-		if m.savedQueryPicker.form.State != huh.StateCompleted {
-			return m, command
-		}
-		m.editor.setValue(m.savedQueryPicker.selection)
-		m.savedQueryPicker = nil
-		m.Status = "loaded saved query"
-		m.Focus, m.Tab = focusWorkspace, tabSQL
-		m.blurTables()
-		return m, m.formMode.beginInsert(m.editor)
-	}
-	if m.savedQueryPicker != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.savedQueryPicker = nil
-			return m, nil
-		}
-		form, command := m.savedQueryPicker.form.Update(message)
-		m.savedQueryPicker.form = form.(*huh.Form)
-		if m.savedQueryPicker.form.State != huh.StateCompleted {
-			return m, command
-		}
-		m.editor.setValue(m.savedQueryPicker.selection)
-		m.savedQueryPicker = nil
-		m.Status = "loaded saved query"
-		m.Focus, m.Tab = focusWorkspace, tabSQL
-		m.blurTables()
-		return m, m.formMode.beginInsert(m.editor)
-	}
 	if m.yankPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
 			m.yankPicker = nil
@@ -318,12 +284,136 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch message := message.(type) {
 	case tea.MouseClickMsg:
-		if message.Button == tea.MouseLeft && !m.hasOverlay() {
-			return m.handleLeftClick(message.X, message.Y)
+		cmds := []tea.Cmd{}
+		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
+			model, cmd := m.handleLeftClick(message.X, message.Y)
+			m = model.(Model)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			var m2 tea.Model
+			m2, maybeCmd := m.handleBrowseClick(message.X, message.Y)
+			m = m2.(Model)
+			if maybeCmd != nil {
+				cmds = append(cmds, maybeCmd)
+			}
+			if len(cmds) > 0 || m.contextMenu != nil {
+				return m, tea.Batch(cmds...)
+			}
+		}
+		if message.Button == tea.MouseRight && !m.hasOverlay() {
+			return m.handleRightClick(message.X, message.Y)
+		}
+		if len(cmds) > 0 {
+			return m, tea.Batch(cmds...)
 		}
 	case tea.MouseWheelMsg:
-		if !m.hasOverlay() {
+		if !m.hasOverlay() && m.contextMenu == nil {
 			return m.handleMouseWheel(message)
+		}
+	}
+
+	if m.contextMenu != nil && m.contextMenu.visible {
+		switch msg := message.(type) {
+		case tea.KeyPressMsg:
+			switch msg.Key().Code {
+			case tea.KeyEscape:
+				m.contextMenu = nil
+				return m, nil
+			case tea.KeyUp:
+				m.contextMenu.selected = max(m.contextMenu.selected-1, 0)
+			case tea.KeyDown:
+				m.contextMenu.selected = min(m.contextMenu.selected+1, max(len(m.contextMenu.options)-1, 0))
+			case tea.KeyEnter:
+				if m.contextMenu.selected >= 0 && m.contextMenu.selected < len(m.contextMenu.options) {
+					action := m.contextMenu.options[m.contextMenu.selected].action
+					m.contextMenu = nil
+					switch action {
+					case "edit_cell":
+						return m, m.openCellEditor()
+					case "edit_row":
+						return m, m.openBrowseForm()
+					case "delete_row":
+						m.deleteConfirm = &confirmDialog{
+							message:  "Delete this row?",
+							yesLabel: "Yes, delete",
+							noLabel:  "Cancel",
+							selected: 1,
+							visible:  true,
+						}
+						return m, nil
+					}
+				}
+				return m, nil
+			}
+			return m, nil
+		case tea.MouseClickMsg:
+			if msg.Button == tea.MouseLeft {
+				relY := msg.Mouse().Y - m.contextMenu.y - 1
+				if relY >= 2 && relY < 2+len(m.contextMenu.options) {
+					idx := relY - 2
+					if idx >= 0 && idx < len(m.contextMenu.options) {
+						action := m.contextMenu.options[idx].action
+						m.contextMenu = nil
+						switch action {
+						case "edit_cell":
+							return m, m.openCellEditor()
+						case "edit_row":
+							return m, m.openBrowseForm()
+						case "delete_row":
+							m.deleteConfirm = &confirmDialog{
+								message:  "Delete this row?",
+								yesLabel: "Yes, delete",
+								noLabel:  "Cancel",
+								selected: 1,
+								visible:  true,
+							}
+							return m, nil
+						}
+					}
+				}
+			}
+			m.contextMenu = nil
+			return m, nil
+		}
+	}
+
+	if m.deleteConfirm != nil && m.deleteConfirm.visible {
+		switch msg := message.(type) {
+		case tea.KeyPressMsg:
+			switch msg.Key().Code {
+			case tea.KeyEscape:
+				m.deleteConfirm = nil
+				return m, nil
+			case tea.KeyLeft, tea.KeyRight:
+				m.deleteConfirm.selected = 1 - m.deleteConfirm.selected
+			case tea.KeyEnter:
+				if m.deleteConfirm.selected == 0 {
+					m.deleteConfirm = nil
+					return m, m.deleteRow()
+				}
+				m.deleteConfirm = nil
+				return m, nil
+			}
+			return m, nil
+		case tea.MouseClickMsg:
+			if msg.Button == tea.MouseLeft {
+				// Centered dialog: 4 content lines → border height 6.
+				// Content starts at (height-6)/2 + 1 = height/2-2.
+				// Options are at height/2 (yes) and height/2+1 (no).
+				optY := m.height/2 - 1 // align to allow relY=1 and relY=2
+				relY := msg.Mouse().Y - optY
+				if relY == 1 {
+					m.deleteConfirm = nil
+					return m, m.deleteRow()
+				}
+				if relY == 2 {
+					m.deleteConfirm = nil
+					return m, nil
+				}
+			}
+			m.deleteConfirm = nil
+			return m, nil
 		}
 	}
 
@@ -382,6 +472,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateColumnAltered(message)
 	case browseRowUpdatedMsg:
 		return m.updateBrowseRowUpdated(message)
+	case deleteRowMsg:
+		return m.updateDeleteRowMsg(message)
 	case cellEditorUpdatedMsg:
 		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:
@@ -1216,6 +1308,166 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		newCursor := clamp(m.queryLog.Cursor()+step, 0, rowCount-1)
 		m.queryLog.SetCursor(newCursor)
 	}
+	return m, nil
+}
+
+const doubleClickTimeout = 500 * time.Millisecond
+
+// handleBrowseClick handles left-click on the browse or results table.
+// It selects the cell and detects double-click for inline editing.
+func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
+	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil {
+		return m, nil
+	}
+	// Determine which table tab we're on and which table to target.
+	switch m.Tab {
+	case tabBrowse:
+		if m.browseForm.active() || len(m.browse.Rows()) == 0 {
+			return m, nil
+		}
+	case tabSQL:
+		if len(m.results.Rows()) == 0 {
+			return m, nil
+		}
+	default:
+		return m, nil
+	}
+
+	contentY := absY - 1
+	if contentY < 0 {
+		return m, nil
+	}
+
+	// The workspace pane has a 1-char border on each side.
+	// Inside the pane: contentY=0 is border top, contentY=1 = tab row, contentY=2 = blank, contentY=3+ = browseView.
+	browseLine := contentY - 3 // 0=header, 1..N=data rows
+	if browseLine < 1 {
+		return m, nil // Clicked on header or above data rows.
+	}
+
+	var targetTable *table.Model
+	var targetCol *int
+	var targetOffset *int
+	var rows []table.Row
+	switch m.Tab {
+	case tabBrowse:
+		targetTable = &m.browse
+		targetCol = &m.browseColumn
+		targetOffset = &m.browseOffset
+		rows = m.browse.Rows()
+	case tabSQL:
+		targetTable = &m.results
+		targetCol = &m.resultsColumn
+		targetOffset = &m.resultsOffset
+		rows = m.results.Rows()
+	}
+
+	rowHeight := targetTable.Height()
+	start := min(max(targetTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	dataRow := start + browseLine - 1
+	if dataRow < 0 || dataRow >= len(rows) {
+		return m, nil
+	}
+
+	workspaceX := max(absX-m.schemaWidth, 0)
+	if m.compact {
+		return m, nil
+	}
+
+	browseX := workspaceX - 1 // Skip pane left border.
+	if browseX < 0 {
+		return m, nil
+	}
+	clickColOffset := browseX + *targetOffset
+	if clickColOffset < 0 {
+		return m, nil
+	}
+
+	col := 0
+	colStart := 0
+	columns := targetTable.Columns()
+	for ci, colInfo := range columns {
+		colEnd := colStart + colInfo.Width + 2*1 // spaceCompact
+		if clickColOffset >= colStart && clickColOffset < colEnd {
+			col = ci
+			break
+		}
+		colStart = colEnd
+	}
+	if col >= len(columns) {
+		return m, nil
+	}
+
+	// Check for double-click at the same position.
+	now := time.Now()
+	if !m.lastClickTime.IsZero() && now.Sub(m.lastClickTime) < doubleClickTimeout &&
+		m.lastClickX == absX && m.lastClickY == absY {
+		// Double-click: open inline cell editor.
+		targetTable.SetCursor(dataRow)
+		*targetCol = col
+		revealTableColumn(*targetTable, *targetCol, targetOffset, m.tableViewportWidth)
+		m.lastClickTime = time.Time{}
+		if m.Tab == tabBrowse {
+			return m, m.openCellEditor()
+		}
+		return m, nil
+	}
+
+	// Single click: select the cell.
+	m.lastClickTime = now
+	m.lastClickX = absX
+	m.lastClickY = absY
+	targetTable.SetCursor(dataRow)
+	*targetCol = col
+	revealTableColumn(*targetTable, *targetCol, targetOffset, m.tableViewportWidth)
+	return m, nil
+}
+
+func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
+	if m.State != stateReady {
+		return m, nil
+	}
+	contentY := absY - 1
+	if contentY < 0 || m.compact {
+		return m, nil
+	}
+
+	// Only show context menu on browse table (tabBrowse) when form isn't active.
+	if !(m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active()) {
+		return m, nil
+	}
+	rows := m.browse.Rows()
+	if len(rows) == 0 {
+		return m, nil
+	}
+
+	// Map to row.
+	browseLine := contentY - 3
+	if browseLine < 1 {
+		return m, nil
+	}
+	rowHeight := m.browse.Height()
+	start := min(max(m.browse.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	dataRow := start + browseLine - 1
+	if dataRow < 0 || dataRow >= len(rows) {
+		return m, nil
+	}
+
+	// Select the row and build context menu.
+	m.browse.SetCursor(dataRow)
+
+	m.contextMenu = &contextMenuModel{
+		options: []menuOption{
+			{label: "Edit cell", action: "edit_cell"},
+			{label: "Edit row", action: "edit_row"},
+			{label: "Delete row", action: "delete_row"},
+		},
+		selected: 0,
+		visible:  true,
+		x:        absX,
+		y:        absY + 1,
+	}
+
 	return m, nil
 }
 

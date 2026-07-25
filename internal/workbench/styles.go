@@ -466,12 +466,14 @@ func (m Model) View() tea.View {
 	}
 	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
-		m.connection.confirmation != nil {
-		// UV overlay path: render full UI, then overlay confirmation centered.
+		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil {
+		// UV overlay path: render full UI, then overlay centered.
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		if dialog := m.confirmContent(); dialog != "" {
+		if m.contextMenu != nil {
+			m.drawContextMenu(canvas)
+		} else if dialog := m.confirmContent(); dialog != "" {
 			m.drawConfirmDialog(canvas, dialog)
 		}
 		view.SetContent(canvas.Render())
@@ -488,7 +490,7 @@ func (m Model) hasConfirming() bool {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -513,6 +515,13 @@ func (m Model) confirmContent() string {
 		raw = m.foreignKeyForm.confirmation.View()
 	case m.connection.confirmation != nil:
 		raw = m.connection.confirmation.View()
+	case m.deleteConfirm != nil:
+		d := m.deleteConfirm
+		if d.selected == 0 {
+			raw = "  " + d.message + "\n\n" + "  > " + d.yesLabel + "\n    " + d.noLabel
+		} else {
+			raw = "  " + d.message + "\n\n" + "    " + d.yesLabel + "\n  > " + d.noLabel
+		}
 	}
 	if raw == "" {
 		return ""
@@ -558,6 +567,90 @@ func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
 	}
 
 	dialogStr.Draw(canvas, image.Rect(x+1, y+1, x+1+dialogW, y+1+dialogH))
+}
+
+func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
+	menu := m.contextMenu
+	if menu == nil || !menu.visible || len(menu.options) == 0 {
+		return
+	}
+
+	// Compute layout.
+	maxLabel := 0
+	for _, opt := range menu.options {
+		if len(opt.label) > maxLabel {
+			maxLabel = len(opt.label)
+		}
+	}
+	const title = "Row actions"
+	pad := 2                   // padding inside border on each side
+	optWidth := maxLabel + pad // "  label"
+	titleWidth := len(title) + pad
+	contentWidth := max(optWidth, titleWidth, 24)
+	borderW := contentWidth + 2
+
+	// Position, clamped to screen.
+	bounds := canvas.Bounds()
+	menuX := menu.x
+	menuY := menu.y
+	if menuX+borderW > bounds.Dx() {
+		menuX = bounds.Dx() - borderW
+	}
+	totalH := 4 + len(menu.options)
+	if menuY+totalH > bounds.Dy() {
+		menuY = bounds.Dy() - totalH
+	}
+	menuX = max(0, menuX)
+	menuY = max(0, menuY)
+
+	bg := uv.Style{Bg: parseHex(colorPanel)}
+	selectedBg := uv.Style{Bg: parseHex(colorAccent), Fg: parseHex(colorCanvas)}
+	inkFg := uv.Style{Fg: parseHex(colorInk)}
+	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+
+	// Fill background.
+	bgCell := uv.Cell{Content: " ", Width: 1, Style: bg}
+	canvas.FillArea(&bgCell, image.Rect(menuX, menuY, menuX+borderW, menuY+totalH))
+
+	// Draw border.
+	canvas.SetCell(menuX, menuY, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX+borderW-1, menuY, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX, menuY+totalH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX+borderW-1, menuY+totalH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+	for cx := menuX + 1; cx < menuX+borderW-1; cx++ {
+		canvas.SetCell(cx, menuY, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+		canvas.SetCell(cx, menuY+totalH-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+	}
+	for cy := menuY + 1; cy < menuY+totalH-1; cy++ {
+		canvas.SetCell(menuX, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+		canvas.SetCell(menuX+borderW-1, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+	}
+
+	// Title row.
+	cx0 := menuX + 1
+	titleLine := " " + title + strings.Repeat(" ", contentWidth-len(title)-1)
+	for i, ch := range titleLine {
+		canvas.SetCell(cx0+i, menuY+1, &uv.Cell{Content: string(ch), Width: 1, Style: inkFg})
+	}
+
+	// Separator row.
+	for cx := cx0; cx < menuX+borderW-1; cx++ {
+		canvas.SetCell(cx, menuY+2, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+	}
+
+	// Option rows.
+	for idx, opt := range menu.options {
+		optY := menuY + 3 + idx
+		line := " " + opt.label + strings.Repeat(" ", contentWidth-len(opt.label)-1)
+		optStyle := inkFg
+		if idx == menu.selected {
+			optStyle = selectedBg
+		}
+		for i, ch := range line {
+			canvas.SetCell(cx0+i, optY, &uv.Cell{Content: string(ch), Width: 1, Style: optStyle})
+		}
+	}
+
 }
 func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	d := m.queryLogDetail

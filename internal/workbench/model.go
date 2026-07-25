@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
@@ -84,6 +85,10 @@ type Model struct {
 	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
 	structureColumn, browseColumn, resultsColumn, indexesColumn, foreignKeysColumn, queryLogColumn int
 	compact, fullscreen, relationshipDiagram                                                       bool
+	lastClickTime                                                                                  time.Time
+	lastClickX, lastClickY                                                                         int
+	contextMenu                                                                                    *contextMenuModel
+	deleteConfirm                                                                                  *confirmDialog
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -92,6 +97,25 @@ func (i pickerItem) FilterValue() string { return i.title }
 func (i pickerItem) Title() string       { return i.title }
 func (i pickerItem) Description() string { return i.description }
 
+type menuOption struct {
+	label  string
+	action string
+}
+
+type contextMenuModel struct {
+	options  []menuOption
+	selected int
+	x, y     int // screen position (top-left of border)
+	visible  bool
+}
+
+type confirmDialog struct {
+	message  string
+	yesLabel string
+	noLabel  string
+	selected int // 0 = yes, 1 = no
+	visible  bool
+}
 type schemaItem struct {
 	title, description string
 	database, table    string
