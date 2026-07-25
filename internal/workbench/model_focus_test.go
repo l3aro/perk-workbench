@@ -396,7 +396,7 @@ func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 	}
 }
 
-func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testing.T) {
+func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model = resizeModel(model, 100, 24)
@@ -422,8 +422,11 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
-		t.Fatalf("results offset = %d, want %d after right", got, want)
+	if got, want := model.resultsColumn, 1; got != want {
+		t.Fatalf("selected result column = %d, want %d after right", got, want)
+	}
+	if model.resultsOffset == 0 {
+		t.Fatal("right-selected result column was not revealed")
 	}
 	if got := model.results.Cursor(); got != initialRow {
 		t.Fatalf("result cursor = %d, want %d after right", got, initialRow)
@@ -440,8 +443,11 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	model = updated.(Model)
 
 	// Then
+	if got, want := model.resultsColumn, 0; got != want {
+		t.Fatalf("selected result column = %d, want %d after h", got, want)
+	}
 	if got := model.resultsOffset; got != 0 {
-		t.Fatalf("results offset = %d, want 0 after h", got)
+		t.Fatalf("results offset = %d, want 0 after selecting the first column", got)
 	}
 
 	// When
@@ -449,12 +455,12 @@ func TestResults_left_and_right_scroll_wide_table_without_changing_row(t *testin
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
-		t.Fatalf("results offset = %d, want %d after l", got, want)
+	if got, want := model.resultsColumn, 1; got != want {
+		t.Fatalf("selected result column = %d, want %d after l", got, want)
 	}
 }
 
-func TestQueryLog_l_scrolls_wide_history_without_changing_row(t *testing.T) {
+func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	model.appendQueryLog(queryLogEntry{statement: strings.Repeat("select a very long query ", 20)})
@@ -473,8 +479,8 @@ func TestQueryLog_l_scrolls_wide_history_without_changing_row(t *testing.T) {
 	if got := model.queryLog.Cursor(); got != initialRow {
 		t.Fatalf("query log cursor = %d, want %d after l", got, initialRow)
 	}
-	if got := model.queryLogContentView(); got == view {
-		t.Fatal("right-scrolled query log viewport did not change")
+	if got, want := model.queryLogColumn, 1; got != want {
+		t.Fatalf("selected query-log column = %d, want %d after l", got, want)
 	}
 
 	// When
@@ -485,8 +491,8 @@ func TestQueryLog_l_scrolls_wide_history_without_changing_row(t *testing.T) {
 	if got := model.queryLog.Cursor(); got != initialRow {
 		t.Fatalf("query log cursor = %d, want %d after h", got, initialRow)
 	}
-	if got := model.queryLogContentView(); got != view {
-		t.Fatal("left-scrolled query log viewport did not return to the initial view")
+	if got, want := model.queryLogColumn, 0; got != want {
+		t.Fatalf("selected query-log column = %d, want %d after h", got, want)
 	}
 
 	// When
@@ -498,8 +504,8 @@ func TestQueryLog_l_scrolls_wide_history_without_changing_row(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.Cursor(); got != initialRow {
-		t.Fatalf("query log cursor = %d, want %d after g, l, g", got, initialRow)
+	if got := model.queryLogContentView(); got != view {
+		t.Fatal("query-log cell motion changed the viewport after returning left")
 	}
 }
 
@@ -532,8 +538,11 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	if got, want := model.Tab, tabSQL; got != want {
 		t.Fatalf("tab = %v, want %v", got, want)
 	}
-	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
-		t.Fatalf("results offset = %d, want %d after l", got, want)
+	if got, want := model.resultsColumn, 1; got != want {
+		t.Fatalf("selected result column = %d, want %d after l", got, want)
+	}
+	if model.resultsOffset == 0 {
+		t.Fatal("right-selected result column was not revealed")
 	}
 }
 
@@ -552,8 +561,11 @@ func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
-		t.Fatalf("results offset = %d, want visible step %d", got, want)
+	if got, want := model.resultsColumn, 1; got != want {
+		t.Fatalf("selected result column = %d, want %d after l", got, want)
+	}
+	if model.resultsOffset == 0 {
+		t.Fatal("right-selected result column was not revealed")
 	}
 }
 
@@ -573,8 +585,8 @@ func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsOffset, model.tableViewportWidth/2; got != want {
-		t.Fatalf("results offset = %d, want visible step %d", got, want)
+	if got, want := model.resultsColumn, 1; got != want {
+		t.Fatalf("selected result column = %d, want %d after l", got, want)
 	}
 }
 

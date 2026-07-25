@@ -60,7 +60,7 @@ func (m *Model) setResults(result sharedsql.Result) {
 	m.results.SetColumns(tableColumns(titles, rows))
 	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
 	m.results.SetRows(rows)
-	m.resultsOffset = 0
+	m.resultsColumn, m.resultsOffset = 0, 0
 	m.results.Focus()
 	m.formMode.mode = formModeNormal
 	m.editor.text.Blur()
@@ -251,7 +251,7 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 	if cursor >= 0 && len(rows) > 0 {
 		m.browse.SetCursor(min(cursor, len(rows)-1))
 	}
-	m.browseOffset = 0
+	m.browseColumn, m.browseOffset = 0, 0
 }
 
 func numericColumns(types []string) []bool {
