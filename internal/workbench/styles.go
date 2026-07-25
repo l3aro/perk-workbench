@@ -369,11 +369,12 @@ func cropTableLine(line string, offset, width int) string {
 	total := offset + width
 	for len(line) > 0 {
 		cluster, _ := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
+		start := ansi.StringWidth(buf.String())
 		buf.WriteString(cluster)
 		if ansi.StringWidth(buf.String()) > total {
 			break
 		}
-		if ansi.StringWidth(buf.String()) > offset {
+		if start >= offset {
 			visible.WriteString(cluster)
 		}
 		line = line[len(cluster):]

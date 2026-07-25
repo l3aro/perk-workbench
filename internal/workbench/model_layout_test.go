@@ -376,14 +376,14 @@ func TestResize_wide_browse_table_does_not_wrap_inside_workspace_pane(t *testing
 
 func TestCropTableLine_skips_wide_characters_cut_by_viewport_edges(t *testing.T) {
 	// Given
-	line := "ab中文cd"
+	line := "abＷＷcd"
 
 	// When
 	leftEdge := cropTableLine(line, 2, 2)
 	rightEdge := cropTableLine(line, 3, 2)
 
 	// Then
-	if got, want := leftEdge, "中"; got != want {
+	if got, want := leftEdge, "Ｗ"; got != want {
 		t.Errorf("left-edge crop = %q, want %q", got, want)
 	}
 	if got, want := rightEdge, "  "; got != want {
