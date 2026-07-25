@@ -1011,18 +1011,17 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case statePicking:
-		// Full-width picker: border(1) + title(1) + status(1), then items starting at contentY=4
-		itemY := y - 1 - 4
-		if itemY >= 0 {
+		// Full-width picker: same list header layout (TitleBar 2 lines + StatusBar 2 lines).
+		// Items start at contentY=5. Default delegate uses Height=2, Spacing=1 (3 lines per item).
+		itemLine := y - 1 - 5
+		if itemLine >= 0 {
+			itemOnPage := itemLine / 3
 			items := m.picker.VisibleItems()
-			if len(items) > 0 {
-				start, end := m.picker.Paginator.GetSliceBounds(len(items))
-				visible := end - start
-				if itemY < visible {
-					m.picker.Select(start + itemY)
-					if item, ok := m.picker.SelectedItem().(pickerItem); ok {
-						return m, selectPickerItem(item.raw)
-					}
+			start, end := m.picker.Paginator.GetSliceBounds(len(items))
+			if start+itemOnPage < end {
+				m.picker.Select(start + itemOnPage)
+				if item, ok := m.picker.SelectedItem().(pickerItem); ok {
+					return m, selectPickerItem(item.raw)
 				}
 			}
 		}
@@ -1039,13 +1038,12 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 		m.queryLogPendingG = false
 		m.focusActiveTable()
 	}
-	// Tab row is the first content row (y=0 of the workspace). Tab labels with padding:
-	//   "Columns"(9) "Browse"(8) "SQL"(5) "Indexes"(9) "Foreign Keys"(15)
-	// Total ~46 cells, starting at x=1 (after border + padding).
-	if y == 0 {
+	// The workspace pane has a NormalBorder (top border at contentY=0).
+	// Tab row is inside the border at contentY=1.
+	if y == 1 {
 		tabNames := []workspaceTab{tabStructure, tabBrowse, tabSQL, tabIndexes, tabForeignKeys}
 		tabWidths := []int{9, 8, 5, 9, 15}
-		cx := 1
+		cx := 2 // pane left border (1) + left padding (1)
 		for i, w := range tabWidths {
 			if x >= cx && x < cx+w {
 				if m.Tab != tabNames[i] {
@@ -1062,9 +1060,9 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 
 func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 	// contentY = terminal Y - 1 (after header).
-	// Schema list renders: top border (1), title (1), status bar (1), then items.
-	// First item is at contentY=4.
-	itemY := contentY - 4
+	// Schema list renders inside pane: top border (1), TitleBar (title 1 + padding 1 = 2),
+	// StatusBar (status 1 + padding 1 = 2), then items. First item is at contentY=5.
+	itemY := contentY - 5
 	if itemY < 0 {
 		return m, nil
 	}
