@@ -52,7 +52,7 @@ func TestModelCommandPalette_opensThemePicker(t *testing.T) {
 	t.Cleanup(func() { setTheme(original) })
 
 	model := New("", context.Background(), testOpen)
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl, Text: "p"})
 	model = updated.(Model)
 	if !model.commandPalette.visible {
 		t.Fatal("ctrl+p did not open the palette")
