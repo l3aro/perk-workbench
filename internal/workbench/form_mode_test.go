@@ -26,6 +26,11 @@ func TestFormMode_iRoutesSQLTextToHuhUntilEscape(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus, model.Tab = focusWorkspace, tabSQL
+	bindings, err := NewKeybindings(map[string][]string{"form.edit": {"z"}})
+	if err != nil {
+		t.Fatalf("NewKeybindings: %v", err)
+	}
+	model.SetKeybindings(bindings)
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
