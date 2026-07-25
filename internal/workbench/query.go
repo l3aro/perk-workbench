@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/dustin/go-humanize"
+	"github.com/l3aro/perk/internal/chrome"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
@@ -149,7 +150,7 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 		if column.DefaultValue != nil {
 			defaultValue = safeText(*column.DefaultValue)
 		}
-		nullable := booleanValue(column.Nullable)
+		nullable := chrome.BooleanValue(column.Nullable)
 		rows[index] = table.Row{safeText(column.Name), indexIcons(column.Indexes), safeText(column.Type), safeText(column.Attributes), nullable, defaultValue}
 	}
 	// Center Nullable icons within column

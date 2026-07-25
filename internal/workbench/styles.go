@@ -3,7 +3,6 @@ package workbench
 import (
 	"fmt"
 	"image"
-	"image/color"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +17,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk/internal/chrome"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
@@ -280,55 +280,6 @@ func resizeResultsTable(resultTable *table.Model, width, height int) {
 			Foreground(lipgloss.Color(colorAccent)).
 			Background(lipgloss.Color(colorStripe)),
 	})
-}
-
-func fitColumns(columns []table.Column, maxWidth int) []table.Column {
-	totalWidth := tableContentWidth(columns)
-	if totalWidth <= maxWidth || len(columns) == 0 {
-		return columns
-	}
-	adjusted := make([]table.Column, len(columns))
-	copy(adjusted, columns)
-	paddingTotal := 2 * spaceCompact * len(adjusted)
-	available := maxWidth - paddingTotal
-	if available < len(adjusted) {
-		available = len(adjusted)
-	}
-	// Give each column a minimum of its title width, then distribute remainder proportionally.
-	titleTotal := 0
-	for _, c := range adjusted {
-		titleTotal += ansi.StringWidth(c.Title)
-	}
-	if titleTotal >= available {
-		// Even titles don't fit — give every column at least 1
-		for i := range adjusted {
-			adjusted[i].Width = 1
-		}
-		return adjusted
-	}
-	surplus := available - titleTotal
-	dataTotal := 0
-	for _, c := range adjusted {
-		dataTotal += max(c.Width-ansi.StringWidth(c.Title), 0)
-	}
-	for i := range adjusted {
-		titleW := ansi.StringWidth(adjusted[i].Title)
-		dataW := max(adjusted[i].Width-titleW, 0)
-		if dataTotal > 0 {
-			adjusted[i].Width = titleW + max(dataW*surplus/dataTotal, 0)
-		} else {
-			adjusted[i].Width = titleW + surplus/len(adjusted)
-		}
-	}
-	// Fix rounding
-	actual := tableContentWidth(adjusted)
-	if actual > maxWidth {
-		adjusted[len(adjusted)-1].Width -= actual - maxWidth
-		if adjusted[len(adjusted)-1].Width < 1 {
-			adjusted[len(adjusted)-1].Width = 1
-		}
-	}
-	return adjusted
 }
 
 func tableContentWidth(columns []table.Column) int {
@@ -640,10 +591,10 @@ func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
 	x := max(0, (bounds.Dx()-borderW)/2)
 	y := max(0, (bounds.Dy()-borderH)/2)
 
-	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
+	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
 	canvas.FillArea(&dialogBg, image.Rect(x, y, x+borderW, y+borderH))
 
-	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
 	canvas.SetCell(x, y, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
 	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
 	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
@@ -694,10 +645,10 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 	menuX = max(0, menuX)
 	menuY = max(0, menuY)
 
-	bg := uv.Style{Bg: parseHex(colorPanel)}
-	selectedBg := uv.Style{Bg: parseHex(colorAccent), Fg: parseHex(colorCanvas)}
-	inkFg := uv.Style{Fg: parseHex(colorInk)}
-	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+	bg := uv.Style{Bg: chrome.ParseHex(colorPanel)}
+	selectedBg := uv.Style{Bg: chrome.ParseHex(colorAccent), Fg: chrome.ParseHex(colorCanvas)}
+	inkFg := uv.Style{Fg: chrome.ParseHex(colorInk)}
+	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
 
 	// Fill background.
 	bgCell := uv.Cell{Content: " ", Width: 1, Style: bg}
@@ -778,18 +729,18 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString(d.duration.Round(time.Microsecond).String())
 	b.WriteString("\n")
 	b.WriteString("  Statement:\n    ")
-	b.WriteString(ansi.Wordwrap(safeText(detailValue(d.statement)), innerW-4, "\n    "))
+	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.statement)), innerW-4, "\n    "))
 	b.WriteString("\n")
 	b.WriteString("  Message:  ")
-	b.WriteString(ansi.Wordwrap(safeText(detailValue(d.message)), innerW-14, " "))
+	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.message)), innerW-14, " "))
 	b.WriteString("\n\n  y copy | e explain | enter/esc close")
 
 	// Fill background
-	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
+	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
 	canvas.FillArea(&dialogBg, image.Rect(1, 1, m.width-1, m.height-1))
 
 	// Border
-	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
 	for x := 1; x < m.width-1; x++ {
 		canvas.SetCell(x, 0, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 		canvas.SetCell(x, m.height-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
@@ -804,12 +755,6 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	canvas.SetCell(m.width-1, m.height-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
 
 	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, m.width-1, m.height-1))
-}
-
-func parseHex(s string) color.Color {
-	var r, g, b uint8
-	fmt.Sscanf(s, "#%02x%02x%02x", &r, &g, &b)
-	return color.RGBA{R: r, G: g, B: b, A: 255}
 }
 
 func (m Model) contentView() string {
@@ -861,7 +806,7 @@ func (m Model) queryLogContentView() string {
 	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
-		paneStatus(statusStyle.Render("y copy | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
+		chrome.PaneStatus(statusStyle.Render("y copy | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {
@@ -898,7 +843,7 @@ func (m Model) sqlPaneView() string {
 		m.editor.text.View(),
 		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth, m.resultsColumn),
 	)
-	return content + "\n" + paneStatus("", m.resultsStatus, m.tableViewportWidth)
+	return content + "\n" + chrome.PaneStatus("", m.resultsStatus, m.tableViewportWidth)
 }
 
 func (m Model) structureView() string {
@@ -912,7 +857,7 @@ func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + paneStatus("", m.browseStatus, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + chrome.PaneStatus("", m.browseStatus, m.tableViewportWidth)
 }
 
 func (m Model) formViewportHeight() int {
@@ -930,10 +875,6 @@ func (m Model) formViewport(view string, offset int) string {
 	}
 	offset = min(max(offset, 0), len(lines)-height)
 	return strings.Join(lines[offset:offset+height], "\n")
-}
-
-func paneStatus(left, right string, width int) string {
-	return left + lipgloss.NewStyle().Width(max(width-lipgloss.Width(left), 0)).Align(lipgloss.Right).Render(right)
 }
 
 func (m Model) indexesView() string {
@@ -956,12 +897,12 @@ func (m Model) foreignKeysView() string {
 func (m Model) footer() string {
 	if m.State == stateConnection {
 		quitKey := m.keybindings.DisplayKey("app.quit")
-		quitHint := formatFooterKey(quitKey) + " quit"
+		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
 		return safeText(m.Status + " | 1 profiles | 2 form | tab controls | a add | e edit | d delete | / filter | " + quitHint)
 	}
 	if m.State == stateReady {
 		quitKey := m.keybindings.DisplayKey("app.quit_dialog")
-		quitHint := formatFooterKey(quitKey) + " quit"
+		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
 		parts := []string{}
 		if m.Status != "" {
 			parts = append(parts, m.Status)
@@ -974,16 +915,8 @@ func (m Model) footer() string {
 		return safeText(strings.Join(parts, " | "))
 	}
 	quitKey := m.keybindings.DisplayKey("app.quit")
-	quitHint := formatFooterKey(quitKey) + " quit"
+	quitHint := chrome.FormatFooterKey(quitKey) + " quit"
 	return safeText(m.Status + " | " + quitHint)
-}
-
-func formatFooterKey(key string) string {
-	// "Ctrl+C" → "^c", "q" → "q", "F5" → "f5"
-	if strings.HasPrefix(key, "Ctrl+") {
-		return "^" + strings.ToLower(key[5:])
-	}
-	return strings.ToLower(key)
 }
 
 func readDirectory(dir string) tea.Cmd {

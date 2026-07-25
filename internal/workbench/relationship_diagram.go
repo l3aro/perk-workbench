@@ -5,12 +5,13 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk/internal/chrome"
 )
 
 func (m Model) relationshipView() string {
 	diagram := m.relationshipDiagramView()
 	if lipgloss.Width(diagram) > m.tableViewportWidth || strings.Count(diagram, "\n")+1 > max(m.workspaceHeight-2, 1) {
-		return m.relationshipListView() + "\n" + paneStatus("", statusStyle.Render("Press f for full-screen diagram"), m.tableViewportWidth)
+		return m.relationshipListView() + "\n" + chrome.PaneStatus("", statusStyle.Render("Press f for full-screen diagram"), m.tableViewportWidth)
 	}
 	return diagram
 }

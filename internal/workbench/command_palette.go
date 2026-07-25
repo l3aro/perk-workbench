@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk/internal/chrome"
 )
 
 type commandPaletteItem struct {
@@ -365,11 +366,11 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	boxY := (height - palH) / 2
 
 	// Fill background.
-	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: parseHex(colorPanel)}}
+	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
 	canvas.FillArea(&dialogBg, image.Rect(boxX, boxY, boxX+palW, boxY+palH))
 
 	// Draw border.
-	borderStyle := uv.Style{Fg: parseHex(colorBorder)}
+	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
 	for cx := boxX + 1; cx < boxX+palW-1; cx++ {
 		canvas.SetCell(cx, boxY, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 		canvas.SetCell(cx, boxY+palH-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
