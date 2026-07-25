@@ -275,6 +275,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	switch message := message.(type) {
+	case tea.MouseClickMsg:
+		if message.Button == tea.MouseLeft && !m.hasOverlay() {
+			return m.handleLeftClick(message.X, message.Y)
+		}
+	case tea.MouseWheelMsg:
+		if !m.hasOverlay() {
+			return m.handleMouseWheel(message)
+		}
+	}
 
 	switch message := message.(type) {
 	case databaseOpenedMsg:
@@ -958,4 +968,167 @@ func (m *Model) cycleFocus(forward bool) {
 			m.queryLog.SetCursor(0)
 		}
 	}
+}
+
+func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
+	if y == 0 || m.hasOverlay() {
+		return m, nil
+	}
+	switch m.State {
+	case stateReady:
+		if m.compact {
+			return m, nil
+		}
+		// Content starts at y=1 (after header). Schema on left, workspace+query log on right.
+		contentY := y - 1
+		if contentY < 0 {
+			return m, nil
+		}
+		if x < m.schemaWidth {
+			if m.Focus != focusSchema {
+				m.Focus = focusSchema
+				m.queryLogPendingG = false
+				m.editor.text.Blur()
+				m.blurTables()
+			}
+			return m.schemaClick(contentY)
+		}
+		if contentY < m.workspaceHeight {
+			workspaceX := max(x-m.schemaWidth, 0)
+			return m.handleWorkspaceClick(workspaceX, contentY)
+		}
+		return m.focusQueryLogClick(contentY - m.workspaceHeight)
+	case stateConnection:
+		if m.compact {
+			return m, nil
+		}
+		if x < m.schemaWidth && m.connection.focus != connectionFocusRecent {
+			m.connection.focus = connectionFocusRecent
+			return m, nil
+		}
+		if x >= m.schemaWidth && m.connection.focus != connectionFocusForm {
+			m.connection.focus = connectionFocusForm
+		}
+		return m, nil
+	case statePicking:
+		return m, nil
+	case stateFailure:
+		m.RecoverToPicker("choose another database")
+		return m, readDirectory(m.pickerDir)
+	}
+	return m, nil
+}
+
+func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
+	if m.Focus != focusWorkspace {
+		m.Focus = focusWorkspace
+		m.queryLogPendingG = false
+		m.focusActiveTable()
+	}
+	// Tab row is the first content row (y=0 of the workspace). Tab labels with padding:
+	//   "Columns"(9) "Browse"(8) "SQL"(5) "Indexes"(9) "Foreign Keys"(15)
+	// Total ~46 cells, starting at x=1 (after border + padding).
+	if y == 0 {
+		tabNames := []workspaceTab{tabStructure, tabBrowse, tabSQL, tabIndexes, tabForeignKeys}
+		tabWidths := []int{9, 8, 5, 9, 15}
+		cx := 1
+		for i, w := range tabWidths {
+			if x >= cx && x < cx+w {
+				if m.Tab != tabNames[i] {
+					m.Tab = tabNames[i]
+					m.focusActiveTable()
+				}
+				return m, nil
+			}
+			cx += w
+		}
+	}
+	return m, nil
+}
+
+func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
+	return m, nil
+}
+func (m Model) focusQueryLogClick(contentY int) (tea.Model, tea.Cmd) {
+	if m.Focus != focusQueryLog {
+		m.Focus = focusQueryLog
+		m.queryLogPendingG = false
+		m.editor.text.Blur()
+		m.blurTables()
+		m.queryLog.Focus()
+		if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
+			m.queryLog.SetCursor(0)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	if m.height < 4 || m.width < 1 {
+		return m, nil
+	}
+	// Forward wheel events to the focused area's table.
+	step := 1
+	if wheel.Button == tea.MouseWheelDown {
+		step = 1
+	} else if wheel.Button == tea.MouseWheelUp {
+		step = -1
+	} else {
+		return m, nil
+	}
+
+	if m.State != stateReady {
+		return m, nil
+	}
+
+	switch m.Focus {
+	case focusSchema:
+		return m, nil
+	case focusWorkspace:
+		m.scrollActiveWorkspaceTable(step)
+	case focusQueryLog:
+		rows := m.queryLog.Rows()
+		rowCount := len(rows)
+		if rowCount == 0 {
+			return m, nil
+		}
+		newCursor := clamp(m.queryLog.Cursor()+step, 0, rowCount-1)
+		m.queryLog.SetCursor(newCursor)
+	}
+	return m, nil
+}
+
+func (m *Model) scrollActiveWorkspaceTable(step int) {
+	switch m.Tab {
+	case tabStructure:
+		rows := m.structure.Rows()
+		newCursor := clamp(m.structure.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.structure.SetCursor(newCursor)
+	case tabBrowse:
+		rows := m.browse.Rows()
+		newCursor := clamp(m.browse.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.browse.SetCursor(newCursor)
+	case tabSQL:
+		rows := m.results.Rows()
+		newCursor := clamp(m.results.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.results.SetCursor(newCursor)
+	case tabIndexes:
+		rows := m.indexes.Rows()
+		newCursor := clamp(m.indexes.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.indexes.SetCursor(newCursor)
+	case tabForeignKeys:
+		rows := m.foreignKeys.Rows()
+		newCursor := clamp(m.foreignKeys.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.foreignKeys.SetCursor(newCursor)
+	}
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
