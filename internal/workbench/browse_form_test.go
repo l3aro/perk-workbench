@@ -7,25 +7,77 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
 
-func TestBrowseForm_enterAndIOpenSelectedRow(t *testing.T) {
-	for _, key := range []tea.KeyPressMsg{{Code: tea.KeyEnter}, {Code: 'i', Text: "i"}} {
-		t.Run(key.String(), func(t *testing.T) {
-			// Given
-			model := readyBrowseModel(t)
+func TestBrowseForm_enterOpensSelectedRow(t *testing.T) {
+	model := readyBrowseModel(t)
 
-			// When
-			updated, _ := model.Update(key)
-			model = updated.(Model)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
 
-			// Then
-			if !model.browseForm.active() || model.browseForm.form == nil || model.browseForm.values.fields[1] != "first" {
-				t.Fatalf("browse form = %#v, status = %q, want selected row", model.browseForm, model.Status)
-			}
-		})
+	if !model.browseForm.active() || model.browseForm.form == nil || model.browseForm.values.fields[1] != "first" {
+		t.Fatalf("browse form = %#v, status = %q, want selected row", model.browseForm, model.Status)
+	}
+}
+
+func TestBrowseForm_iOpensCellEditor(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1 // select the "name" column
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+
+	// Then — cell editor opened
+	if model.cellEditor == nil || !model.cellEditor.active() {
+		t.Fatalf("cellEditor = %v, want active cell editor", model.cellEditor)
+	}
+	if got, want := model.cellEditor.columnName, "name"; got != want {
+		t.Fatalf("cellEditor column = %q, want %q", got, want)
+	}
+	if got, want := model.cellEditor.editedVal, "first"; got != want {
+		t.Fatalf("cellEditor value = %q, want %q", got, want)
+	}
+}
+
+func TestBrowseForm_cellEditorUsesFixedWidth(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+
+	for line := range strings.SplitSeq(model.confirmContent(), "\n") {
+		if got, want := ansi.StringWidth(line), 80; got != want {
+			t.Fatalf("cell editor width = %d, want %d", got, want)
+		}
+	}
+}
+
+func TestBrowseForm_cellEditorEnterSubmitsConfirmation(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	model = resolveBrowseCommand(model, command())
+
+	if model.cellEditor == nil || !model.cellEditor.confirming || model.cellEditor.confirm == nil {
+		t.Fatal("save did not open the cell update confirmation")
+	}
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter did not submit the cell update confirmation")
+	}
+	model = resolveBrowseCommand(model, command())
+	if model.cellEditor != nil {
+		t.Fatal("Enter did not submit the cell update confirmation")
 	}
 }
 
