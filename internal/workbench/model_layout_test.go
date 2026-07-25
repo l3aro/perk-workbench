@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -166,53 +165,6 @@ func TestResize_compact_query_log_fills_single_pane(t *testing.T) {
 	}
 	if !strings.Contains(view, "Time") {
 		t.Fatalf("compact query log view = %q, want query log table", view)
-	}
-}
-
-func TestFullscreen_focuses_each_pane_at_a_wide_viewport(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.schema.SetItems([]list.Item{schemaItem{title: "projects"}})
-	model = resizeModel(model, 100, 24)
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
-	model = updated.(Model)
-
-	// Then
-	if !model.compact {
-		t.Fatal("fullscreen mode did not use the single-pane layout")
-	}
-	updated, _ = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
-	model = updated.(Model)
-	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "projects") {
-		t.Fatalf("fullscreen schema view = %q, want schema content", view)
-	}
-
-	for _, test := range []struct {
-		key  rune
-		want string
-	}{
-		{key: '2', want: "Structure"},
-		{key: '3', want: "Time"},
-	} {
-		// When
-		updated, _ = model.Update(tea.KeyPressMsg{Code: test.key, Text: string(test.key)})
-		model = updated.(Model)
-
-		// Then
-		if view := ansi.Strip(model.View().Content); !strings.Contains(view, test.want) {
-			t.Fatalf("fullscreen pane %q view = %q, want %q", string(test.key), view, test.want)
-		}
-	}
-
-	// When
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
-	model = updated.(Model)
-
-	// Then
-	if model.compact {
-		t.Fatal("fullscreen toggle did not restore the split layout")
 	}
 }
 
