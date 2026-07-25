@@ -70,6 +70,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	if m.contextMenu != nil && m.contextMenu.visible {
+		return m.updateContextMenu(message)
+	}
 	if m.queryConfirmation != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
 			m.queryConfirmation = nil
@@ -344,71 +347,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.contextMenu != nil && m.contextMenu.visible {
-		switch msg := message.(type) {
-		case tea.KeyPressMsg:
-			switch msg.Key().Code {
-			case tea.KeyEscape:
-				m.contextMenu = nil
-				return m, nil
-			case tea.KeyUp:
-				m.contextMenu.selected = max(m.contextMenu.selected-1, 0)
-			case tea.KeyDown:
-				m.contextMenu.selected = min(m.contextMenu.selected+1, max(len(m.contextMenu.options)-1, 0))
-			case tea.KeyEnter:
-				if m.contextMenu.selected >= 0 && m.contextMenu.selected < len(m.contextMenu.options) {
-					action := m.contextMenu.options[m.contextMenu.selected].action
-					m.contextMenu = nil
-					switch action {
-					case "edit_cell":
-						return m, m.openCellEditor()
-					case "edit_row":
-						return m, m.openBrowseForm()
-					case "delete_row":
-						m.deleteConfirm = &confirmDialog{
-							message:  "Delete this row?",
-							yesLabel: "Yes, delete",
-							noLabel:  "Cancel",
-							selected: 1,
-							visible:  true,
-						}
-						return m, nil
-					}
-				}
-				return m, nil
-			}
-			return m, nil
-		case tea.MouseClickMsg:
-			if msg.Button == tea.MouseLeft {
-				relY := msg.Mouse().Y - m.contextMenu.y - 1
-				if relY >= 2 && relY < 2+len(m.contextMenu.options) {
-					idx := relY - 2
-					if idx >= 0 && idx < len(m.contextMenu.options) {
-						action := m.contextMenu.options[idx].action
-						m.contextMenu = nil
-						switch action {
-						case "edit_cell":
-							return m, m.openCellEditor()
-						case "edit_row":
-							return m, m.openBrowseForm()
-						case "delete_row":
-							m.deleteConfirm = &confirmDialog{
-								message:  "Delete this row?",
-								yesLabel: "Yes, delete",
-								noLabel:  "Cancel",
-								selected: 1,
-								visible:  true,
-							}
-							return m, nil
-						}
-					}
-				}
-			}
-			m.contextMenu = nil
-			return m, nil
-		}
-	}
-
 	if m.deleteConfirm != nil && m.deleteConfirm.visible {
 		switch msg := message.(type) {
 		case tea.KeyPressMsg:
@@ -678,18 +616,31 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
 					case m.keybindings.Match(keyPress, "browse.yank_cell", []scope{scopeView, scopeGlobal}):
+						return m, m.copyBrowseCell()
+					case m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}):
 						row := m.browse.Cursor()
-						col := m.browseColumn
-						if row < 0 || row >= len(m.browseResult.Rows) || col < 0 || col >= len(m.browseResult.Columns) {
+						if row < 0 || row >= len(m.browseResult.Rows) {
 							return m, nil
 						}
-						cell := m.browseResult.Rows[row][col]
-						val := ""
-						if cell != nil {
-							val = *cell
+						rows := m.browse.Rows()
+						rowHeight := m.browse.Height()
+						start := min(max(row-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+						menuX := m.schemaWidth + 1 - m.browseOffset
+						for _, column := range m.browse.Columns()[:m.browseColumn] {
+							menuX += column.Width + 2*spaceCompact
 						}
-						m.Status = "copied to clipboard"
-						return m, copyQueryLogStatement(val)
+						m.contextMenu = &contextMenuModel{
+							options: []menuOption{
+								{label: "Copy cell", action: "copy_cell", keys: "y"},
+								{label: "Edit cell", action: "edit_cell", keys: "i"},
+								{label: "Edit row", action: "edit_row", keys: "enter"},
+								{label: "Delete row", action: "delete_row", keys: "d"},
+							},
+							visible: true,
+							x:       menuX,
+							y:       row - start + 6,
+						}
+						return m, nil
 					case m.keybindings.Match(keyPress, "browse.next_page", []scope{scopeView, scopeGlobal}):
 						if m.browseLoading {
 							return m, nil
@@ -883,6 +834,76 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) formActive() bool {
 	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active() || m.foreignKeyForm.active()
+}
+
+func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
+	menu := m.contextMenu
+	selectAction := func(action string) (tea.Model, tea.Cmd) {
+		m.contextMenu = nil
+		switch action {
+		case "copy_cell":
+			return m, m.copyBrowseCell()
+		case "edit_cell":
+			return m, m.openCellEditor()
+		case "edit_row":
+			return m, m.openBrowseForm()
+		case "delete_row":
+			m.deleteConfirm = &confirmDialog{
+				message:  "Delete this row?",
+				yesLabel: "Yes, delete",
+				noLabel:  "Cancel",
+				selected: 1,
+				visible:  true,
+			}
+		}
+		return m, nil
+	}
+
+	switch msg := message.(type) {
+	case tea.KeyPressMsg:
+		switch msg.Keystroke() {
+		case "esc":
+			m.contextMenu = nil
+		case "up", "k":
+			menu.selected = max(menu.selected-1, 0)
+		case "down", "j":
+			menu.selected = min(menu.selected+1, max(len(menu.options)-1, 0))
+		case "i":
+			return selectAction("edit_cell")
+		case "y":
+			return selectAction("copy_cell")
+		case "d":
+			return selectAction("delete_row")
+		case "enter":
+			if menu.selected >= 0 && menu.selected < len(menu.options) {
+				return selectAction(menu.options[menu.selected].action)
+			}
+		}
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft {
+			m.contextMenu = nil
+			return m, nil
+		}
+		relY := msg.Mouse().Y - menu.y - 1
+		if relY >= 2 && relY < 2+len(menu.options) {
+			return selectAction(menu.options[relY-2].action)
+		}
+		m.contextMenu = nil
+	}
+	return m, nil
+}
+
+func (m *Model) copyBrowseCell() tea.Cmd {
+	row, col := m.browse.Cursor(), m.browseColumn
+	if row < 0 || row >= len(m.browseResult.Rows) || col < 0 || col >= len(m.browseResult.Columns) {
+		return nil
+	}
+	value := ""
+	if cell := m.browseResult.Rows[row][col]; cell != nil {
+		value = *cell
+	}
+	m.Status = "copied to clipboard"
+	return copyQueryLogStatement(value)
 }
 
 // handlePaletteCommand dispatches a command selected from the palette.

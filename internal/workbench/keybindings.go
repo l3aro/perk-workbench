@@ -99,7 +99,13 @@ func buildFromDefs(defs []commandDef) (Keybindings, error) {
 	cmds := make(map[CommandID]commandDef, len(defs))
 	for _, d := range defs {
 		keys := make([]string, len(d.keys))
-		copy(keys, d.keys)
+		for i, key := range d.keys {
+			canonical, err := normalizeKeystroke(key)
+			if err != nil {
+				return Keybindings{}, fmt.Errorf("command %q: invalid keystroke %q: %w", d.id, key, err)
+			}
+			keys[i] = canonical
+		}
 		cmds[d.id] = commandDef{id: d.id, scope: d.scope, keys: keys, label: d.label}
 	}
 
@@ -152,15 +158,16 @@ func (b Keybindings) resolve(stroke string, scopes []scope) (string, bool) {
 // Match checks whether a key press triggers the given command in the
 // given scope priority order.
 func (b Keybindings) Match(msg tea.KeyPressMsg, id CommandID, scopes []scope) bool {
-	stroke := msg.Keystroke()
-	for _, s := range scopes {
-		candidates, ok := b.index[s][stroke]
-		if !ok {
-			continue
-		}
-		for _, candidate := range candidates {
-			if candidate == id {
-				return true
+	for _, stroke := range keyStrokes(msg) {
+		for _, s := range scopes {
+			candidates, ok := b.index[s][stroke]
+			if !ok {
+				continue
+			}
+			for _, candidate := range candidates {
+				if candidate == id {
+					return true
+				}
 			}
 		}
 	}
@@ -170,15 +177,24 @@ func (b Keybindings) Match(msg tea.KeyPressMsg, id CommandID, scopes []scope) bo
 // ResolveAny finds any command matching a key press in the given scopes.
 // Returns ("", false) if unmatched. Prefer Match for specific commands.
 func (b Keybindings) ResolveAny(msg tea.KeyPressMsg, scopes []scope) (string, bool) {
-	stroke := msg.Keystroke()
-	for _, s := range scopes {
-		candidates, ok := b.index[s][stroke]
-		if !ok || len(candidates) == 0 {
-			continue
+	for _, stroke := range keyStrokes(msg) {
+		for _, s := range scopes {
+			candidates, ok := b.index[s][stroke]
+			if !ok || len(candidates) == 0 {
+				continue
+			}
+			return string(candidates[0]), true
 		}
-		return string(candidates[0]), true
 	}
 	return "", false
+}
+
+func keyStrokes(msg tea.KeyPressMsg) []string {
+	text, stroke := msg.String(), msg.Keystroke()
+	if text == stroke {
+		return []string{text}
+	}
+	return []string{text, stroke}
 }
 
 // canonical modifier order matching Bubble Tea v2 Keystroke() output.

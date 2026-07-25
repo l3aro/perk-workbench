@@ -339,6 +339,72 @@ func TestBrowse_y_yanks_current_cell_value(t *testing.T) {
 	}
 }
 
+func TestBrowse_commaOpensContextMenu(t *testing.T) {
+	model := readyBrowseModel(t)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+
+	if model.contextMenu == nil || !model.contextMenu.visible {
+		t.Fatal("comma did not open the context menu")
+	}
+	if got, want := len(model.contextMenu.options), 4; got != want {
+		t.Fatalf("context menu options = %d, want %d", got, want)
+	}
+	if got, want := model.contextMenu.options[0].keys, "y"; got != want {
+		t.Errorf("copy-cell shortcut = %q, want %q", got, want)
+	}
+	if got, want := model.contextMenu.options[3].keys, "d"; got != want {
+		t.Errorf("delete-row shortcut = %q, want %q", got, want)
+	}
+}
+
+func TestBrowse_contextMenuYCopiesSelectedCell(t *testing.T) {
+	model := readyBrowseModel(t)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Errorf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("y did not return a copy command")
+	}
+}
+
+func TestBrowse_contextMenuDOpensDeleteConfirmation(t *testing.T) {
+	model := readyBrowseModel(t)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+
+	if model.deleteConfirm == nil || !model.deleteConfirm.visible {
+		t.Fatal("d did not open delete confirmation")
+	}
+}
+
+func TestBrowse_contextMenuJAndKNavigateOptions(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.contextMenu = &contextMenuModel{options: []menuOption{{}, {}}, visible: true}
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updated.(Model)
+	if got, want := model.contextMenu.selected, 1; got != want {
+		t.Fatalf("context menu selection = %d, want %d after j", got, want)
+	}
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	model = updated.(Model)
+	if got, want := model.contextMenu.selected, 0; got != want {
+		t.Fatalf("context menu selection = %d, want %d after k", got, want)
+	}
+}
+
 func TestBrowse_y_yanks_cursor_start_column_by_default(t *testing.T) {
 	model := readyBrowseModel(t)
 	// browseColumn defaults to 0 (id column)

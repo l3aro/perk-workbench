@@ -620,16 +620,21 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 
 	// Compute layout.
 	maxLabel := 0
+	maxKeys := 0
 	for _, opt := range menu.options {
 		if len(opt.label) > maxLabel {
 			maxLabel = len(opt.label)
 		}
+		if len(opt.keys) > maxKeys {
+			maxKeys = len(opt.keys)
+		}
 	}
 	const title = "Row actions"
-	pad := 2                   // padding inside border on each side
-	optWidth := maxLabel + pad // "  label"
-	titleWidth := len(title) + pad
-	contentWidth := max(optWidth, titleWidth, 24)
+	pad := 2
+	keyGap := 2
+	optWidth := maxLabel + pad
+	keyColWidth := maxKeys + keyGap
+	contentWidth := max(optWidth+keyColWidth, len(title)+pad, 24)
 	borderW := contentWidth + 2
 
 	// Position, clamped to screen.
@@ -681,16 +686,30 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 		canvas.SetCell(cx, menuY+2, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 	}
 
+	mutedFg := uv.Style{Fg: chrome.ParseHex(colorMuted)}
+
 	// Option rows.
 	for idx, opt := range menu.options {
 		optY := menuY + 3 + idx
-		line := " " + opt.label + strings.Repeat(" ", contentWidth-len(opt.label)-1)
+		labelWidth := maxLabel + pad - 1
+		labelPart := " " + opt.label + strings.Repeat(" ", labelWidth-len(opt.label))
+		keyPart := strings.Repeat(" ", keyColWidth-len(opt.keys)) + opt.keys
+		line := labelPart + keyPart
+		if len(line) < contentWidth {
+			line += strings.Repeat(" ", contentWidth-len(line))
+		}
 		optStyle := inkFg
+		keyStyle := mutedFg
 		if idx == menu.selected {
 			optStyle = selectedBg
+			keyStyle = selectedBg
 		}
 		for i, ch := range line {
-			canvas.SetCell(cx0+i, optY, &uv.Cell{Content: string(ch), Width: 1, Style: optStyle})
+			style := optStyle
+			if i >= len(labelPart) && i < len(labelPart)+len(keyPart) {
+				style = keyStyle
+			}
+			canvas.SetCell(cx0+i, optY, &uv.Cell{Content: string(ch), Width: 1, Style: style})
 		}
 	}
 
@@ -858,7 +877,7 @@ func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + chrome.PaneStatus(statusStyle.Render("y copy"), m.browseStatus, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + chrome.PaneStatus("", m.browseStatus, m.tableViewportWidth)
 }
 
 func (m Model) formViewportHeight() int {

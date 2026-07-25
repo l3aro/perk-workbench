@@ -39,6 +39,7 @@ var defaultDefs = []commandDef{
 	{id: "browse.next_page", scope: scopeView, keys: []string{"n"}, label: "next"},
 	{id: "browse.prev_page", scope: scopeView, keys: []string{"p"}, label: "prev"},
 	{id: "browse.yank_cell", scope: scopeView, keys: []string{"y"}, label: "copy cell"},
+	{id: "browse.context_menu", scope: scopeView, keys: []string{","}, label: "context menu"},
 
 	// ── Indexes tab (view) ──────────────────────────────────────
 	{id: "indexes.create", scope: scopeView, keys: []string{"n"}, label: "new index"},

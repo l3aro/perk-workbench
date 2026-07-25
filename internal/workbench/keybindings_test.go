@@ -148,6 +148,35 @@ func TestKeybindings_keystroke_matches(t *testing.T) {
 	}
 }
 
+func TestKeybindings_shiftedTabKeysMatchRuntimeEvents(t *testing.T) {
+	bindings := DefaultKeybindings()
+	tests := []struct {
+		key tea.KeyPressMsg
+		id  CommandID
+	}{
+		{key: tea.KeyPressMsg{Code: 'h', Text: "H", Mod: tea.ModShift}, id: "workspace.tab_prev"},
+		{key: tea.KeyPressMsg{Code: 'l', Text: "L", Mod: tea.ModShift}, id: "workspace.tab_next"},
+	}
+
+	for _, test := range tests {
+		if !bindings.Match(test.key, test.id, []scope{scopeView}) {
+			t.Errorf("%s did not match %q", test.key.Keystroke(), test.id)
+		}
+	}
+}
+
+func TestKeybindings_uppercaseOverrideMatchesShiftedRuntimeEvent(t *testing.T) {
+	bindings, err := NewKeybindings(map[string][]string{"workspace.tab_next": {"L"}})
+	if err != nil {
+		t.Fatalf("creating keybindings: %v", err)
+	}
+
+	key := tea.KeyPressMsg{Code: 'l', Text: "L", Mod: tea.ModShift}
+	if !bindings.Match(key, "workspace.tab_next", []scope{scopeView}) {
+		t.Errorf("%s did not match uppercase L override", key.Keystroke())
+	}
+}
+
 func TestKeybindings_displayKey_first_alias(t *testing.T) {
 	b := DefaultKeybindings()
 	key := b.DisplayKey("query.execute")

@@ -101,6 +101,7 @@ func (i pickerItem) Description() string { return i.description }
 type menuOption struct {
 	label  string
 	action string
+	keys   string
 }
 
 type contextMenuModel struct {
