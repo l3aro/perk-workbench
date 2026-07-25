@@ -38,6 +38,12 @@ type browseRowUpdatedMsg struct {
 	err       error
 }
 
+type deleteRowMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
+
 func (m *Model) setResults(result sharedsql.Result) {
 	m.resultsNumericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
@@ -190,6 +196,52 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 	}
 	m.browseForm = browseForm{}
 	m.Status = "row updated"
+	return m, m.loadBrowse()
+}
+
+func (m Model) deleteRow() tea.Cmd {
+	if len(m.structureColumns) == 0 || m.browse.Cursor() < 0 || m.browse.Cursor() >= len(m.browseResult.Rows) {
+		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("no row selected")} }
+	}
+	columns := m.browseResult.Columns
+	row := m.browseResult.Rows[m.browse.Cursor()]
+
+	var primaryKeys []int
+	for _, info := range m.structureColumns {
+		if info.PrimaryKey > 0 {
+			for ci, name := range columns {
+				if strings.EqualFold(name, info.Name) {
+					primaryKeys = append(primaryKeys, ci)
+					break
+				}
+			}
+		}
+	}
+	if len(primaryKeys) == 0 {
+		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("cannot delete: no primary key")} }
+	}
+
+	id := m.actionIdentifier
+	statement := deleteRowStatement(m.SelectedTable, columns, row, primaryKeys, id)
+	service, startedAt := m.Database, time.Now()
+	return func() tea.Msg {
+		result, err := service.Execute(m.appContext, statement)
+		if err == nil && result.RowsAffected != 1 {
+			err = fmt.Errorf("deleted %d rows, want 1", result.RowsAffected)
+		}
+		return deleteRowMsg{statement: statement, startedAt: startedAt, err: err}
+	}
+}
+
+func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "deleted 1 row"))
+	}
+	if message.err != nil {
+		m.Status = safeText(fmt.Sprintf("deleting row: %v", message.err))
+		return m, nil
+	}
+	m.Status = "row deleted"
 	return m, m.loadBrowse()
 }
 

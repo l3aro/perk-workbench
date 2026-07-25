@@ -55,3 +55,18 @@ func quoteBrowseIdentifier(name string) string {
 }
 
 func quoteBrowseValue(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+
+func deleteRowStatement(table string, columns []string, original []*string, primaryKeys []int, identifier func(string) string) string {
+	if identifier == nil {
+		identifier = quoteBrowseIdentifier
+	}
+	where := make([]string, len(primaryKeys))
+	for i, pk := range primaryKeys {
+		if original[pk] == nil {
+			where[i] = identifier(columns[pk]) + " IS NULL"
+		} else {
+			where[i] = identifier(columns[pk]) + " = " + quoteBrowseValue(*original[pk])
+		}
+	}
+	return "DELETE FROM " + identifier(table) + " WHERE " + strings.Join(where, " AND ")
+}
