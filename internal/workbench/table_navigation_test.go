@@ -92,6 +92,36 @@ func TestTableCellNavigation_consumesMotionKeys_atColumnEdges(t *testing.T) {
 	}
 }
 
+func TestTableCellNavigation_movesRows_withFixedKeys(t *testing.T) {
+	// Given
+	resultTable := newResultsTable()
+	resultTable.SetColumns([]table.Column{{Title: "first", Width: 5}})
+	resultTable.SetRows([]table.Row{{"one"}, {"two"}})
+	selectedColumn, offset := 0, 0
+
+	// When
+	consumed := moveTableCell(&resultTable, &selectedColumn, &offset, 10, tea.KeyPressMsg{Code: 'j', Text: "j"})
+
+	// Then
+	if !consumed {
+		t.Fatal("down cell-motion key was not consumed")
+	}
+	if got, want := resultTable.Cursor(), 1; got != want {
+		t.Fatalf("row cursor = %d, want %d", got, want)
+	}
+
+	// When
+	consumed = moveTableCell(&resultTable, &selectedColumn, &offset, 10, tea.KeyPressMsg{Code: tea.KeyUp})
+
+	// Then
+	if !consumed {
+		t.Fatal("up cell-motion key was not consumed")
+	}
+	if got := resultTable.Cursor(); got != 0 {
+		t.Fatalf("row cursor = %d, want 0", got)
+	}
+}
+
 func TestResults_cellNavigation_doesNotInterceptSQLInsertMode(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)

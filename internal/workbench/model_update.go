@@ -1118,20 +1118,30 @@ func (m Model) sqlEditorActive() bool {
 }
 
 func moveTableCell(resultTable *table.Model, selectedColumn, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
-	columns := resultTable.Columns()
-	if len(columns) == 0 {
-		return false
-	}
-	*selectedColumn = min(max(*selectedColumn, 0), len(columns)-1)
 	switch keyPress.Key().Code {
+	case tea.KeyUp, 'k':
+		resultTable.SetCursor(max(resultTable.Cursor()-1, 0))
+		return true
+	case tea.KeyDown, 'j':
+		resultTable.SetCursor(min(resultTable.Cursor()+1, max(len(resultTable.Rows())-1, 0)))
+		return true
 	case tea.KeyLeft, 'h':
-		*selectedColumn = max(*selectedColumn-1, 0)
+		columns := resultTable.Columns()
+		if len(columns) > 0 {
+			*selectedColumn = min(max(*selectedColumn, 0), len(columns)-1)
+			*selectedColumn = max(*selectedColumn-1, 0)
+			revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
+		}
 	case tea.KeyRight, 'l':
-		*selectedColumn = min(*selectedColumn+1, len(columns)-1)
+		columns := resultTable.Columns()
+		if len(columns) > 0 {
+			*selectedColumn = min(max(*selectedColumn, 0), len(columns)-1)
+			*selectedColumn = min(*selectedColumn+1, len(columns)-1)
+			revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
+		}
 	default:
 		return false
 	}
-	revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
 	return true
 }
 
