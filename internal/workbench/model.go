@@ -152,11 +152,9 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 	model.focusActiveTable()
 	model.savedQueriesPath, _ = savedQueriesPath()
 	model.savedQueries = loadSavedQueries(model.savedQueriesPath)
-	if target == "" {
-		model.recentPath, _ = recentConnectionsPath()
-		model.recentConnections = loadRecentConnections(model.recentPath)
-		_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	}
+	model.recentPath, _ = recentConnectionsPath()
+	model.recentConnections = loadRecentConnections(model.recentPath)
+	_ = model.recent.SetItems(recentListItems(model.recentConnections))
 	return model
 }
 

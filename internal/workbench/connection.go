@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,10 +26,26 @@ func (m *Model) setRecentConnections(connections []recentConnection) {
 }
 
 func (m *Model) recordConnection() {
+	driver := m.connection.values.driver
+	if driver == "" {
+		driver = driverSQLite
+	}
+	target := strings.TrimSpace(m.connection.values.target)
+	name := strings.TrimSpace(m.connection.values.name)
+	if driver == driverSQLite {
+		if openedTarget := strings.TrimSpace(m.Target); openedTarget != "" {
+			target = openedTarget
+		}
+		if name == "" {
+			name = filepath.Base(target)
+		}
+	} else if name == "" {
+		name = m.connection.connectionName()
+	}
 	connection := recentConnection{
-		Driver: m.connection.values.driver,
-		Name:   m.connection.connectionName(),
-		Target: strings.TrimSpace(m.connection.values.target),
+		Driver: driver,
+		Name:   name,
+		Target: target,
 	}
 	if connection.Driver != driverSQLite {
 		connection.Host = strings.TrimSpace(m.connection.values.host)
@@ -38,7 +55,7 @@ func (m *Model) recordConnection() {
 	connections := make([]recentConnection, 0, min(len(m.recentConnections)+1, maxRecentConnections))
 	connections = append(connections, connection)
 	for _, existing := range m.recentConnections {
-		if existing.Driver == connection.Driver && existing.Name == connection.Name {
+		if sameRecentConnection(existing, connection) {
 			continue
 		}
 		if len(connections) == maxRecentConnections {
@@ -47,6 +64,16 @@ func (m *Model) recordConnection() {
 		connections = append(connections, existing)
 	}
 	m.setRecentConnections(connections)
+}
+
+func sameRecentConnection(left, right recentConnection) bool {
+	if left.Driver != right.Driver {
+		return false
+	}
+	if left.Driver == driverSQLite {
+		return left.Target == right.Target
+	}
+	return left.Name == right.Name
 }
 
 func (m *Model) selectedRecentConnection() (recentConnection, bool) {
@@ -77,7 +104,7 @@ func (m *Model) deleteSelectedRecentConnection() {
 	}
 	connections := make([]recentConnection, 0, len(m.recentConnections)-1)
 	for _, existing := range m.recentConnections {
-		if existing.Driver == connection.Driver && existing.Name == connection.Name {
+		if sameRecentConnection(existing, connection) {
 			continue
 		}
 		connections = append(connections, existing)

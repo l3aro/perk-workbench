@@ -31,6 +31,41 @@ func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
 	}
 }
 
+func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
+	// Given
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	model := New("", context.Background(), testOpen)
+	model.connection.values.driver, model.connection.values.name = driverSQLite, ""
+	model.connection.values.target = "/tmp/alpha.db"
+	model.recordConnection()
+	model.connection.values.target = "/tmp/beta.db"
+
+	// When
+	model.recordConnection()
+	loaded := loadRecentConnections(model.recentPath)
+
+	// Then
+	if len(loaded) != 2 {
+		t.Fatalf("loaded SQLite profiles = %#v, want two distinct targets", loaded)
+	}
+	if loaded[0].Target != "/tmp/beta.db" || loaded[1].Target != "/tmp/alpha.db" {
+		t.Fatalf("loaded SQLite targets = %#v, want beta then alpha", loaded)
+	}
+}
+
+func TestNew_targetInitializesRecentConnectionPersistence(t *testing.T) {
+	// Given
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	// When
+	model := New("/tmp/chinook.db", context.Background(), testOpen)
+
+	// Then
+	if model.recentPath == "" {
+		t.Fatal("target startup did not initialize recent connection persistence")
+	}
+}
+
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "perk", "recent.json")
