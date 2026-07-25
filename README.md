@@ -54,6 +54,11 @@ docker compose run --rm dev go build ./cmd/perk
 docker compose run --rm dev gofmt -l cmd internal
 ```
 
+The Compose `dev` service forwards the host terminal's color capability
+variables (`TERM` and `COLORTERM`) so Lipgloss renders RGB colors inside the
+container. Without them, true-color hex values collapse into a reduced ANSI
+palette that is hard to read.
+
 ### Clipboard in tmux
 
 The query log copies the selected SQL statement with `y`. When running Perk through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:

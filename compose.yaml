@@ -23,6 +23,8 @@ services:
     stdin_open: true
     tty: true
     environment:
+      TERM: ${TERM:-xterm-256color}
+      COLORTERM: ${COLORTERM:-truecolor}
       GOCACHE: /go/build-cache
       GOMODCACHE: /go/pkg/mod
       GOFLAGS: -buildvcs=false
