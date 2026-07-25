@@ -88,6 +88,10 @@ var (
 			Background(lipgloss.Color(colorModeInsert)).
 			Bold(true).
 			Padding(0, spaceCompact)
+	selectedCellStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorCanvas)).
+				Background(lipgloss.Color(colorAccent)).
+				Bold(true)
 )
 
 func indexIcons(indexes []sharedsql.IndexKind) string {
@@ -178,7 +182,6 @@ func newResultsTable() table.Model {
 }
 
 func resizeResultsTable(resultTable *table.Model, width, height int) {
-	resultTable.SetColumns(fitColumns(resultTable.Columns(), width))
 	tableWidth := max(width, tableContentWidth(resultTable.Columns()))
 	resultTable.SetWidth(tableWidth)
 	resultTable.SetHeight(height)
@@ -269,19 +272,20 @@ func tableColumns(titles []string, rows []table.Row) []table.Column {
 }
 
 func tableViewportView(resultTable table.Model, offset, width int) string {
-	return tableViewportViewWithAlignment(resultTable, nil, offset, width)
+	return tableViewportViewWithAlignment(resultTable, nil, offset, width, -1)
 }
 
-func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bool, offset, width int) string {
+func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bool, offset, width, selectedColumn int) string {
 	offset = min(max(offset, 0), max(resultTable.Width()-width, 0))
 	columns := resultTable.Columns()
-	lines := []string{headerStyle.Padding(0, 0).Render(tableLine(columns, nil, numericColumns, offset, width))}
+	lines := []string{headerStyle.Padding(0, 0).Render(tableLineWithSelection(columns, nil, numericColumns, offset, width, -1, false))}
 	rows, rowHeight := resultTable.Rows(), resultTable.Height()
 	start := min(max(resultTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
 	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
-		row := tableLine(columns, rows[rowIndex], numericColumns, offset, width)
-		if rowIndex == resultTable.Cursor() {
-			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(ansi.Strip(row))
+		selectedRow := rowIndex == resultTable.Cursor()
+		row := tableLineWithSelection(columns, rows[rowIndex], numericColumns, offset, width, selectedColumn, selectedRow)
+		if selectedRow {
+			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(row)
 		}
 		lines = append(lines, row)
 	}
@@ -292,6 +296,10 @@ func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bo
 }
 
 func tableLine(columns []table.Column, row table.Row, numericColumns []bool, offset, width int) string {
+	return tableLineWithSelection(columns, row, numericColumns, offset, width, -1, false)
+}
+
+func tableLineWithSelection(columns []table.Column, row table.Row, numericColumns []bool, offset, width, selectedColumn int, selectedRow bool) string {
 	cells := make([]string, len(columns))
 	for index, column := range columns {
 		value := column.Title
@@ -305,8 +313,14 @@ func tableLine(columns []table.Column, row table.Row, numericColumns []bool, off
 		if row != nil && index < len(numericColumns) && numericColumns[index] {
 			style = style.Align(lipgloss.Right)
 		}
-		cell := style.Render(ansi.Truncate(value, column.Width, "…"))
-		cells[index] = strings.Repeat(" ", spaceCompact) + cell + strings.Repeat(" ", spaceCompact)
+		if selectedRow {
+			value = ansi.Strip(value)
+		}
+		cell := strings.Repeat(" ", spaceCompact) + style.Render(ansi.Truncate(value, column.Width, "…")) + strings.Repeat(" ", spaceCompact)
+		if selectedRow && index == selectedColumn {
+			cell = selectedCellStyle.Render(cell)
+		}
+		cells[index] = cell
 	}
 	return cropTableLine(strings.Join(cells, ""), offset, width)
 }
@@ -359,6 +373,7 @@ func compactPane(content string, width, height int) string {
 }
 
 func (m *Model) layout(width, height int) {
+	previousViewportWidth := m.tableViewportWidth
 	m.width, m.height = max(width, 0), max(height, 0)
 	contentHeight := max(m.height-4, 0)
 	m.compact = m.fullscreen || m.width < compactWidth || m.height < 24
@@ -398,13 +413,15 @@ func (m *Model) layout(width, height int) {
 	if m.explainPicker != nil {
 		m.explainPicker.setWidth(m.tableViewportWidth)
 	}
-	for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.foreignKeys, &m.queryLog} {
-		columns := resultTable.Columns()
-		titles := make([]string, len(columns))
-		for index, column := range columns {
-			titles[index] = column.Title
+	if m.tableViewportWidth != previousViewportWidth {
+		for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.foreignKeys, &m.queryLog} {
+			columns := resultTable.Columns()
+			titles := make([]string, len(columns))
+			for index, column := range columns {
+				titles[index] = column.Title
+			}
+			resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 		}
-		resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 	}
 	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
 	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(m.queryLogHeight-5, 2))
@@ -412,12 +429,12 @@ func (m *Model) layout(width, height int) {
 	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-5, 2))
 	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
 	resizeResultsTable(&m.foreignKeys, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
-	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
-	m.browseOffset = tableOffset(m.browse, m.browseOffset, m.tableViewportWidth)
-	m.resultsOffset = tableOffset(m.results, m.resultsOffset, m.tableViewportWidth)
-	m.indexesOffset = tableOffset(m.indexes, m.indexesOffset, m.tableViewportWidth)
-	m.foreignKeysOffset = tableOffset(m.foreignKeys, m.foreignKeysOffset, m.tableViewportWidth)
-	m.queryLogOffset = tableOffset(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
+	revealTableColumn(m.structure, m.structureColumn, &m.structureOffset, m.tableViewportWidth)
+	revealTableColumn(m.browse, m.browseColumn, &m.browseOffset, m.tableViewportWidth)
+	revealTableColumn(m.results, m.resultsColumn, &m.resultsOffset, m.tableViewportWidth)
+	revealTableColumn(m.indexes, m.indexesColumn, &m.indexesOffset, m.tableViewportWidth)
+	revealTableColumn(m.foreignKeys, m.foreignKeysColumn, &m.foreignKeysOffset, m.tableViewportWidth)
+	revealTableColumn(m.queryLog, m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth)
 }
 
 func (m Model) View() tea.View {
@@ -655,7 +672,7 @@ func (m Model) queryLogPaneView() string {
 }
 
 func (m Model) queryLogContentView() string {
-	content := tableViewportView(m.queryLog, m.queryLogOffset, m.tableViewportWidth)
+	content := tableViewportViewWithAlignment(m.queryLog, nil, m.queryLogOffset, m.tableViewportWidth, m.queryLogColumn)
 	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
@@ -694,7 +711,7 @@ func (m Model) workspaceView() string {
 func (m Model) sqlPaneView() string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		m.editor.text.View(),
-		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth),
+		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth, m.resultsColumn),
 	)
 	return content + "\n" + paneStatus("", m.resultsStatus, m.tableViewportWidth)
 }
@@ -703,14 +720,14 @@ func (m Model) structureView() string {
 	if m.columnForm.active() {
 		return m.formViewport(m.columnForm.View(), m.columnForm.scrollOffset)
 	}
-	return tableViewportView(m.structure, m.structureOffset, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.structure, nil, m.structureOffset, m.tableViewportWidth, m.structureColumn)
 }
 
 func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth) + "\n" + paneStatus("", m.browseStatus, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + paneStatus("", m.browseStatus, m.tableViewportWidth)
 }
 
 func (m Model) formViewportHeight() int {
@@ -738,7 +755,7 @@ func (m Model) indexesView() string {
 	if m.indexForm.active() {
 		return m.indexForm.View()
 	}
-	return tableViewportView(m.indexes, m.indexesOffset, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, m.indexesColumn)
 }
 
 func (m Model) foreignKeysView() string {
@@ -748,7 +765,7 @@ func (m Model) foreignKeysView() string {
 	if m.relationshipDiagram {
 		return m.relationshipView()
 	}
-	return tableViewportView(m.foreignKeys, m.foreignKeysOffset, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.foreignKeys, nil, m.foreignKeysOffset, m.tableViewportWidth, m.foreignKeysColumn)
 }
 
 func (m Model) footer() string {

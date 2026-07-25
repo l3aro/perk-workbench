@@ -108,6 +108,9 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: "canceled", status: "canceled"})
 	} else {
 		m.setResults(message.result)
+		if message.statement != "" && len(message.result.Rows) > 0 {
+			m.results.SetCursor(0)
+		}
 		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), status: "success"})
 	}
 	if quit {

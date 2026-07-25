@@ -81,6 +81,7 @@ type Model struct {
 	workspaceHeight, queryLogHeight                                                                int
 	editorHeight, resultsHeight, tableViewportWidth                                                int
 	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
+	structureColumn, browseColumn, resultsColumn, indexesColumn, foreignKeysColumn, queryLogColumn int
 	compact, fullscreen, relationshipDiagram                                                       bool
 }
 

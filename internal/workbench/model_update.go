@@ -442,6 +442,10 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		var command tea.Cmd
 		switch m.Focus {
 		case focusSchema:
+			if m.results.Focused() {
+				m.results, command = m.results.Update(message)
+				return m, command
+			}
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}) {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					if item.root {
@@ -483,7 +487,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}) {
 					return m, m.openColumnForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.structure, &m.structureColumn, &m.structureOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				m.structure, command = m.structure.Update(message)
@@ -526,12 +530,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						})
 					}
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && scrollTable(&m.browse, &m.browseOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.browse, &m.browseColumn, &m.browseOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && scrollTable(&m.results, &m.resultsOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && moveTableCell(&m.results, &m.resultsColumn, &m.resultsOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				if m.results.Focused() {
@@ -572,7 +576,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return m, nil
 					}
-					if scrollTable(&m.indexes, &m.indexesOffset, m.tableViewportWidth, keyPress) {
+					if moveTableCell(&m.indexes, &m.indexesColumn, &m.indexesOffset, m.tableViewportWidth, keyPress) {
 						return m, nil
 					}
 				}
@@ -615,7 +619,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return m, nil
 					}
-					if scrollTable(&m.foreignKeys, &m.foreignKeysOffset, m.tableViewportWidth, keyPress) {
+					if moveTableCell(&m.foreignKeys, &m.foreignKeysColumn, &m.foreignKeysOffset, m.tableViewportWidth, keyPress) {
 						return m, nil
 					}
 				}
@@ -625,9 +629,13 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		case focusQueryLog:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok {
 				if !m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}) {
+					if m.queryLogPendingG {
+						m.queryLogPendingG = false
+						return m, nil
+					}
 					m.queryLogPendingG = false
 				}
-				if scrollTable(&m.queryLog, &m.queryLogOffset, m.tableViewportWidth, keyPress) {
+				if moveTableCell(&m.queryLog, &m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				rows := m.queryLog.Rows()
@@ -661,6 +669,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				case m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}):
 					if m.queryLogPendingG {
 						m.queryLog.SetCursor(0)
+						m.queryLogColumn, m.queryLogOffset = 0, 0
 						m.queryLogPendingG = false
 					} else {
 						m.queryLogPendingG = true
@@ -890,22 +899,46 @@ func (m Model) sqlEditorActive() bool {
 	return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
 }
 
-func scrollTable(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
-	step := max(viewportWidth/2, 1)
-	next := *offset
+func moveTableCell(resultTable *table.Model, selectedColumn, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
+	columns := resultTable.Columns()
+	if len(columns) == 0 {
+		return false
+	}
+	*selectedColumn = min(max(*selectedColumn, 0), len(columns)-1)
 	switch keyPress.Key().Code {
 	case tea.KeyLeft, 'h':
-		next = tableOffset(*resultTable, *offset-step, viewportWidth)
+		*selectedColumn = max(*selectedColumn-1, 0)
 	case tea.KeyRight, 'l':
-		next = tableOffset(*resultTable, *offset+step, viewportWidth)
+		*selectedColumn = min(*selectedColumn+1, len(columns)-1)
 	default:
 		return false
 	}
-	if next == *offset {
-		return false
-	}
-	*offset = next
+	revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
 	return true
+}
+
+func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int, viewportWidth int) {
+	columns := resultTable.Columns()
+	if len(columns) == 0 {
+		*offset = 0
+		return
+	}
+
+	selectedColumn = min(max(selectedColumn, 0), len(columns)-1)
+	columnStart := 0
+	for index, column := range columns {
+		columnEnd := columnStart + column.Width + 2*spaceCompact
+		if index == selectedColumn {
+			if columnStart < *offset {
+				*offset = columnStart
+			} else if columnEnd > *offset+viewportWidth {
+				*offset = columnEnd - viewportWidth
+			}
+			*offset = tableOffset(resultTable, *offset, viewportWidth)
+			return
+		}
+		columnStart = columnEnd
+	}
 }
 
 func (m Model) executeKey(key tea.KeyPressMsg) bool {
