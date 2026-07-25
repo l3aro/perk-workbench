@@ -1011,6 +1011,21 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case statePicking:
+		// Full-width picker: border(1) + title(1) + status(1), then items starting at contentY=4
+		itemY := y - 1 - 4
+		if itemY >= 0 {
+			items := m.picker.VisibleItems()
+			if len(items) > 0 {
+				start, end := m.picker.Paginator.GetSliceBounds(len(items))
+				visible := end - start
+				if itemY < visible {
+					m.picker.Select(start + itemY)
+					if item, ok := m.picker.SelectedItem().(pickerItem); ok {
+						return m, selectPickerItem(item.raw)
+					}
+				}
+			}
+		}
 		return m, nil
 	case stateFailure:
 		m.RecoverToPicker("choose another database")
@@ -1018,7 +1033,6 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-
 func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	if m.Focus != focusWorkspace {
 		m.Focus = focusWorkspace
@@ -1047,6 +1061,36 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
+	// contentY = terminal Y - 1 (after header).
+	// Schema list renders: top border (1), title (1), status bar (1), then items.
+	// First item is at contentY=4.
+	itemY := contentY - 4
+	if itemY < 0 {
+		return m, nil
+	}
+	items := m.schema.VisibleItems()
+	if len(items) == 0 {
+		return m, nil
+	}
+	start, end := m.schema.Paginator.GetSliceBounds(len(items))
+	visible := end - start
+	if itemY >= visible {
+		return m, nil
+	}
+	m.schema.Select(start + itemY)
+	if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+		if item.root {
+			m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
+			return m, m.rebuildSchemaTree()
+		}
+		m.SelectTable(m.schemaTable(item))
+		m.structureColumns = nil
+		m.foreignKeyInfo = nil
+		m.referencingForeignKeyInfo = nil
+		m.relationshipDiagram = false
+		m.focusActiveTable()
+		return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+	}
 	return m, nil
 }
 func (m Model) focusQueryLogClick(contentY int) (tea.Model, tea.Cmd) {
