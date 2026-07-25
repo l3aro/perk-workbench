@@ -46,7 +46,7 @@ type Result struct {
 	ColumnTypes  []string
 	Rows         [][]*string
 	RowsAffected int64
-	TotalRows    int64
+	HasMore      bool
 	Duration     time.Duration
 	Truncated    bool
 }

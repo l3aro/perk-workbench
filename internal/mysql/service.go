@@ -324,11 +324,7 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 	if offset < 0 || limit < 1 {
 		return sharedsql.Result{}, fmt.Errorf("invalid page: offset=%d limit=%d", offset, limit)
 	}
-	var totalRows int64
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+mysqlTableIdentifier(name)).Scan(&totalRows); err != nil {
-		return sharedsql.Result{}, fmt.Errorf("counting table rows: %w", err)
-	}
-	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+mysqlTableIdentifier(name)+" LIMIT ? OFFSET ?", limit, offset)
+	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+mysqlTableIdentifier(name)+" LIMIT ? OFFSET ?", limit+1, offset)
 	if err != nil {
 		return sharedsql.Result{}, fmt.Errorf("browsing table: %w", err)
 	}
@@ -336,7 +332,10 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	result.TotalRows = totalRows
+	result.HasMore = len(result.Rows) > limit
+	if result.HasMore {
+		result.Rows = result.Rows[:limit]
+	}
 	return result, nil
 }
 

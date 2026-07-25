@@ -144,7 +144,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.tag != m.browsePageTag || message.table != m.SelectedTable || m.browseLoading {
 			return m, nil
 		}
-		if message.delta > 0 && int64((m.BrowsePage+1)*browsePageSize) >= m.browseResult.TotalRows {
+		if message.delta > 0 && !m.browseResult.HasMore {
 			return m, nil
 		}
 		if !m.ChangeBrowsePage(message.delta) {

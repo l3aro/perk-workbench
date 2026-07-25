@@ -219,7 +219,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if len(message.result.Rows) == 0 {
 		start = 0
 	}
-	m.browseStatus = fmt.Sprintf("%s | %s-%s of %s", safeText(message.table), humanize.Comma(int64(start)), humanize.Comma(int64(end)), humanize.Comma(message.result.TotalRows))
+	m.browseStatus = fmt.Sprintf("%s | %s-%s", safeText(message.table), humanize.Comma(int64(start)), humanize.Comma(int64(end)))
 	m.Status = ""
 	return m, nil
 }
