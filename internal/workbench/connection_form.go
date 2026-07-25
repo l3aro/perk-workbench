@@ -12,12 +12,12 @@ import (
 	"github.com/go-sql-driver/mysql"
 )
 
-type connectionDriver int
+type connectionDriver string
 
 const (
-	driverSQLite connectionDriver = iota
-	driverMySQL
-	driverPostgreSQL
+	driverSQLite     connectionDriver = "sqlite"
+	driverMySQL      connectionDriver = "mysql"
+	driverPostgreSQL connectionDriver = "postgres"
 )
 
 const (

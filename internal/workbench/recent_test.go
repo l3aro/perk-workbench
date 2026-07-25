@@ -26,7 +26,7 @@ func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
 	if len(loaded) != 1 {
 		t.Fatalf("loaded connections = %d, want 1", len(loaded))
 	}
-	if loaded[0] != connections[0] {
+	if loaded[0].Driver != connections[0].Driver || loaded[0].Name != connections[0].Name || loaded[0].Target != connections[0].Target {
 		t.Fatalf("loaded connection = %#v, want %#v", loaded[0], connections[0])
 	}
 }

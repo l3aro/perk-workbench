@@ -76,7 +76,7 @@ func saveRecentConnections(path string, connections []recentConnection) error {
 			persisted = append(persisted, connection)
 		}
 	}
-	contents, err := json.Marshal(persisted)
+	contents, err := json.MarshalIndent(persisted, "", "\t")
 	if err != nil {
 		return err
 	}

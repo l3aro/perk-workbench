@@ -38,12 +38,13 @@ func (m *Model) recordConnection() {
 	connections := make([]recentConnection, 0, min(len(m.recentConnections)+1, maxRecentConnections))
 	connections = append(connections, connection)
 	for _, existing := range m.recentConnections {
-		if existing.Driver != connection.Driver || existing.Target != connection.Target || existing.Host != connection.Host || existing.Port != connection.Port || existing.User != connection.User {
-			connections = append(connections, existing)
+		if existing.Driver == connection.Driver && existing.Name == connection.Name {
+			continue
 		}
 		if len(connections) == maxRecentConnections {
 			break
 		}
+		connections = append(connections, existing)
 	}
 	m.setRecentConnections(connections)
 }
@@ -76,9 +77,10 @@ func (m *Model) deleteSelectedRecentConnection() {
 	}
 	connections := make([]recentConnection, 0, len(m.recentConnections)-1)
 	for _, existing := range m.recentConnections {
-		if existing.Driver != connection.Driver || existing.Target != connection.Target {
-			connections = append(connections, existing)
+		if existing.Driver == connection.Driver && existing.Name == connection.Name {
+			continue
 		}
+		connections = append(connections, existing)
 	}
 	m.setRecentConnections(connections)
 	m.Status = "deleted " + safeText(connection.Name)
