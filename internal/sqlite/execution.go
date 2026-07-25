@@ -47,12 +47,7 @@ func (s *Service) Execute(ctx context.Context, statement string) (result shareds
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	if after != before {
-		result.RowsAffected, err = changes(ctx, conn)
-		if err != nil {
-			return sharedsql.Result{}, err
-		}
-	}
+	result.RowsAffected = after - before
 	result.Duration = time.Since(started)
 	return result, nil
 }
@@ -63,12 +58,4 @@ func totalChanges(ctx context.Context, conn *stdsql.Conn) (int64, error) {
 		return 0, fmt.Errorf("reading total changes: %w", err)
 	}
 	return changes, nil
-}
-
-func changes(ctx context.Context, conn *stdsql.Conn) (int64, error) {
-	var count int64
-	if err := conn.QueryRowContext(ctx, "SELECT changes()").Scan(&count); err != nil {
-		return 0, fmt.Errorf("reading statement changes: %w", err)
-	}
-	return count, nil
 }
