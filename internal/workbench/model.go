@@ -68,6 +68,7 @@ type Model struct {
 	browseForm                                                                                     browseForm
 	indexForm                                                                                      indexForm
 	foreignKeyForm                                                                                 foreignKeyForm
+	cellEditor                                                                                     *cellEditor
 	connection                                                                                     connectionForm
 	recentConnections                                                                              []recentConnection
 	schemaObjects                                                                                  []sharedsql.SchemaObject

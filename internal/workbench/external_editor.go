@@ -66,6 +66,8 @@ func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLoc
 		location externalEditorLocation
 	)
 	switch {
+	case m.cellEditor != nil:
+		return nil, externalEditorLocation{}, false
 	case m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil:
 		form, location.kind = m.connection.form, externalEditorTargetConnection
 	case m.columnForm.active() && !m.columnForm.confirming():
