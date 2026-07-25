@@ -153,7 +153,6 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
 	if index == model.Index() {
 		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
-		label = "> " + label
 	}
 	fmt.Fprint(writer, style.Render(label))
 }

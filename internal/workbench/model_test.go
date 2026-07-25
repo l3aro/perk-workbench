@@ -109,8 +109,8 @@ func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
 	view := ansi.Strip(model.schema.View())
 
 	// Then
-	if !strings.Contains(view, "> projects") {
-		t.Fatalf("schema list = %q, want simple selected row", view)
+	if strings.Contains(view, "> ") {
+		t.Fatalf("schema list = %q, selected-item shift still present", view)
 	}
 }
 
