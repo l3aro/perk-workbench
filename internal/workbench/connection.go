@@ -263,7 +263,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	case m.keybindings.Match(keyPress, "connection.switch_to_list", []scope{scopeView, scopeGlobal}):
 		m.connection.setFocus(connectionFocusRecent)
 		return m, nil
-	case m.keybindings.Match(keyPress, "connection.edit_field", []scope{scopeView, scopeGlobal}):
+	case isInsertModeKey(keyPress), m.keybindings.Match(keyPress, "connection.edit_field", []scope{scopeView, scopeGlobal}):
 		return m, m.formMode.beginHuh(m.connection.focusForm())
 	case m.keybindings.Match(keyPress, "connection.field_next", []scope{scopeView, scopeGlobal}):
 		return m, m.connection.form.NextField()

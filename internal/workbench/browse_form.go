@@ -114,7 +114,7 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 		return nil, browseFormNoAction
 	}
 	switch {
-	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
+	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		col := f.focusedColumn()
 		if col >= 0 {
 			f.values.nulls[col] = false

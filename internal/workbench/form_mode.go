@@ -22,6 +22,10 @@ type formModeController struct{ mode formMode }
 
 func (c formModeController) editing() bool { return c.mode == formModeInsert }
 
+func isInsertModeKey(keyPress tea.KeyPressMsg) bool {
+	return keyPress.Key().Code == 'i'
+}
+
 func (c *formModeController) beginInsert(editor *editor) tea.Cmd {
 	c.mode = formModeInsert
 	return editor.text.Focus()

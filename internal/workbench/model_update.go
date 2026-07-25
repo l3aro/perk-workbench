@@ -300,7 +300,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			case formRouteHuh:
 				return m, m.editor.update(message)
 			case formRouteParent:
-				if m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
+				if isInsertModeKey(message) || m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
 					return m, m.formMode.beginInsert(m.editor)
 				}
 			}

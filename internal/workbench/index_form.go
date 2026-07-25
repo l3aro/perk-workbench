@@ -79,7 +79,7 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 		return nil, indexFormNoAction
 	}
 	switch {
-	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
+	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), indexFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {

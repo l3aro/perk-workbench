@@ -97,7 +97,7 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		return nil, columnFormNoAction
 	}
 	switch {
-	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
+	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {

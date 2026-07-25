@@ -72,7 +72,7 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 		return nil, foreignKeyFormNoAction
 	}
 	switch {
-	case f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
+	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {
