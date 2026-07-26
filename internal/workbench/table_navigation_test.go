@@ -15,12 +15,17 @@ func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) 
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT first, second, third", result: sqlite.Result{
-		Columns: []string{"first", "second", "third"},
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT first, second, third, fourth, fifth, sixth, seventh, eighth", result: sqlite.Result{
+		Columns: []string{"first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"},
 		Rows: [][]*string{{
 			stringPointer(strings.Repeat("first ", 20)),
 			stringPointer("second"),
 			stringPointer("third"),
+			stringPointer("fourth"),
+			stringPointer("fifth"),
+			stringPointer("sixth"),
+			stringPointer("seventh"),
+			stringPointer("eighth"),
 		}},
 	}})
 	model = updated.(Model)
@@ -29,9 +34,11 @@ func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) 
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsColumn, 2; got != want {
+	if got, want := model.resultsColumn, 3; got != want {
 		t.Fatalf("selected result column = %d, want %d", got, want)
 	}
 	if got, want := model.results.Cursor(), 0; got != want {
@@ -50,7 +57,8 @@ func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) 
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	model = updated.(Model)
-
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	model = updated.(Model)
 	// Then
 	if got, want := model.resultsColumn, 0; got != want {
 		t.Fatalf("selected result column = %d, want %d", got, want)

@@ -402,8 +402,8 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 	model = resizeModel(model, 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
-		Columns: []string{"first column", "second column", "third column"},
-		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value"), stringPointer("third value")}},
+		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column"},
+		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to exceed the viewport"), stringPointer("third value"), stringPointer("fourth value"), stringPointer("fifth value")}},
 	}})
 	model = updated.(Model)
 	initialRow := model.results.Cursor()
@@ -515,8 +515,8 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	model.formMode.beginInsert(model.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
-		Columns: []string{"first column", "second column"},
-		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value")}},
+		Columns: []string{"first column", "second column", "third column", "fourth column"},
+		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to overflow viewport"), stringPointer("third value"), stringPointer("fourth value")}},
 	}})
 	model = updated.(Model)
 
@@ -546,16 +546,16 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	}
 }
 
+
 func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
-		Columns: []string{"first column", "second column"},
-		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value")}},
+		Columns: []string{"first column", "second column", "third column", "fourth column"},
+		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to overflow viewport"), stringPointer("third value"), stringPointer("fourth value")}},
 	}})
 	model = updated.(Model)
-
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	model = updated.(Model)
@@ -568,7 +568,6 @@ func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 		t.Fatal("right-selected result column was not revealed")
 	}
 }
-
 func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
