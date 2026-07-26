@@ -24,8 +24,8 @@ func TestServiceExecuteDisplayCells(t *testing.T) {
 	if err != nil {
 		t.Fatalf("executing long cell: %v", err)
 	}
-	if got := len([]rune(*result.Rows[0][0])); got != maxRunes+1 {
-		t.Fatalf("display cell rune count = %d, want %d (truncated + ellipsis)", got, maxRunes+1)
+	if got, want := len([]rune(*result.Rows[0][0])), 301; got != want {
+		t.Fatalf("display cell rune count = %d, want %d (full value preserved)", got, want)
 	}
 }
 

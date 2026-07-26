@@ -15,9 +15,9 @@ func DisplayRow(values []any) []*string {
 		}
 		text := ""
 		if bytes, ok := value.([]byte); ok {
-			text = SanitizeDisplay(string(bytes), MaxRunes)
+			text = SanitizeDisplay(string(bytes))
 		} else {
-			text = SanitizeDisplay(fmt.Sprint(value), MaxRunes)
+			text = SanitizeDisplay(fmt.Sprint(value))
 		}
 		row[index] = &text
 	}

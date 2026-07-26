@@ -31,6 +31,7 @@ const (
 	iconSuccess        = "\uf00c" // nf-fa-check
 	iconFailed         = "\uf00d" // nf-fa-times
 	iconCanceled       = "\uf05e" // nf-fa-ban
+
 )
 
 type appTheme string
@@ -1018,3 +1019,9 @@ func databaseSuffix(name string) bool {
 }
 
 func safeText(input string) string { return sharedsql.SanitizeDisplay(input) }
+
+// cellText truncates a cell value to MaxRunes runes and appends "…" for the
+// table display. The original full value remains in browseResult for editing.
+func cellText(input string) string {
+	return sharedsql.SanitizeDisplay(input, sharedsql.MaxRunes)
+}

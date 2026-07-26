@@ -58,7 +58,7 @@ func (m *Model) setResults(result sharedsql.Result) {
 			if cell == nil {
 				cells[cellIndex] = "NULL"
 			} else {
-				cells[cellIndex] = safeText(*cell)
+				cells[cellIndex] = cellText(*cell)
 			}
 		}
 		rows[rowIndex] = cells
@@ -292,7 +292,7 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 			if cell == nil {
 				cells[cellIndex] = "NULL"
 			} else {
-				cells[cellIndex] = safeText(*cell)
+				cells[cellIndex] = cellText(*cell)
 			}
 		}
 		rows[rowIndex] = cells
