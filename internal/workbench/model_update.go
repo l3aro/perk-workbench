@@ -294,11 +294,38 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.sqlEditorActive() {
+			if m.editor.completionVisible() {
+				switch message.Key().Code {
+				case tea.KeyEscape:
+					m.editor.completion = completion{}
+					return m, nil
+				case tea.KeyUp:
+					m.editor.completion.move(-1)
+					return m, nil
+				case tea.KeyDown:
+					m.editor.completion.move(1)
+					return m, nil
+				case tea.KeyEnter, tea.KeyTab:
+					m.editor.acceptCompletion()
+					return m, nil
+				}
+			}
+			if m.formMode.editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
+				return m, m.startCompletion()
+			}
 			switch m.formMode.route(message, m.editor) {
 			case formRouteConsumed:
 				return m, nil
 			case formRouteHuh:
-				return m, m.editor.update(message)
+				command := m.editor.update(message)
+				if message.Text == "." {
+					m.editor.completion = completion{}
+					return m, tea.Batch(command, m.startCompletion())
+				}
+				if m.editor.completionVisible() {
+					m.editor.completion.filter(sqlCompletionPrefix(m.editor.value))
+				}
+				return m, command
 			case formRouteParent:
 				if isInsertModeKey(message) || m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
 					return m, m.formMode.beginInsert(m.editor)
@@ -419,6 +446,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateQueryCanceled(message)
 	case tableInfoMsg:
 		return m.updateTableInfo(message)
+	case completionColumnsMsg:
+		return m.updateCompletionColumns(message)
 	case indexesLoadedMsg:
 		return m.updateIndexes(message)
 	case foreignKeysLoadedMsg:

@@ -875,7 +875,7 @@ func (m Model) workspaceView() string {
 
 func (m Model) sqlPaneView() string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		m.editor.text.View(),
+		m.editor.View(),
 		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth, m.resultsColumn),
 	)
 	return content + "\n" + chrome.PaneStatus("", m.resultsStatus, m.tableViewportWidth)

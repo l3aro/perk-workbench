@@ -44,10 +44,12 @@ type Model struct {
 	appContext                                                                                     context.Context
 	openDatabase                                                                                   OpenDatabase
 	browseLoading                                                                                  bool
-	browsePageTag, editorEditTag                                                                   uint64
+	browsePageTag, editorEditTag, completionRequestTag                                             uint64
 	schema, picker, recent                                                                         list.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
 	structureColumns                                                                               []sharedsql.ColumnInfo
+	completionColumns                                                                              map[string][]string
+	completionTable                                                                                string
 	indexInfo                                                                                      []sharedsql.IndexInfo
 	foreignKeyInfo                                                                                 []sharedsql.ForeignKeyInfo
 	referencingForeignKeyInfo                                                                      []sharedsql.ReferencingForeignKeyInfo
@@ -171,6 +173,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		editor:            newEditor(),
 		formMode:          &formModeController{},
 		connection:        newConnectionForm(),
+		completionColumns: map[string][]string{},
 		keybindings:       DefaultKeybindings(),
 		historyIndex:      -1,
 	}
@@ -222,6 +225,8 @@ func (m *Model) disconnect() {
 	m.historyIndex = -1
 	m.queryLog.SetRows(nil)
 	m.editor.setValue("")
+	m.completionColumns = map[string][]string{}
+	m.completionTable = ""
 	m.schemaObjects = nil
 	m.expandedDatabases = map[string]bool{}
 	m.schema.SetItems(nil)
