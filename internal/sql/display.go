@@ -32,6 +32,7 @@ func SanitizeDisplay(input string, limits ...int) string {
 	var display strings.Builder
 	emitted := 0
 	lastWasSpace := false
+	truncated := false
 	for index := 0; index < len(input); {
 		runeValue, size := rune(input[index]), 1
 		if runeValue >= utf8.RuneSelf {
@@ -47,6 +48,7 @@ func SanitizeDisplay(input string, limits ...int) string {
 				emitted++
 				lastWasSpace = true
 				if maxRunes > 0 && emitted >= maxRunes {
+					truncated = true
 					break
 				}
 			}
@@ -55,10 +57,14 @@ func SanitizeDisplay(input string, limits ...int) string {
 			emitted++
 			lastWasSpace = runeValue == ' '
 			if maxRunes > 0 && emitted >= maxRunes {
+				truncated = true
 				break
 			}
 		}
 		index += size
+	}
+	if truncated {
+		display.WriteString("…")
 	}
 	return display.String()
 }
