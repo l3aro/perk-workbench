@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
 const browseDebounceDuration = 150 * time.Millisecond
@@ -323,7 +324,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Batch(command, m.startCompletion())
 				}
 				if m.editor.completionVisible() {
-					m.editor.completion.filter(sqlCompletionPrefix(m.editor.value))
+					m.editor.completion.filter(sharedsql.CompletionPrefix(m.editor.value))
 				}
 				return m, command
 			case formRouteParent:

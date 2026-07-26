@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/l3aro/perk/internal/chrome"
 )
 
 type sqlTextarea struct{ input textarea.Model }
@@ -86,7 +87,9 @@ func sqlStyledLines(value string, width int) []sqlVisualLine {
 	}
 	lines := [][]styledRune{{}}
 	for token := iterator(); token != chroma.EOF; token = iterator() {
-		style := sqlTokenStyle(token.Type)
+		style := chrome.SQLTokenStyle(token.Type, chrome.SQLStylePalette{
+			Ink: colorInk, Accent: colorAccent, Insert: colorModeInsert, Number: "#e3b341", Muted: colorMuted, Normal: colorModeNormal,
+		})
 		for _, character := range token.Value {
 			if character == '\n' {
 				lines = append(lines, nil)
@@ -110,23 +113,6 @@ func sqlPlainRunes(value string) []styledRune {
 		runes = append(runes, styledRune{rune: character, style: lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))})
 	}
 	return runes
-}
-
-func sqlTokenStyle(token chroma.TokenType) lipgloss.Style {
-	switch {
-	case token.InCategory(chroma.Keyword):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true)
-	case token.InCategory(chroma.LiteralString):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorModeInsert))
-	case token.InCategory(chroma.LiteralNumber):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
-	case token.InCategory(chroma.Comment):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	case token.InCategory(chroma.Operator), token.InCategory(chroma.Punctuation):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorModeNormal))
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
-	}
 }
 
 func sqlWrapRunes(line []styledRune, width int) [][]styledRune {

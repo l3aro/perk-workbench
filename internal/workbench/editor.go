@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	sharedsql "github.com/l3aro/perk/internal/sql"
 )
 
 type editor struct {
@@ -48,7 +49,7 @@ func (e *editor) update(message tea.Msg) tea.Cmd {
 }
 
 func (e *editor) showCompletion(values []string) {
-	e.showCompletionFor(sqlCompletionPrefix(e.value), values)
+	e.showCompletionFor(sharedsql.CompletionPrefix(e.value), values)
 }
 
 func (e *editor) showCompletionFor(prefix string, values []string) {

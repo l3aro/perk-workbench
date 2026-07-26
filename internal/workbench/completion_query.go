@@ -24,7 +24,7 @@ func (m Model) loadCompletionColumns(table string, tag uint64) tea.Cmd {
 }
 
 func (m *Model) startCompletion() tea.Cmd {
-	prefix := sqlCompletionPrefix(m.editor.value)
+	prefix := sharedsql.CompletionPrefix(m.editor.value)
 	if table := m.completionTableFor(prefix); table != "" {
 		if columns, ok := m.completionColumns[table]; ok {
 			m.editor.showCompletionFor("", columns)
@@ -39,7 +39,7 @@ func (m *Model) startCompletion() tea.Cmd {
 }
 
 func (m Model) completionValues() []string {
-	values := append([]string(nil), sqlKeywords...)
+	values := append([]string(nil), sharedsql.Keywords...)
 	for _, object := range m.schemaObjects {
 		if object.Type != "database" {
 			values = append(values, m.completionObjectName(object))
