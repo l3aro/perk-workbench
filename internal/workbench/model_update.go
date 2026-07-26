@@ -122,6 +122,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.cellEditor = nil
 			return m, cmd
 		}
+
+		// Only Ctrl+S (form.save) submits the cell editor; Enter neither
+		// submits nor advances. Without this guard, a single-field form
+		// transitions to StateCompleted on Enter.
+		if isKeyPress && keyPress.Key().Code == tea.KeyEnter {
+			return m, nil
+		}
 		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
 			return m, m.cellEditor.beginConfirmation()
 		}

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk/internal/sql"
 	"github.com/l3aro/perk/internal/sqlite"
 )
@@ -43,17 +42,17 @@ func TestBrowseForm_iOpensCellEditor(t *testing.T) {
 	}
 }
 
-func TestBrowseForm_cellEditorUsesFixedWidth(t *testing.T) {
+func TestBrowseForm_cellEditorUsesModelWidth(t *testing.T) {
 	model := readyBrowseModel(t)
+	model = resizeModel(model, 120, 24)
 	model.browseColumn = 1
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 
-	for line := range strings.SplitSeq(model.confirmContent(), "\n") {
-		if got, want := ansi.StringWidth(line), 80; got != want {
-			t.Fatalf("cell editor width = %d, want %d", got, want)
-		}
+	// width 120 -> editorWidth=88 -> tableViewportWidth=80
+	if got, want := model.cellEditor.width, 80; got != want {
+		t.Fatalf("cell editor width = %d, want %d", got, want)
 	}
 }
 

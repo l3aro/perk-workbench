@@ -24,6 +24,20 @@ type cellEditor struct {
 	originalVal *string
 	editedVal   string
 	confirmed   bool
+	width       int
+}
+
+// isLongTextType returns true when the SQL type is a long-form text type that
+// should use the huh.Text multi-line / external-editor field instead of the
+// single-line huh.Input.
+func isLongTextType(typeName string) bool {
+	upper := strings.ToUpper(typeName)
+	for _, prefix := range []string{"TEXT", "MEDIUMTEXT", "LONGTEXT", "TINYTEXT", "CLOB", "JSON"} {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *cellEditor) active() bool {
@@ -94,6 +108,17 @@ func (m *Model) openCellEditor() tea.Cmd {
 		id = quoteBrowseIdentifier
 	}
 
+	// Detect column type for choosing input vs text field
+	colType := ""
+	for _, info := range m.structureColumns {
+		if strings.EqualFold(info.Name, columns[col]) {
+			colType = info.Type
+			break
+		}
+	}
+
+	width := max(m.tableViewportWidth, 40)
+
 	e := &cellEditor{
 		table:       m.SelectedTable,
 		columnName:  columns[col],
@@ -104,16 +129,25 @@ func (m *Model) openCellEditor() tea.Cmd {
 		identifier:  id,
 		originalVal: originalVal,
 		editedVal:   editedVal,
+		width:       width,
+	}
+
+	var field huh.Field
+	if isLongTextType(colType) {
+		field = huh.NewText().
+			Key("value").
+			Title("Edit " + e.columnName).
+			Value(&e.editedVal)
+	} else {
+		field = huh.NewInput().
+			Key("value").
+			Title("Edit " + e.columnName).
+			Value(&e.editedVal)
 	}
 
 	e.input = newForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Key("value").
-				Title("Edit " + e.columnName).
-				Value(&e.editedVal),
-		),
-	).WithShowHelp(true).WithWidth(80)
+		huh.NewGroup(field),
+	).WithShowHelp(true).WithWidth(width)
 	m.cellEditor = e
 	return e.input.Init()
 }
@@ -160,7 +194,7 @@ func (e *cellEditor) beginConfirmation() tea.Cmd {
 	e.confirm = newForm(huh.NewGroup(
 		huh.NewNote().Title(title).Description(statement).Height(8),
 		huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&e.confirmed),
-	)).WithShowHelp(false).WithWidth(40)
+	)).WithShowHelp(false).WithWidth(max(e.width, 1))
 	return e.confirm.Init()
 }
 
@@ -176,8 +210,8 @@ func (e *cellEditor) confirmContent() string {
 				b.WriteByte('\n')
 			}
 			trimmed := strings.TrimRight(line, " ")
-			if w := ansi.StringWidth(trimmed); w < 80 {
-				trimmed += strings.Repeat(" ", 80-w)
+			if w := ansi.StringWidth(trimmed); w < e.width {
+				trimmed += strings.Repeat(" ", e.width-w)
 			}
 			b.WriteString(trimmed)
 		}
