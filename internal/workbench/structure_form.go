@@ -19,7 +19,8 @@ const (
 )
 
 type columnForm struct {
-	form, confirmation                      *huh.Form
+	form                                    *huh.Form
+	confirmation                            *confirmationDialog
 	values                                  *columnFormValues
 	previousName, originalType              string
 	typeOptions                             []sharedsql.ColumnType
@@ -34,7 +35,7 @@ type columnForm struct {
 type columnFormValues struct {
 	name, typeName, defaultValue string
 	parameters                   []string
-	nullable, confirmed          bool
+	nullable                     bool
 }
 
 func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnType) columnForm {
@@ -83,10 +84,22 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	if f.saving {
 		return nil, columnFormNoAction
 	}
-	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
-		if route == formRouteConsumed && f.confirmation != nil && controller.mode == formModeNormal {
-			f.confirmation = nil
+	if f.confirmation != nil {
+		completed, action := f.confirmation.Update(message, f.width, f.height)
+		if !completed {
+			return nil, columnFormNoAction
 		}
+		f.confirmation = nil
+		controller.mode = formModeNormal
+		if action != "confirm" {
+			return nil, columnFormNoAction
+		}
+		if f.confirmationSave {
+			return nil, columnFormSave
+		}
+		return nil, columnFormDiscard
+	}
+	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
 		if route == formRouteHuh {
 			return f.updateHuh(message, controller)
 		}
@@ -106,11 +119,11 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		}
 		f.beginConfirmation(true)
 		controller.beginConfirm()
-		return f.confirmation.Init(), columnFormNoAction
+		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(false)
 		controller.beginConfirm()
-		return f.confirmation.Init(), columnFormNoAction
+		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.nextField(), columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
@@ -120,23 +133,6 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 }
 
 func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, columnFormAction) {
-	if f.confirmation != nil {
-		model, command := f.confirmation.Update(message)
-		f.confirmation = model.(*huh.Form)
-		if f.confirmation.State != huh.StateCompleted {
-			return command, columnFormNoAction
-		}
-		confirmation, save := f.values.confirmed || f.confirmation.GetBool("confirm"), f.confirmationSave
-		f.confirmation = nil
-		controller.mode = formModeNormal
-		if !confirmation {
-			return nil, columnFormNoAction
-		}
-		if save {
-			return nil, columnFormSave
-		}
-		return nil, columnFormDiscard
-	}
 	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
@@ -157,14 +153,12 @@ func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) 
 }
 
 func (f *columnForm) beginConfirmation(save bool) {
-	f.values.confirmed, f.confirmationSave = false, save
+	f.confirmationSave = save
 	title := "Discard column changes?"
 	if save {
 		title = "Save column changes?"
 	}
-	f.confirmation = newForm(huh.NewGroup(
-		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
-	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	f.confirmation = yesNoConfirmation(title, "", "confirm")
 }
 
 func (f *columnForm) blur() {
@@ -260,18 +254,12 @@ func (f *columnForm) setWidth(width int) {
 	if f.form != nil {
 		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
 	}
-	if f.confirmation != nil {
-		f.confirmation.WithWidth(f.width).WithShowHelp(f.width >= 40)
-	}
 }
 
 func (f *columnForm) setHeight(height int) {
 	f.height = max(height, 1)
 	if f.form != nil {
 		f.form.WithHeight(f.height)
-	}
-	if f.confirmation != nil {
-		f.confirmation.WithHeight(f.height)
 	}
 }
 

@@ -205,6 +205,18 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.recent, command = m.recent.Update(message)
 		return m, command
 	}
+	if m.connection.confirmation != nil {
+		completed, action := m.connection.confirmation.Update(message, m.width, m.height)
+		if !completed {
+			return m, nil
+		}
+		m.connection.confirmation = nil
+		m.formMode.mode = formModeNormal
+		if action == connectionActionConnect {
+			return m.openConnection()
+		}
+		return m, nil
+	}
 	keyPress, isKeyPress := message.(tea.KeyPressMsg)
 	if isKeyPress && m.connection.confirmation == nil && m.connectionActionFocused() &&
 		m.keybindings.Match(keyPress, "connection.action_enter", []scope{scopeView, scopeGlobal}) {
@@ -224,9 +236,6 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.connection.beginConfirmation()
 	}
 	if route := m.formMode.routeHuh(message, m.connection.blur); route != formRouteParent {
-		if route == formRouteConsumed && m.connection.confirmation != nil && m.formMode.mode == formModeNormal {
-			m.connection.confirmation = nil
-		}
 		if route != formRouteHuh {
 			return m, nil
 		}
@@ -238,9 +247,6 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.testConnection()
 		case connectionActionConnect:
-			if m.connection.confirmation != nil {
-				return m, command
-			}
 			if command != nil {
 				return m, sequenceConnectionAction(command, action)
 			}

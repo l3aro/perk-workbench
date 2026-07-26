@@ -19,10 +19,11 @@ const (
 )
 
 type foreignKeyForm struct {
-	form, confirmation                   *huh.Form
+	form                                 *huh.Form
+	confirmation                         *confirmationDialog
 	values                               *foreignKeyFormValues
 	previous                             string
-	width                                int
+	width, height                        int
 	saving                               bool
 	confirmationSave, confirmationDelete bool
 	keybindings                          Keybindings
@@ -31,7 +32,6 @@ type foreignKeyForm struct {
 type foreignKeyFormValues struct {
 	columns, referenceTable, referenceColumns string
 	onDelete, onUpdate                        string
-	confirmed                                 bool
 }
 
 func newForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) foreignKeyForm {
@@ -58,10 +58,25 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 	if f.saving {
 		return nil, foreignKeyFormNoAction
 	}
-	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
-		if route == formRouteConsumed && f.confirmation != nil && controller.mode == formModeNormal {
-			f.confirmation = nil
+	if f.confirmation != nil {
+		completed, action := f.confirmation.Update(message, f.width, f.height)
+		if !completed {
+			return nil, foreignKeyFormNoAction
 		}
+		f.confirmation = nil
+		controller.mode = formModeNormal
+		if action != "confirm" {
+			return nil, foreignKeyFormNoAction
+		}
+		if f.confirmationDelete {
+			return nil, foreignKeyFormDelete
+		}
+		if f.confirmationSave {
+			return nil, foreignKeyFormSave
+		}
+		return nil, foreignKeyFormDiscard
+	}
+	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
 		if route == formRouteHuh {
 			return f.updateHuh(message, controller)
 		}
@@ -81,16 +96,16 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 		}
 		f.beginConfirmation(true, false)
 		controller.beginConfirm()
-		return f.confirmation.Init(), foreignKeyFormNoAction
+		return nil, foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.beginConfirmation(false, false)
 		controller.beginConfirm()
-		return f.confirmation.Init(), foreignKeyFormNoAction
+		return nil, foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.delete", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.previous != "" {
 			f.beginConfirmation(false, true)
 			controller.beginConfirm()
-			return f.confirmation.Init(), foreignKeyFormNoAction
+			return nil, foreignKeyFormNoAction
 		}
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.form.NextField(), foreignKeyFormNoAction
@@ -101,26 +116,6 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 }
 
 func (f *foreignKeyForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, foreignKeyFormAction) {
-	if f.confirmation != nil {
-		model, command := f.confirmation.Update(message)
-		f.confirmation = model.(*huh.Form)
-		if f.confirmation.State != huh.StateCompleted {
-			return command, foreignKeyFormNoAction
-		}
-		confirmed := f.values.confirmed || f.confirmation.GetBool("confirm")
-		f.confirmation = nil
-		controller.mode = formModeNormal
-		if !confirmed {
-			return nil, foreignKeyFormNoAction
-		}
-		if f.confirmationDelete {
-			return nil, foreignKeyFormDelete
-		}
-		if f.confirmationSave {
-			return nil, foreignKeyFormSave
-		}
-		return nil, foreignKeyFormDiscard
-	}
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if f.form.State == huh.StateCompleted {
@@ -131,7 +126,7 @@ func (f *foreignKeyForm) updateHuh(message tea.Msg, controller *formModeControll
 }
 
 func (f *foreignKeyForm) beginConfirmation(save, delete bool) {
-	f.values.confirmed, f.confirmationSave, f.confirmationDelete = false, save, delete
+	f.confirmationSave, f.confirmationDelete = save, delete
 	title := "Discard foreign-key changes?"
 	if save {
 		title = "Save foreign-key changes?"
@@ -139,9 +134,7 @@ func (f *foreignKeyForm) beginConfirmation(save, delete bool) {
 	if delete {
 		title = "Delete foreign key?"
 	}
-	f.confirmation = newForm(huh.NewGroup(
-		huh.NewConfirm().Key("confirm").Title(title).Affirmative("Yes").Negative("No").Value(&f.values.confirmed),
-	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	f.confirmation = yesNoConfirmation(title, "", "confirm")
 }
 
 func (f *foreignKeyForm) rebuildForm() {
@@ -254,9 +247,6 @@ func (f *foreignKeyForm) setWidth(width int) {
 	f.width = max(width, 1)
 	if f.form != nil {
 		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
-	}
-	if f.confirmation != nil {
-		f.confirmation.WithWidth(f.width).WithShowHelp(f.width >= 40)
 	}
 }
 

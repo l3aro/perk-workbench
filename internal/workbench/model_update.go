@@ -74,19 +74,23 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.contextMenu != nil && m.contextMenu.visible {
 		return m.updateContextMenu(message)
 	}
+	if mouse, ok := message.(tea.MouseMsg); ok {
+		if dialog := m.activeConfirmation(); dialog != nil {
+			completed, _ := dialog.Update(mouse, m.width, m.height)
+			if !completed {
+				return m, nil
+			}
+			message = tea.KeyPressMsg{Code: tea.KeyEnter}
+		}
+	}
 	if m.queryConfirmation != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.queryConfirmation = nil
+		completed, action := m.queryConfirmation.dialog.Update(message, m.width, m.height)
+		if !completed {
 			return m, nil
 		}
-		form, command := m.queryConfirmation.form.Update(message)
-		m.queryConfirmation.form = form.(*huh.Form)
-		if m.queryConfirmation.form.State != huh.StateCompleted {
-			return m, command
-		}
-		statement, confirmed := m.queryConfirmation.statement, m.queryConfirmation.confirmed || m.queryConfirmation.form.GetBool("confirm")
+		statement := m.queryConfirmation.statement
 		m.queryConfirmation = nil
-		if !confirmed {
+		if action != "run" {
 			return m, nil
 		}
 		return m.startQueryStatement(statement)
@@ -104,17 +108,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.cellEditor.confirming {
-			if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-				m.cellEditor.confirmed = true
-				m.cellEditor.confirm.State = huh.StateCompleted
+			completed, action := m.cellEditor.confirm.Update(message, m.width, m.height)
+			if !completed {
+				return m, nil
 			}
-			model, command := m.cellEditor.confirm.Update(message)
-			m.cellEditor.confirm = model.(*huh.Form)
-			if m.cellEditor.confirm.State != huh.StateCompleted {
-				return m, command
-			}
-			confirmed := m.cellEditor.confirmed || m.cellEditor.confirm.GetBool("confirm")
-			if !confirmed {
+			if action != "save" {
 				m.cellEditor = nil
 				return m, nil
 			}
@@ -212,17 +210,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.State == stateReady && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
 			!m.hasOverlay() && !m.formActive() && !m.Running() {
-			m.quitDialog = newForm(huh.NewGroup(
-				huh.NewSelect[string]().
-					Key("action").
-					Title("Quit?").
-					Options(
-						huh.NewOption("Disconnect", "disconnect"),
-						huh.NewOption("Quit", "quit"),
-						huh.NewOption("Cancel", "cancel"),
-					),
-			)).WithShowHelp(false).WithWidth(max(m.width/2, 40))
-			return m, m.quitDialog.Init()
+			m.quitDialog = newConfirmationDialog("Quit?", "", []confirmationOption{
+				{label: "Disconnect", action: "disconnect"},
+				{label: "Quit", action: "quit"},
+				{label: "Cancel", action: "cancel"},
+			})
+			return m, nil
 		}
 		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) {
 			switch {
@@ -272,7 +265,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.blurTables()
 			return m, m.formMode.beginInsert(m.editor)
 		}
-		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.save", []scope{scopeGlobal}) {
+		if m.State == stateReady && !m.formActive() && !m.editor.completionVisible() && m.keybindings.Match(message, "query.save", []scope{scopeGlobal}) {
 			if saved, err := m.saveQuery(); err != nil {
 				m.Status = safeText(fmt.Sprintf("saving query: %v", err))
 			} else if saved {
@@ -289,17 +282,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.sqlEditorActive() {
 			if m.editor.completionVisible() {
-				switch message.Key().Code {
-				case tea.KeyEscape:
+				key := message.Key()
+				switch {
+				case key.Code == tea.KeyEscape:
 					m.editor.completion = completion{}
 					return m, nil
-				case tea.KeyUp:
+				case key.Code == tea.KeyUp || (key.Code == 'k' && key.Mod == tea.ModCtrl):
 					m.editor.completion.move(-1)
 					return m, nil
-				case tea.KeyDown:
+				case key.Code == tea.KeyDown || (key.Code == 'j' && key.Mod == tea.ModCtrl):
 					m.editor.completion.move(1)
 					return m, nil
-				case tea.KeyEnter, tea.KeyTab:
+				case key.Code == tea.KeyEnter || key.Code == tea.KeyTab:
 					m.editor.acceptCompletion()
 					return m, nil
 				}
@@ -372,43 +366,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.deleteConfirm != nil && m.deleteConfirm.visible {
-		switch msg := message.(type) {
-		case tea.KeyPressMsg:
-			switch msg.Key().Code {
-			case tea.KeyEscape:
-				m.deleteConfirm = nil
-				return m, nil
-			case tea.KeyLeft, tea.KeyRight:
-				m.deleteConfirm.selected = 1 - m.deleteConfirm.selected
-			case tea.KeyEnter:
-				if m.deleteConfirm.selected == 0 {
-					m.deleteConfirm = nil
-					return m, m.deleteRow()
-				}
-				m.deleteConfirm = nil
-				return m, nil
-			}
-			return m, nil
-		case tea.MouseClickMsg:
-			if msg.Button == tea.MouseLeft {
-				// Centered dialog: 4 content lines → border height 6.
-				// Content starts at (height-6)/2 + 1 = height/2-2.
-				// Options are at height/2 (yes) and height/2+1 (no).
-				optY := m.height/2 - 1 // align to allow relY=1 and relY=2
-				relY := msg.Mouse().Y - optY
-				if relY == 1 {
-					m.deleteConfirm = nil
-					return m, m.deleteRow()
-				}
-				if relY == 2 {
-					m.deleteConfirm = nil
-					return m, nil
-				}
-			}
-			m.deleteConfirm = nil
+	if m.deleteConfirm != nil {
+		completed, action := m.deleteConfirm.Update(message, m.width, m.height)
+		if !completed {
 			return m, nil
 		}
+		m.deleteConfirm = nil
+		if action == "delete" {
+			return m, m.deleteRow()
+		}
+		return m, nil
 	}
 
 	switch message := message.(type) {
@@ -510,16 +477,10 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.quitDialog != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.quitDialog = nil
+		completed, action := m.quitDialog.Update(message, m.width, m.height)
+		if !completed {
 			return m, nil
 		}
-		model, command := m.quitDialog.Update(message)
-		m.quitDialog = model.(*huh.Form)
-		if m.quitDialog.State != huh.StateCompleted {
-			return m, command
-		}
-		action := m.quitDialog.GetString("action")
 		m.quitDialog = nil
 		switch action {
 		case "quit":
@@ -601,6 +562,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.Tab {
 			case tabStructure:
 				if m.columnForm.active() {
+					m.columnForm.height = m.height
 					command, action := m.columnForm.Update(message, m.formMode)
 					switch action {
 					case columnFormSave:
@@ -620,6 +582,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.structure, command = m.structure.Update(message)
 			case tabBrowse:
 				if m.browseForm.active() {
+					m.browseForm.height = m.height
 					command, action := m.browseForm.Update(message, m.formMode)
 					switch action {
 					case browseFormSave:
@@ -699,6 +662,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case tabIndexes:
 				if m.indexForm.active() {
+					m.indexForm.height = m.height
 					command, action := m.indexForm.Update(message, m.formMode)
 					switch action {
 					case indexFormSave:
@@ -728,7 +692,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							_ = m.openIndexForm(&m.indexInfo[row])
 							m.indexForm.beginConfirmation(false, true)
 							m.formMode.beginConfirm()
-							return m, m.indexForm.confirmation.Init()
+							return m, nil
 						}
 						return m, nil
 					}
@@ -739,6 +703,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.indexes, command = m.indexes.Update(message)
 			case tabForeignKeys:
 				if m.foreignKeyForm.active() {
+					m.foreignKeyForm.height = m.height
 					command, action := m.foreignKeyForm.Update(message, m.formMode)
 					switch action {
 					case foreignKeyFormSave:
@@ -771,7 +736,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							_ = m.openForeignKeyForm(&m.foreignKeyInfo[row])
 							m.foreignKeyForm.beginConfirmation(false, true)
 							m.formMode.beginConfirm()
-							return m, m.foreignKeyForm.confirmation.Init()
+							return m, nil
 						}
 						return m, nil
 					}
@@ -865,13 +830,10 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "edit_row":
 			return m, m.openBrowseForm()
 		case "delete_row":
-			m.deleteConfirm = &confirmDialog{
-				message:  "Delete this row?",
-				yesLabel: "Yes, delete",
-				noLabel:  "Cancel",
-				selected: 1,
-				visible:  true,
-			}
+			m.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
+				{label: "Yes, delete", action: "delete"},
+				{label: "Cancel", action: "cancel"},
+			})
 		}
 		return m, nil
 	}
@@ -1136,8 +1098,8 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 }
 func (m Model) executeQuery() (tea.Model, tea.Cmd) {
 	if requiresQueryConfirmation(m.editor.value) {
-		m.queryConfirmation = newQueryConfirmation(m.editor.value, m.width)
-		return m, m.queryConfirmation.form.Init()
+		m.queryConfirmation = newQueryConfirmation(m.editor.value)
+		return m, nil
 	}
 	return m.startQuery()
 }

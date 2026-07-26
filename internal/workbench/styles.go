@@ -46,21 +46,21 @@ const (
 )
 
 var (
-	activeTheme                           = themeOcean
-	colorCanvas, colorPanel, colorStripe  string
-	colorInk, colorMuted, colorAccent     string
-	colorBorder, colorModeNormal          string
-	colorModeInsert                       string
-	headerStyle, footerStyle, statusStyle lipgloss.Style
-	focusStyle, panelStyle                lipgloss.Style
-	connectionActionStyle                 lipgloss.Style
-	connectionActionSelectedStyle         lipgloss.Style
-	primaryIndexStyle, uniqueIndexStyle   lipgloss.Style
-	regularIndexStyle                     lipgloss.Style
-	statusSuccessStyle, statusFailedStyle lipgloss.Style
-	statusCanceledStyle                   lipgloss.Style
-	modeNormalStyle, modeInsertStyle      lipgloss.Style
-	selectedCellStyle                     lipgloss.Style
+	activeTheme                                                                       = themeOcean
+	colorCanvas, colorPanel, colorStripe                                              string
+	colorInk, colorMuted, colorAccent                                                 string
+	colorBorder, colorModeNormal                                                      string
+	colorModeInsert                                                                   string
+	headerStyle, footerStyle, statusStyle                                             lipgloss.Style
+	focusStyle, panelStyle                                                            lipgloss.Style
+	connectionActionStyle                                                             lipgloss.Style
+	connectionActionSelectedStyle                                                     lipgloss.Style
+	primaryIndexStyle, uniqueIndexStyle                                               lipgloss.Style
+	regularIndexStyle                                                                 lipgloss.Style
+	statusSuccessStyle, statusFailedStyle                                             lipgloss.Style
+	statusCanceledStyle                                                               lipgloss.Style
+	modeNormalStyle, modeInsertStyle                                                  lipgloss.Style
+	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle lipgloss.Style
 )
 
 func init() { setTheme(themeOcean) }
@@ -147,6 +147,14 @@ func resetStyles() {
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorAccent)).
 		Bold(true)
+	completionItemStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorMuted))
+	completionBoxStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorAccent)).
+		Padding(0, 1)
+	completionDetailStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorBorder))
 }
 
 var formTheme = huh.ThemeFunc(func(bool) *huh.Styles {
@@ -526,13 +534,15 @@ func (m Model) View() tea.View {
 	}
 	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
-		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil {
+		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.queryConfirmation != nil {
 		// UV overlay path: render full UI, then overlay centered.
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
 		if m.contextMenu != nil {
 			m.drawContextMenu(canvas)
+		} else if dialog := m.activeConfirmation(); dialog != nil {
+			dialog.draw(canvas)
 		} else if dialog := m.confirmContent(); dialog != "" {
 			m.drawConfirmDialog(canvas, dialog)
 		}
@@ -549,6 +559,31 @@ func (m Model) hasConfirming() bool {
 		(m.cellEditor != nil && m.cellEditor.confirming)
 }
 
+func (m Model) activeConfirmation() *confirmationDialog {
+	switch {
+	case m.queryConfirmation != nil:
+		return m.queryConfirmation.dialog
+	case m.quitDialog != nil:
+		return m.quitDialog
+	case m.columnForm.confirming():
+		return m.columnForm.confirmation
+	case m.browseForm.confirming():
+		return m.browseForm.confirmation
+	case m.indexForm.confirming():
+		return m.indexForm.confirmation
+	case m.foreignKeyForm.confirming():
+		return m.foreignKeyForm.confirmation
+	case m.connection.confirmation != nil:
+		return m.connection.confirmation
+	case m.deleteConfirm != nil:
+		return m.deleteConfirm
+	case m.cellEditor != nil && m.cellEditor.confirming:
+		return m.cellEditor.confirm
+	default:
+		return nil
+	}
+}
+
 func (m Model) hasOverlay() bool {
 	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
@@ -558,29 +593,26 @@ func (m Model) confirmContent() string {
 	switch {
 	case m.cellEditor != nil:
 		return m.cellEditor.confirmContent()
+	case m.queryConfirmation != nil:
+		raw = m.queryConfirmation.dialog.content(m.width)
 	case m.explainPicker != nil:
 		raw = m.explainPicker.form.View()
 	case m.savedQueryPicker != nil:
 		raw = m.savedQueryPicker.form.View()
 	case m.quitDialog != nil:
-		raw = m.quitDialog.View()
+		raw = m.quitDialog.content(m.width)
 	case m.columnForm.confirming():
-		raw = m.columnForm.confirmation.View()
+		raw = m.columnForm.confirmation.content(m.width)
 	case m.browseForm.confirming():
-		raw = m.browseForm.confirmation.View()
+		raw = m.browseForm.confirmation.content(m.width)
 	case m.indexForm.confirming():
-		raw = m.indexForm.confirmation.View()
+		raw = m.indexForm.confirmation.content(m.width)
 	case m.foreignKeyForm.confirming():
-		raw = m.foreignKeyForm.confirmation.View()
+		raw = m.foreignKeyForm.confirmation.content(m.width)
 	case m.connection.confirmation != nil:
-		raw = m.connection.confirmation.View()
+		raw = m.connection.confirmation.content(m.width)
 	case m.deleteConfirm != nil:
-		d := m.deleteConfirm
-		if d.selected == 0 {
-			raw = "  " + d.message + "\n\n" + "  > " + d.yesLabel + "\n    " + d.noLabel
-		} else {
-			raw = "  " + d.message + "\n\n" + "    " + d.yesLabel + "\n  > " + d.noLabel
-		}
+		raw = m.deleteConfirm.content(m.width)
 	}
 	if raw == "" {
 		return ""
@@ -879,6 +911,22 @@ func (m Model) sqlPaneView() string {
 		m.editor.View(),
 		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth, m.resultsColumn),
 	)
+
+	if dropdown := m.completionOverlay(); dropdown != "" {
+		lines := strings.Split(content, "\n")
+		overlayLines := strings.Split(dropdown, "\n")
+		startLine := m.completionCursorOffset() + 1
+		if startLine < 1 {
+			startLine = 1
+		}
+		for i, ol := range overlayLines {
+			if startLine+i < len(lines) {
+				lines[startLine+i] = ol
+			}
+		}
+		content = strings.Join(lines, "\n")
+	}
+
 	return content + "\n" + chrome.PaneStatus("", m.resultsStatus, m.tableViewportWidth)
 }
 

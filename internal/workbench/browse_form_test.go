@@ -62,14 +62,13 @@ func TestBrowseForm_cellEditorEnterSubmitsConfirmation(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
-	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
-	model = resolveBrowseCommand(model, command())
 
 	if model.cellEditor == nil || !model.cellEditor.confirming || model.cellEditor.confirm == nil {
 		t.Fatal("save did not open the cell update confirmation")
 	}
-	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	if command == nil {
 		t.Fatal("Enter did not submit the cell update confirmation")
@@ -379,7 +378,7 @@ func TestBrowse_contextMenuDOpensDeleteConfirmation(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = updated.(Model)
 
-	if model.deleteConfirm == nil || !model.deleteConfirm.visible {
+	if model.deleteConfirm == nil {
 		t.Fatal("d did not open delete confirmation")
 	}
 }

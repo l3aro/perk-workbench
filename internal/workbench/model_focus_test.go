@@ -701,11 +701,11 @@ func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
 	}
 
 	// When
-	updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 	model = updated.(Model)
 
 	// Then
-	if command == nil || model.quitDialog == nil {
+	if model.quitDialog == nil {
 		t.Fatal("ctrl+q did not open the quit dialog")
 	}
 }

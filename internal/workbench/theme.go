@@ -12,18 +12,14 @@ func (m *Model) applyTheme(name appTheme) {
 	applyListTheme(&m.picker)
 	applyListTheme(&m.recent)
 	applyFormTheme(
-		m.connection.form, m.connection.confirmation,
-		m.columnForm.form, m.columnForm.confirmation,
-		m.browseForm.form, m.browseForm.confirmation,
-		m.indexForm.form, m.indexForm.confirmation,
-		m.foreignKeyForm.form, m.foreignKeyForm.confirmation,
-		m.quitDialog,
+		m.connection.form,
+		m.columnForm.form,
+		m.browseForm.form,
+		m.indexForm.form,
+		m.foreignKeyForm.form,
 	)
 	if m.cellEditor != nil {
-		applyFormTheme(m.cellEditor.input, m.cellEditor.confirm)
-	}
-	if m.queryConfirmation != nil {
-		applyFormTheme(m.queryConfirmation.form)
+		applyFormTheme(m.cellEditor.input)
 	}
 	if m.explainPicker != nil {
 		applyFormTheme(m.explainPicker.form)

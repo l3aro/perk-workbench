@@ -63,6 +63,25 @@ func TestStructureForm_positiveDiscardConfirmationClosesForm(t *testing.T) {
 	}
 }
 
+func TestStructureForm_confirmationMouseReleaseUsesScreenCoordinates(t *testing.T) {
+	// Given
+	model := resizeModel(openColumn(t, "name", "TEXT"), 100, 30)
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	dialog := model.columnForm.confirmation
+	if dialog == nil {
+		t.Fatal("save confirmation = nil")
+	}
+	layout := dialog.layout(model.width, model.height)
+
+	// When
+	model = updateColumn(model, tea.MouseReleaseMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseNone})
+
+	// Then
+	if !model.columnForm.saving {
+		t.Fatal("mouse release did not confirm the column save")
+	}
+}
+
 func TestStructureForm_normalInputCannotMutateAndEscapeReturnsToNormal(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})

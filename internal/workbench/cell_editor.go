@@ -12,7 +12,7 @@ import (
 
 type cellEditor struct {
 	input       *huh.Form
-	confirm     *huh.Form
+	confirm     *confirmationDialog
 	confirming  bool
 	table       string
 	columnName  string
@@ -23,7 +23,6 @@ type cellEditor struct {
 	identifier  func(string) string
 	originalVal *string
 	editedVal   string
-	confirmed   bool
 	width       int
 }
 
@@ -188,19 +187,14 @@ func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea
 
 func (e *cellEditor) beginConfirmation() tea.Cmd {
 	statement := e.updateStatement()
-	e.confirmed = false
 	e.confirming = true
-	title := "Save cell change?"
-	e.confirm = newForm(huh.NewGroup(
-		huh.NewNote().Title(title).Description(statement).Height(8),
-		huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&e.confirmed),
-	)).WithShowHelp(false).WithWidth(max(e.width, 1))
-	return e.confirm.Init()
+	e.confirm = yesNoConfirmation("Save cell change?", statement, "save")
+	return nil
 }
 
 func (e *cellEditor) confirmContent() string {
 	if e.confirming && e.confirm != nil {
-		return trimDialogContent(e.confirm.View())
+		return e.confirm.content(e.width)
 	}
 	if !e.confirming && e.input != nil {
 		raw := e.input.View()

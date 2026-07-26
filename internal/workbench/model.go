@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
@@ -77,7 +76,7 @@ type Model struct {
 	expandedDatabases                                                                              map[string]bool
 	commandPalette                                                                                 *commandPalette
 	themePicker                                                                                    *themePicker
-	quitDialog                                                                                     *huh.Form
+	quitDialog                                                                                     *confirmationDialog
 	queryConfirmation                                                                              *queryConfirmation
 	recentPath, savedQueriesPath                                                                   string
 	keybindings                                                                                    Keybindings
@@ -90,7 +89,7 @@ type Model struct {
 	lastClickTime                                                                                  time.Time
 	lastClickX, lastClickY                                                                         int
 	contextMenu                                                                                    *contextMenuModel
-	deleteConfirm                                                                                  *confirmDialog
+	deleteConfirm                                                                                  *confirmationDialog
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -112,13 +111,6 @@ type contextMenuModel struct {
 	visible  bool
 }
 
-type confirmDialog struct {
-	message  string
-	yesLabel string
-	noLabel  string
-	selected int // 0 = yes, 1 = no
-	visible  bool
-}
 type schemaItem struct {
 	title, description string
 	database, table    string

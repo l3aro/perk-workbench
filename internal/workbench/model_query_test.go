@@ -387,6 +387,7 @@ func TestSavedQueries_persistAndReload(t *testing.T) {
 func TestExecute_destructive_statement_requires_confirmation(t *testing.T) {
 	// Given
 	model := readyModel(t)
+	model = resizeModel(model, 80, 24)
 	model.editor.setValue("CREATE TABLE projects (id INTEGER PRIMARY KEY)")
 
 	// When
@@ -395,8 +396,8 @@ func TestExecute_destructive_statement_requires_confirmation(t *testing.T) {
 	model = updateFromCommand(model, command)
 
 	// Then
-	if command == nil || model.Running() || model.queryConfirmation == nil {
-		t.Fatalf("destructive query = command:%t running:%t confirmation:%t, want confirmation before execution", command != nil, model.Running(), model.queryConfirmation != nil)
+	if model.Running() || model.queryConfirmation == nil {
+		t.Fatalf("destructive query = running:%t confirmation:%t, want confirmation before execution", model.Running(), model.queryConfirmation != nil)
 	}
 }
 
@@ -421,6 +422,26 @@ func TestExecute_destructive_statement_declined_does_not_run(t *testing.T) {
 	}
 	if got := *result.Rows[0][0]; got != "1" {
 		t.Fatalf("row count = %q, want 1 after declined delete", got)
+	}
+}
+
+func TestExecute_destructive_statement_clickingYes_runsQuery(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model = resizeModel(model, 80, 24)
+	model.editor.setValue("CREATE TABLE projects (id INTEGER PRIMARY KEY)")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	dialog := model.queryConfirmation.dialog
+	layout := dialog.layout(model.width, model.height)
+
+	// When
+	updated, command := model.Update(tea.MouseClickMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then
+	if command == nil || !model.Running() || model.queryConfirmation != nil {
+		t.Fatalf("click confirmation = command:%t running:%t confirmation:%t, want query running", command != nil, model.Running(), model.queryConfirmation != nil)
 	}
 }
 

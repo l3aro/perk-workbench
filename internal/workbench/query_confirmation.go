@@ -1,20 +1,12 @@
 package workbench
 
-import "charm.land/huh/v2"
-
 type queryConfirmation struct {
-	form      *huh.Form
+	dialog    *confirmationDialog
 	statement string
-	confirmed bool
 }
 
-func newQueryConfirmation(statement string, width int) *queryConfirmation {
-	confirmation := &queryConfirmation{statement: statement}
-	confirmation.form = newForm(huh.NewGroup(
-		huh.NewNote().Title("Run destructive SQL?").Description(statement).Height(8),
-		huh.NewConfirm().Key("confirm").Affirmative("Yes").Negative("No").Value(&confirmation.confirmed),
-	)).WithShowHelp(width >= 40).WithWidth(max(width, 1))
-	return confirmation
+func newQueryConfirmation(statement string) *queryConfirmation {
+	return &queryConfirmation{dialog: yesNoConfirmation("Run destructive SQL?", statement, "run"), statement: statement}
 }
 
 func requiresQueryConfirmation(statement string) bool {

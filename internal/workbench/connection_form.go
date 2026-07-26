@@ -31,9 +31,10 @@ const (
 )
 
 type connectionForm struct {
-	form, confirmation *huh.Form
-	values             *connectionFormValues
-	focus, width       int
+	form         *huh.Form
+	confirmation *confirmationDialog
+	values       *connectionFormValues
+	focus, width int
 }
 
 type connectionFormValues struct {
@@ -42,7 +43,6 @@ type connectionFormValues struct {
 	host, port   string
 	user, pass   string
 	action       string
-	confirmed    bool
 }
 
 type connectionTestMsg struct{ err error }
@@ -89,17 +89,6 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 
 func (f *connectionForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, string) {
 	if f.confirmation != nil {
-		model, command := f.confirmation.Update(message)
-		f.confirmation = model.(*huh.Form)
-		if f.confirmation.State != huh.StateCompleted {
-			return command, ""
-		}
-		confirmed := f.values.confirmed || f.confirmation.GetBool("confirm")
-		f.confirmation = nil
-		controller.mode = formModeNormal
-		if confirmed {
-			return nil, connectionActionConnect
-		}
 		return nil, ""
 	}
 	driver := f.values.driver
@@ -121,9 +110,8 @@ func (f *connectionForm) updateHuh(message tea.Msg, controller *formModeControll
 }
 
 func (f *connectionForm) beginConfirmation() tea.Cmd {
-	f.values.confirmed = false
-	f.confirmation = newForm(huh.NewGroup(huh.NewConfirm().Key("confirm").Title("Connect to " + f.connectionName() + "?").Affirmative("Yes").Negative("No").Value(&f.values.confirmed))).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
-	return f.confirmation.Init()
+	f.confirmation = yesNoConfirmation("Connect to "+f.connectionName()+"?", "", connectionActionConnect)
+	return nil
 }
 
 func (f *connectionForm) showValidationError() tea.Cmd {
@@ -158,9 +146,6 @@ func (f *connectionForm) setWidth(width int) {
 	f.width = max(width, 1)
 	if f.form != nil {
 		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
-	}
-	if f.confirmation != nil {
-		f.confirmation.WithWidth(f.width).WithShowHelp(f.width >= 40)
 	}
 }
 
