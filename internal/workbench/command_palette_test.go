@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,6 +45,45 @@ func TestCommandPalette_navigationAndSelection(t *testing.T) {
 	}
 	if palette.visible {
 		t.Fatal("palette remained visible after selection")
+	}
+}
+
+func TestCommandPalette_filterNoDuplicates(t *testing.T) {
+	// Regression: filtered and items must not share a backing array.
+	// When they do, each applyFilter call corrupts p.items while ranging,
+	// producing duplicate entries as the query grows.
+	items := []commandPaletteItem{
+		{id: "app.quit", label: "quit with confirm"},
+		{id: "workspace.tab_next", label: "next tab"},
+		{id: "theme.select", label: "theme"},
+		{id: "focus.schema", label: "schema"},
+	}
+	palette := &commandPalette{
+		items:    items,
+		filtered: append([]commandPaletteItem{}, items...),
+	}
+
+	// Type "th" one character at a time, checking no duplicates after each.
+	for _, char := range []rune{'t', 'h'} {
+		palette.query = append(palette.query, char)
+		palette.applyFilter()
+		seen := map[string]bool{}
+		for _, item := range palette.filtered {
+			if seen[item.label] {
+				t.Fatalf("after typing %q: duplicate label %q in filtered list",
+					string(palette.query), item.label)
+			}
+			seen[item.label] = true
+			if !strings.Contains(strings.ToLower(item.label), strings.ToLower(string(palette.query))) {
+				t.Fatalf("after typing %q: item %q does not match query",
+					string(palette.query), item.label)
+			}
+		}
+	}
+
+	// After "th": "quit with confirm" (contains "th" in "with"), "theme" — exactly 2 items.
+	if len(palette.filtered) != 2 {
+		t.Fatalf("after typing \"th\": got %d items, want 2", len(palette.filtered))
 	}
 }
 

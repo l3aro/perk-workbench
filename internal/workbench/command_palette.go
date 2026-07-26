@@ -70,7 +70,7 @@ func newCommandPalette(m Model) *commandPalette {
 
 	return &commandPalette{
 		items:        items,
-		filtered:     items,
+		filtered:     append([]commandPaletteItem{}, items...),
 		cursor:       0,
 		query:        nil,
 		visible:      false,
