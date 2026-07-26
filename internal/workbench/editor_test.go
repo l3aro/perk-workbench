@@ -24,28 +24,38 @@ func TestEditor_textareaBindsSQLValue(t *testing.T) {
 
 func TestCompletionSuggestions_filterAndInsertSelectedValue(t *testing.T) {
 	// Given
-	completion := newCompletion([]string{"SELECT", "sessions", "status"})
+	items := []CompletionItem{
+		{Label: "SELECT", InsertText: "SELECT"},
+		{Label: "sessions", InsertText: "sessions"},
+		{Label: "status", InsertText: "status"},
+	}
+	completion := newCompletion(items)
 
 	// When
 	completion.filter("se")
 	inserted := completion.accept()
 
 	// Then
-	if got, want := inserted, "SELECT"; got != want {
+	if got, want := inserted.Label, "SELECT"; got != want {
 		t.Fatalf("completion = %q, want %q", got, want)
 	}
 }
 
 func TestCompletionSuggestions_refilterAfterTyping(t *testing.T) {
 	// Given
-	completion := newCompletion([]string{"SELECT", "sessions", "status"})
+	items := []CompletionItem{
+		{Label: "SELECT", InsertText: "SELECT"},
+		{Label: "sessions", InsertText: "sessions"},
+		{Label: "status", InsertText: "status"},
+	}
+	completion := newCompletion(items)
 	completion.filter("s")
 
 	// When
 	completion.filter("st")
 
 	// Then
-	if got, want := completion.accept(), "status"; got != want {
+	if got, want := completion.accept().Label, "status"; got != want {
 		t.Fatalf("completion = %q, want %q", got, want)
 	}
 }
@@ -54,7 +64,7 @@ func TestEditor_completionAfterQualifiedTableInsertsColumn(t *testing.T) {
 	// Given
 	editor := newEditor()
 	editor.setValue("SELECT orders.")
-	editor.showCompletionFor("", []string{"id"})
+	editor.showCompletionFor("", []CompletionItem{{Label: "id", InsertText: "id"}})
 
 	// When
 	editor.acceptCompletion()
@@ -70,17 +80,21 @@ func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 	model := New("", context.Background(), testOpen)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.schemaObjects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
-	model.editor.setValue("se")
-
-	// When
+	model.editor.setValue("S")
+	// Enter insert mode first (pressing 'i' in normal mode does this).
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
+
+	// When: Ctrl+Space triggers completion.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeySpace, Mod: tea.ModCtrl})
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.editor.completion.accept(), "SELECT"; got != want {
-		t.Fatalf("completion = %q, want %q", got, want)
+	if !model.editor.completion.visible() {
+		t.Fatal("completion should be visible after Ctrl+Space")
+	}
+	if got, want := model.editor.completion.accept().Label, "SELECT"; got != want {
+		t.Fatalf("top completion = %q, want %q", got, want)
 	}
 }
 
@@ -98,10 +112,10 @@ func TestModel_completionColumnsCachesQualifiedTableResult(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.editor.completion.accept(), "id"; got != want {
+	if got, want := model.editor.completion.accept().Label, "id"; got != want {
 		t.Fatalf("completion = %q, want %q", got, want)
 	}
 	if got, want := model.completionColumns["orders"], []string{"id"}; len(got) != len(want) || got[0] != want[0] {
-		t.Fatalf("cached columns = %q, want %q", got, want)
+		t.Fatalf("completionColumns = %q, want %q", got, want)
 	}
 }

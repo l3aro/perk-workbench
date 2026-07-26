@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -48,33 +49,73 @@ func (e *editor) update(message tea.Msg) tea.Cmd {
 	return command
 }
 
-func (e *editor) showCompletion(values []string) {
-	e.showCompletionFor(sharedsql.CompletionPrefix(e.value), values)
+func (e *editor) showCompletion(items []CompletionItem) {
+	e.showCompletionFor(sharedsql.CompletionPrefix(e.value), items)
 }
 
-func (e *editor) showCompletionFor(prefix string, values []string) {
-	e.completion = newCompletion(values)
+func (e *editor) showCompletionFor(prefix string, items []CompletionItem) {
+	e.completion = newCompletion(items)
 	e.completion.filter(prefix)
 }
-
 func (e *editor) acceptCompletion() {
-	value := e.completion.accept()
+	item := e.completion.accept()
 	prefix := e.completion.prefix
-	if value != "" && strings.HasPrefix(strings.ToLower(value), strings.ToLower(prefix)) {
-		e.text.input.InsertString(value[len(prefix):])
+	if item.Label != "" && strings.HasPrefix(strings.ToLower(item.Label), strings.ToLower(prefix)) {
+		e.text.input.InsertString(item.InsertText[len(prefix):])
 		e.value = e.text.Value()
 	}
 	e.completion = completion{}
 }
+func (e editor) completionVisible() bool { return e.completion.visible() }
 
-func (e editor) completionVisible() bool { return len(e.completion.matches) > 0 }
+func (e editor) View() string { return e.text.View() }
 
-func (e editor) View() string {
-	view := e.text.View()
-	if !e.completionVisible() {
-		return view
+func (m Model) completionOverlay() string {
+	matches := m.editor.completion.matches
+	if len(matches) < 1 {
+		return ""
 	}
-	lines := strings.Split(view, "\n")
-	lines[len(lines)-1] = selectedCellStyle.Render(e.completion.accept())
-	return strings.Join(lines, "\n")
+
+	// Scrollable viewport of up to 5 items, keeping selection visible.
+	const viewSize = 5
+	selected := m.editor.completion.selected
+
+	offset := selected - viewSize/2
+	offset = max(offset, 0)
+	offset = min(offset, max(len(matches)-viewSize, 0))
+
+	end := min(offset+viewSize, len(matches))
+	visible := matches[offset:end]
+
+	var items []string
+	for i, match := range visible {
+		idx := offset + i
+		if idx == selected {
+			items = append(items, selectedCellStyle.Render(match.Label))
+		} else {
+			items = append(items, completionItemStyle.Render(match.Label))
+		}
+		// Detail shown in secondary muted style.
+		if match.Detail != "" {
+			detail := completionDetailStyle.Render(match.Detail)
+			items[len(items)-1] = items[len(items)-1] + " " + detail
+		}
+	}
+
+	return completionBoxStyle.
+		MaxWidth(m.editor.width).
+		Render(lipgloss.JoinVertical(lipgloss.Left, items...))
+}
+func (m Model) completionCursorOffset() int {
+	styledLines := sqlStyledLines(m.editor.value, max(m.editor.width, 1))
+	cursorLine := m.editor.text.input.Line()
+	cursorInfo := m.editor.text.input.LineInfo()
+	start := min(m.editor.text.input.ScrollYOffset(), len(styledLines))
+
+	for i, sl := range styledLines {
+		if sl.hardLine == cursorLine && sl.subLine == cursorInfo.RowOffset {
+			return i - start
+		}
+	}
+	return -1
 }

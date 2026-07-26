@@ -23,49 +23,238 @@ func (m Model) loadCompletionColumns(table string, tag uint64) tea.Cmd {
 	}
 }
 
+// startCompletion triggers context-aware completion suggestions.
 func (m *Model) startCompletion() tea.Cmd {
-	prefix := sharedsql.CompletionPrefix(m.editor.value)
-	if table := m.completionTableFor(prefix); table != "" {
+	row := m.editor.text.input.Line()
+	col := m.editor.text.input.Column()
+	analysis := sharedsql.AnalyzeSQL(m.editor.value, row, col)
+
+	switch analysis.Context {
+	case sharedsql.CtxQualified:
+		return m.qualifiedCompletion(analysis)
+	case sharedsql.CtxTable:
+		m.editor.showCompletion(m.tableContextItems(analysis))
+		return nil
+	case sharedsql.CtxExpression:
+		m.editor.showCompletion(m.expressionContextItems(analysis))
+		return nil
+	default:
+		m.editor.showCompletion(m.genericItems())
+		return nil
+	}
+}
+
+// qualifiedCompletion handles schema. or table. prefix.
+func (m *Model) qualifiedCompletion(analysis sharedsql.SQLAnalysis) tea.Cmd {
+	qualifier := analysis.Qualifier
+
+	// Check if the qualifier is an alias for a table.
+	if resolved, ok := analysis.Aliases[strings.ToLower(qualifier)]; ok {
+		qualifier = resolved
+	}
+
+	// If qualifier matches a known table name (from schemaObjects), show its columns.
+	if resolved, columns := m.columnsForTableName(qualifier); resolved {
+		m.editor.showCompletionFor(analysis.Prefix, columns)
+		return nil
+	}
+
+	// If qualifier matches a schema name, show objects in that schema.
+	if objects := m.objectsForSchema(qualifier); len(objects) > 0 {
+		// Also include keywords as fallback.
+		items := make([]CompletionItem, 0, len(objects)+len(sharedsql.Keywords))
+		items = append(items, objects...)
+		for _, kw := range sharedsql.Keywords {
+			items = append(items, keywordItem(kw))
+		}
+		m.editor.showCompletionFor(analysis.Prefix, items)
+		return nil
+	}
+
+	// If qualifier hasn't been resolved, try loading columns from the database.
+	if table := m.schemaTableForName(qualifier); table != "" {
 		if columns, ok := m.completionColumns[table]; ok {
-			m.editor.showCompletionFor("", columns)
+			items := make([]CompletionItem, len(columns))
+			for i, c := range columns {
+				items[i] = completionItemForColumn(c, "", qualifier)
+			}
+			m.editor.showCompletionFor(analysis.Prefix, items)
 			return nil
 		}
 		m.completionRequestTag++
 		m.completionTable = table
 		return m.loadCompletionColumns(table, m.completionRequestTag)
 	}
-	m.editor.showCompletion(m.completionValues())
+
+	// Fallback: generic items.
+	m.editor.showCompletion(m.genericItems())
 	return nil
 }
 
-func (m Model) completionValues() []string {
-	values := append([]string(nil), sharedsql.Keywords...)
+// columnsForTableName checks if qualifier matches a known table and returns its cached columns.
+func (m Model) columnsForTableName(qualifier string) (bool, []CompletionItem) {
 	for _, object := range m.schemaObjects {
-		if object.Type != "database" {
-			values = append(values, m.completionObjectName(object))
+		if object.Type == "database" {
+			continue
+		}
+		if !strings.EqualFold(object.Name, qualifier) {
+			continue
+		}
+		table := m.schemaTable(schemaItem{database: object.Database, table: object.Name})
+		if columns, ok := m.completionColumns[table]; ok {
+			items := make([]CompletionItem, len(columns))
+			for i, c := range columns {
+				items[i] = completionItemForColumn(c, "", object.Name)
+			}
+			return true, items
 		}
 	}
-	return values
+	return false, nil
 }
+
+// schemaTableForName finds the full schema.table key for a given table name.
+func (m Model) schemaTableForName(name string) string {
+	for _, object := range m.schemaObjects {
+		if object.Type == "database" {
+			continue
+		}
+		if strings.EqualFold(object.Name, name) || strings.EqualFold(m.completionObjectName(object), name) {
+			return m.schemaTable(schemaItem{database: object.Database, table: object.Name})
+		}
+	}
+	return ""
+}
+
+// objectsForSchema returns completion items for objects in a given schema.
+func (m Model) objectsForSchema(schema string) []CompletionItem {
+	var items []CompletionItem
+	for _, object := range m.schemaObjects {
+		if object.Type == "database" {
+			continue
+		}
+		if strings.EqualFold(object.Database, schema) {
+			items = append(items, completionItemForObject(object))
+		}
+	}
+	return items
+}
+
+// tableContextItems returns items appropriate after FROM/JOIN/INTO.
+func (m Model) tableContextItems(analysis sharedsql.SQLAnalysis) []CompletionItem {
+	// Schemas, tables, views, CTEs (from aliases), and keywords.
+	var items []CompletionItem
+
+	// Add schema names.
+	seenSchema := make(map[string]bool)
+	for _, object := range m.schemaObjects {
+		if object.Database != "" && !seenSchema[object.Database] {
+			seenSchema[object.Database] = true
+			items = append(items, CompletionItem{
+				Label: object.Database, InsertText: object.Database,
+				Kind: KindSchema, Detail: "schema",
+			})
+		}
+	}
+
+	// Add tables and views.
+	for _, object := range m.schemaObjects {
+		if object.Type != "database" {
+			items = append(items, completionItemForObject(object))
+		}
+	}
+
+	// Add CTE-like aliases found in the query.
+	for alias := range analysis.Aliases {
+		items = append(items, CompletionItem{
+			Label: alias, InsertText: alias,
+			Kind: KindTable, Detail: "CTE",
+		})
+	}
+
+	// Add keywords.
+	for _, kw := range sharedsql.Keywords {
+		items = append(items, keywordItem(kw))
+	}
+
+	return items
+}
+
+// expressionContextItems returns items appropriate in SELECT/WHERE/ON.
+func (m Model) expressionContextItems(analysis sharedsql.SQLAnalysis) []CompletionItem {
+	var items []CompletionItem
+
+	// 1. Result columns from the last query.
+	for _, col := range m.results.Columns() {
+		items = append(items, completionItemForColumn(col.Title, "", "result"))
+	}
+
+	// 1b. Built-in functions.
+	items = append(items, m.builtinFunctionItems()...)
+
+	// 2. Columns from referenced tables.
+	for _, table := range analysis.ReferencedTables {
+		for _, object := range m.schemaObjects {
+			if !strings.EqualFold(object.Name, table) && !strings.EqualFold(m.completionObjectName(object), table) {
+				continue
+			}
+			tableKey := m.schemaTable(schemaItem{database: object.Database, table: object.Name})
+			if columns, ok := m.completionColumns[tableKey]; ok {
+				for _, col := range columns {
+					items = append(items, completionItemForColumn(col, "", object.Name))
+				}
+			}
+		}
+	}
+
+	// 3. Buffer words (identifiers already in the query).
+	for _, word := range sharedsql.ExtractBufferWords(m.editor.value) {
+		items = append(items, bufferWordItem(word))
+	}
+
+	// 4. Keywords.
+	for _, kw := range sharedsql.Keywords {
+		items = append(items, keywordItem(kw))
+	}
+
+	// 5. All schema objects (tables/views can appear in expressions too).
+	for _, object := range m.schemaObjects {
+		if object.Type != "database" {
+			items = append(items, completionItemForObject(object))
+		}
+	}
+
+	return items
+}
+
+// builtinFunctionItems returns CompletionItems for built-in functions.
+func (m Model) builtinFunctionItems() []CompletionItem {
+	functions, ok := BuiltinFunctions[m.databaseInfo.Product]
+	if !ok {
+		return nil
+	}
+	items := make([]CompletionItem, len(functions))
+	for i, fn := range functions {
+		items[i] = CompletionItem{
+			Label: fn, InsertText: fn + "()",
+			Kind: KindFunction, Detail: "built-in",
+		}
+	}
+	return items
+}
+
+// genericItems returns a broad set of candidates.
+func (m Model) genericItems() []CompletionItem {
+	all := m.tableContextItems(sharedsql.SQLAnalysis{})
+	return all
+}
+
+// ---- legacy helpers kept for compatibility ----
 
 func (m Model) completionObjectName(object sharedsql.SchemaObject) string {
 	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
 		return object.Database + "." + object.Name
 	}
 	return object.Name
-}
-
-func (m Model) completionTableFor(prefix string) string {
-	if !strings.HasSuffix(prefix, ".") {
-		return ""
-	}
-	name := strings.TrimSuffix(prefix, ".")
-	for _, object := range m.schemaObjects {
-		if object.Type != "database" && (name == object.Name || name == m.completionObjectName(object)) {
-			return m.schemaTable(schemaItem{database: object.Database, table: object.Name})
-		}
-	}
-	return ""
 }
 
 func (m Model) updateCompletionColumns(message completionColumnsMsg) (tea.Model, tea.Cmd) {
@@ -76,11 +265,18 @@ func (m Model) updateCompletionColumns(message completionColumnsMsg) (tea.Model,
 		m.Status = safeText(fmt.Sprintf("loading completion: %v", message.err))
 		return m, nil
 	}
-	columns := make([]string, len(message.columns))
+	columnNames := make([]string, len(message.columns))
+	items := make([]CompletionItem, len(message.columns))
 	for index, column := range message.columns {
-		columns[index] = column.Name
+		columnNames[index] = column.Name
+		// Find the table name from the table key.
+		tableName := message.table
+		if parts := strings.SplitN(message.table, ".", 2); len(parts) == 2 {
+			tableName = parts[1]
+		}
+		items[index] = completionItemForColumn(column.Name, column.Type, tableName)
 	}
-	m.completionColumns[message.table] = columns
-	m.editor.showCompletionFor("", columns)
+	m.completionColumns[message.table] = columnNames
+	m.editor.showCompletionFor("", items)
 	return m, nil
 }
