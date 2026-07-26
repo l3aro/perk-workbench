@@ -168,6 +168,7 @@ var formTheme = huh.ThemeFunc(func(bool) *huh.Styles {
 	theme.Focused.PrevIndicator = theme.Focused.PrevIndicator.Foreground(accent)
 	theme.Focused.Option = theme.Focused.Option.Foreground(ink)
 	theme.Focused.SelectedOption = theme.Focused.SelectedOption.Foreground(accent)
+	theme.Focused.UnselectedOption = theme.Focused.UnselectedOption.Foreground(ink)
 	theme.Focused.FocusedButton = theme.Focused.FocusedButton.Foreground(canvas).Background(accent)
 	theme.Focused.BlurredButton = theme.Focused.BlurredButton.Foreground(ink).Background(stripe)
 	theme.Focused.TextInput.Cursor = theme.Focused.TextInput.Cursor.Foreground(accent)
@@ -558,6 +559,7 @@ func (m Model) confirmContent() string {
 	case m.cellEditor != nil:
 		return m.cellEditor.confirmContent()
 	case m.explainPicker != nil:
+		raw = m.explainPicker.form.View()
 	case m.savedQueryPicker != nil:
 		raw = m.savedQueryPicker.form.View()
 	case m.quitDialog != nil:
