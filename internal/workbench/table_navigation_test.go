@@ -206,3 +206,59 @@ func TestTableCellNavigation_consumesMotionKeys_forEmptyResultsPlaceholder(t *te
 		t.Fatalf("empty results navigation changed selection: column=%d offset=%d", selectedColumn, offset)
 	}
 }
+
+func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+	model.appendQueryLog(queryLogEntry{statement: "SELECT first"})
+	model.appendQueryLog(queryLogEntry{statement: "SELECT second"})
+	columns := model.queryLog.Columns()
+	clickX := model.schemaWidth + 1
+	for _, column := range columns[:2] {
+		clickX += column.Width + 2*spaceCompact
+	}
+	clickY := model.workspaceHeight + 5
+
+	// When
+	updated, _ := model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.Focus, focusQueryLog; got != want {
+		t.Fatalf("focus = %v, want %v", got, want)
+	}
+	if got, want := model.queryLog.Cursor(), 1; got != want {
+		t.Fatalf("query log cursor = %d, want %d", got, want)
+	}
+	if got, want := model.queryLogColumn, 2; got != want {
+		t.Fatalf("query log column = %d, want %d", got, want)
+	}
+}
+
+func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+	model.appendQueryLog(queryLogEntry{statement: "SELECT first"})
+	model.appendQueryLog(queryLogEntry{statement: "SELECT second"})
+	columns := model.queryLog.Columns()
+	clickX := model.schemaWidth + 1
+	for _, column := range columns[:2] {
+		clickX += column.Width + 2*spaceCompact
+	}
+	clickY := model.workspaceHeight + 5
+
+	// When
+	updated, _ := model.Update(tea.MouseReleaseMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.Focus, focusQueryLog; got != want {
+		t.Fatalf("focus = %v, want %v", got, want)
+	}
+	if got, want := model.queryLog.Cursor(), 1; got != want {
+		t.Fatalf("query log cursor = %d, want %d", got, want)
+	}
+	if got, want := model.queryLogColumn, 2; got != want {
+		t.Fatalf("query log column = %d, want %d", got, want)
+	}
+}

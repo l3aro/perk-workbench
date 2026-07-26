@@ -380,6 +380,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.hasOverlay() && m.contextMenu == nil {
 			return m.handleMouseWheel(message)
 		}
+	case tea.MouseReleaseMsg:
+		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
+			return m.handleLeftClick(message.X, message.Y)
+		}
 	}
 
 	if m.deleteConfirm != nil && m.deleteConfirm.visible {
@@ -1301,7 +1305,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			workspaceX := max(x-m.schemaWidth, 0)
 			return m.handleWorkspaceClick(workspaceX, contentY)
 		}
-		return m.focusQueryLogClick(contentY - m.workspaceHeight)
+		return m.focusQueryLogClick(x, contentY-m.workspaceHeight)
 	case stateConnection:
 		if m.compact {
 			return m, nil
@@ -1395,7 +1399,7 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-func (m Model) focusQueryLogClick(contentY int) (tea.Model, tea.Cmd) {
+func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
 	if m.Focus != focusQueryLog {
 		m.Focus = focusQueryLog
 		m.queryLogPendingG = false
@@ -1404,6 +1408,24 @@ func (m Model) focusQueryLogClick(contentY int) (tea.Model, tea.Cmd) {
 		m.queryLog.Focus()
 		if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
 			m.queryLog.SetCursor(0)
+		}
+	}
+	rowY := contentY - 3
+	if rowY < 0 || rowY >= m.queryLog.Height() {
+		return m, nil
+	}
+	rows := m.queryLog.Rows()
+	start := min(max(m.queryLog.Cursor()-m.queryLog.Height()+1, 0), max(len(rows)-m.queryLog.Height(), 0))
+	if row := start + rowY; row < len(rows) {
+		m.queryLog.SetCursor(row)
+		cellX := x - m.schemaWidth - 1 + m.queryLogOffset
+		for index, column := range m.queryLog.Columns() {
+			cellWidth := column.Width + 2*spaceCompact
+			if cellX < cellWidth {
+				m.queryLogColumn = index
+				break
+			}
+			cellX -= cellWidth
 		}
 	}
 	return m, nil
