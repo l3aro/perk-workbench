@@ -326,10 +326,7 @@ func TestBrowse_y_yanks_current_cell_value(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
 
-	// Then — cell value copied to clipboard, no picker opened
-	if model.yankPicker != nil {
-		t.Fatal("y in browse tab should not open yank picker")
-	}
+	// Then — cell value copied to clipboard
 	if got, want := model.Status, "copied to clipboard"; got != want {
 		t.Fatalf("status = %q, want %q", got, want)
 	}

@@ -25,13 +25,11 @@ go test -race ./cmd/perk -run TestParseTarget
 ## Running
 
 ```bash
-go run ./cmd/perk :memory:
+go run ./cmd/perk demo/chinook-sqlite.db
 go run ./cmd/perk path/to/database.db
-docker compose run --rm dev
-make sqlite                 # demo SQLite database
-make mysql                  # starts MySQL and opens its demo database
-make postgres               # starts PostgreSQL and opens its demo database
+make sqlite                 # demo SQLite database (recommended)
+make mysql                  # starts MySQL and opens its office demo database
+make postgres               # starts PostgreSQL and opens its employees demo database
 ```
-
-- Compose mounts this repository at `/workspace` and `${DEMO_DIR:-../demo}` at `/demo`; its default command opens `/demo/chinook.db`.
+- Compose mounts the source tree at `/workspace` and `demo/` at `/demo`; its default command opens `/demo/chinook-sqlite.db`.
 - The TUI needs an alternate-screen terminal. For manual query QA, run `F5`; `Escape` cancels a running query.

@@ -171,20 +171,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.blurTables()
 		return m, m.formMode.beginInsert(m.editor)
 	}
-	if m.yankPicker != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.yankPicker = nil
-			return m, nil
-		}
-		command := m.yankPicker.Update(message)
-		if !m.yankPicker.completed() {
-			return m, command
-		}
-		content := m.yankPicker.value()
-		m.yankPicker = nil
-		m.Status = "copied to clipboard"
-		return m, copyQueryLogStatement(content)
-	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
@@ -547,10 +533,6 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.queryLogDetail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			switch {
-			case m.keybindings.Match(keyPress, "detail.yank", []scope{scopeView, scopeGlobal}):
-				m.yankPicker = newYankPicker(*m.queryLogDetail, m.tableViewportWidth)
-				m.queryLogDetail = nil
-				return m, m.yankPicker.form.Init()
 			case m.keybindings.Match(keyPress, "detail.explain", []scope{scopeView, scopeGlobal}):
 				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLogDetail.statement, m.tableViewportWidth)
 				if explain == nil {
@@ -822,8 +804,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					if cursor < 0 || cursor >= len(m.queryLogEntries) {
 						return m, nil
 					}
-					m.yankPicker = newYankPicker(m.queryLogEntries[cursor], m.tableViewportWidth)
-					return m, m.yankPicker.form.Init()
+					m.Status = "copied to clipboard"
+					return m, copyQueryLogStatement(queryLogCell(m.queryLogEntries[cursor], m.queryLogColumn))
 				case m.keybindings.Match(keyPress, "query_log.explain", []scope{scopeView, scopeGlobal}):
 					cursor := m.queryLog.Cursor()
 					if cursor < 0 || cursor >= len(m.queryLogEntries) {

@@ -73,17 +73,12 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 		default:
 			statusStr = statusSuccessStyle.Render(iconSuccess)
 		}
-		statement := safeText(item.statement)
-		if len(statement) > 80 {
-			statement = statement[:80] + "..."
-		}
-		message := safeText(item.message)
 		rows[index] = table.Row{
 			item.startedAt.Format("15:04:05"),
 			statusStr,
-			statement,
+			cellText(item.statement),
 			item.duration.Round(time.Microsecond).String(),
-			message,
+			cellText(item.message),
 		}
 	}
 	// Center status icons within column
@@ -102,6 +97,23 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 	m.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, rows))
 	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(height+1, 2))
 	m.queryLog.SetRows(rows)
+}
+
+func queryLogCell(entry queryLogEntry, column int) string {
+	switch column {
+	case 0:
+		return entry.startedAt.Format("15:04:05")
+	case 1:
+		return entry.status
+	case 2:
+		return entry.statement
+	case 3:
+		return entry.duration.Round(time.Microsecond).String()
+	case 4:
+		return entry.message
+	default:
+		return ""
+	}
 }
 
 func (m Model) queryLogSummary() string {

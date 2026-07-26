@@ -31,9 +31,6 @@ func (m *Model) applyTheme(name appTheme) {
 	if m.savedQueryPicker != nil {
 		applyFormTheme(m.savedQueryPicker.form)
 	}
-	if m.yankPicker != nil {
-		applyFormTheme(m.yankPicker.form)
-	}
 	if m.width > 0 {
 		m.layout(m.width, m.height)
 	}

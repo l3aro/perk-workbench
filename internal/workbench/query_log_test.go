@@ -87,7 +87,7 @@ func TestQueryLogDetail_shows_statement(t *testing.T) {
 	}
 }
 
-func TestQueryLogDetail_prettyPrintsJSONAndYanksIt(t *testing.T) {
+func TestQueryLogDetail_prettyPrintsJSON(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	value := `{"customer":{"name":"Ada"},"ids":[1,2]}`
@@ -95,17 +95,12 @@ func TestQueryLogDetail_prettyPrintsJSONAndYanksIt(t *testing.T) {
 
 	// When
 	view := ansi.Strip(model.View().Content)
-	picker := newYankPicker(*model.queryLogDetail, 80)
-	picker.selection = string(yankMessage)
 
 	// Then
 	for _, want := range []string{"\"customer\": {", "\"name\": \"Ada\"", "\"ids\": ["} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("query log detail = %q, want formatted JSON containing %q", view, want)
 		}
-	}
-	if got, want := picker.value(), "{\n  \"customer\": {\n    \"name\": \"Ada\"\n  },\n  \"ids\": [\n    1,\n    2\n  ]\n}"; got != want {
-		t.Fatalf("copied JSON = %q, want %q", got, want)
 	}
 }
 
@@ -124,7 +119,7 @@ func TestWorkspaceTabs_labelSchemaInspectionViews(t *testing.T) {
 	}
 }
 
-func TestQueryLogDetail_y_opens_yank_picker(t *testing.T) {
+func TestQueryLogDetail_y_doesNotOpenCopyDialog(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	model.queryLogDetail = &queryLogEntry{statement: "SELECT 1"}
@@ -134,14 +129,35 @@ func TestQueryLogDetail_y_opens_yank_picker(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.queryLogDetail != nil {
-		t.Fatal("y did not close the detail overlay")
+	if model.queryLogDetail == nil {
+		t.Fatal("y closed the detail overlay")
 	}
-	if model.yankPicker == nil {
-		t.Fatal("y did not open the yank picker")
+	if command != nil {
+		t.Fatal("y opened a copy command")
 	}
-	if command == nil {
-		t.Fatal("yank picker init command is nil")
+}
+
+func TestQueryLog_displayTruncatesLongStatementAndMessage(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	statement := strings.Repeat("s", 41)
+	message := strings.Repeat("m", 41)
+
+	// When
+	model.appendQueryLog(queryLogEntry{statement: statement, message: message})
+
+	// Then
+	if got, want := model.queryLog.Rows()[0][2], cellText(statement); got != want {
+		t.Fatalf("display statement = %q, want %q", got, want)
+	}
+	if got, want := model.queryLog.Rows()[0][4], cellText(message); got != want {
+		t.Fatalf("display message = %q, want %q", got, want)
+	}
+	if got, want := model.queryLogEntries[0].statement, statement; got != want {
+		t.Fatalf("stored statement = %q, want full value", got)
+	}
+	if got, want := model.queryLogEntries[0].message, message; got != want {
+		t.Fatalf("stored message = %q, want full value", got)
 	}
 }
 
@@ -184,7 +200,7 @@ func TestQueryLog_records_browse_page_load(t *testing.T) {
 	if got := strings.TrimSpace(ansi.Strip(rows[0][1])); got != iconSuccess {
 		t.Fatalf("browse query log status = %q, want %q", got, iconSuccess)
 	}
-	if got, want := rows[0][2], `SELECT * FROM "projects" LIMIT 25 OFFSET 25`; got != want {
+	if got, want := rows[0][2], cellText(`SELECT * FROM "projects" LIMIT 25 OFFSET 25`); got != want {
 		t.Fatalf("browse query log statement = %q, want %q", got, want)
 	}
 	if got, want := rows[0][3], "2ms"; got != want {
@@ -219,10 +235,10 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 	if got, want := len(rows), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
-	if got, want := rows[0][2], `CREATE INDEX "items_title" ON "items" ("title")`; got != want {
+	if got, want := rows[0][2], cellText(`CREATE INDEX "items_title" ON "items" ("title")`); got != want {
 		t.Fatalf("index action log = %q, want %q", got, want)
 	}
-	if got, want := rows[1][2], `ALTER TABLE "items" RENAME COLUMN "name" TO "title"`; got != want {
+	if got, want := rows[1][2], cellText(`ALTER TABLE "items" RENAME COLUMN "name" TO "title"`); got != want {
 		t.Fatalf("structure action log = %q, want %q", got, want)
 	}
 	if got, want := rows[0][4], "updated index"; got != want {
@@ -262,7 +278,7 @@ func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
 	if got, want := rows[0][2], `DROP INDEX "items_title"`; got != want {
 		t.Fatalf("index deletion log = %q, want %q", got, want)
 	}
-	if got, want := rows[1][2], `DROP INDEX "items_name"; CREATE INDEX "items_title" ON "items" ("title")`; got != want {
+	if got, want := rows[1][2], cellText(`DROP INDEX "items_name"; CREATE INDEX "items_title" ON "items" ("title")`); got != want {
 		t.Fatalf("index replacement log = %q, want %q", got, want)
 	}
 }
@@ -293,7 +309,7 @@ func TestQueryLog_uses_mysql_identifier_quoting_for_browse_statement(t *testing.
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.Rows()[0][2], "SELECT * FROM `projects` LIMIT 25 OFFSET 0"; got != want {
+	if got, want := model.queryLog.Rows()[0][2], cellText("SELECT * FROM `projects` LIMIT 25 OFFSET 0"); got != want {
 		t.Fatalf("browse statement = %q, want %q", got, want)
 	}
 }

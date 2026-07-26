@@ -61,7 +61,7 @@ palette that is hard to read.
 
 ### Clipboard in tmux
 
-The query log copies the selected SQL statement with `y`. When running Perk through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:
+The query log copies the selected cell with `y`. When running Perk through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:
 
 ```bash
 tmux set-option -g set-clipboard on

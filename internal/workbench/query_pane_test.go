@@ -81,7 +81,7 @@ func TestWideLayout_shows_two_recent_browse_entries(t *testing.T) {
 	if got, want := len(model.queryLogEntries), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
-	if !strings.Contains(view, "SELECT * FROM \"projects\" LIMIT 25 OFFSET 25") {
+	if !strings.Contains(view, cellText("SELECT * FROM \"projects\" LIMIT 25 OFFSET 25")) {
 		t.Fatalf("query log pane = %q, want the newest browse statement", view)
 	}
 }
@@ -119,37 +119,28 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 		}
 	}
 }
-func TestQueryLog_y_opens_yank_picker_and_copies_default_statement(t *testing.T) {
+func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.appendQueryLog(queryLogEntry{statement: "SELECT 42"})
+	message := strings.Repeat("query message ", 4)
+	model.appendQueryLog(queryLogEntry{statement: "SELECT 42", message: message})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
+	model.queryLogColumn = 4
 
-	// When — y opens the yank picker
+	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
 
 	// Then
-	if model.yankPicker == nil {
-		t.Fatal("y did not open the yank picker")
-	}
-	model = resolveYankCommand(model, command)
-
-	// When — press enter with default "Copy query statement"
-	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	model = resolveYankCommand(model, command)
-
-	// Then — copied statement to clipboard
-	if model.yankPicker != nil {
-		t.Fatal("selection did not close the yank picker")
-	}
 	if got, want := model.Status, "copied to clipboard"; got != want {
 		t.Fatalf("status = %q, want %q", got, want)
 	}
 	if command == nil {
 		t.Fatal("copy command = nil, want clipboard command")
+	}
+	if got, want := queryLogCell(model.queryLogEntries[0], model.queryLogColumn), message; got != want {
+		t.Fatalf("copied cell value = %q, want full message", got)
 	}
 }
 

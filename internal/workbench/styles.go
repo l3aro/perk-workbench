@@ -523,7 +523,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil {
 		// UV overlay path: render full UI, then overlay centered.
@@ -543,13 +543,13 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) hasConfirming() bool {
-	return m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	return m.explainPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil ||
 		(m.cellEditor != nil && m.cellEditor.confirming)
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.yankPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -560,8 +560,6 @@ func (m Model) confirmContent() string {
 	case m.explainPicker != nil:
 	case m.savedQueryPicker != nil:
 		raw = m.savedQueryPicker.form.View()
-	case m.yankPicker != nil:
-		raw = m.yankPicker.form.View()
 	case m.quitDialog != nil:
 		raw = m.quitDialog.View()
 	case m.columnForm.confirming():
@@ -842,7 +840,7 @@ func (m Model) queryLogContentView() string {
 	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
-		chrome.PaneStatus(statusStyle.Render("y copy | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
+		chrome.PaneStatus(statusStyle.Render("y copy cell | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {

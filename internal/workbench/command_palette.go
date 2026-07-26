@@ -218,7 +218,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "query_log.yank", "query_log.explain", "query_log.cursor_down", "query_log.cursor_up",
 		"query_log.top_first", "query_log.top_last", "query_log.detail":
 		return m.State == stateReady && m.Focus == focusQueryLog
-	case "detail.yank", "detail.explain", "detail.close":
+	case "detail.explain", "detail.close":
 		return m.queryLogDetail != nil
 	case "picker.reload", "picker.select":
 		return m.State == statePicking

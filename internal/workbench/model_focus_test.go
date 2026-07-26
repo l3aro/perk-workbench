@@ -225,7 +225,7 @@ func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	if bottom := strings.TrimSpace(workspace[strings.LastIndex(workspace, "\n")+1:]); !strings.HasPrefix(bottom, "NORMAL") || !strings.HasSuffix(bottom, "L/H tabs") {
 		t.Fatalf("workspace hint = %q, want bottom-left NORMAL followed by tab view", workspace)
 	}
-	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); bottom != "y copy | enter detail | e explain" {
+	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); bottom != "y copy cell | enter detail | e explain" {
 		t.Fatalf("history hint = %q, want query-history shortcuts", history)
 	}
 	if strings.Contains(footer, "e explain") || strings.Contains(footer, "L/H tabs") {
@@ -545,7 +545,6 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 		t.Fatal("right-selected result column was not revealed")
 	}
 }
-
 
 func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 	// Given

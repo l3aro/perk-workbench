@@ -65,7 +65,6 @@ type Model struct {
 	editor                                                                                         *editor
 	explainPicker                                                                                  *explainPicker
 	savedQueryPicker                                                                               *savedQueryPicker
-	yankPicker                                                                                     *yankPicker
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
 	browseForm                                                                                     browseForm
