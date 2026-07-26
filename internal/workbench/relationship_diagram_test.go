@@ -6,7 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func TestForeignKeysTab_togglesRelationshipDiagram_withIncomingAndOutgoingKeys(t *testing.T) {

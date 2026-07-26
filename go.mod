@@ -1,4 +1,4 @@
-module github.com/l3aro/perk
+module github.com/l3aro/perk-workbench
 
 go 1.25.0
 

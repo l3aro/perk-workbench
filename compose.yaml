@@ -1,4 +1,4 @@
-name: perk
+name: perk-workbench
 
 services:
   mysql:
@@ -33,7 +33,7 @@ services:
       - ${DEMO_DIR:-./demo}:/demo
       - go-build-cache:/go/build-cache
       - go-mod-cache:/go/pkg/mod
-    command: go run ./cmd/perk /demo/chinook-sqlite.db
+    command: go run ./cmd/perk-workbench /demo/chinook-sqlite.db
 
 volumes:
   go-build-cache:

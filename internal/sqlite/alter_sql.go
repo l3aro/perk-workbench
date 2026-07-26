@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func rewriteCreateTable(createSQL, temporary string, change sharedsql.ColumnChange) (string, error) {

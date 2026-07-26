@@ -8,7 +8,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
 func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {

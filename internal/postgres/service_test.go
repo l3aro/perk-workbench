@@ -3,7 +3,7 @@ package postgres
 import (
 	"testing"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func TestPostgresTableIdentifier_qualifiesAndQuotesSchema(t *testing.T) {

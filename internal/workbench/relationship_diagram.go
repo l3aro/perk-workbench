@@ -5,7 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk/internal/chrome"
+	"github.com/l3aro/perk-workbench/internal/chrome"
 )
 
 func (m Model) relationshipView() string {

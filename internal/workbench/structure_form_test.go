@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	sharedsql "github.com/l3aro/perk/internal/sql"
-	"github.com/l3aro/perk/internal/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
 func TestStructureForm_usesHuhControlsForColumnEditing(t *testing.T) {

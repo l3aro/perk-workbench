@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	sharedsql "github.com/l3aro/perk/internal/sql"
-	"github.com/l3aro/perk/internal/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
 func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T) {

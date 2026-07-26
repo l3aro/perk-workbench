@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/l3aro/perk/internal/mysql"
-	"github.com/l3aro/perk/internal/postgres"
-	sharedsql "github.com/l3aro/perk/internal/sql"
-	"github.com/l3aro/perk/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/mysql"
+	"github.com/l3aro/perk-workbench/internal/postgres"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
 // Open connects to target and returns its schema for the initial workbench view.

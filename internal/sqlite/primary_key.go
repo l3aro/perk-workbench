@@ -25,7 +25,7 @@ func (s *Service) changePrimaryKey(ctx context.Context, table string, columns []
 		return fmt.Errorf("table already has a primary key")
 	}
 	return s.rebuildTableWithSQL(ctx, table, func(*stdsql.Tx) error { return nil }, func(createSQL string) (string, error) {
-		return rewritePrimaryKey(createSQL, "__perk_column_edit", columns)
+		return rewritePrimaryKey(createSQL, "__perk_workbench_column_edit", columns)
 	})
 }
 

@@ -40,7 +40,7 @@ func savedQueriesPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "perk", "saved-queries.json"), nil
+	return filepath.Join(dir, "perk-workbench", "saved-queries.json"), nil
 }
 
 func loadSavedQueries(path string) []string {

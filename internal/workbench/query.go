@@ -9,8 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/dustin/go-humanize"
-	"github.com/l3aro/perk/internal/chrome"
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/chrome"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 type tableInfoMsg struct {

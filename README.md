@@ -1,6 +1,6 @@
-# Perk
+# Perk Workbench
 
-Perk is a small terminal workbench for exploring an existing SQLite or MySQL database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
+Perk Workbench is a small terminal workbench for exploring an existing SQLite or MySQL database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
 
 ## Requirements
 
@@ -14,21 +14,21 @@ Perk is a small terminal workbench for exploring an existing SQLite or MySQL dat
 Run the workbench with an existing database:
 
 ```bash
-go run ./cmd/perk <database.db>
+go run ./cmd/perk-workbench <database.db>
 ```
 
 For a temporary database:
 
 ```bash
-go run ./cmd/perk :memory:
+go run ./cmd/perk-workbench :memory:
 ```
 
 With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
 
-Select MySQL or PostgreSQL in the connection form to enter the server, credentials, and database. Successful connections are available as named profiles in `$XDG_CONFIG_HOME/perk/connections.json`; profiles store only the driver, name, host, port, username, and database target. Passwords are never written to disk and must be entered each time a remote profile connects. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
+Select MySQL or PostgreSQL in the connection form to enter the server, credentials, and database. Successful connections are available as named profiles in `$XDG_CONFIG_HOME/perk-workbench/connections.json`; profiles store only the driver, name, host, port, username, and database target. Passwords are never written to disk and must be entered each time a remote profile connects. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
 
 ```bash
-go run ./cmd/perk 'mysql:alice:secret@tcp(127.0.0.1:3306)/app'
+go run ./cmd/perk-workbench 'mysql:alice:secret@tcp(127.0.0.1:3306)/app'
 ```
 
 ## Docker Compose
@@ -50,7 +50,7 @@ Run the product checks in the same container environment:
 ```bash
 docker compose run --rm dev go test -race ./cmd/... ./internal/...
 docker compose run --rm dev go vet ./cmd/... ./internal/...
-docker compose run --rm dev go build ./cmd/perk
+docker compose run --rm dev go build ./cmd/perk-workbench
 docker compose run --rm dev gofmt -l cmd internal
 ```
 
@@ -61,7 +61,7 @@ palette that is hard to read.
 
 ### Clipboard in tmux
 
-The query log copies the selected cell with `y`. When running Perk through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:
+The query log copies the selected cell with `y`. When running Perk Workbench through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:
 
 ```bash
 tmux set-option -g set-clipboard on
@@ -105,8 +105,8 @@ The container cannot access the native desktop clipboard; the terminal forwards 
 
 ### Custom key bindings
 
-Key bindings are configurable through `$XDG_CONFIG_HOME/perk/keybindings.json`. The file path is
-`~/.config/perk/keybindings.json` on Linux, and the platform equivalent on macOS and Windows.
+Key bindings are configurable through `$XDG_CONFIG_HOME/perk-workbench/keybindings.json`. The file path is
+`~/.config/perk-workbench/keybindings.json` on Linux, and the platform equivalent on macOS and Windows.
 
 Commands can be grouped by their dotted prefix:
 
@@ -161,7 +161,7 @@ Run the product regression suite and quality checks:
 ```bash
 go test -race ./cmd/... ./internal/...
 go vet ./cmd/... ./internal/...
-go build ./cmd/perk
+go build ./cmd/perk-workbench
 gofmt -l cmd internal
 ```
 

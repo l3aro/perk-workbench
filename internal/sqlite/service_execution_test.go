@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	dbmysql "github.com/l3aro/perk/internal/mysql"
+	dbmysql "github.com/l3aro/perk-workbench/internal/mysql"
 	modernsqlite "modernc.org/sqlite"
 )
 

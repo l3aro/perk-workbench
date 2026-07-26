@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 type missingReferenceColumn struct {
@@ -184,7 +184,7 @@ func (s *Service) DropForeignKey(ctx context.Context, table, previous string) er
 
 func (s *Service) replaceForeignKeys(ctx context.Context, table string, foreignKeys []sharedsql.ForeignKeyInfo) error {
 	return s.rebuildTableWithSQL(ctx, table, func(*stdsql.Tx) error { return nil }, func(createSQL string) (string, error) {
-		return rewriteForeignKeys(createSQL, "__perk_column_edit", foreignKeys)
+		return rewriteForeignKeys(createSQL, "__perk_workbench_column_edit", foreignKeys)
 	})
 }
 

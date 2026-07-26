@@ -148,7 +148,7 @@ func TestKeybindingsPath_in_xdg_config(t *testing.T) {
 	if !filepath.IsAbs(path) {
 		t.Fatalf("keybindingsPath() = %q, want absolute path", path)
 	}
-	if !stringsSuffix(path, "perk/keybindings.json") {
-		t.Fatalf("keybindingsPath() = %q, want .../perk/keybindings.json", path)
+	if !stringsSuffix(path, "perk-workbench/keybindings.json") {
+		t.Fatalf("keybindingsPath() = %q, want .../perk-workbench/keybindings.json", path)
 	}
 }

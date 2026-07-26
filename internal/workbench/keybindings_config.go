@@ -108,7 +108,7 @@ func KeybindingsPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "perk", "keybindings.json")
+	return filepath.Join(dir, "perk-workbench", "keybindings.json")
 }
 
 // writeDefaultConfig writes all default command bindings as a nested JSON

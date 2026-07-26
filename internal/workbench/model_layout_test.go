@@ -10,8 +10,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	sharedsql "github.com/l3aro/perk/internal/sql"
-	"github.com/l3aro/perk/internal/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
 func TestResize_wide_and_compact_focus_layout(t *testing.T) {
@@ -138,7 +138,7 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	if got := lipgloss.Height(view.Content); got > 5 {
 		t.Fatalf("compact view height = %d, want at most 5", got)
 	}
-	if !strings.Contains(view.Content, "BUBBLE WORKBENCH") || !strings.Contains(view.Content, "quit") {
+	if !strings.Contains(view.Content, "PERK WORKBENCH") || !strings.Contains(view.Content, "quit") {
 		t.Fatal("compact view does not retain header and footer")
 	}
 }

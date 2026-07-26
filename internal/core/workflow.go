@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 const BrowsePageSize = 25

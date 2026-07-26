@@ -44,7 +44,7 @@ func recentConnectionsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "perk", "connections.json"), nil
+	return filepath.Join(dir, "perk-workbench", "connections.json"), nil
 }
 
 func loadRecentConnections(path string) []recentConnection {

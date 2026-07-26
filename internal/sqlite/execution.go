@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func (s *Service) Execute(ctx context.Context, statement string) (result sharedsql.Result, err error) {

@@ -17,8 +17,8 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk/internal/chrome"
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/chrome"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 const (
@@ -499,11 +499,11 @@ func (m Model) View() tea.View {
 	view.KeyboardEnhancements.ReportEventTypes = true
 	view.MouseMode = tea.MouseModeCellMotion
 	if m.height < 4 || m.width < 1 {
-		view.SetContent(headerStyle.Render("BUBBLE WORKBENCH"))
+		view.SetContent(headerStyle.Render("PERK WORKBENCH"))
 		return view
 	}
 	content := m.contentView()
-	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("BUBBLE WORKBENCH"), content, footerStyle.Render(m.footer()))
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("PERK WORKBENCH"), content, footerStyle.Render(m.footer()))
 	if m.commandPalette.visible || m.themePicker != nil {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)

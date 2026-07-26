@@ -12,7 +12,7 @@ import (
 )
 
 func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "perk", "connections.json")
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
 	connections := []recentConnection{
 		{Driver: driverSQLite, Name: "Local", Target: "/tmp/local.db"},
 		{Driver: driverMySQL, Name: "Remote", Target: "user:password@tcp(host:3306)/app"},
@@ -68,7 +68,7 @@ func TestNew_targetInitializesRecentConnectionPersistence(t *testing.T) {
 
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	// Given
-	path := filepath.Join(t.TempDir(), "perk", "connections.json")
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
 	model := New("", context.Background(), testOpen)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
@@ -96,7 +96,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testing.T) {
 	// Given
-	path := filepath.Join(t.TempDir(), "perk", "connections.json")
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
 	model := New("", context.Background(), testOpen)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
@@ -124,7 +124,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testi
 
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_3(t *testing.T) {
 	// Given
-	path := filepath.Join(t.TempDir(), "perk", "connections.json")
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
 	model := New("", context.Background(), testOpen)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"

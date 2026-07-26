@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsql.ColumnChange) error {
@@ -62,7 +62,7 @@ func (s *Service) rebuildTable(ctx context.Context, table string, change shareds
 		change.PreviousName = change.Name
 	}
 	return s.rebuildTableWithSQL(ctx, table, prepare, func(createSQL string) (string, error) {
-		return rewriteCreateTable(createSQL, "__perk_column_edit", change)
+		return rewriteCreateTable(createSQL, "__perk_workbench_column_edit", change)
 	})
 }
 
@@ -98,7 +98,7 @@ func (s *Service) rebuildTableWithSQL(ctx context.Context, table string, prepare
 	if err != nil {
 		return err
 	}
-	temporary := "__perk_column_edit"
+	temporary := "__perk_workbench_column_edit"
 	rebuiltSQL, err := rewrite(createSQL)
 	if err != nil {
 		return err

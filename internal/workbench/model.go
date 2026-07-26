@@ -9,8 +9,8 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"github.com/l3aro/perk/internal/core"
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/core"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 const compactWidth = 90

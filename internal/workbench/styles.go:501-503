@@ -1,0 +1,4 @@
+	if m.height < 4 || m.width < 1 {
+		view.SetContent(headerStyle.Render("PERK WORKBENCH"))
+		return view
+	}

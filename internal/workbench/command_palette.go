@@ -9,7 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk/internal/chrome"
+	"github.com/l3aro/perk-workbench/internal/chrome"
 )
 
 type commandPaletteItem struct {

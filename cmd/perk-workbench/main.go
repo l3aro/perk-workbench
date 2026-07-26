@@ -9,9 +9,9 @@ import (
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk/internal/clipboard"
-	"github.com/l3aro/perk/internal/database"
-	"github.com/l3aro/perk/internal/workbench"
+	"github.com/l3aro/perk-workbench/internal/clipboard"
+	"github.com/l3aro/perk-workbench/internal/database"
+	"github.com/l3aro/perk-workbench/internal/workbench"
 )
 
 func parseTarget(args []string) (string, error) {

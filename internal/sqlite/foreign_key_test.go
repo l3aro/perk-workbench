@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	sharedsql "github.com/l3aro/perk/internal/sql"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func TestService_managesForeignKeys(t *testing.T) {
