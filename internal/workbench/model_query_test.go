@@ -89,7 +89,7 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 	})
 }
 
-func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
+func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	if _, err := model.Database.Execute(context.Background(), `CREATE TABLE "project's" (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
@@ -109,16 +109,27 @@ func TestSchema_enter_loads_selected_table_structure_and_browse(t *testing.T) {
 	if command == nil || model.Focus != focusWorkspace || model.Tab != tabStructure || model.SelectedTable != "project's" {
 		t.Fatalf("schema selection = focus:%v tab:%v table:%q command:%t", model.Focus, model.Tab, model.SelectedTable, command != nil)
 	}
-
-	// When
-	updated, _ = model.Update(tableInfoMsg{table: "project's", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
-	model = updated.(Model)
-	updated, _ = model.Update(browseTableMsg{table: "project's", page: 0, result: sqlite.Result{Columns: []string{"id", "name"}, Rows: [][]*string{{stringPointer("1"), stringPointer("first")}}}})
-	model = updated.(Model)
+	model = updateFromCommand(model, command)
 
 	// Then
 	if got := model.structure.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][2] != "INTEGER" {
 		t.Fatalf("structure rows = %#v, want selected table columns", got)
+	}
+	if got := model.browse.Rows(); len(got) != 0 {
+		t.Fatalf("browse rows = %#v, want no query before Browse tab focus", got)
+	}
+	if got := len(model.queryLogEntries); got != 0 {
+		t.Fatalf("query log entries = %d, want no browse query before Browse tab focus", got)
+	}
+
+	// When
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+
+	// Then
+	if model.Tab != tabBrowse {
+		t.Fatalf("tab = %v, want Browse", model.Tab)
 	}
 	if got := model.browse.Rows(); len(got) != 1 || got[0][1] != "first" {
 		t.Fatalf("browse rows = %#v, want selected table data", got)

@@ -323,11 +323,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
 			switch {
 			case m.keybindings.Match(message, "workspace.tab_next", []scope{scopeView}):
-				m.toggleTab(true)
-				return m, nil
+				return m, m.toggleTab(true)
 			case m.keybindings.Match(message, "workspace.tab_prev", []scope{scopeView}):
-				m.toggleTab(false)
-				return m, nil
+				return m, m.toggleTab(false)
 			}
 		}
 	}
@@ -540,13 +538,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 						return m, m.rebuildSchemaTree()
 					}
-					m.SelectTable(m.schemaTable(item))
-					m.structureColumns = nil
-					m.foreignKeyInfo = nil
-					m.referencingForeignKeyInfo = nil
-					m.relationshipDiagram = false
-					m.focusActiveTable()
-					return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+					return m, m.selectSchemaTable(item)
 				}
 			}
 			m.schema, command = m.schema.Update(message)
@@ -981,12 +973,12 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "workspace.tab_next":
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
-			m.toggleTab(true)
+			return m, m.toggleTab(true)
 		}
 		return m, nil
 	case "workspace.tab_prev":
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
-			m.toggleTab(false)
+			return m, m.toggleTab(false)
 		}
 		return m, nil
 	case "schema.select_table":
@@ -996,13 +988,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 					m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 					return m, m.rebuildSchemaTree()
 				}
-				m.SelectTable(m.schemaTable(item))
-				m.structureColumns = nil
-				m.foreignKeyInfo = nil
-				m.referencingForeignKeyInfo = nil
-				m.relationshipDiagram = false
-				m.focusActiveTable()
-				return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+				return m, m.selectSchemaTable(item)
 			}
 		}
 		return m, nil
@@ -1166,9 +1152,29 @@ func (m Model) executeKey(key tea.KeyPressMsg) bool {
 		key.Key().Code == tea.KeyF5
 }
 
-func (m *Model) toggleTab(forward bool) {
+func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
+	m.SelectTable(m.schemaTable(item))
+	m.structureColumns = nil
+	m.foreignKeyInfo = nil
+	m.referencingForeignKeyInfo = nil
+	m.relationshipDiagram = false
+	m.browsePending = true
+	m.focusActiveTable()
+	return tea.Batch(m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+}
+
+func (m *Model) toggleTab(forward bool) tea.Cmd {
 	m.Workflow.ToggleTab(forward)
 	m.focusActiveTable()
+	return m.loadPendingBrowse()
+}
+
+func (m *Model) loadPendingBrowse() tea.Cmd {
+	if !m.browsePending || m.Tab != tabBrowse {
+		return nil
+	}
+	m.browsePending = false
+	return m.loadBrowse()
 }
 
 func (m *Model) focusActiveTable() {
@@ -1301,6 +1307,7 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 				if m.Tab != tabNames[i] {
 					m.Tab = tabNames[i]
 					m.focusActiveTable()
+					return m, m.loadPendingBrowse()
 				}
 				return m, nil
 			}
@@ -1333,13 +1340,7 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 			m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 			return m, m.rebuildSchemaTree()
 		}
-		m.SelectTable(m.schemaTable(item))
-		m.structureColumns = nil
-		m.foreignKeyInfo = nil
-		m.referencingForeignKeyInfo = nil
-		m.relationshipDiagram = false
-		m.focusActiveTable()
-		return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+		return m, m.selectSchemaTable(item)
 	}
 	return m, nil
 }

@@ -42,7 +42,7 @@ type Model struct {
 	pickerDir                                                                                      string
 	appContext                                                                                     context.Context
 	openDatabase                                                                                   OpenDatabase
-	browseLoading                                                                                  bool
+	browseLoading, browsePending                                                                   bool
 	browsePageTag, editorEditTag, completionRequestTag                                             uint64
 	schema, picker, recent                                                                         list.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
