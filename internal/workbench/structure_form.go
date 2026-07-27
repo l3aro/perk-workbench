@@ -19,34 +19,35 @@ const (
 )
 
 type columnForm struct {
-	form                                    *huh.Form
-	confirmation                            *confirmationDialog
-	values                                  *columnFormValues
-	previousName, originalType              string
-	typeOptions                             []sharedsql.ColumnType
-	validationError                         string
-	width, height, primaryKey, scrollOffset int
-	formType                                string
-	hadDefault, typeChanged, saving         bool
-	confirmationSave                        bool
-	keybindings                             Keybindings
+	form                            *huh.Form
+	confirmation                    *confirmationDialog
+	values                          *columnFormValues
+	previousName, originalType      string
+	originalAttributes              string
+	typeOptions                     []sharedsql.ColumnType
+	validationError                 string
+	width, height, scrollOffset     int
+	formType                        string
+	hadDefault, typeChanged, saving bool
+	confirmationSave                bool
+	keybindings                     Keybindings
 }
 
 type columnFormValues struct {
-	name, typeName, defaultValue string
-	parameters                   []string
-	nullable                     bool
+	name, typeName, defaultValue, attributes string
+	parameters                               []string
+	nullable                                 bool
 }
 
 func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnType) columnForm {
 	form := columnForm{
-		previousName: column.Name,
-		originalType: column.Type,
-		hadDefault:   column.DefaultValue != nil,
-		primaryKey:   column.PrimaryKey,
-		typeOptions:  typeOptions,
-		values:       &columnFormValues{name: column.Name, nullable: column.Nullable},
-		keybindings:  DefaultKeybindings(),
+		previousName:       column.Name,
+		originalType:       column.Type,
+		hadDefault:         column.DefaultValue != nil,
+		originalAttributes: column.Attributes,
+		typeOptions:        typeOptions,
+		values:             &columnFormValues{name: column.Name, nullable: column.Nullable, attributes: column.Attributes},
+		keybindings:        DefaultKeybindings(),
 	}
 	if index, values, ok := sharedsql.MatchColumnType(typeOptions, column.Type); ok {
 		form.selectType(index, values)
@@ -194,7 +195,7 @@ func (f *columnForm) previousField() tea.Cmd {
 	return f.form.PrevField()
 }
 
-func (f columnForm) fieldCount() int { return len(f.values.parameters) + 4 }
+func (f columnForm) fieldCount() int { return len(f.values.parameters) + 5 }
 
 func (f columnForm) focusedField() int {
 	if f.form == nil {
@@ -215,6 +216,8 @@ func (f columnForm) focusedField() int {
 		return len(f.values.parameters) + 2
 	case key == "default":
 		return len(f.values.parameters) + 3
+	case key == "attributes":
+		return len(f.values.parameters) + 4
 	}
 	return 0
 }
@@ -242,6 +245,9 @@ func (f columnForm) change() (sharedsql.ColumnChange, error) {
 	change := sharedsql.ColumnChange{PreviousName: f.previousName, Name: f.values.name, Type: typeDeclaration, Nullable: f.values.nullable}
 	if value := strings.TrimSpace(f.values.defaultValue); value != "" {
 		change.DefaultValue = &value
+	}
+	if value := strings.TrimSpace(f.values.attributes); value != f.originalAttributes {
+		change.Attributes = &value
 	}
 	if err := sharedsql.ValidateColumnChange(change); err != nil {
 		return sharedsql.ColumnChange{}, err
@@ -276,10 +282,8 @@ func (f *columnForm) rebuildForm() {
 	fields = append(fields,
 		huh.NewConfirm().Key("nullable").Title("Nullable").Affirmative("Yes").Negative("No").Value(&f.values.nullable),
 		newEditableInput(huh.NewInput().Key("default").Title("Default").Value(&f.values.defaultValue), &f.values.defaultValue),
+		newEditableInput(huh.NewInput().Key("attributes").Title("Attributes").Value(&f.values.attributes), &f.values.attributes),
 	)
-	if f.primaryKey > 0 {
-		fields = append(fields, huh.NewNote().Title("Primary key").Description(primaryKeyNote(f.primaryKey)))
-	}
 	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
 }
 

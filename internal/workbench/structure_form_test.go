@@ -14,7 +14,7 @@ func TestStructureForm_usesHuhControlsForColumnEditing(t *testing.T) {
 	if form.form == nil {
 		t.Fatal("column editor did not create a Huh form")
 	}
-	if form.form.GetFocusedField().GetKey() != "name" || form.primaryKey != 1 {
+	if form.form.GetFocusedField().GetKey() != "name" {
 		t.Fatalf("column Huh form has unexpected initial state: %#v", form)
 	}
 }
@@ -255,3 +255,70 @@ func equalStrings(left, right []string) bool {
 }
 
 func ptr[T any](value T) *T { return &value }
+
+func TestStructureForm_attributesFieldIsSeededFromColumnInfo(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", Attributes: "GENERATED STORED", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.values.attributes != "GENERATED STORED" {
+		t.Fatalf("form attributes = %q, want GENERATED STORED", form.values.attributes)
+	}
+}
+
+func TestStructureForm_fieldCountIncludesAttributes(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if want := len(form.values.parameters) + 5; form.fieldCount() != want {
+		t.Fatalf("fieldCount() = %d, want %d", form.fieldCount(), want)
+	}
+}
+
+func TestStructureForm_navigationReachesAttributesField(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	_ = form.form.Init()
+
+	for range form.fieldCount() - 1 {
+		_ = form.nextField()
+	}
+	if got, want := form.form.GetFocusedField().GetKey(), "attributes"; got != want {
+		t.Fatalf("last field key = %q, want %q", got, want)
+	}
+}
+
+func TestStructureForm_changeIncludesAttributesWhenEdited(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.values.attributes = "GENERATED STORED"
+	change, err := form.change()
+	if err != nil {
+		t.Fatalf("change() error = %v", err)
+	}
+	if change.Attributes == nil {
+		t.Fatal("change().Attributes = nil, want non-nil")
+	}
+	if *change.Attributes != "GENERATED STORED" {
+		t.Fatalf("change().Attributes = %q, want GENERATED STORED", *change.Attributes)
+	}
+}
+
+func TestStructureForm_changeOmitsAttributesWhenUnchanged(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED VIRTUAL", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	change, err := form.change()
+	if err != nil {
+		t.Fatalf("change() error = %v", err)
+	}
+	if change.Attributes != nil {
+		t.Fatalf("change().Attributes = %v, want nil (unchanged)", *change.Attributes)
+	}
+}
+
+func TestStructureForm_changeIncludesEmptyAttributesWhenCleared(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED STORED", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.values.attributes = ""
+	change, err := form.change()
+	if err != nil {
+		t.Fatalf("change() error = %v", err)
+	}
+	if change.Attributes == nil {
+		t.Fatal("change().Attributes = nil, want non-nil after clearing")
+	}
+	if *change.Attributes != "" {
+		t.Fatalf("change().Attributes = %q, want empty string", *change.Attributes)
+	}
+}

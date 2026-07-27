@@ -1,9 +1,5 @@
 package workbench
 
-import (
-	"strconv"
-)
-
 func (f columnForm) View() string {
 	if f.saving {
 		return statusStyle.Render("saving column changes")
@@ -13,5 +9,3 @@ func (f columnForm) View() string {
 	}
 	return f.form.View()
 }
-
-func primaryKeyNote(position int) string { return strconv.Itoa(position) + " (read-only)" }
