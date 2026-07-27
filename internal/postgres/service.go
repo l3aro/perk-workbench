@@ -280,8 +280,11 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	}
 	typeChanged := !strings.EqualFold(strings.TrimSpace(change.Type), strings.TrimSpace(currentInfo.Type))
 	defaultChanged := !postgresDefaultsEqual(change.DefaultValue, currentInfo.DefaultValue)
-	if change.Name == change.PreviousName && !typeChanged && change.Nullable == currentInfo.Nullable && !defaultChanged {
+	if change.Name == change.PreviousName && !typeChanged && change.Nullable == currentInfo.Nullable && !defaultChanged && (change.Attributes == nil || *change.Attributes == currentInfo.Attributes) {
 		return nil
+	}
+	if err := sharedsql.ValidateColumnAttributeChange(change.Attributes, currentInfo.Attributes); err != nil {
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
