@@ -217,17 +217,17 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	if !found {
 		return fmt.Errorf("column %q was not found", change.PreviousName)
 	}
-	if change.Name == change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
+	if change.Name == change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) && (change.Attributes == nil || *change.Attributes == current.Attributes) {
 		return nil
 	}
 	if current.PrimaryKey > 0 {
-		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
+		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) && (change.Attributes == nil || *change.Attributes == current.Attributes) {
 			_, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name))
 			return err
 		}
 		return errors.New("primary-key columns can only be renamed without other changes")
 	}
-	if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) {
+	if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) && (change.Attributes == nil || *change.Attributes == current.Attributes) {
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
 			return fmt.Errorf("renaming column: %w", err)
 		}
@@ -263,7 +263,9 @@ func mysqlColumnDeclaration(change sharedsql.ColumnChange, attributes mysqlColum
 	if change.DefaultValue != nil {
 		declaration += " DEFAULT " + mysqlDefault(*change.DefaultValue)
 	}
-	if attributes.comment.Valid && attributes.comment.String != "" {
+	if change.Attributes != nil && *change.Attributes != "" {
+		declaration += " " + *change.Attributes
+	} else if attributes.comment.Valid && attributes.comment.String != "" {
 		declaration += " COMMENT " + mysqlDefault(attributes.comment.String)
 	}
 	return declaration

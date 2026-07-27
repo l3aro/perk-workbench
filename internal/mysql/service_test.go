@@ -24,6 +24,42 @@ func TestMySQLTableIdentifier_quotes_database_and_table_separately(t *testing.T)
 	}
 }
 
+func TestMySQLColumnDeclaration_usesUserAttributesWhenProvided(t *testing.T) {
+	defaultValue := "Vietnam"
+	comment := "COMMENT 'updated'"
+	change := sharedsql.ColumnChange{
+		Type:         "varchar(50)",
+		Nullable:     false,
+		DefaultValue: &defaultValue,
+		Attributes:   &comment,
+	}
+	attributes := mysqlColumnAttributes{
+		characterSet: stdsql.NullString{String: "utf8mb4", Valid: true},
+		collation:    stdsql.NullString{String: "utf8mb4_0900_ai_ci", Valid: true},
+		comment:      stdsql.NullString{String: "original", Valid: true},
+	}
+	const want = "varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'Vietnam' COMMENT 'updated'"
+	if got := mysqlColumnDeclaration(change, attributes); got != want {
+		t.Fatalf("mysqlColumnDeclaration() = %q, want %q", got, want)
+	}
+}
+
+func TestMySQLColumnDeclaration_dropsDbCommentWhenUserAttributesProvided(t *testing.T) {
+	change := sharedsql.ColumnChange{
+		Type:     "varchar(50)",
+		Nullable: true,
+	}
+	attributes := mysqlColumnAttributes{
+		characterSet: stdsql.NullString{Valid: true, String: "utf8mb4"},
+		collation:    stdsql.NullString{Valid: true, String: "utf8mb4_0900_ai_ci"},
+		comment:      stdsql.NullString{Valid: true, String: "visible"},
+	}
+	const want = "varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT 'visible'"
+	if got := mysqlColumnDeclaration(change, attributes); got != want {
+		t.Fatalf("mysqlColumnDeclaration() = %q, want %q", got, want)
+	}
+}
+
 func TestMySQLColumnDeclaration_placesCharsetBeforeConstraints(t *testing.T) {
 	defaultValue := "Vietnam"
 	change := sharedsql.ColumnChange{
@@ -41,3 +77,56 @@ func TestMySQLColumnDeclaration_placesCharsetBeforeConstraints(t *testing.T) {
 		t.Fatalf("mysqlColumnDeclaration() = %q, want %q", got, want)
 	}
 }
+
+func TestMySQLColumnDeclaration_appendsCommentAfterDefault(t *testing.T) {
+	defaultValue := "active"
+	comment := "COMMENT 'column status'"
+	change := sharedsql.ColumnChange{
+		Type:         "varchar(20)",
+		Nullable:     false,
+		DefaultValue: &defaultValue,
+		Attributes:   &comment,
+	}
+	attributes := mysqlColumnAttributes{
+		characterSet: stdsql.NullString{Valid: false},
+		collation:    stdsql.NullString{Valid: false},
+	}
+	const want = "varchar(20) NOT NULL DEFAULT 'active' COMMENT 'column status'"
+	if got := mysqlColumnDeclaration(change, attributes); got != want {
+		t.Fatalf("mysqlColumnDeclaration() = %q, want %q", got, want)
+	}
+}
+
+func TestMySQLColumnDeclaration_appendsAutoIncrementAfterDefault(t *testing.T) {
+	change := sharedsql.ColumnChange{
+		Type:       "BIGINT UNSIGNED",
+		Nullable:   false,
+		Attributes: strPtr("AUTO_INCREMENT"),
+	}
+	attributes := mysqlColumnAttributes{
+		characterSet: stdsql.NullString{Valid: false},
+		collation:    stdsql.NullString{Valid: false},
+	}
+	const want = "BIGINT UNSIGNED NOT NULL AUTO_INCREMENT"
+	if got := mysqlColumnDeclaration(change, attributes); got != want {
+		t.Fatalf("mysqlColumnDeclaration() = %q, want %q", got, want)
+	}
+}
+
+func TestMySQLColumnDeclaration_preservesDbCommentWhenAttributesNil(t *testing.T) {
+	change := sharedsql.ColumnChange{
+		Type:     "varchar(50)",
+		Nullable: true,
+	}
+	attributes := mysqlColumnAttributes{
+		characterSet: stdsql.NullString{Valid: false},
+		collation:    stdsql.NullString{Valid: false},
+		comment:      stdsql.NullString{String: "existing comment", Valid: true},
+	}
+	const want = "varchar(50) NULL COMMENT 'existing comment'"
+	if got := mysqlColumnDeclaration(change, attributes); got != want {
+		t.Fatalf("mysqlColumnDeclaration() = %q, want %q", got, want)
+	}
+}
+
+func strPtr(s string) *string { return &s }
