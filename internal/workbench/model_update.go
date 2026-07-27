@@ -26,6 +26,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.layout(window.Width, window.Height)
 		return m, nil
 	}
+
+	// Route streaming and persistence messages early to prevent modal branches
+	// from consuming them and stalling the stream.
+	if _, ok := message.(chatStreamMsg); ok {
+		return m.updateChat(message)
+	}
+	if _, ok := message.(chatPersistMsg); ok {
+		return m.updateChat(message)
+	}
+
 	if m.themePicker != nil {
 		keyPress, ok := message.(tea.KeyPressMsg)
 		if !ok {
@@ -466,7 +476,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
-	case chatResponseMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg:
+	case chatResponseMsg, chatStreamMsg, chatPersistMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg:
 		return m.updateChat(message)
 	}
 

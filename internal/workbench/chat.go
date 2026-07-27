@@ -14,6 +14,7 @@ import (
 type chatClient interface {
 	AgentForPrompt(string) string
 	Chat(context.Context, ai.Request) (ai.Response, error)
+	ChatStream(context.Context, ai.Request) (<-chan ai.StreamEvent, error)
 }
 
 type chatHistory interface {
@@ -41,11 +42,22 @@ type chatModel struct {
 	historyChoice  string
 	chatMode       formMode
 	glamour        *glamour.TermRenderer
+	streamBuffer   string // accumulated streaming content
 }
 
 type chatResponseMsg struct {
 	conversationID string
 	response       ai.Response
+	err            error
+}
+
+// chatStreamMsg is sent for each streaming delta from the AI.
+type chatStreamMsg struct {
+	ch             <-chan ai.StreamEvent
+	conversationID string
+	delta          string
+	response       ai.Response
+	done           bool
 	err            error
 }
 
@@ -61,6 +73,9 @@ type chatMessagesLoadedMsg struct {
 }
 
 type chatHistoryDeletedMsg struct{ err error }
+
+// chatPersistMsg reports an error persisting an AI message to history.
+type chatPersistMsg struct{ err error }
 
 func newChatModel() chatModel {
 	input := textarea.New()
@@ -116,7 +131,7 @@ func (m *Model) resizeChat() {
 }
 
 func (m *Model) refreshChatView() {
-	blocks := make([]string, 0, len(m.chat.messages))
+	blocks := make([]string, 0, len(m.chat.messages)+1)
 	for _, message := range m.chat.messages {
 		var block string
 		content := safeText(message.Content)
@@ -130,7 +145,7 @@ func (m *Model) refreshChatView() {
 			lines := strings.Split(lipgloss.Wrap(content, contentWidth, ""), "\n")
 			for i, line := range lines {
 				line = " " + line + strings.Repeat("\u00a0", max(contentWidth-lipgloss.Width(line), 0))
-				lines[i] = userMessageAccentStyle.Render("▌") + userMessageStyle.Render(line)
+				lines[i] = userMessageAccentStyle.Render("\u258c") + userMessageStyle.Render(line)
 			}
 			block += strings.Join(lines, "\n")
 		} else {
@@ -138,6 +153,27 @@ func (m *Model) refreshChatView() {
 		}
 		blocks = append(blocks, block)
 	}
+
+	// Append streaming content as the last assistant message.
+	if m.chat.loading {
+		// Adaptive label: "thinking..." before content, "streaming..." during.
+		label := "\u2022 thinking..."
+		if m.chat.streamBuffer != "" {
+			label = "\u2022 streaming..."
+		}
+		blocks = append(blocks, thinkingStyle.Render(label))
+
+		if m.chat.streamBuffer != "" {
+			content := safeText(m.chat.streamBuffer)
+			if m.chat.glamour != nil {
+				if rendered, err := m.chat.glamour.Render(content); err == nil {
+					content = strings.TrimRight(rendered, "\n")
+				}
+			}
+			blocks = append(blocks, content)
+		}
+	}
+
 	if len(blocks) == 0 {
 		blocks = append(blocks, statusStyle.Render("Ask about the selected database, query, or results."))
 	}

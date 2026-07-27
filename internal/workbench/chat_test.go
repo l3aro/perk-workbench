@@ -23,6 +23,24 @@ func (fakeChatClient) Chat(context.Context, ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Add an index."}, nil
 }
 
+func (fakeChatClient) ChatStream(_ context.Context, request ai.Request) (<-chan ai.StreamEvent, error) {
+	ch := make(chan ai.StreamEvent, 4)
+	ch <- ai.StreamEvent{Delta: "Add "}
+	ch <- ai.StreamEvent{Delta: "an "}
+	ch <- ai.StreamEvent{Delta: "index."}
+	responseContent := "Add an index."
+	var lastPrompt string
+	if len(request.Messages) > 0 {
+		lastPrompt = request.Messages[len(request.Messages)-1].Content
+	}
+	if lastPrompt == "talk like a pirate" {
+		responseContent = "Arr, add an index!"
+	}
+	ch <- ai.StreamEvent{Response: &ai.Response{Agent: "Assistant", Content: responseContent}}
+	close(ch)
+	return ch, nil
+}
+
 type waitingChatClient struct {
 	started chan<- struct{}
 }
@@ -33,6 +51,79 @@ func (client waitingChatClient) Chat(ctx context.Context, _ ai.Request) (ai.Resp
 	client.started <- struct{}{}
 	<-ctx.Done()
 	return ai.Response{}, ctx.Err()
+}
+
+func (client waitingChatClient) ChatStream(ctx context.Context, _ ai.Request) (<-chan ai.StreamEvent, error) {
+	client.started <- struct{}{}
+	<-ctx.Done()
+	ch := make(chan ai.StreamEvent)
+	close(ch)
+	return ch, nil
+}
+
+func TestChat_streamingRendersPartialContent(t *testing.T) {
+	model := New(":memory:", context.Background(), nil)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'})
+	model = updated.(Model)
+	model.chat.input.SetValue("talk like a pirate")
+
+	// Send
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// First delta — assert partial content appears
+	msg := command()
+	updated, cmd := model.Update(msg)
+	model = updated.(Model)
+	stripped := ansi.Strip(model.chat.viewport.GetContent())
+	if !strings.Contains(stripped, "Add ") {
+		t.Fatalf("after first delta = %q, want \"Add \"", stripped)
+	}
+	// Label should say "streaming"
+	if !strings.Contains(stripped, "streaming") {
+		t.Fatalf("viewport = %q, want streaming label", stripped)
+	}
+	if model.chat.loading != true {
+		t.Fatal("model should still be loading after first delta")
+	}
+	if model.chat.streamBuffer != "Add " {
+		t.Fatalf("streamBuffer = %q", model.chat.streamBuffer)
+	}
+
+	// Second delta
+	msg = cmd()
+	updated, cmd = model.Update(msg)
+	model = updated.(Model)
+	stripped = ansi.Strip(model.chat.viewport.GetContent())
+	if !strings.Contains(stripped, "Add an ") {
+		t.Fatalf("after second delta = %q, want \"Add an \"", stripped)
+	}
+
+	// Third delta
+	msg = cmd()
+	updated, cmd = model.Update(msg)
+	model = updated.(Model)
+
+	// Completion
+	msg = cmd()
+	updated, _ = model.Update(msg)
+	model = updated.(Model)
+
+	if model.chat.loading {
+		t.Fatal("model should not be loading after completion")
+	}
+	if len(model.chat.messages) != 2 {
+		t.Fatalf("messages = %#v, want 2", model.chat.messages)
+	}
+	if model.chat.messages[1].Content != "Add an index." {
+		t.Fatalf("response = %q", model.chat.messages[1].Content)
+	}
 }
 
 func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
@@ -57,8 +148,8 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	if command == nil {
 		t.Fatal("sending chat did not return a command")
 	}
-	updated, _ = model.Update(command())
-	model = updated.(Model)
+	// Drive the streaming protocol through completion.
+	model = driveStreamToCompletion(t, model, command)
 
 	if len(model.chat.messages) != 2 {
 		t.Fatalf("messages = %#v, want user and assistant messages", model.chat.messages)
@@ -71,9 +162,25 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	}
 }
 
+// driveStreamToCompletion feeds streaming events until the stream completes.
+func driveStreamToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
+	t.Helper()
+	for cmd != nil {
+		msg := cmd()
+		updated, nextCmd := model.Update(msg)
+		model = updated.(Model)
+		cmd = nextCmd
+	}
+	return model
+}
+
 func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		_, _ = io.WriteString(writer, `{"choices":[{"message":{"content":"Use an index."}}]}`)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"Use \"}}]}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"an \"}}]}\n\n")
+		_, _ = io.WriteString(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"index.\"}}]}\n\n")
+		_, _ = io.WriteString(writer, "data: [DONE]\n\n")
 	}))
 	t.Cleanup(server.Close)
 	client, err := ai.NewClient(ai.Config{
@@ -109,18 +216,19 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	if command == nil {
 		t.Fatal("sending chat did not return a command")
 	}
-	updated, _ = model.Update(command())
-	model = updated.(Model)
+	// Drive streaming through completion (including async persistence).
+	model = driveStreamToCompletion(t, model, command)
 
 	if len(model.chat.messages) != 2 || model.chat.messages[1].Content != "Use an index." {
 		t.Fatalf("messages = %#v", model.chat.messages)
 	}
-	messages, err := history.Messages(context.Background(), model.chat.conversationID)
+	// Check that the persisted conversation includes both messages.
+	persisted, err := history.Messages(context.Background(), model.chat.conversationID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 {
-		t.Fatalf("persisted messages = %#v", messages)
+	if len(persisted) != 2 {
+		t.Fatalf("persisted messages = %#v", persisted)
 	}
 }
 

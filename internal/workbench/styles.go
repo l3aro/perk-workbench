@@ -52,7 +52,7 @@ var (
 	colorInk, colorMuted, colorAccent                                                 string
 	colorBorder, colorModeNormal                                                      string
 	colorModeInsert                                                                   string
-	headerStyle, footerStyle, statusStyle                                             lipgloss.Style
+	headerStyle, footerStyle, statusStyle, thinkingStyle                              lipgloss.Style
 	focusStyle, panelStyle                                                            lipgloss.Style
 	connectionActionStyle                                                             lipgloss.Style
 	connectionActionSelectedStyle                                                     lipgloss.Style
@@ -109,6 +109,10 @@ func resetStyles() {
 		Padding(0, spaceCompact)
 	statusStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorMuted)).
+		Padding(0, spaceCompact)
+	thinkingStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorAccent)).
+		Italic(true).
 		Padding(0, spaceCompact)
 	focusStyle = lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
@@ -919,15 +923,11 @@ func (m Model) chatPaneView() string {
 }
 
 func (m Model) chatContentView() string {
-	var status string
-	if m.chat.loading {
-		status = "thinking..."
-	}
 	return lipgloss.JoinVertical(lipgloss.Left,
 		headerStyle.Render(" AI "),
 		m.chat.viewport.View(),
 		m.chat.input.View(),
-		chrome.PaneStatus(statusStyle.Render(m.chatModeBadge()), statusStyle.Render(status), m.chat.viewport.Width()),
+		chrome.PaneStatus(statusStyle.Render(m.chatModeBadge()), "", m.chat.viewport.Width()),
 	)
 }
 

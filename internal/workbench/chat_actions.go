@@ -23,38 +23,58 @@ func (m *Model) startChat() tea.Cmd {
 	m.chat.input.Reset()
 	m.chat.loading = true
 	m.chat.canceled = false
+	m.chat.streamBuffer = ""
 	m.refreshChatView()
 	messages := append([]ai.Message(nil), m.chat.messages...)
 	client, history, conversationID := m.chat.client, m.chat.history, m.chat.conversationID
 	contextText := m.chatContext()
 	chatContext, cancel := context.WithCancel(m.appContext)
 	m.chat.cancel = cancel
+	agentID := client.AgentForPrompt(prompt)
+
 	return func() tea.Msg {
-		defer cancel()
 		if history != nil {
 			if conversationID == "" {
 				conversation, err := history.NewConversation(chatContext, truncateChatTitle(prompt))
 				if err != nil {
-					return chatResponseMsg{err: err}
+					cancel()
+					return chatStreamMsg{conversationID: "", err: err}
 				}
 				conversationID = conversation.ID
 			}
 			if err := history.AppendMessage(chatContext, conversationID, userMessage); err != nil {
-				return chatResponseMsg{err: err}
+				cancel()
+				return chatStreamMsg{conversationID: conversationID, err: err}
 			}
 		}
-		response, err := client.Chat(chatContext, ai.Request{AgentID: client.AgentForPrompt(prompt), Messages: messages, Context: contextText})
+		eventCh, err := client.ChatStream(chatContext, ai.Request{
+			AgentID:  agentID,
+			Messages: messages,
+			Context:  contextText,
+		})
 		if err != nil {
-			return chatResponseMsg{conversationID: conversationID, err: err}
+			cancel()
+			return chatStreamMsg{conversationID: conversationID, err: err}
 		}
-		if history != nil {
-			message := ai.Message{Role: ai.RoleAssistant, Agent: response.Agent, Content: response.Content}
-			if err := history.AppendMessage(chatContext, conversationID, message); err != nil {
-				return chatResponseMsg{conversationID: conversationID, err: err}
-			}
-		}
-		return chatResponseMsg{conversationID: conversationID, response: response}
+		return readStreamEvent(eventCh, conversationID)
 	}
+}
+
+// readStreamEvent reads one event from the stream channel and returns it as a chatStreamMsg.
+func readStreamEvent(ch <-chan ai.StreamEvent, conversationID string) tea.Msg {
+	ev, ok := <-ch
+	if !ok {
+		return chatStreamMsg{ch: ch, conversationID: conversationID, done: true}
+	}
+	msg := chatStreamMsg{ch: ch, conversationID: conversationID, delta: ev.Delta}
+	if ev.Response != nil {
+		msg.done = true
+		msg.response = *ev.Response
+	}
+	if ev.Err != nil {
+		msg.err = ev.Err
+	}
+	return msg
 }
 
 func (m *Model) loadChatHistory() tea.Cmd {
@@ -135,11 +155,97 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.newChatConversation()
 		m.Status = "AI conversation history cleared"
 		return m, nil
+	case chatPersistMsg:
+		if message.err != nil {
+			m.Status = safeText("AI history: " + message.err.Error())
+		}
+		return m, nil
+	case chatStreamMsg:
+		if message.conversationID != "" {
+			m.chat.conversationID = message.conversationID
+		}
+		if message.err != nil {
+			if m.chat.cancel != nil {
+				m.chat.cancel()
+			}
+			canceled := m.chat.canceled
+			m.chat.loading = false
+			m.chat.cancel = nil
+			m.chat.canceled = false
+			m.chat.streamBuffer = ""
+			m.refreshChatView()
+			if canceled {
+				m.Status = "AI request canceled"
+				return m, nil
+			}
+			m.Status = safeText("AI: " + message.err.Error())
+			return m, nil
+		}
+		if message.done {
+			// If canceled, discard partial content.
+			if m.chat.canceled {
+				if m.chat.cancel != nil {
+					m.chat.cancel()
+				}
+				m.chat.loading = false
+				m.chat.cancel = nil
+				m.chat.canceled = false
+				m.chat.streamBuffer = ""
+				m.refreshChatView()
+				m.Status = "AI request canceled"
+				return m, nil
+			}
+			// Stream completed successfully — cancel the context.
+			if m.chat.cancel != nil {
+				m.chat.cancel()
+			}
+			m.chat.loading = false
+			m.chat.cancel = nil
+			m.chat.canceled = false
+			content := m.chat.streamBuffer
+			m.chat.streamBuffer = ""
+			if content == "" {
+				m.refreshChatView()
+				m.Status = "AI returned empty response"
+				return m, nil
+			}
+			response := message.response
+			m.chat.messages = append(m.chat.messages, ai.Message{
+				Role:    ai.RoleAssistant,
+				Agent:   response.Agent,
+				Content: content,
+			})
+			m.refreshChatView()
+			// Persist to history asynchronously. Always report result.
+			if m.chat.history != nil && m.chat.conversationID != "" {
+				history, cid := m.chat.history, m.chat.conversationID
+				appCtx := m.appContext
+				historyMsg := ai.Message{
+					Role:    ai.RoleAssistant,
+					Agent:   response.Agent,
+					Content: content,
+				}
+				return m, func() tea.Msg {
+					err := history.AppendMessage(appCtx, cid, historyMsg)
+					return chatPersistMsg{err: err}
+				}
+			}
+			return m, nil
+		}
+		// Delta: accumulate and render, then await the next event.
+		m.chat.streamBuffer += message.delta
+		m.refreshChatView()
+		ch := message.ch
+		cid := m.chat.conversationID
+		return m, func() tea.Msg {
+			return readStreamEvent(ch, cid)
+		}
 	case chatResponseMsg:
 		canceled := m.chat.canceled
 		m.chat.loading = false
 		m.chat.cancel = nil
 		m.chat.canceled = false
+		m.chat.streamBuffer = ""
 		if message.conversationID != "" {
 			m.chat.conversationID = message.conversationID
 		}
@@ -166,13 +272,25 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch {
 		case m.keybindings.Match(keyPress, "chat.new", []scope{scopeView}):
+			if m.chat.loading {
+				return m, nil
+			}
 			m.newChatConversation()
 			return m, nil
 		case m.keybindings.Match(keyPress, "chat.history", []scope{scopeView}):
+			if m.chat.loading {
+				return m, nil
+			}
 			return m, m.loadChatHistory()
 		case m.keybindings.Match(keyPress, "chat.delete", []scope{scopeView}):
+			if m.chat.loading {
+				return m, nil
+			}
 			return m, m.deleteChatHistory(false)
 		case m.keybindings.Match(keyPress, "chat.clear", []scope{scopeView}):
+			if m.chat.loading {
+				return m, nil
+			}
 			return m, m.deleteChatHistory(true)
 		case m.keybindings.Match(keyPress, "chat.apply_sql", []scope{scopeView}):
 			m.applyChatSQL()
