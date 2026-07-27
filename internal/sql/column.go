@@ -26,5 +26,18 @@ func ValidateColumnChange(change ColumnChange) error {
 	if change.DefaultValue != nil && (strings.Contains(*change.DefaultValue, ";") || strings.IndexFunc(*change.DefaultValue, unicode.IsControl) >= 0) {
 		return errors.New("column default contains unsupported characters")
 	}
+	if change.Attributes != nil && (strings.IndexFunc(*change.Attributes, unicode.IsControl) >= 0 || strings.Contains(*change.Attributes, ";")) {
+		return errors.New("column attributes contain unsupported characters")
+	}
+	return nil
+}
+
+// ValidateColumnAttributeChange returns an error when the caller does not
+// support column-level attribute changes and a non-nil, differing value is
+// requested.
+func ValidateColumnAttributeChange(changeAttributes *string, currentAttributes string) error {
+	if changeAttributes != nil && *changeAttributes != currentAttributes {
+		return errors.New("column attributes change is not supported for this database")
+	}
 	return nil
 }

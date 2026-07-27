@@ -81,4 +81,5 @@ type ColumnChange struct {
 	Type         string
 	Nullable     bool
 	DefaultValue *string
+	Attributes   *string
 }
