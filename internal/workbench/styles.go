@@ -878,7 +878,7 @@ func (m Model) queryLogContentView() string {
 }
 
 func (m Model) workspaceView() string {
-	tabs := []string{"Columns", "Browse", "SQL", "Indexes", "Foreign Keys"}
+	tabs := []string{"SQL", "Columns", "Browse", "Indexes", "Foreign Keys"}
 	for index := range tabs {
 		if workspaceTab(index) == m.Tab {
 			tabs[index] = headerStyle.Render(tabs[index])

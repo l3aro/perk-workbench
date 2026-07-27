@@ -57,7 +57,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabIndexes)
+	assertTab(t, model, tabStructure)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
@@ -73,14 +73,14 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabStructure)
+	assertTab(t, model, tabIndexes)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabBrowse)
+	assertTab(t, model, tabForeignKeys)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
@@ -103,7 +103,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabIndexes)
+	assertTab(t, model, tabStructure)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
@@ -117,7 +117,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabBrowse)
+	assertTab(t, model, tabForeignKeys)
 }
 
 func TestWorkspace_HLNavigateTabs(t *testing.T) {
@@ -130,7 +130,7 @@ func TestWorkspace_HLNavigateTabs(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabIndexes)
+	assertTab(t, model, tabStructure)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})

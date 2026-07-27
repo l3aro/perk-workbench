@@ -30,9 +30,9 @@ const (
 type Tab uint8
 
 const (
-	TabStructure Tab = iota
+	TabSQL Tab = iota
+	TabStructure
 	TabBrowse
-	TabSQL
 	TabIndexes
 	TabForeignKeys
 )

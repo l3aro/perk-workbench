@@ -1293,8 +1293,8 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	// The workspace pane has a NormalBorder (top border at contentY=0).
 	// Tab row is inside the border at contentY=1.
 	if y == 1 {
-		tabNames := []workspaceTab{tabStructure, tabBrowse, tabSQL, tabIndexes, tabForeignKeys}
-		tabWidths := []int{9, 8, 5, 9, 15}
+		tabNames := []workspaceTab{tabSQL, tabStructure, tabBrowse, tabIndexes, tabForeignKeys}
+		tabWidths := []int{5, 9, 8, 9, 15}
 		cx := 2 // pane left border (1) + left padding (1)
 		for i, w := range tabWidths {
 			if x >= cx && x < cx+w {
