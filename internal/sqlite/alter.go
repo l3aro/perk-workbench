@@ -30,13 +30,13 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 		return fmt.Errorf("column %q was not found", change.PreviousName)
 	}
 	if current.PrimaryKey > 0 {
-		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && defaultsEqual(change.DefaultValue, current.DefaultValue) {
+		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && defaultsEqual(change.DefaultValue, current.DefaultValue) && (change.Attributes == nil || *change.Attributes == current.Attributes) {
 			_, err := s.db.ExecContext(ctx, "ALTER TABLE "+quoteIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name))
 			return err
 		}
 		return errors.New("primary-key columns can only be renamed without other changes")
 	}
-	if change.Type == current.Type && change.Nullable == current.Nullable && defaultsEqual(change.DefaultValue, current.DefaultValue) {
+	if change.Type == current.Type && change.Nullable == current.Nullable && defaultsEqual(change.DefaultValue, current.DefaultValue) && (change.Attributes == nil || *change.Attributes == current.Attributes) {
 		if change.Name == change.PreviousName {
 			return nil
 		}
@@ -45,6 +45,9 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 			return fmt.Errorf("renaming column: %w", err)
 		}
 		return nil
+	}
+	if err := sharedsql.ValidateColumnAttributeChange(change.Attributes, current.Attributes); err != nil {
+		return err
 	}
 	return s.rebuildTable(ctx, table, change)
 }
