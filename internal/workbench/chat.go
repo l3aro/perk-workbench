@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
+	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/l3aro/perk-workbench/internal/ai"
 )
@@ -39,6 +40,7 @@ type chatModel struct {
 	shareResults   bool
 	historyChoice  string
 	chatMode       formMode
+	glamour        *glamour.TermRenderer
 }
 
 type chatResponseMsg struct {
@@ -109,26 +111,61 @@ func (m *Model) resizeChat() {
 	m.chat.input.SetHeight(1)
 	m.chat.viewport.SetWidth(width)
 	m.chat.viewport.SetHeight(max(height-5, 1))
+	m.chat.initGlamour(width)
 	m.refreshChatView()
 }
 
 func (m *Model) refreshChatView() {
 	blocks := make([]string, 0, len(m.chat.messages))
 	for _, message := range m.chat.messages {
-		label := "You"
-		style := statusStyle
+		var block string
 		if message.Role == ai.RoleAssistant {
-			label = message.Agent
+			label := message.Agent
 			if label == "" {
 				label = "Assistant"
 			}
-			style = headerStyle
+			block = headerStyle.Render(label) + "\n"
 		}
-		blocks = append(blocks, style.Render(label)+"\n"+safeText(message.Content))
+		content := message.Content
+		if m.chat.glamour != nil {
+			if rendered, err := m.chat.glamour.Render(content); err == nil {
+				content = strings.TrimRight(rendered, "\n")
+			}
+		} else {
+			content = safeText(content)
+		}
+		if message.Role == ai.RoleUser {
+			prefix := userMessageBorder.Render()
+			lines := strings.Split(content, "\n")
+			contentWidth := max(m.chat.viewport.Width()-2, 1)
+			lineStyle := userMessageStyle.Width(contentWidth)
+			for i, line := range lines {
+				lines[i] = prefix + lineStyle.Render(line)
+			}
+			block += strings.Join(lines, "\n")
+		} else {
+			block += content
+		}
+		blocks = append(blocks, block)
 	}
 	if len(blocks) == 0 {
 		blocks = append(blocks, statusStyle.Render("Ask about the selected database, query, or results."))
 	}
 	m.chat.viewport.SetContent(strings.Join(blocks, "\n\n"))
 	m.chat.viewport.GotoBottom()
+}
+
+func (cm *chatModel) initGlamour(width int) {
+	if width < 1 {
+		width = 80
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle("dark"),
+		glamour.WithWordWrap(width),
+	)
+	if err != nil {
+		cm.glamour = nil
+		return
+	}
+	cm.glamour = r
 }

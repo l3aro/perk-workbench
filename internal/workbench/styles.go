@@ -62,6 +62,8 @@ var (
 	statusCanceledStyle                                                               lipgloss.Style
 	modeNormalStyle, modeInsertStyle                                                  lipgloss.Style
 	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle lipgloss.Style
+	userMessageStyle                                                                  lipgloss.Style
+	userMessageBorder                                                                 lipgloss.Style
 )
 
 func init() { setTheme(themeOcean) }
@@ -128,6 +130,16 @@ func resetStyles() {
 		Background(lipgloss.Color(colorAccent)).
 		Bold(true).
 		Padding(0, spaceCompact)
+	userMessageStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorInk)).
+		Background(lipgloss.Color(colorPanel)).
+		PaddingLeft(1)
+	userMessageBorder = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorAccent)).
+		PaddingLeft(1).
+		BorderLeft(true).
+		BorderForeground(lipgloss.Color(colorAccent)).
+		BorderStyle(lipgloss.Border{Left: "▌"})
 	primaryIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
 	uniqueIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
 	regularIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
@@ -912,7 +924,7 @@ func (m Model) chatPaneView() string {
 }
 
 func (m Model) chatContentView() string {
-	status := "enter send | pgup/pgdown history"
+	var status string
 	if m.chat.loading {
 		status = "thinking..."
 	}
