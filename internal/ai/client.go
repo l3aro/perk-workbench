@@ -124,9 +124,17 @@ func (c *Client) openAI(ctx context.Context, baseURL, apiKey, model, system stri
 		Choices []struct {
 			Message chatMessage `json:"message"`
 		} `json:"choices"`
+		Data *struct {
+			Choices []struct {
+				Message chatMessage `json:"message"`
+			} `json:"choices"`
+		} `json:"data"`
 	}
 	if err := c.post(ctx, joinURL(baseURL, "chat/completions"), apiKey, "Authorization", "Bearer ", payload, &response, nil); err != nil {
 		return "", err
+	}
+	if len(response.Choices) == 0 && response.Data != nil {
+		response.Choices = response.Data.Choices
 	}
 	if len(response.Choices) == 0 || strings.TrimSpace(response.Choices[0].Message.Content) == "" {
 		return "", fmt.Errorf("provider returned no response text")
