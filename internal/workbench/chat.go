@@ -31,9 +31,12 @@ type chatModel struct {
 	client         chatClient
 	history        chatHistory
 	conversationID string
+	cancel         context.CancelFunc
 	loading        bool
+	canceled       bool
 	enabled        bool
 	visible        bool
+	shareResults   bool
 	historyChoice  string
 	chatMode       formMode
 }

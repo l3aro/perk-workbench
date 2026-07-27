@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"context"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -21,30 +22,34 @@ func (m *Model) startChat() tea.Cmd {
 	m.chat.messages = append(m.chat.messages, userMessage)
 	m.chat.input.Reset()
 	m.chat.loading = true
+	m.chat.canceled = false
 	m.refreshChatView()
 	messages := append([]ai.Message(nil), m.chat.messages...)
 	client, history, conversationID := m.chat.client, m.chat.history, m.chat.conversationID
 	contextText := m.chatContext()
+	chatContext, cancel := context.WithCancel(m.appContext)
+	m.chat.cancel = cancel
 	return func() tea.Msg {
+		defer cancel()
 		if history != nil {
 			if conversationID == "" {
-				conversation, err := history.NewConversation(m.appContext, truncateChatTitle(prompt))
+				conversation, err := history.NewConversation(chatContext, truncateChatTitle(prompt))
 				if err != nil {
 					return chatResponseMsg{err: err}
 				}
 				conversationID = conversation.ID
 			}
-			if err := history.AppendMessage(m.appContext, conversationID, userMessage); err != nil {
+			if err := history.AppendMessage(chatContext, conversationID, userMessage); err != nil {
 				return chatResponseMsg{err: err}
 			}
 		}
-		response, err := client.Chat(m.appContext, ai.Request{AgentID: client.AgentForPrompt(prompt), Messages: messages, Context: contextText})
+		response, err := client.Chat(chatContext, ai.Request{AgentID: client.AgentForPrompt(prompt), Messages: messages, Context: contextText})
 		if err != nil {
 			return chatResponseMsg{conversationID: conversationID, err: err}
 		}
 		if history != nil {
 			message := ai.Message{Role: ai.RoleAssistant, Agent: response.Agent, Content: response.Content}
-			if err := history.AppendMessage(m.appContext, conversationID, message); err != nil {
+			if err := history.AppendMessage(chatContext, conversationID, message); err != nil {
 				return chatResponseMsg{conversationID: conversationID, err: err}
 			}
 		}
@@ -131,11 +136,18 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.Status = "AI conversation history cleared"
 		return m, nil
 	case chatResponseMsg:
+		canceled := m.chat.canceled
 		m.chat.loading = false
+		m.chat.cancel = nil
+		m.chat.canceled = false
 		if message.conversationID != "" {
 			m.chat.conversationID = message.conversationID
 		}
 		if message.err != nil {
+			if canceled {
+				m.Status = "AI request canceled"
+				return m, nil
+			}
 			m.Status = safeText("AI: " + message.err.Error())
 			return m, nil
 		}
@@ -144,6 +156,14 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if keyPress, ok := message.(tea.KeyPressMsg); ok {
+		if m.chat.loading && keyPress.Key().Code == tea.KeyEscape {
+			if m.chat.cancel != nil {
+				m.chat.cancel()
+				m.chat.cancel = nil
+				m.chat.canceled = true
+			}
+			return m, nil
+		}
 		switch {
 		case m.keybindings.Match(keyPress, "chat.new", []scope{scopeView}):
 			m.newChatConversation()
@@ -156,6 +176,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.deleteChatHistory(true)
 		case m.keybindings.Match(keyPress, "chat.apply_sql", []scope{scopeView}):
 			m.applyChatSQL()
+			return m, nil
+		case m.keybindings.Match(keyPress, "chat.share_results", []scope{scopeView}):
+			m.toggleChatResultSharing()
 			return m, nil
 		case keyPress.Key().Code == tea.KeyPgUp:
 			m.chat.viewport.PageUp()
@@ -200,4 +223,13 @@ func (m *Model) applyChatSQL() {
 	m.editor.setValue(statement)
 	m.Focus, m.Tab = focusWorkspace, tabSQL
 	m.Status = "AI SQL added to editor"
+}
+
+func (m *Model) toggleChatResultSharing() {
+	m.chat.shareResults = !m.chat.shareResults
+	if m.chat.shareResults {
+		m.Status = "AI result sharing: on"
+		return
+	}
+	m.Status = "AI result sharing: off"
 }

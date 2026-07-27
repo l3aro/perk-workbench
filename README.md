@@ -139,7 +139,7 @@ AI is optional. Define personal defaults in `$XDG_CONFIG_HOME/perk-workbench/ai.
 - Provider `api` values are `openai`, `anthropic`, `gemini`, and `openai-compatible`.
 - Any complete string value may be `env:VARIABLE_NAME`; partial `${...}` substitutions are not supported.
 - `assistant` is required when AI is configured. `spark` and `oracle` are optional. Chat defaults to Assistant; use `@Spark` or `/lite`, and `@Oracle` or `/premium`, to select the optional agents. Complex prompts can route to Oracle when it is configured.
-- The active database product/version, schema object names, editor SQL, and visible result rows are sent with a request. Context is capped before transmission.
+- The active database product/version, schema object names, and editor SQL are sent with a request. Visible result rows stay local until enabled with `Ctrl+Shift+R` in AI chat or the `share result rows` command-palette action. Context is capped before transmission.
 - AI never executes SQL. `Ctrl+A` in the chat pane, or the command palette action, copies the latest fenced SQL block into the editor for review and normal execution.
 - Conversations are saved automatically in `$XDG_STATE_HOME/perk-workbench/conversations.db` (or `~/.local/state/perk-workbench/conversations.db`). The history stores prompts and responses, not provider configuration, API keys, schema snapshots, result rows, or request context.
 

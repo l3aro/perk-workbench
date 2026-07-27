@@ -51,7 +51,7 @@ func (m Model) chatContext() string {
 		context.WriteString(query)
 		context.WriteString("\n")
 	}
-	if len(m.results.Rows()) > 0 {
+	if m.chat.shareResults && len(m.results.Rows()) > 0 {
 		context.WriteString("Visible results:\n")
 		for _, row := range m.results.Rows() {
 			context.WriteString(strings.Join(row, " | "))

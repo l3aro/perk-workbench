@@ -140,7 +140,7 @@ func commandLabel(id CommandID, raw string) string {
 		return "focus log"
 	case "focus.chat":
 		return "focus AI chat"
-	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql":
+	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql", "chat.share_results":
 		return raw
 	case "focus.cycle_forward":
 		return "cycle focus →"
@@ -230,7 +230,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "query_log.yank", "query_log.explain", "query_log.cursor_down", "query_log.cursor_up",
 		"query_log.top_first", "query_log.top_last", "query_log.detail":
 		return m.State == stateReady && m.Focus == focusQueryLog
-	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql":
+	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql", "chat.share_results":
 		return m.State == stateReady && m.Focus == focusChat
 	case "detail.explain", "detail.close":
 		return m.queryLogDetail != nil

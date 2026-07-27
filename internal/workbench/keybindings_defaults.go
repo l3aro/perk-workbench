@@ -71,6 +71,7 @@ var defaultDefs = []commandDef{
 	{id: "chat.delete", scope: scopeView, keys: []string{"ctrl+d"}, label: "delete chat"},
 	{id: "chat.clear", scope: scopeView, keys: []string{"ctrl+l"}, label: "clear chats"},
 	{id: "chat.apply_sql", scope: scopeView, keys: []string{"ctrl+a"}, label: "apply SQL"},
+	{id: "chat.share_results", scope: scopeView, keys: []string{"ctrl+shift+r"}, label: "share result rows"},
 
 	// ── Query Log Detail overlay (view) ─────────────────────────
 	{id: "detail.yank", scope: scopeView, keys: []string{"y"}, label: "copy"},

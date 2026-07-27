@@ -1024,6 +1024,11 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			m.applyChatSQL()
 		}
 		return m, nil
+	case "chat.share_results":
+		if m.State == stateReady && m.Focus == focusChat {
+			m.toggleChatResultSharing()
+		}
+		return m, nil
 	case "focus.toggle_fullscreen":
 		m.fullscreen = !m.fullscreen
 		m.layout(m.width, m.height)

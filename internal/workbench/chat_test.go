@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/ai"
 )
@@ -18,6 +20,18 @@ func (fakeChatClient) AgentForPrompt(string) string { return "assistant" }
 
 func (fakeChatClient) Chat(context.Context, ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Add an index."}, nil
+}
+
+type waitingChatClient struct {
+	started chan<- struct{}
+}
+
+func (client waitingChatClient) AgentForPrompt(string) string { return "assistant" }
+
+func (client waitingChatClient) Chat(ctx context.Context, _ ai.Request) (ai.Response, error) {
+	client.started <- struct{}{}
+	<-ctx.Done()
+	return ai.Response{}, ctx.Err()
 }
 
 func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
@@ -143,6 +157,60 @@ func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 	}
 }
 
+func TestChat_contextExcludesResultRowsByDefault(t *testing.T) {
+	model := New(":memory:", context.Background(), nil)
+	model.results.SetRows([]table.Row{{"secret"}})
+
+	if context := model.chatContext(); strings.Contains(context, "Visible results:") {
+		t.Fatalf("chat context = %q, want no visible results", context)
+	}
+}
+
+func TestChat_contextIncludesResultRowsWhenEnabled(t *testing.T) {
+	model := New(":memory:", context.Background(), nil)
+	model.State, model.Focus = stateReady, focusChat
+	model.results.SetRows([]table.Row{{"secret"}})
+	updated, _ := model.handlePaletteCommand("chat.share_results")
+	model = updated.(Model)
+
+	if context := model.chatContext(); !strings.Contains(context, "Visible results:\nsecret") {
+		t.Fatalf("chat context = %q, want visible results", context)
+	}
+}
+
+func TestChat_escapeCancelsActiveRequest(t *testing.T) {
+	started := make(chan struct{})
+	model := New(":memory:", context.Background(), nil)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(waitingChatClient{started: started}, nil)
+	model.layout(140, 32)
+	model.chat.input.SetValue("cancel this request")
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("sending chat did not return a command")
+	}
+
+	response := make(chan tea.Msg, 1)
+	go func() { response <- command() }()
+	<-started
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(<-response)
+	model = updated.(Model)
+
+	if model.chat.loading {
+		t.Fatal("chat request remains loading after cancellation")
+	}
+	if model.Status != "AI request canceled" {
+		t.Fatalf("status = %q, want cancellation status", model.Status)
+	}
+}
+
 func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	model := New(":memory:", context.Background(), nil)
 	model.State = stateReady
@@ -153,13 +221,20 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	}
 
 	model.SetAI(fakeChatClient{}, nil)
-	foundToggle := false
+	model.Focus = focusChat
+	foundToggle, foundShareResults := false, false
 	for _, item := range newCommandPalette(model).items {
-		if item.id == "ai.toggle" {
+		switch item.id {
+		case "ai.toggle":
 			foundToggle = true
+		case "chat.share_results":
+			foundShareResults = true
 		}
 	}
 	if !foundToggle {
 		t.Fatal("configured palette does not include AI toggle")
+	}
+	if !foundShareResults {
+		t.Fatal("chat palette does not include result-sharing toggle")
 	}
 }
