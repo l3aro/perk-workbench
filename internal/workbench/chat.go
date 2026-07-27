@@ -35,6 +35,7 @@ type chatModel struct {
 	enabled        bool
 	visible        bool
 	historyChoice  string
+	chatMode       formMode
 }
 
 type chatResponseMsg struct {
@@ -73,7 +74,7 @@ func newChatModel() chatModel {
 	viewport.SoftWrap = true
 	viewport.FillHeight = true
 	viewport.MouseWheelEnabled = true
-	return chatModel{input: input, viewport: viewport}
+	return chatModel{input: input, viewport: viewport, chatMode: formModeNormal}
 }
 
 func (m *Model) SetAI(client chatClient, history chatHistory) {

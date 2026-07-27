@@ -221,6 +221,13 @@ func (m Model) modeBadge() string {
 	return modeNormalStyle.Render("NORMAL")
 }
 
+func (m Model) chatModeBadge() string {
+	if m.chat.chatMode == formModeInsert {
+		return modeInsertStyle.Render("INSERT")
+	}
+	return modeNormalStyle.Render("NORMAL")
+}
+
 func newList(title string, filtering bool) list.Model {
 	delegate := newListDelegate()
 	model := list.New([]list.Item{}, delegate, 0, 0)
@@ -913,7 +920,7 @@ func (m Model) chatContentView() string {
 		headerStyle.Render(" AI "),
 		m.chat.viewport.View(),
 		m.chat.input.View(),
-		chrome.PaneStatus("", statusStyle.Render(status), m.chat.viewport.Width()),
+		chrome.PaneStatus(statusStyle.Render(m.chatModeBadge()), statusStyle.Render(status), m.chat.viewport.Width()),
 	)
 }
 

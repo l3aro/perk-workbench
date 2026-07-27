@@ -32,6 +32,11 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 		t.Fatalf("focus = %v, want chat", model.Focus)
 	}
 	model.chat.input.SetValue("How should I speed this up?")
+
+	// Enter insert mode before sending
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	if command == nil {
@@ -74,6 +79,12 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	model.SetAI(client, history)
 	model.layout(140, 32)
 	model.chat.input.SetValue("How should I speed this up?")
+
+	// Enter insert mode before sending
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // ensure normal
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)

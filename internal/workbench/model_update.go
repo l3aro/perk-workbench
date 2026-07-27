@@ -231,7 +231,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			return m, nil
 		}
-		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) {
+		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) && !(m.Focus == focusChat && m.chat.chatMode == formModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
@@ -260,9 +260,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.Focus = focusChat
 				m.queryLogPendingG = false
+				m.chat.chatMode = formModeNormal
 				m.editor.text.Blur()
 				m.blurTables()
-				return m, m.chat.input.Focus()
+				return m, nil
 			case m.keybindings.Match(message, "ai.toggle", []scope{scopeGlobal}):
 				m.toggleAI()
 				return m, nil
@@ -988,10 +989,11 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "focus.chat":
 		if m.State == stateReady && m.chat.visible {
 			m.Focus = focusChat
+			m.chat.chatMode = formModeNormal
 			m.queryLogPendingG = false
 			m.editor.text.Blur()
 			m.blurTables()
-			return m, m.chat.input.Focus()
+			return m, nil
 		}
 		return m, nil
 	case "ai.toggle":
@@ -1293,7 +1295,7 @@ func (m *Model) cycleFocus(forward bool) {
 			m.queryLog.SetCursor(0)
 		}
 	case focusChat:
-		m.chat.input.Focus()
+		m.chat.chatMode = formModeNormal
 	}
 }
 
@@ -1322,10 +1324,11 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		if m.chat.visible && x >= m.schemaWidth+m.editorWidth {
 			m.Focus = focusChat
+			m.chat.chatMode = formModeNormal
 			m.queryLogPendingG = false
 			m.editor.text.Blur()
 			m.blurTables()
-			return m, m.chat.input.Focus()
+			return m, nil
 		}
 		if contentY < m.workspaceHeight {
 			workspaceX := max(x-m.schemaWidth, 0)

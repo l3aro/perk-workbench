@@ -3,7 +3,6 @@ package workbench
 import (
 	"strings"
 
-	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/ai"
@@ -158,8 +157,6 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		case m.keybindings.Match(keyPress, "chat.apply_sql", []scope{scopeView}):
 			m.applyChatSQL()
 			return m, nil
-		case keyPress.Key().Code == tea.KeyEnter:
-			return m, m.startChat()
 		case keyPress.Key().Code == tea.KeyPgUp:
 			m.chat.viewport.PageUp()
 			return m, nil
@@ -167,8 +164,27 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.viewport.PageDown()
 			return m, nil
 		}
+
+		if m.chat.chatMode == formModeNormal {
+			if keyPress.Key().Code == 'i' || keyPress.Key().Code == tea.KeyEnter {
+				m.chat.chatMode = formModeInsert
+				return m, m.chat.input.Focus()
+			}
+			return m, nil
+		}
+
+		// Insert mode
+		if keyPress.Key().Code == tea.KeyEscape {
+			m.chat.chatMode = formModeNormal
+			m.chat.input.Blur()
+			return m, nil
+		}
+		if keyPress.Key().Code == tea.KeyEnter {
+			return m, m.startChat()
+		}
 	}
-	if _, ok := message.(cursor.BlinkMsg); ok || m.chat.input.Focused() {
+
+	if m.chat.chatMode == formModeInsert {
 		input, command := m.chat.input.Update(message)
 		m.chat.input = input
 		return m, command
