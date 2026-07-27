@@ -69,11 +69,15 @@ func (d confirmationDialog) layout(width, height int) confirmationLayout {
 	if description := strings.TrimSpace(d.description); description != "" {
 		layout.description = strings.Split(ansi.Wordwrap(safeText(description), max(min(width-10, 72), 1), "\n"), "\n")
 	}
-	buttonRowWidth := 0
+	buttonLabelWidth := 0
 	for _, option := range d.options {
-		width := ansi.StringWidth(option.label) + 4
-		layout.buttonWidth = append(layout.buttonWidth, width)
-		buttonRowWidth += width
+		buttonLabelWidth = max(buttonLabelWidth, ansi.StringWidth(option.label))
+	}
+	buttonRowWidth := 0
+	for range d.options {
+		buttonWidth := buttonLabelWidth + 4
+		layout.buttonWidth = append(layout.buttonWidth, buttonWidth)
+		buttonRowWidth += buttonWidth
 	}
 	buttonRowWidth += max(len(d.options)-1, 0) * 2
 	stackButtons := buttonRowWidth > max(width-5, 1)
@@ -86,6 +90,9 @@ func (d confirmationDialog) layout(width, height int) confirmationLayout {
 	}
 	layout.showHelp = height >= len(layout.description)+buttonHeight+6
 	contentWidth := max(ansi.StringWidth(d.title), buttonRowWidth)
+	if layout.showHelp {
+		contentWidth = max(contentWidth, ansi.StringWidth("←/→ toggle • enter select"))
+	}
 	if stackButtons {
 		contentWidth = ansi.StringWidth(d.title)
 		for _, buttonWidth := range layout.buttonWidth {
@@ -112,7 +119,7 @@ func (d confirmationDialog) layout(width, height int) confirmationLayout {
 		}
 		return layout
 	}
-	buttonX := layout.x + 4 + max((contentWidth-buttonRowWidth)/2, 0)
+	buttonX := layout.x + 2 + max((contentWidth-buttonRowWidth)/2, 0)
 	for _, buttonWidth := range layout.buttonWidth {
 		layout.buttonX = append(layout.buttonX, buttonX)
 		layout.buttonY = append(layout.buttonY, buttonY)
@@ -180,7 +187,10 @@ func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 		drawConfirmationText(canvas, line, layout.x+4, layout.y+index+1, muted)
 	}
 	for index, option := range d.options {
-		label := "  " + option.label + "  "
+		extraPadding := max(layout.buttonWidth[index]-4-ansi.StringWidth(option.label), 0)
+		leftPadding := (extraPadding + 1) / 2
+		rightPadding := extraPadding / 2
+		label := strings.Repeat(" ", 2+leftPadding) + option.label + strings.Repeat(" ", 2+rightPadding)
 		style := unselected
 		if index == d.selected {
 			style = selected
