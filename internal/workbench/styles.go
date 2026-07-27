@@ -62,8 +62,7 @@ var (
 	statusCanceledStyle                                                               lipgloss.Style
 	modeNormalStyle, modeInsertStyle                                                  lipgloss.Style
 	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle lipgloss.Style
-	userMessageStyle                                                                  lipgloss.Style
-	userMessageBorder                                                                 lipgloss.Style
+	userMessageStyle, userMessageAccentStyle                                          lipgloss.Style
 )
 
 func init() { setTheme(themeOcean) }
@@ -132,14 +131,10 @@ func resetStyles() {
 		Padding(0, spaceCompact)
 	userMessageStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorInk)).
-		Background(lipgloss.Color(colorPanel)).
-		PaddingLeft(1)
-	userMessageBorder = lipgloss.NewStyle().
+		Background(lipgloss.Color(colorPanel))
+	userMessageAccentStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorAccent)).
-		PaddingLeft(1).
-		BorderLeft(true).
-		BorderForeground(lipgloss.Color(colorAccent)).
-		BorderStyle(lipgloss.Border{Left: "▌"})
+		Background(lipgloss.Color(colorPanel))
 	primaryIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
 	uniqueIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
 	regularIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))

@@ -102,10 +102,10 @@ func (m *Model) toggleAI() {
 }
 
 func (m *Model) resizeChat() {
-	width := max(m.chatWidth-4, 1)
+	width := max(m.chatWidth-6, 1)
 	height := max(m.height-4, 1)
 	if m.compact {
-		width = max(m.width-4, 1)
+		width = max(m.width-6, 1)
 	}
 	m.chat.input.SetWidth(width)
 	m.chat.input.SetHeight(1)
@@ -119,28 +119,18 @@ func (m *Model) refreshChatView() {
 	blocks := make([]string, 0, len(m.chat.messages))
 	for _, message := range m.chat.messages {
 		var block string
-		if message.Role == ai.RoleAssistant {
-			label := message.Agent
-			if label == "" {
-				label = "Assistant"
-			}
-			block = headerStyle.Render(label) + "\n"
-		}
-		content := message.Content
-		if m.chat.glamour != nil {
+		content := safeText(message.Content)
+		if message.Role == ai.RoleAssistant && m.chat.glamour != nil {
 			if rendered, err := m.chat.glamour.Render(content); err == nil {
 				content = strings.TrimRight(rendered, "\n")
 			}
-		} else {
-			content = safeText(content)
 		}
 		if message.Role == ai.RoleUser {
-			prefix := userMessageBorder.Render()
-			lines := strings.Split(content, "\n")
 			contentWidth := max(m.chat.viewport.Width()-2, 1)
-			lineStyle := userMessageStyle.Width(contentWidth)
+			lines := strings.Split(lipgloss.Wrap(content, contentWidth, ""), "\n")
 			for i, line := range lines {
-				lines[i] = prefix + lineStyle.Render(line)
+				line = " " + line + strings.Repeat("\u00a0", max(contentWidth-lipgloss.Width(line), 0))
+				lines[i] = userMessageAccentStyle.Render("▌") + userMessageStyle.Render(line)
 			}
 			block += strings.Join(lines, "\n")
 		} else {

@@ -11,6 +11,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
 )
 
@@ -64,6 +65,9 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	}
 	if got := model.chat.messages[1].Content; got != "Add an index." {
 		t.Fatalf("assistant response = %q", got)
+	}
+	if strings.Contains(model.chat.viewport.GetContent(), "Assistant") {
+		t.Fatal("chat response renders an assistant label")
 	}
 }
 
@@ -154,6 +158,35 @@ func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 	model = updated.(Model)
 	if !model.chat.visible || model.editorWidth != 72 {
 		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
+	}
+}
+
+func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
+	model := New(":memory:", context.Background(), nil)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, nil)
+	model.fullscreen = true
+	model.layout(140, 32)
+	if got, want := model.chat.viewport.Width(), model.width-6; got != want {
+		t.Fatalf("chat viewport width = %d, want pane interior width %d", got, want)
+	}
+	model.chat.messages = []ai.Message{{Role: ai.RoleUser, Content: "full width"}}
+	model.refreshChatView()
+
+	content := model.chat.viewport.GetContent()
+	if strings.Contains(content, "\n") {
+		t.Fatalf("user message content = %q, want one rendered row", content)
+	}
+	line := content
+	if got, want := ansi.StringWidth(line), model.chat.viewport.Width(); got != want {
+		t.Fatalf("user message width = %d, want viewport width %d", got, want)
+	}
+	if !strings.Contains(line, "\u00a0") {
+		t.Fatal("user message uses clearable ASCII space padding")
+	}
+	viewLine, _, _ := strings.Cut(model.chat.viewport.View(), "\n")
+	if !strings.Contains(viewLine, "full width") {
+		t.Fatalf("user message viewport line = %q, want prompt text beside its accent", viewLine)
 	}
 }
 
