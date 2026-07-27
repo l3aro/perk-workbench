@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	stdsql "database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"time"
@@ -48,6 +49,74 @@ func (s *Service) Execute(ctx context.Context, statement string) (result shareds
 		return sharedsql.Result{}, err
 	}
 	result.RowsAffected = after - before
+	result.Duration = time.Since(started)
+	return result, nil
+}
+
+func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (result sharedsql.Result, err error) {
+	if err := sharedsql.ValidateStatement(statement); err != nil {
+		return sharedsql.Result{}, err
+	}
+
+	started := time.Now()
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return sharedsql.Result{}, fmt.Errorf("acquiring sqlite connection: %w", err)
+	}
+
+	// Check and enable query_only if not already active.
+	var queryOnly int
+	if err := conn.QueryRowContext(ctx, "PRAGMA query_only").Scan(&queryOnly); err != nil {
+		_ = conn.Close()
+		return sharedsql.Result{}, fmt.Errorf("reading query_only pragma: %w", err)
+	}
+	needsReset := queryOnly == 0
+	if needsReset {
+		if _, err := conn.ExecContext(ctx, "PRAGMA query_only = 1"); err != nil {
+			_ = conn.Close()
+			return sharedsql.Result{}, fmt.Errorf("enabling query_only: %w", err)
+		}
+	}
+
+	// Single cleanup defer: runs on ALL exit paths.
+	defer func() {
+		if needsReset {
+			resetCtx, resetCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer resetCancel()
+			if _, resetErr := conn.ExecContext(resetCtx, "PRAGMA query_only = 0"); resetErr != nil {
+				// Reset failed — discard the poisoned connection from the pool.
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+				if closeErr := conn.Close(); closeErr != nil {
+					resetErr = errors.Join(resetErr, closeErr)
+				}
+				if err != nil {
+					err = errors.Join(err, fmt.Errorf("resetting query_only: %w", resetErr))
+				} else {
+					result = sharedsql.Result{}
+					err = fmt.Errorf("resetting query_only: %w", resetErr)
+				}
+				return
+			}
+		}
+		if closeErr := conn.Close(); closeErr != nil {
+			if err != nil {
+				err = errors.Join(err, fmt.Errorf("closing sqlite connection: %w", closeErr))
+				return
+			}
+			result = sharedsql.Result{}
+			err = fmt.Errorf("closing sqlite connection: %w", closeErr)
+		}
+	}()
+
+	rows, qErr := conn.QueryContext(ctx, statement)
+	if qErr != nil {
+		return sharedsql.Result{}, fmt.Errorf("executing read-only statement: %w", qErr)
+	}
+	result, qErr = sharedsql.CollectRows(rows)
+	if qErr != nil {
+		return sharedsql.Result{}, qErr
+	}
+
 	result.Duration = time.Since(started)
 	return result, nil
 }

@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,6 +19,7 @@ func (m *Model) startChat() tea.Cmd {
 		m.Status = "AI is not configured"
 		return nil
 	}
+
 	userMessage := ai.Message{Role: ai.RoleUser, Content: prompt}
 	m.chat.messages = append(m.chat.messages, userMessage)
 	m.chat.input.Reset()
@@ -25,12 +27,21 @@ func (m *Model) startChat() tea.Cmd {
 	m.chat.canceled = false
 	m.chat.streamBuffer = ""
 	m.refreshChatView()
-	messages := append([]ai.Message(nil), m.chat.messages...)
+
+	// Clone the model state needed inside the closure.
 	client, history, conversationID := m.chat.client, m.chat.history, m.chat.conversationID
-	contextText := m.chatContext()
+	agentID := client.AgentForPrompt(prompt)
+	toolsDefs := m.databaseTools()
+
+	// Build the message list. Internal tool-round messages are kept separate
+	// from the visible transcript.
+	baseMessages := append([]ai.Message(nil), m.chat.messages...)
+
 	chatContext, cancel := context.WithCancel(m.appContext)
 	m.chat.cancel = cancel
-	agentID := client.AgentForPrompt(prompt)
+
+	// contextText is captured at send time; tool results extend the message list, not context.
+	contextText := m.chatContext()
 
 	return func() tea.Msg {
 		if history != nil {
@@ -47,16 +58,79 @@ func (m *Model) startChat() tea.Cmd {
 				return chatStreamMsg{conversationID: conversationID, err: err}
 			}
 		}
-		eventCh, err := client.ChatStream(chatContext, ai.Request{
-			AgentID:  agentID,
-			Messages: messages,
-			Context:  contextText,
-		})
-		if err != nil {
-			cancel()
-			return chatStreamMsg{conversationID: conversationID, err: err}
+
+		// Check whether tools are available and supported.
+		supportTools := len(toolsDefs) > 0 && client.SupportsTools(agentID)
+
+		if !supportTools {
+			// No tools — use the original streaming path unchanged.
+			eventCh, err := client.ChatStream(chatContext, ai.Request{
+				AgentID:  agentID,
+				Messages: baseMessages,
+				Context:  contextText,
+			})
+			if err != nil {
+				cancel()
+				return chatStreamMsg{conversationID: conversationID, err: err}
+			}
+			return readStreamEvent(eventCh, conversationID)
 		}
-		return readStreamEvent(eventCh, conversationID)
+
+		// --- Tool round: non-streaming request with tools. ---
+		messages := append([]ai.Message(nil), baseMessages...)
+		const maxToolRounds = 4
+		toolRound := 0
+		for ; toolRound < maxToolRounds; toolRound++ {
+			turn, err := client.Complete(chatContext, ai.Request{
+				AgentID:  agentID,
+				Messages: messages,
+				Context:  contextText,
+				Tools:    toolsDefs,
+			})
+			if err != nil {
+				cancel()
+				return chatStreamMsg{conversationID: conversationID, err: err}
+			}
+
+			if len(turn.ToolCalls) == 0 {
+				// Final answer ready. Deliver through a synthetic channel so the
+				// existing UI/persistence path works correctly.
+				ch := make(chan ai.StreamEvent, 2)
+				ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: turn.Content}
+				ch <- ai.StreamEvent{Kind: ai.EventDone, Response: &turn}
+				close(ch)
+				return readStreamEvent(ch, conversationID)
+			}
+
+			// Append assistant message with tool calls.
+			messages = append(messages, ai.Message{
+				Role:      ai.RoleAssistant,
+				Content:   turn.Content,
+				ToolCalls: turn.ToolCalls,
+			})
+
+			// Execute each tool call and append results.
+			for _, call := range turn.ToolCalls {
+				result := m.executeTool(chatContext, call)
+				resultMsg := ai.Message{
+					Role:     ai.RoleTool,
+					ToolID:   call.ID,
+					ToolName: call.Name,
+					Content:  result.Content,
+				}
+				if result.Error != "" {
+					resultMsg.Content = "Error: " + result.Error
+				}
+				messages = append(messages, resultMsg)
+			}
+		}
+
+		// Fallback: all maxToolRounds consumed with tool calls still returned.
+		cancel()
+		return chatStreamMsg{
+			conversationID: conversationID,
+			err:            fmt.Errorf("maximum tool rounds exceeded"),
+		}
 	}
 }
 

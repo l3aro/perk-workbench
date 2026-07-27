@@ -14,7 +14,9 @@ import (
 type chatClient interface {
 	AgentForPrompt(string) string
 	Chat(context.Context, ai.Request) (ai.Response, error)
+	Complete(context.Context, ai.Request) (ai.Response, error)
 	ChatStream(context.Context, ai.Request) (<-chan ai.StreamEvent, error)
+	SupportsTools(string) bool
 }
 
 type chatHistory interface {

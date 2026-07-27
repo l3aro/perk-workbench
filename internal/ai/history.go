@@ -19,6 +19,7 @@ type Role string
 const (
 	RoleUser      Role = "user"
 	RoleAssistant Role = "assistant"
+	RoleTool      Role = "tool"
 )
 
 type Conversation struct {
@@ -32,6 +33,9 @@ type Message struct {
 	Role      Role
 	Agent     string
 	Content   string
+	ToolCalls []ToolCall
+	ToolID    string
+	ToolName  string
 	CreatedAt time.Time
 }
 

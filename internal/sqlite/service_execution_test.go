@@ -187,3 +187,45 @@ func TestReturnsRows(t *testing.T) {
 		}
 	}
 }
+
+func TestExecuteReadOnly_rejectsMutations(t *testing.T) {
+	service := newMemoryService(t)
+	if _, err := service.Execute(context.Background(), "CREATE TABLE guard (id INTEGER PRIMARY KEY, value TEXT)"); err != nil {
+		t.Fatalf("setting up guard table: %v", err)
+	}
+
+	t.Run("accepts_select", func(t *testing.T) {
+		if _, err := service.ExecuteReadOnly(context.Background(), "SELECT 1"); err != nil {
+			t.Fatalf("SELECT rejected: %v", err)
+		}
+	})
+
+	tests := []struct {
+		name, stmt string
+	}{
+		{"insert", "INSERT INTO guard VALUES (1, 'hello')"},
+		{"update", "UPDATE guard SET value = 'world' WHERE id = 1"},
+		{"delete", "DELETE FROM guard WHERE id = 1"},
+		{"create_table", "CREATE TABLE attacker (x INTEGER)"},
+		{"drop_table", "DROP TABLE guard"},
+		{"alter_table", "ALTER TABLE guard ADD COLUMN extra INTEGER"},
+		{"create_index", "CREATE INDEX guard_val ON guard(value)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := service.ExecuteReadOnly(context.Background(), tt.stmt)
+			if err == nil {
+				t.Fatalf("ExecuteReadOnly(%q) returned nil, want error", tt.stmt)
+			}
+		})
+	}
+
+	// Verify no mutation actually occurred.
+	result, err := service.Execute(context.Background(), "SELECT count(*) FROM guard")
+	if err != nil {
+		t.Fatalf("verifying no mutation: %v", err)
+	}
+	if got := *result.Rows[0][0]; got != "0" {
+		t.Fatalf("guard table has %s rows after read-only attempts, want 0", got)
+	}
+}

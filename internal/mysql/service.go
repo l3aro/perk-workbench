@@ -136,6 +136,35 @@ func (s *Service) Execute(ctx context.Context, statement string) (result shareds
 	result.Duration = time.Since(started)
 	return result, nil
 }
+
+func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (result sharedsql.Result, err error) {
+	if err := sharedsql.ValidateStatement(statement); err != nil {
+		return sharedsql.Result{}, err
+	}
+
+	started := time.Now()
+	tx, err := s.db.BeginTx(ctx, &stdsql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return sharedsql.Result{}, fmt.Errorf("beginning read-only transaction: %w", err)
+	}
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, stdsql.ErrTxDone) && err == nil {
+			err = fmt.Errorf("rolling back read-only transaction: %w", rollbackErr)
+		}
+	}()
+
+	rows, err := tx.QueryContext(ctx, statement)
+	if err != nil {
+		return sharedsql.Result{}, fmt.Errorf("executing read-only statement: %w", err)
+	}
+	result, err = sharedsql.CollectRows(rows)
+	if err != nil {
+		return sharedsql.Result{}, err
+	}
+	result.Duration = time.Since(started)
+	return result, nil
+}
+
 func mysqlTableParts(table string) (database, name string) {
 	database, name, found := strings.Cut(table, ".")
 	if !found {

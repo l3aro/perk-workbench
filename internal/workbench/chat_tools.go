@@ -1,0 +1,217 @@
+package workbench
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/l3aro/perk-workbench/internal/ai"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+)
+
+// databaseTools returns tool definitions for AI assistant database introspection.
+// These are read-only tools that let the AI query the database safely.
+func (m Model) databaseTools() []ai.ToolDefinition {
+	if m.Database == nil {
+		return nil
+	}
+
+	product := m.databaseInfo.Product
+	return []ai.ToolDefinition{
+		{
+			Name: "sql",
+			Description: "Execute a read-only SQL query against the " + product + " database and return tabular results. " +
+				"Use this to explore schema, count rows, sample data, list tables, check server variables, and answer questions about the database content. " +
+				"Only SELECT, EXPLAIN, SHOW, PRAGMA, and DESCRIBE-type queries are allowed; mutations are rejected. " +
+				"If the user asks to INSERT, UPDATE, DELETE, CREATE, ALTER, or DROP, do NOT call this tool — " +
+				"instead output the write SQL in a markdown code block with the language set to `sql` and the user can execute it from the SQL tab. " +
+				"Returns up to 500 rows. Each cell is truncated to 40 characters.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":        "string",
+						"description": "The SQL query to execute (read-only)",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "get_connection_info",
+			Description: "Get information about the current database connection: product name, version, current user, current database, connection ID, and host details. No arguments needed.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+	}
+}
+
+// executeTool runs one tool call and returns the result.
+func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult {
+	result := ai.ToolResult{CallID: call.ID, Name: call.Name}
+
+	switch call.Name {
+	case "sql":
+		query, _ := call.Input["query"].(string)
+		query = strings.TrimSpace(query)
+		if query == "" {
+			result.Error = "query argument is required"
+			return result
+		}
+		res, err := m.Database.ExecuteReadOnly(ctx, query)
+		if err != nil {
+			result.Error = err.Error()
+			return result
+		}
+		result.Content = formatResult(res)
+
+	case "get_connection_info":
+		content, err := m.gatherConnectionInfo(ctx)
+		if err != nil {
+			result.Error = err.Error()
+			return result
+		}
+		result.Content = content
+
+	default:
+		result.Error = fmt.Sprintf("unknown tool: %s", call.Name)
+	}
+	return result
+}
+
+func formatResult(res sharedsql.Result) string {
+	if len(res.Columns) == 0 && len(res.Rows) == 0 {
+		if res.RowsAffected > 0 {
+			return fmt.Sprintf("Query OK, %d rows affected", res.RowsAffected)
+		}
+		return "(no results)"
+	}
+
+	const capRunes = 8000
+	var b strings.Builder
+
+	// Column header
+	for i, col := range res.Columns {
+		if i > 0 {
+			b.WriteString(" | ")
+		}
+		b.WriteString(col)
+	}
+	b.WriteString("\n")
+
+	budget := capRunes - utf8.RuneCountInString(b.String())
+	rowBudget := sharedsql.MaxRows
+	truncated := false
+	count := 0
+
+	for _, row := range res.Rows {
+		if count >= rowBudget {
+			truncated = true
+			break
+		}
+
+		// Build the row in a temp buffer to check size before committing.
+		var rowBuf strings.Builder
+		for i, cell := range row {
+			if i > 0 {
+				rowBuf.WriteString(" | ")
+			}
+			if cell != nil {
+				cr := []rune(*cell)
+				if len(cr) > sharedsql.MaxRunes {
+					rowBuf.WriteString(string(cr[:sharedsql.MaxRunes]) + "…")
+				} else {
+					rowBuf.WriteString(*cell)
+				}
+			} else {
+				rowBuf.WriteString("NULL")
+			}
+		}
+		rowBuf.WriteString("\n")
+
+		rowRunes := utf8.RuneCountInString(rowBuf.String())
+		if budget-rowRunes < 0 {
+			truncated = true
+			break
+		}
+		b.WriteString(rowBuf.String())
+		budget -= rowRunes
+		count++
+	}
+
+	if truncated || res.Truncated {
+		b.WriteString("(results truncated)\n")
+	}
+	return b.String()
+}
+
+func (m Model) gatherConnectionInfo(ctx context.Context) (string, error) {
+	var b strings.Builder
+	info := m.databaseInfo
+	b.WriteString(fmt.Sprintf("Product: %s\n", info.Product))
+	if info.Version != "" {
+		b.WriteString(fmt.Sprintf("Version: %s\n", info.Version))
+	}
+
+	switch info.Product {
+	case "MySQL":
+		res, err := m.Database.ExecuteReadOnly(ctx, "SELECT CURRENT_USER(), DATABASE(), CONNECTION_ID(), @@hostname, @@port")
+		if err != nil {
+			return "", err
+		}
+		if len(res.Rows) > 0 {
+			r := res.Rows[0]
+			if len(r) > 0 && r[0] != nil {
+				b.WriteString(fmt.Sprintf("Current user: %s\n", *r[0]))
+			}
+			if len(r) > 1 && r[1] != nil && *r[1] != "" {
+				b.WriteString(fmt.Sprintf("Database: %s\n", *r[1]))
+			}
+			if len(r) > 2 && r[2] != nil {
+				b.WriteString(fmt.Sprintf("Tool session ID: %s\n", *r[2]))
+			}
+			if len(r) > 3 && r[3] != nil {
+				b.WriteString(fmt.Sprintf("Host: %s\n", *r[3]))
+			}
+			if len(r) > 4 && r[4] != nil {
+				b.WriteString(fmt.Sprintf("Port: %s\n", *r[4]))
+			}
+		}
+
+	case "PostgreSQL":
+		res, err := m.Database.ExecuteReadOnly(ctx, "SELECT current_user, current_database(), pg_backend_pid(), inet_server_addr(), inet_server_port()")
+		if err != nil {
+			return "", err
+		}
+		if len(res.Rows) > 0 {
+			r := res.Rows[0]
+			if len(r) > 0 && r[0] != nil {
+				b.WriteString(fmt.Sprintf("Current user: %s\n", *r[0]))
+			}
+			if len(r) > 1 && r[1] != nil && *r[1] != "" {
+				b.WriteString(fmt.Sprintf("Database: %s\n", *r[1]))
+			}
+			if len(r) > 2 && r[2] != nil {
+				b.WriteString(fmt.Sprintf("Tool session ID: %s\n", *r[2]))
+			}
+			if len(r) > 3 && r[3] != nil {
+				b.WriteString(fmt.Sprintf("Server address: %s\n", *r[3]))
+			}
+			if len(r) > 4 && r[4] != nil {
+				b.WriteString(fmt.Sprintf("Server port: %s\n", *r[4]))
+			}
+		}
+
+	case "SQLite":
+		b.WriteString(fmt.Sprintf("Database file: %s\n", m.Target))
+		res, err := m.Database.ExecuteReadOnly(ctx, "SELECT sqlite_version()")
+		if err == nil && len(res.Rows) > 0 && len(res.Rows[0]) > 0 && res.Rows[0][0] != nil {
+			b.WriteString(fmt.Sprintf("Version: %s\n", *res.Rows[0][0]))
+		}
+	}
+
+	return b.String(), nil
+}

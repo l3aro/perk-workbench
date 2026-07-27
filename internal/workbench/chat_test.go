@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
+	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
 type fakeChatClient struct{}
@@ -22,6 +24,12 @@ func (fakeChatClient) AgentForPrompt(string) string { return "assistant" }
 func (fakeChatClient) Chat(context.Context, ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Add an index."}, nil
 }
+
+func (fakeChatClient) Complete(context.Context, ai.Request) (ai.Response, error) {
+	return ai.Response{Agent: "Assistant", Content: "Add an index."}, nil
+}
+
+func (fakeChatClient) SupportsTools(string) bool { return false }
 
 func (fakeChatClient) ChatStream(_ context.Context, request ai.Request) (<-chan ai.StreamEvent, error) {
 	ch := make(chan ai.StreamEvent, 4)
@@ -52,6 +60,14 @@ func (client waitingChatClient) Chat(ctx context.Context, _ ai.Request) (ai.Resp
 	<-ctx.Done()
 	return ai.Response{}, ctx.Err()
 }
+
+func (client waitingChatClient) Complete(ctx context.Context, _ ai.Request) (ai.Response, error) {
+	client.started <- struct{}{}
+	<-ctx.Done()
+	return ai.Response{}, ctx.Err()
+}
+
+func (waitingChatClient) SupportsTools(string) bool { return false }
 
 func (client waitingChatClient) ChatStream(ctx context.Context, _ ai.Request) (<-chan ai.StreamEvent, error) {
 	client.started <- struct{}{}
@@ -377,5 +393,108 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	}
 	if !foundShareResults {
 		t.Fatal("chat palette does not include result-sharing toggle")
+	}
+}
+
+// toolChatClient simulates an OpenAI provider that uses tools.
+type toolChatClient struct {
+	round int
+}
+
+func (c *toolChatClient) AgentForPrompt(string) string { return "assistant" }
+func (c *toolChatClient) SupportsTools(string) bool    { return true }
+func (c *toolChatClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
+	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
+}
+func (c *toolChatClient) ChatStream(_ context.Context, _ ai.Request) (<-chan ai.StreamEvent, error) {
+	ch := make(chan ai.StreamEvent)
+	close(ch)
+	return ch, nil
+}
+func (c *toolChatClient) Complete(_ context.Context, req ai.Request) (ai.Response, error) {
+	c.round++
+	if c.round == 1 {
+		return ai.Response{Agent: "Assistant", ToolCalls: []ai.ToolCall{{
+			ID: "call_test", Name: "sql",
+			Input: map[string]any{"query": "SELECT 1"},
+		}}}, nil
+	}
+	if c.round == 2 {
+		// Verify the request has assistant tool-call message + matching tool result.
+		var gotAssistantCall, gotToolResult bool
+		for _, m := range req.Messages {
+			if m.Role == ai.RoleAssistant && len(m.ToolCalls) > 0 && m.ToolCalls[0].ID == "call_test" {
+				gotAssistantCall = true
+			}
+			if m.Role == ai.RoleTool && m.ToolID == "call_test" && m.Content != "" {
+				gotToolResult = true
+			}
+		}
+		if !gotAssistantCall {
+			return ai.Response{}, errors.New("round 2 missing assistant tool-call message")
+		}
+		if !gotToolResult {
+			return ai.Response{}, errors.New("round 2 missing tool result message")
+		}
+		return ai.Response{Agent: "Assistant", Content: "There is 1 row."}, nil
+	}
+	return ai.Response{Agent: "Assistant", Content: "Fallback"}, nil
+}
+
+func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
+	// Set up model with a real in-memory SQLite database.
+	ctx := context.Background()
+	service, err := sqlite.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatalf("opening test service: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+
+	model := New("", ctx, nil)
+	model.State = stateReady
+	model.Database = service
+	model.databaseInfo = service.Info()
+	model.Target = ":memory:"
+
+	tc := &toolChatClient{}
+	model.SetAI(tc, nil)
+	model.Focus = focusChat
+	model.layout(140, 32)
+
+	// Send a prompt that triggers databaseTools.
+	model.chat.input.SetValue("count rows")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+
+	var command tea.Cmd
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Round 1: Complete returns a tool call → synthetic delta event.
+	msg := command()
+	updated, cmd := model.Update(msg)
+	model = updated.(Model)
+
+	// Round 2: tool results appended, second Complete returns final answer → synthetic done.
+	msg = cmd()
+	updated, _ = model.Update(msg)
+	model = updated.(Model)
+
+	// Verify the final answer is displayed.
+	if model.chat.loading {
+		t.Fatal("model should not be loading after completion")
+	}
+	stripped := ansi.Strip(model.chat.viewport.GetContent())
+	if !strings.Contains(stripped, "There is 1 row.") {
+		t.Fatalf("final viewport content = %q, want %q", stripped, "There is 1 row.")
+	}
+
+	// Verify the assistant message was appended to chat history.
+	if len(model.chat.messages) < 2 {
+		t.Fatalf("chat has %d messages, want at least 2", len(model.chat.messages))
+	}
+	last := model.chat.messages[len(model.chat.messages)-1]
+	if last.Role != ai.RoleAssistant || last.Content != "There is 1 row." {
+		t.Fatalf("last message = %#v, want assistant with final content", last)
 	}
 }
