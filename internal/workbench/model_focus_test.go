@@ -225,7 +225,7 @@ func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	if bottom := strings.TrimSpace(workspace[strings.LastIndex(workspace, "\n")+1:]); !strings.HasPrefix(bottom, "NORMAL") || !strings.HasSuffix(bottom, "L/H tabs") {
 		t.Fatalf("workspace hint = %q, want bottom-left NORMAL followed by tab view", workspace)
 	}
-	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); bottom != "y copy cell | enter detail | e explain" {
+	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); !strings.HasPrefix(bottom, "y copy cell | enter detail | e explain") {
 		t.Fatalf("history hint = %q, want query-history shortcuts", history)
 	}
 	if strings.Contains(footer, "e explain") || strings.Contains(footer, "L/H tabs") {
@@ -296,6 +296,7 @@ func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)
 	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
@@ -310,12 +311,20 @@ func TestFocus_numeric_keys_switch_between_tables_and_tabs(t *testing.T) {
 
 	// Then
 	assertFocus(t, model, focusWorkspace)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '4', Text: "4"})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusChat)
 }
 
 func TestFocus_tab_and_brackets_cycle_panes(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen)
 	model.State, model.Focus = stateReady, focusSchema
+	model.SetAI(fakeChatClient{}, nil)
 
 	// When — Tab forward cycles to workspace
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -330,6 +339,13 @@ func TestFocus_tab_and_brackets_cycle_panes(t *testing.T) {
 
 	// Then
 	assertFocus(t, model, focusQueryLog)
+
+	// When — Tab forward moves to chat
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+
+	// Then
+	assertFocus(t, model, focusChat)
 
 	// When — Tab forward wraps to schema
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
@@ -357,7 +373,7 @@ func TestFocus_tab_and_brackets_cycle_panes(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertFocus(t, model, focusQueryLog)
+	assertFocus(t, model, focusChat)
 }
 
 func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {

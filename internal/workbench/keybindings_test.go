@@ -29,6 +29,7 @@ func TestKeybindings_defaults_resolve_registered_commands(t *testing.T) {
 		{name: "app.quit via ctrl+c", stroke: "ctrl+c", scopes: []scope{scopeGlobal}, want: "app.quit", wantHit: true},
 		{name: "query.execute via f5", stroke: "f5", scopes: []scope{scopeGlobal}, want: "query.execute", wantHit: true},
 		{name: "focus.schema via 1", stroke: "1", scopes: []scope{scopeGlobal}, want: "focus.schema", wantHit: true},
+		{name: "focus.chat via 4", stroke: "4", scopes: []scope{scopeGlobal}, want: "focus.chat", wantHit: true},
 		{name: "editor.external via ctrl+e", stroke: "ctrl+e", scopes: []scope{scopeGlobal}, want: "editor.external", wantHit: true},
 		{name: "focus.cycle_forward via tab", stroke: "tab", scopes: []scope{scopeGlobal}, want: "focus.cycle_forward", wantHit: true},
 		{name: "focus.toggle_fullscreen via f", stroke: "f", scopes: []scope{scopeGlobal}, want: "focus.toggle_fullscreen", wantHit: true},

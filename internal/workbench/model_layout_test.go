@@ -73,6 +73,9 @@ func TestResize_wide_layout_uses_plan_formula(t *testing.T) {
 	if got := model.editorWidth; got != 68 {
 		t.Errorf("workspace width = %d, want 68 with stacked query log pane", got)
 	}
+	if got := model.chatWidth; got != 0 {
+		t.Errorf("chat width = %d, want hidden without an Assistant", got)
+	}
 	if got := model.editorHeight; got != 6 {
 		t.Errorf("editor height = %d, want 6", got)
 	}
