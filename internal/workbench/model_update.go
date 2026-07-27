@@ -169,6 +169,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.blurTables()
 		return m, m.formMode.beginInsert(m.editor)
 	}
+	if m.chatHistoryPicker != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.chatHistoryPicker = nil
+			return m, nil
+		}
+		form, command := m.chatHistoryPicker.Update(message)
+		m.chatHistoryPicker = form.(*huh.Form)
+		if m.chatHistoryPicker.State != huh.StateCompleted {
+			return m, command
+		}
+		conversationID := m.chat.historyChoice
+		m.chatHistoryPicker = nil
+		return m, m.loadChatMessages(conversationID)
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		m.layout(message.Width, message.Height)
@@ -239,6 +253,18 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
 					m.queryLog.SetCursor(0)
 				}
+				return m, nil
+			case m.keybindings.Match(message, "focus.chat", []scope{scopeGlobal}):
+				if !m.chat.visible {
+					return m, nil
+				}
+				m.Focus = focusChat
+				m.queryLogPendingG = false
+				m.editor.text.Blur()
+				m.blurTables()
+				return m, m.chat.input.Focus()
+			case m.keybindings.Match(message, "ai.toggle", []scope{scopeGlobal}):
+				m.toggleAI()
 				return m, nil
 			case m.keybindings.Match(message, "focus.toggle_fullscreen", []scope{scopeGlobal}):
 				m.fullscreen = !m.fullscreen
@@ -439,6 +465,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
+	case chatResponseMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg:
+		return m.updateChat(message)
 	}
 
 	if m.sqlEditorActive() && m.formMode.editing() {
@@ -461,6 +489,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.Opened(message.target, message.service, "")
 	m.databaseInfo = message.info
+	m.layout(m.width, m.height)
 	m.Focus = focusSchema
 	m.editor.text.Blur()
 	m.blurTables()
@@ -796,6 +825,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.queryLog, command = m.queryLog.Update(message)
 			return m, command
+		case focusChat:
+			return m.updateChat(message)
 		}
 	case stateFailure:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "failure.return_to_picker", []scope{scopeView, scopeGlobal}) {
@@ -952,6 +983,43 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
 				m.queryLog.SetCursor(0)
 			}
+		}
+		return m, nil
+	case "focus.chat":
+		if m.State == stateReady && m.chat.visible {
+			m.Focus = focusChat
+			m.queryLogPendingG = false
+			m.editor.text.Blur()
+			m.blurTables()
+			return m, m.chat.input.Focus()
+		}
+		return m, nil
+	case "ai.toggle":
+		m.toggleAI()
+		return m, nil
+	case "chat.new":
+		if m.State == stateReady && m.Focus == focusChat {
+			m.newChatConversation()
+		}
+		return m, nil
+	case "chat.history":
+		if m.State == stateReady && m.Focus == focusChat {
+			return m, m.loadChatHistory()
+		}
+		return m, nil
+	case "chat.delete":
+		if m.State == stateReady && m.Focus == focusChat {
+			return m, m.deleteChatHistory(false)
+		}
+		return m, nil
+	case "chat.clear":
+		if m.State == stateReady && m.Focus == focusChat {
+			return m, m.deleteChatHistory(true)
+		}
+		return m, nil
+	case "chat.apply_sql":
+		if m.State == stateReady && m.Focus == focusChat {
+			m.applyChatSQL()
 		}
 		return m, nil
 	case "focus.toggle_fullscreen":
@@ -1146,12 +1214,6 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 	}
 }
 
-func (m Model) executeKey(key tea.KeyPressMsg) bool {
-	return (key.Key().Code == tea.KeyEnter && key.Key().Mod == tea.ModCtrl) ||
-		(key.Key().Code == 's' && key.Key().Mod == tea.ModCtrl) ||
-		key.Key().Code == tea.KeyF5
-}
-
 func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	m.SelectTable(m.schemaTable(item))
 	m.structureColumns = nil
@@ -1203,6 +1265,7 @@ func (m *Model) blurTables() {
 	m.indexes.Blur()
 	m.foreignKeys.Blur()
 	m.queryLog.Blur()
+	m.chat.input.Blur()
 }
 
 func (m *Model) cycleFocus(forward bool) {
@@ -1210,10 +1273,14 @@ func (m *Model) cycleFocus(forward bool) {
 	m.blurTables()
 	m.queryLogPendingG = false
 
+	focusCount := focus(3)
+	if m.chat.visible {
+		focusCount++
+	}
 	if forward {
-		m.Focus = (m.Focus + 1) % 3
+		m.Focus = (m.Focus + 1) % focusCount
 	} else {
-		m.Focus = (m.Focus + 2) % 3
+		m.Focus = (m.Focus + focusCount - 1) % focusCount
 	}
 
 	switch m.Focus {
@@ -1225,6 +1292,8 @@ func (m *Model) cycleFocus(forward bool) {
 		if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
 			m.queryLog.SetCursor(0)
 		}
+	case focusChat:
+		m.chat.input.Focus()
 	}
 }
 
@@ -1250,6 +1319,13 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 				m.blurTables()
 			}
 			return m.schemaClick(contentY)
+		}
+		if m.chat.visible && x >= m.schemaWidth+m.editorWidth {
+			m.Focus = focusChat
+			m.queryLogPendingG = false
+			m.editor.text.Blur()
+			m.blurTables()
+			return m, m.chat.input.Focus()
 		}
 		if contentY < m.workspaceHeight {
 			workspaceX := max(x-m.schemaWidth, 0)
@@ -1381,12 +1457,13 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Forward wheel events to the focused area's table.
-	step := 1
-	if wheel.Button == tea.MouseWheelDown {
+	step := 0
+	switch wheel.Button {
+	case tea.MouseWheelDown:
 		step = 1
-	} else if wheel.Button == tea.MouseWheelUp {
+	case tea.MouseWheelUp:
 		step = -1
-	} else {
+	default:
 		return m, nil
 	}
 

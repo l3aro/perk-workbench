@@ -19,6 +19,8 @@ var defaultDefs = []commandDef{
 	{id: "app.palette", scope: scopeGlobal, keys: []string{"ctrl+p"}, label: "palette"},
 	{id: "focus.workspace", scope: scopeGlobal, keys: []string{"2"}, label: "workspace"},
 	{id: "focus.query_log", scope: scopeGlobal, keys: []string{"3"}, label: "log"},
+	{id: "focus.chat", scope: scopeGlobal, keys: []string{"4"}, label: "AI chat"},
+	{id: "ai.toggle", scope: scopeGlobal, keys: []string{"ctrl+g"}, label: "toggle AI"},
 	{id: "focus.toggle_fullscreen", scope: scopeGlobal, keys: []string{"f"}, label: "fullscreen"},
 	{id: "focus.cycle_forward", scope: scopeGlobal, keys: []string{"tab", "]"}, label: "next"},
 	{id: "focus.cycle_backward", scope: scopeGlobal, keys: []string{"shift+tab", "["}, label: "prev"},
@@ -64,6 +66,11 @@ var defaultDefs = []commandDef{
 	{id: "query_log.detail", scope: scopeView, keys: []string{"enter"}, label: "detail"},
 	{id: "query_log.top_first", scope: scopeView, keys: []string{"g"}, label: "top"},
 	{id: "query_log.top_last", scope: scopeView, keys: []string{"G"}, label: "bottom"},
+	{id: "chat.new", scope: scopeView, keys: []string{"ctrl+n"}, label: "new chat"},
+	{id: "chat.history", scope: scopeView, keys: []string{"ctrl+h"}, label: "chat history"},
+	{id: "chat.delete", scope: scopeView, keys: []string{"ctrl+d"}, label: "delete chat"},
+	{id: "chat.clear", scope: scopeView, keys: []string{"ctrl+l"}, label: "clear chats"},
+	{id: "chat.apply_sql", scope: scopeView, keys: []string{"ctrl+a"}, label: "apply SQL"},
 
 	// ── Query Log Detail overlay (view) ─────────────────────────
 	{id: "detail.yank", scope: scopeView, keys: []string{"y"}, label: "copy"},

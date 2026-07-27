@@ -25,6 +25,7 @@ const (
 	spaceCompact       = 1
 	sqlEditorRows      = 4
 	queryLogPaneHeight = 11
+	chatPaneWidth      = 34
 	iconPrimaryKey     = "\uf084" // nf-fa-key
 	iconUnique         = "\uee40" // nf-fa-fingerprint
 	iconRegular        = "\uf0cb" // nf-fa-list_ol
@@ -440,15 +441,25 @@ func (m *Model) layout(width, height int) {
 	previousViewportWidth := m.tableViewportWidth
 	m.width, m.height = max(width, 0), max(height, 0)
 	contentHeight := max(m.height-4, 0)
-	m.compact = m.fullscreen || m.width < compactWidth || m.height < 24
-	m.schemaWidth, m.editorWidth = m.width, m.width
+	minimumWidth := compactWidth
+	if m.State == stateReady && m.chat.visible {
+		minimumWidth = compactWidth + chatPaneWidth
+	}
+	m.compact = m.fullscreen || m.width < minimumWidth || m.height < 24
+	m.schemaWidth, m.editorWidth, m.chatWidth = m.width, m.width, m.width
 	m.workspaceHeight, m.queryLogHeight = contentHeight, 0
 	if m.compact {
 		m.queryLogHeight = contentHeight
 	}
 	if !m.compact {
 		m.schemaWidth = 30
-		m.editorWidth = max(m.width-32, 0)
+		if m.State == stateReady && m.chat.visible {
+			m.chatWidth = chatPaneWidth
+			m.editorWidth = max(m.width-m.schemaWidth-m.chatWidth-4, 1)
+		} else {
+			m.chatWidth = 0
+			m.editorWidth = max(m.width-m.schemaWidth-2, 1)
+		}
 		m.queryLogHeight = min(queryLogPaneHeight, contentHeight)
 		m.workspaceHeight = contentHeight - m.queryLogHeight
 	}
@@ -463,6 +474,7 @@ func (m *Model) layout(width, height int) {
 	m.connection.setWidth(max(connectionWidth-4, 1))
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.editor.setSize(max(m.editorWidth-4, 1), max(m.editorHeight-2, 1))
+	m.resizeChat()
 	m.tableViewportWidth = max(m.editorWidth-4, 1)
 	if m.compact {
 		m.tableViewportWidth = max(m.editorWidth-6, 1)
@@ -532,7 +544,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.queryConfirmation != nil {
 		// UV overlay path: render full UI, then overlay centered.
@@ -550,6 +562,18 @@ func (m Model) View() tea.View {
 		return view
 	}
 	view.SetContent(fullContent)
+	if m.Focus == focusChat && !m.hasOverlay() {
+		if chatCursor := m.chat.input.Cursor(); chatCursor != nil {
+			cursor := *chatCursor
+			if m.compact {
+				cursor.X += 2
+			} else {
+				cursor.X += m.schemaWidth + m.editorWidth + 2
+			}
+			cursor.Y += 1 + m.chat.viewport.Height() + 2
+			view.Cursor = &cursor
+		}
+	}
 	return view
 }
 
@@ -585,7 +609,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -599,6 +623,8 @@ func (m Model) confirmContent() string {
 		raw = m.explainPicker.form.View()
 	case m.savedQueryPicker != nil:
 		raw = m.savedQueryPicker.form.View()
+	case m.chatHistoryPicker != nil:
+		raw = m.chatHistoryPicker.View()
 	case m.quitDialog != nil:
 		raw = m.quitDialog.content(m.width)
 	case m.columnForm.confirming():
@@ -854,11 +880,16 @@ func (m Model) contentView() string {
 			return compactPane(m.workspaceView(), width, height)
 		case focusQueryLog:
 			return compactPane(m.queryLogContentView(), width, height)
+		case focusChat:
+			return compactPane(m.chatContentView(), width, height)
 		}
 	}
 	left := paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)).Render(m.schema.View())
-	right := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	center := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
+	if !m.chat.visible {
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, center)
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, center, m.chatPaneView())
 }
 
 func (m Model) rightView() string {
@@ -867,6 +898,23 @@ func (m Model) rightView() string {
 
 func (m Model) queryLogPaneView() string {
 	return paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)).Render(m.queryLogContentView())
+}
+
+func (m Model) chatPaneView() string {
+	return paneStyle(m.Focus == focusChat).Width(max(m.chatWidth-2, 0)).Height(max(m.height-2, 0)).Render(m.chatContentView())
+}
+
+func (m Model) chatContentView() string {
+	status := "enter send | pgup/pgdown history"
+	if m.chat.loading {
+		status = "thinking..."
+	}
+	return lipgloss.JoinVertical(lipgloss.Left,
+		headerStyle.Render(" AI "),
+		m.chat.viewport.View(),
+		m.chat.input.View(),
+		chrome.PaneStatus("", statusStyle.Render(status), m.chat.viewport.Width()),
+	)
 }
 
 func (m Model) queryLogContentView() string {
@@ -915,10 +963,7 @@ func (m Model) sqlPaneView() string {
 	if dropdown := m.completionOverlay(); dropdown != "" {
 		lines := strings.Split(content, "\n")
 		overlayLines := strings.Split(dropdown, "\n")
-		startLine := m.completionCursorOffset() + 1
-		if startLine < 1 {
-			startLine = 1
-		}
+		startLine := max(m.completionCursorOffset()+1, 1)
 		for i, ol := range overlayLines {
 			if startLine+i < len(lines) {
 				lines[startLine+i] = ol
@@ -994,7 +1039,11 @@ func (m Model) footer() string {
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history", "f fullscreen", "^p palette")
+		parts = append(parts, "1 tables", "2 tabs", "3 history")
+		if m.chat.visible {
+			parts = append(parts, "4 AI", "^g toggle AI")
+		}
+		parts = append(parts, "f fullscreen", "^p palette")
 		parts = append(parts, quitHint)
 		return safeText(strings.Join(parts, " | "))
 	}

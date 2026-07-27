@@ -108,6 +108,8 @@ func contextLabel(m Model) string {
 			}
 		case focusQueryLog:
 			return "Query Log"
+		case focusChat:
+			return "AI Chat"
 		}
 	}
 	return ""
@@ -136,6 +138,10 @@ func commandLabel(id CommandID, raw string) string {
 		return "focus workspace"
 	case "focus.query_log":
 		return "focus log"
+	case "focus.chat":
+		return "focus AI chat"
+	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql":
+		return raw
 	case "focus.cycle_forward":
 		return "cycle focus →"
 	case "focus.cycle_backward":
@@ -199,6 +205,12 @@ func commandLabel(id CommandID, raw string) string {
 	}
 }
 func commandAvailable(id CommandID, def commandDef, m Model) bool {
+	switch id {
+	case "ai.toggle":
+		return m.chat.enabled
+	case "focus.chat":
+		return m.chat.visible
+	}
 	if def.scope == scopeGlobal {
 		return true
 	}
@@ -218,6 +230,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "query_log.yank", "query_log.explain", "query_log.cursor_down", "query_log.cursor_up",
 		"query_log.top_first", "query_log.top_last", "query_log.detail":
 		return m.State == stateReady && m.Focus == focusQueryLog
+	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql":
+		return m.State == stateReady && m.Focus == focusChat
 	case "detail.explain", "detail.close":
 		return m.queryLogDetail != nil
 	case "picker.reload", "picker.select":

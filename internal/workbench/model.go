@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
@@ -29,6 +30,7 @@ const (
 	focusSchema    = core.FocusSchema
 	focusWorkspace = core.FocusWorkspace
 	focusQueryLog  = core.FocusQueryLog
+	focusChat      = core.FocusChat
 
 	tabStructure   = core.TabStructure
 	tabBrowse      = core.TabBrowse
@@ -62,8 +64,10 @@ type Model struct {
 	queryHistory, savedQueries                                                                     []string
 	historyIndex                                                                                   int
 	editor                                                                                         *editor
+	chat                                                                                           chatModel
 	explainPicker                                                                                  *explainPicker
 	savedQueryPicker                                                                               *savedQueryPicker
+	chatHistoryPicker                                                                              *huh.Form
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
 	browseForm                                                                                     browseForm
@@ -80,7 +84,7 @@ type Model struct {
 	queryConfirmation                                                                              *queryConfirmation
 	recentPath, savedQueriesPath                                                                   string
 	keybindings                                                                                    Keybindings
-	width, height, schemaWidth, editorWidth                                                        int
+	width, height, schemaWidth, editorWidth, chatWidth                                             int
 	workspaceHeight, queryLogHeight                                                                int
 	editorHeight, resultsHeight, tableViewportWidth                                                int
 	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
@@ -162,6 +166,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		foreignKeys:       newResultsTable(),
 		queryLog:          newResultsTable(),
 		editor:            newEditor(),
+		chat:              newChatModel(),
 		formMode:          &formModeController{},
 		connection:        newConnectionForm(),
 		completionColumns: map[string][]string{},
@@ -207,6 +212,7 @@ func (m *Model) disconnect() {
 		_ = m.Database.Close()
 	}
 	m.State = stateConnection
+	m.layout(m.width, m.height)
 	m.Database = nil
 	m.SelectedTable = ""
 	m.BrowsePage = 0

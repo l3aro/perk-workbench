@@ -25,6 +25,7 @@ const (
 	FocusSchema Focus = iota
 	FocusWorkspace
 	FocusQueryLog
+	FocusChat
 )
 
 type Tab uint8
