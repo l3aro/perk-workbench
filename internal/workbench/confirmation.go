@@ -150,9 +150,10 @@ func drawConfirmationText(canvas uv.ScreenBuffer, text string, x, y int, style u
 func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 	bounds := canvas.Bounds()
 	layout := d.layout(bounds.Dx(), bounds.Dy())
-	accent := uv.Style{Fg: chrome.ParseHex(colorAccent), Attrs: uv.AttrBold}
-	border := uv.Style{Fg: chrome.ParseHex(colorAccent)}
-	muted := uv.Style{Fg: chrome.ParseHex(colorMuted)}
+	panelStyle := uv.Style{Bg: chrome.ParseHex(colorPanel)}
+	accent := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
+	border := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel)}
+	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
 	selected := uv.Style{Fg: chrome.ParseHex(colorCanvas), Bg: chrome.ParseHex(colorAccent)}
 	unselected := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorStripe)}
 
@@ -166,6 +167,11 @@ func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 	cardBottom := min(bounds.Dy(), lastButtonY+2)
 	if layout.showHelp {
 		cardBottom = min(bounds.Dy(), lastButtonY+5)
+	}
+	for y := cardY; y < cardBottom; y++ {
+		for x := cardX; x < cardRight; x++ {
+			canvas.SetCell(x, y, &uv.Cell{Content: " ", Width: 1, Style: panelStyle})
+		}
 	}
 	for x := cardX; x < cardRight; x++ {
 		canvas.SetCell(x, cardY, &uv.Cell{Content: "─", Width: 1, Style: border})
