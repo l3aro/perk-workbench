@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
 	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/workbench"
@@ -31,6 +32,29 @@ func loadKeybindings() (workbench.Keybindings, error) {
 		return workbench.DefaultKeybindings(), nil
 	}
 	return workbench.LoadKeybindings(path)
+}
+
+func loadAI() (*ai.Client, *ai.History, error) {
+	config, err := ai.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+	if _, ok := config.Agents["assistant"]; !ok {
+		return nil, nil, nil
+	}
+	client, err := ai.NewClient(config)
+	if err != nil {
+		return nil, nil, err
+	}
+	path, err := ai.HistoryPath()
+	if err != nil {
+		return nil, nil, err
+	}
+	history, err := ai.OpenHistory(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, history, nil
 }
 
 func main() {
@@ -57,9 +81,16 @@ func run(target string) error {
 	if err != nil {
 		return err
 	}
+	client, history, err := loadAI()
+	if err != nil {
+		return err
+	}
 
 	model := workbench.New(target, ctx, database.Open)
 	model.SetKeybindings(keybindings)
+	if client != nil {
+		model.SetAI(client, history)
+	}
 
 	final, runErr := tea.NewProgram(
 		model,
@@ -73,6 +104,9 @@ func run(target string) error {
 		if service := finalModel.Service(); service != nil {
 			closeErr = service.Close()
 		}
+	}
+	if history != nil {
+		closeErr = errors.Join(closeErr, history.Close())
 	}
 	if errors.Is(runErr, tea.ErrProgramKilled) {
 		runErr = nil
