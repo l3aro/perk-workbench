@@ -91,8 +91,9 @@ The container cannot access the native desktop clipboard; the terminal forwards 
 
 ### Workbench
 
-- `Tab` moves focus forward: schema, editor, results, then schema.
-- `Shift+Tab` moves focus backward through the same three panes.
+- `Tab` moves focus forward: schema, workspace, query log, AI chat, then schema.
+- `Shift+Tab` moves focus backward through the same panes.
+- When an Assistant agent is configured, `4` focuses AI chat, `Ctrl+G` toggles it, and `f` makes the focused pane fullscreen.
 - `F5` runs the editor contents.
 - `Ctrl+Enter` runs the editor contents when the terminal reports the modified Enter key.
 - `Ctrl+S` runs the editor contents and works in terminals that cannot distinguish modified Enter keys.
@@ -102,6 +103,45 @@ The container cannot access the native desktop clipboard; the terminal forwards 
 - `Escape` cancels an active query. In the editor, `Escape` switches from insert mode to normal mode.
 - `q` quits when the editor is empty or another pane owns focus. In an editor with text, `q` is inserted as text.
 - Raw `Ctrl+C` requests quit. If a query is running, the query is canceled first and the program exits after cancellation completes.
+
+### AI chat
+
+AI is optional. Define personal defaults in `$XDG_CONFIG_HOME/perk-workbench/ai.json`; a `.perk-workbench/ai.json` file in the current project fully replaces matching provider and agent IDs.
+
+```json
+{
+  "providers": {
+    "openrouter": {
+      "name": "OpenRouter",
+      "api": "openai-compatible",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key": "env:OPENROUTER_API_KEY",
+      "models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]
+    }
+  },
+  "agents": {
+    "assistant": {
+      "name": "Assistant",
+      "provider": "openrouter",
+      "model": "openai/gpt-5-mini",
+      "system_prompt": "Help users work safely with their database."
+    },
+    "oracle": {
+      "name": "Oracle",
+      "provider": "openrouter",
+      "model": "anthropic/claude-sonnet-4.5",
+      "system_prompt": "Reason carefully about complex database tasks."
+    }
+  }
+}
+```
+
+- Provider `api` values are `openai`, `anthropic`, `gemini`, and `openai-compatible`.
+- Any complete string value may be `env:VARIABLE_NAME`; partial `${...}` substitutions are not supported.
+- `assistant` is required when AI is configured. `spark` and `oracle` are optional. Chat defaults to Assistant; use `@Spark` or `/lite`, and `@Oracle` or `/premium`, to select the optional agents. Complex prompts can route to Oracle when it is configured.
+- The active database product/version, schema object names, editor SQL, and visible result rows are sent with a request. Context is capped before transmission.
+- AI never executes SQL. `Ctrl+A` in the chat pane, or the command palette action, copies the latest fenced SQL block into the editor for review and normal execution.
+- Conversations are saved automatically in `$XDG_STATE_HOME/perk-workbench/conversations.db` (or `~/.local/state/perk-workbench/conversations.db`). The history stores prompts and responses, not provider configuration, API keys, schema snapshots, result rows, or request context.
 
 ### Custom key bindings
 
