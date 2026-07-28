@@ -83,8 +83,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, command
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}) {
-					return m, m.openColumnForm()
+				if keyPress, ok := message.(tea.KeyPressMsg); ok {
+					switch {
+					case m.keybindings.Match(keyPress, "structure.filter", []scope{scopeView, scopeGlobal}):
+						return m, m.openTableFilter()
+					case m.keybindings.Match(keyPress, "structure.reset", []scope{scopeView, scopeGlobal}):
+						m.resetTableFilter()
+						return m, nil
+					case m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}):
+						return m, m.openColumnForm()
+					}
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
@@ -221,21 +229,23 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
+					case m.keybindings.Match(keyPress, "indexes.filter", []scope{scopeView, scopeGlobal}):
+						return m, m.openTableFilter()
+					case m.keybindings.Match(keyPress, "indexes.reset", []scope{scopeView, scopeGlobal}):
+						m.resetTableFilter()
+						return m, nil
 					case m.keybindings.Match(keyPress, "indexes.create", []scope{scopeView, scopeGlobal}):
 						return m, m.openIndexForm(nil)
 					case m.keybindings.Match(keyPress, "indexes.edit", []scope{scopeView, scopeGlobal}):
-						row := m.indexes.Cursor()
-						if row >= 0 && row < len(m.indexInfo) {
-							return m, m.openIndexForm(&m.indexInfo[row])
+						if index := m.selectedIndex(); index != nil {
+							return m, m.openIndexForm(index)
 						}
 						return m, nil
 					case m.keybindings.Match(keyPress, "indexes.delete", []scope{scopeView, scopeGlobal}):
-						row := m.indexes.Cursor()
-						if row >= 0 && row < len(m.indexInfo) {
-							_ = m.openIndexForm(&m.indexInfo[row])
+						if index := m.selectedIndex(); index != nil {
+							_ = m.openIndexForm(index)
 							m.indexForm.beginConfirmation(false, true)
 							m.formMode.beginConfirm()
-							return m, nil
 						}
 						return m, nil
 					}
@@ -262,24 +272,26 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
+					case m.keybindings.Match(keyPress, "foreign_keys.filter", []scope{scopeView, scopeGlobal}):
+						return m, m.openTableFilter()
+					case m.keybindings.Match(keyPress, "foreign_keys.reset", []scope{scopeView, scopeGlobal}):
+						m.resetTableFilter()
+						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.toggle_diagram", []scope{scopeView, scopeGlobal}):
 						m.relationshipDiagram = !m.relationshipDiagram
 						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.create", []scope{scopeView, scopeGlobal}):
 						return m, m.openForeignKeyForm(nil)
 					case m.keybindings.Match(keyPress, "foreign_keys.edit", []scope{scopeView, scopeGlobal}):
-						row := m.foreignKeys.Cursor()
-						if row >= 0 && row < len(m.foreignKeyInfo) {
-							return m, m.openForeignKeyForm(&m.foreignKeyInfo[row])
+						if foreignKey := m.selectedForeignKey(); foreignKey != nil {
+							return m, m.openForeignKeyForm(foreignKey)
 						}
 						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.delete", []scope{scopeView, scopeGlobal}):
-						row := m.foreignKeys.Cursor()
-						if row >= 0 && row < len(m.foreignKeyInfo) {
-							_ = m.openForeignKeyForm(&m.foreignKeyInfo[row])
+						if foreignKey := m.selectedForeignKey(); foreignKey != nil {
+							_ = m.openForeignKeyForm(foreignKey)
 							m.foreignKeyForm.beginConfirmation(false, true)
 							m.formMode.beginConfirm()
-							return m, nil
 						}
 						return m, nil
 					}
@@ -374,5 +386,5 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) formActive() bool {
-	return m.columnForm.active() || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
+	return m.tableFiltering || m.columnForm.active() || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
 }

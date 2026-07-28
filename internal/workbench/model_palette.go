@@ -183,6 +183,16 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, readDirectory(m.pickerDir)
 		}
 		return m, nil
+	case "structure.filter", "indexes.filter", "foreign_keys.filter":
+		if m.State == stateReady && m.Focus == focusWorkspace && !m.formActive() {
+			return m, m.openTableFilter()
+		}
+		return m, nil
+	case "structure.reset", "indexes.reset", "foreign_keys.reset":
+		if m.State == stateReady && m.Focus == focusWorkspace && !m.formActive() {
+			m.resetTableFilter()
+		}
+		return m, nil
 	case "browse.refine":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			return m, m.openBrowseFilterForm()

@@ -212,6 +212,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.browseLoading = true
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
+		if m.tableFiltering {
+			return m, m.updateTableFilter(message)
+		}
 		if m.keybindings.Match(message, "editor.external", []scope{scopeGlobal}) {
 			if command, handled := m.openExternalEditor(); handled {
 				return m, command
