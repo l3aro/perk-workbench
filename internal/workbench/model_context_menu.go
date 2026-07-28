@@ -1,0 +1,72 @@
+package workbench
+
+import (
+	tea "charm.land/bubbletea/v2"
+)
+
+func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
+	menu := m.contextMenu
+	selectAction := func(action string) (tea.Model, tea.Cmd) {
+		m.contextMenu = nil
+		switch action {
+		case "copy_cell":
+			return m, m.copyBrowseCell()
+		case "edit_cell":
+			return m, m.openCellEditor()
+		case "edit_row":
+			return m, m.openBrowseForm()
+		case "delete_row":
+			m.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
+				{label: "Yes, delete", action: "delete"},
+				{label: "Cancel", action: "cancel"},
+			})
+		}
+		return m, nil
+	}
+
+	switch msg := message.(type) {
+	case tea.KeyPressMsg:
+		switch msg.Keystroke() {
+		case "esc":
+			m.contextMenu = nil
+		case "up", "k":
+			menu.selected = max(menu.selected-1, 0)
+		case "down", "j":
+			menu.selected = min(menu.selected+1, max(len(menu.options)-1, 0))
+		case "i":
+			return selectAction("edit_cell")
+		case "y":
+			return selectAction("copy_cell")
+		case "d":
+			return selectAction("delete_row")
+		case "enter":
+			if menu.selected >= 0 && menu.selected < len(menu.options) {
+				return selectAction(menu.options[menu.selected].action)
+			}
+		}
+	case tea.MouseClickMsg:
+		if msg.Button != tea.MouseLeft {
+			m.contextMenu = nil
+			return m, nil
+		}
+		relY := msg.Mouse().Y - menu.y - 1
+		if relY >= 2 && relY < 2+len(menu.options) {
+			return selectAction(menu.options[relY-2].action)
+		}
+		m.contextMenu = nil
+	}
+	return m, nil
+}
+
+func (m *Model) copyBrowseCell() tea.Cmd {
+	row, col := m.browse.Cursor(), m.browseColumn
+	if row < 0 || row >= len(m.browseResult.Rows) || col < 0 || col >= len(m.browseResult.Columns) {
+		return nil
+	}
+	value := ""
+	if cell := m.browseResult.Rows[row][col]; cell != nil {
+		value = *cell
+	}
+	m.Status = "copied to clipboard"
+	return copyQueryLogStatement(value)
+}
