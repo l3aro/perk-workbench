@@ -77,7 +77,7 @@ func TestEditor_completionAfterQualifiedTableInsertsColumn(t *testing.T) {
 
 func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.schemaObjects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
 	model.editor.setValue("S")
@@ -100,7 +100,7 @@ func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 
 func TestModel_completionColumnsCachesQualifiedTableResult(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.completionRequestTag = 1
 	model.completionTable = "orders"
 	model.editor.setValue("SELECT orders.")

@@ -56,7 +56,7 @@ func TestNew_loadsPersistedQueryLog(t *testing.T) {
 	if err := saveQueryLog(path, entry); err != nil {
 		t.Fatal(err)
 	}
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	if got := model.queryLogEntries; len(got) != 1 || got[0].statement != entry.statement {
 		t.Fatalf("loaded query log = %#v, want %#v", got, []queryLogEntry{entry})
 	}

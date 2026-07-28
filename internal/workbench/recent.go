@@ -11,21 +11,28 @@ import (
 const maxRecentConnections = 20
 
 type recentConnection struct {
-	Driver connectionDriver `json:"driver"`
-	Name   string           `json:"name"`
-	Target string           `json:"target"`
-	Host   string           `json:"host,omitempty"`
-	Port   string           `json:"port,omitempty"`
-	User   string           `json:"user,omitempty"`
+	Driver   connectionDriver `json:"driver"`
+	Name     string           `json:"name"`
+	Target   string           `json:"target"`
+	Host     string           `json:"host,omitempty"`
+	Port     string           `json:"port,omitempty"`
+	User     string           `json:"user,omitempty"`
+	ReadOnly bool             `json:"readOnly,omitempty"`
 }
 
 func (c recentConnection) FilterValue() string { return c.Name + " " + c.Target }
 func (c recentConnection) Title() string       { return safeText(c.Name) }
 func (c recentConnection) Description() string {
+	desc := ""
 	if c.Driver != driverSQLite {
-		return safeText(c.driverName() + ": " + c.User + "@" + c.Host + ":" + c.Port + "/" + c.Target)
+		desc = safeText(c.driverName() + ": " + c.User + "@" + c.Host + ":" + c.Port + "/" + c.Target)
+	} else {
+		desc = safeText(c.driverName() + ": " + c.Target)
 	}
-	return safeText(c.driverName() + ": " + c.Target)
+	if c.ReadOnly {
+		desc += " [RO]"
+	}
+	return desc
 }
 
 func (c recentConnection) driverName() string {

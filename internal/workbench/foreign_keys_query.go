@@ -52,6 +52,9 @@ func (m Model) saveForeignKey() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return foreignKeyChangedMsg{err: err} }
 	}
+	if m.ReadOnly {
+		return func() tea.Msg { return foreignKeyChangedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	table, service, previous := m.SelectedTable, m.Database, m.foreignKeyForm.previous
 	statement, startedAt := m.foreignKeyChangeStatement(table, previous, change), time.Now()
 	return func() tea.Msg {
@@ -63,6 +66,9 @@ func (m Model) saveForeignKey() tea.Cmd {
 }
 
 func (m Model) deleteForeignKey() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return foreignKeyDeletedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	table, service, previous := m.SelectedTable, m.Database, m.foreignKeyForm.previous
 	statement, startedAt := m.dropForeignKeyStatement(table, previous), time.Now()
 	return func() tea.Msg {

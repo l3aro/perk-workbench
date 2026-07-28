@@ -157,7 +157,7 @@ type pickerSelectionMsg struct {
 
 type OpenDatabase func(context.Context, string) (sharedsql.Opened, error)
 
-func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
+func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly bool) Model {
 	model := Model{
 		Workflow:          core.New(target),
 		appContext:        ctx,
@@ -181,6 +181,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		historyIndex:      -1,
 		queryLogPageSize:  queryLogPageSize(),
 	}
+	model.ReadOnly = readOnly
 	model.commandPalette = newCommandPalette(model)
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()

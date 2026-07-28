@@ -42,6 +42,7 @@ type connectionFormValues struct {
 	name, target string
 	host, port   string
 	user, pass   string
+	readOnly     bool
 	action       string
 }
 
@@ -82,7 +83,10 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 	} else {
 		fields = append(fields, newEditableInput(huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget), &f.values.target))
 	}
-	fields = append(fields, newConnectionActionButtons(&f.values.action))
+	fields = append(fields,
+		huh.NewConfirm().Key("readOnly").Title("Read-Only").Description("Block mutations (INSERT, UPDATE, DELETE, DDL)").Value(&f.values.readOnly),
+		newConnectionActionButtons(&f.values.action),
+	)
 	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 	return f.form.Init()
 }

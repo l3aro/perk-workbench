@@ -21,7 +21,7 @@ var (
 	primaryIndexStyle, uniqueIndexStyle                                               lipgloss.Style
 	regularIndexStyle                                                                 lipgloss.Style
 	statusSuccessStyle, statusFailedStyle                                             lipgloss.Style
-	statusCanceledStyle                                                               lipgloss.Style
+	statusCanceledStyle, readOnlyStyle                                                lipgloss.Style
 	modeNormalStyle, modeInsertStyle                                                  lipgloss.Style
 	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle lipgloss.Style
 	userMessageStyle, userMessageAccentStyle                                          lipgloss.Style
@@ -115,6 +115,11 @@ func resetStyles() {
 	modeInsertStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#000000")).
 		Background(lipgloss.Color(colorModeInsert)).
+		Bold(true).
+		Padding(0, spaceCompact)
+	readOnlyStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff")).
+		Background(lipgloss.Color("#d29922")).
 		Bold(true).
 		Padding(0, spaceCompact)
 	selectedCellStyle = lipgloss.NewStyle().

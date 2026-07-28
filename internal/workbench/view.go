@@ -502,6 +502,9 @@ func (m Model) footer() string {
 		if m.Status != "" {
 			parts = append(parts, m.Status)
 		}
+		if m.ReadOnly {
+			parts = append(parts, "RO")
+		}
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
@@ -515,10 +518,16 @@ func (m Model) footer() string {
 }
 
 func (m Model) modeBadge() string {
+	badge := ""
 	if m.formMode.editing() {
-		return modeInsertStyle.Render("INSERT")
+		badge = modeInsertStyle.Render("INSERT")
+	} else {
+		badge = modeNormalStyle.Render("NORMAL")
 	}
-	return modeNormalStyle.Render("NORMAL")
+	if m.ReadOnly && m.State == stateReady {
+		badge += " " + readOnlyStyle.Render("RO")
+	}
+	return badge
 }
 
 func (m Model) chatModeBadge() string {

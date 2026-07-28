@@ -158,6 +158,9 @@ type cellEditorUpdatedMsg struct {
 }
 
 func (m Model) executeCellUpdate() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return cellEditorUpdatedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	statement := m.cellEditor.updateStatement()
 	if statement == "" {
 		return func() tea.Msg { return cellEditorUpdatedMsg{} }

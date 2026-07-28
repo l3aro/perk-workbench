@@ -43,9 +43,10 @@ func (m *Model) recordConnection() {
 		name = m.connection.connectionName()
 	}
 	connection := recentConnection{
-		Driver: driver,
-		Name:   name,
-		Target: target,
+		Driver:   driver,
+		Name:     name,
+		Target:   target,
+		ReadOnly: m.ReadOnly,
 	}
 	if connection.Driver != driverSQLite {
 		connection.Host = strings.TrimSpace(m.connection.values.host)
@@ -89,6 +90,7 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	}
 	m.connection.values.driver, m.connection.values.name, m.connection.values.target = connection.Driver, connection.Name, connection.Target
 	m.connection.values.host, m.connection.values.port, m.connection.values.user = connection.Host, connection.Port, connection.User
+	m.connection.values.readOnly = connection.ReadOnly
 	m.connection.values.pass = ""
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
@@ -155,6 +157,7 @@ func (m Model) openConnection() (tea.Model, tea.Cmd) {
 		m.Status = safeText(err.Error())
 		return m, nil
 	}
+	m.ReadOnly = m.connection.values.readOnly
 	target := m.connectionTarget()
 	m.BeginOpening(target, "opening "+safeText(m.connection.connectionName()))
 	return m, m.openTarget(target)

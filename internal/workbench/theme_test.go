@@ -9,7 +9,7 @@ func TestPaletteThemeCommandsApplySharedPalette(t *testing.T) {
 	original := activeTheme
 	t.Cleanup(func() { setTheme(original) })
 
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	for _, test := range []struct {
 		command CommandID
 		theme   appTheme

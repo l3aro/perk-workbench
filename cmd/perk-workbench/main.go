@@ -15,14 +15,23 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench"
 )
 
-func parseTarget(args []string) (string, error) {
-	switch len(args) {
+func parseTarget(args []string) (target string, readOnly bool, _ error) {
+	nonFlags := make([]string, 0, len(args))
+	for _, a := range args {
+		switch a {
+		case "--read-only", "-r":
+			readOnly = true
+		default:
+			nonFlags = append(nonFlags, a)
+		}
+	}
+	switch len(nonFlags) {
 	case 0:
-		return "", nil
+		return "", readOnly, nil
 	case 1:
-		return args[0], nil
+		return nonFlags[0], readOnly, nil
 	default:
-		return "", fmt.Errorf("expected zero or one target, got %d", len(args))
+		return "", false, fmt.Errorf("expected zero or one target, got %d", len(nonFlags))
 	}
 }
 
@@ -58,18 +67,18 @@ func loadAI() (*ai.Client, *ai.History, error) {
 }
 
 func main() {
-	target, err := parseTarget(os.Args[1:])
+	target, readOnly, err := parseTarget(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := run(target); err != nil {
+	if err := run(target, readOnly); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(target string) error {
+func run(target string, readOnly bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -86,7 +95,7 @@ func run(target string) error {
 		return err
 	}
 
-	model := workbench.New(target, ctx, database.Open)
+	model := workbench.New(target, ctx, database.Open, readOnly)
 	model.SetKeybindings(keybindings)
 	if client != nil {
 		model.SetAI(client, history)

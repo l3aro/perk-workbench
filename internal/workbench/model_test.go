@@ -39,7 +39,7 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 		t.Fatalf("closing fixture database before workbench open: %v", err)
 	}
 
-	model := New(target, ctx, testOpen)
+	model := New(target, ctx, testOpen, false)
 
 	// When
 	message := model.Init()()
@@ -74,7 +74,7 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 	// Given
 	target := filepath.Join(t.TempDir(), "missing.db")
-	model := New(target, context.Background(), testOpen)
+	model := New(target, context.Background(), testOpen, false)
 
 	// When
 	message := model.Init()()
@@ -91,7 +91,7 @@ func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 }
 
 func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	if model.connection.focus != connectionFocusRecent {
 		t.Fatalf("connection focus = %d, want recent connections", model.connection.focus)
 	}
@@ -99,7 +99,7 @@ func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
 
 func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	if err := model.schema.SetItems([]list.Item{schemaItem{title: "projects"}}); err != nil {
 		t.Fatalf("setting schema items: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
 
 func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus = stateReady, focusSchema
 	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
 		{Database: "analytics", Type: "database", Name: "analytics"},
@@ -185,7 +185,7 @@ func readyModel(t *testing.T) Model {
 			t.Errorf("closing test service: %v", err)
 		}
 	})
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.queryLogPath = t.TempDir() + "/data.db"
 	model.queryLogEntries = nil
 	model.renderQueryLog()

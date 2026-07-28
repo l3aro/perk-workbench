@@ -34,7 +34,7 @@ func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
 func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 	// Given
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.driver, model.connection.values.name = driverSQLite, ""
 	model.connection.values.target = "/tmp/alpha.db"
 	model.recordConnection()
@@ -58,7 +58,7 @@ func TestNew_targetInitializesRecentConnectionPersistence(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	// When
-	model := New("/tmp/chinook.db", context.Background(), testOpen)
+	model := New("/tmp/chinook.db", context.Background(), testOpen, false)
 
 	// Then
 	if model.recentPath == "" {
@@ -69,7 +69,7 @@ func TestNew_targetInitializesRecentConnectionPersistence(t *testing.T) {
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
 	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
@@ -97,7 +97,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
 	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
@@ -125,7 +125,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_2(t *testi
 func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_3(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
 	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
@@ -151,7 +151,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword_merged_3(t *testi
 }
 
 func TestConnectionForm_recentConnectionActions(t *testing.T) {
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.recentPath = filepath.Join(t.TempDir(), "connections.json")
 	model.setRecentConnections([]recentConnection{
 		{Driver: driverSQLite, Name: "Alpha", Target: "/tmp/alpha.db"},
@@ -192,7 +192,7 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 
 func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
@@ -221,7 +221,7 @@ func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword(t *testing
 
 func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword_merged_2(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
@@ -250,7 +250,7 @@ func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword_merged_2(t
 
 func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword_merged_3(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
@@ -278,7 +278,7 @@ func TestConnectionForm_selectingRemoteProfileRequiresCurrentPassword_merged_3(t
 }
 
 func TestConnectionForm_paneKeysKeepTabInTheForm(t *testing.T) {
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	model = updated.(Model)
@@ -303,7 +303,7 @@ func TestConnectionForm_recentAddAndEditInitializeUsableHuhForms(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", context.Background(), testOpen)
+			model := New("", context.Background(), testOpen, false)
 			model.recentConnections = []recentConnection{{Driver: driverSQLite, Name: "Alpha", Target: ":memory:"}}
 			_ = model.recent.SetItems(recentListItems(model.recentConnections))
 			model.connection.setFocus(connectionFocusRecent)

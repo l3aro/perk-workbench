@@ -38,6 +38,9 @@ func (m Model) saveIndex() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return indexChangedMsg{err: err} }
 	}
+	if m.ReadOnly {
+		return func() tea.Msg { return indexChangedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	table, service, previous := m.SelectedTable, m.Database, m.indexForm.previous
 	statement, startedAt := m.indexChangeStatement(table, previous, change), time.Now()
 	return func() tea.Msg {
@@ -48,6 +51,9 @@ func (m Model) saveIndex() tea.Cmd {
 	}
 }
 func (m Model) deleteIndex() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return indexDeletedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	table, service, name := m.SelectedTable, m.Database, m.indexForm.previous
 	statement, startedAt := m.dropIndexStatement(table, name), time.Now()
 	return func() tea.Msg {

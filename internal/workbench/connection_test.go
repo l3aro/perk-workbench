@@ -92,7 +92,7 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 
 func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	_ = model.connection.form.NextField()
 
@@ -132,7 +132,7 @@ func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T)
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", context.Background(), testOpen)
+			model := New("", context.Background(), testOpen, false)
 			model.connection.focus = connectionFocusForm
 			model.connection.values.target = ":memory:"
 
@@ -162,7 +162,7 @@ func TestConnectionForm_executeKeysWorkWhileEditing(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", context.Background(), testOpen)
+			model := New("", context.Background(), testOpen, false)
 			model.connection.focus = connectionFocusForm
 			model.connection.values.target = ":memory:"
 			updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
@@ -193,10 +193,10 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", context.Background(), testOpen)
+			model := New("", context.Background(), testOpen, false)
 			model.connection.focus = connectionFocusForm
 			model.connection.values.target = ":memory:"
-			for range 3 {
+			for range 4 {
 				_ = model.connection.form.NextField()
 			}
 			if got := model.connection.form.GetFocusedField().GetKey(); got != "action" {
@@ -238,7 +238,7 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 }
 func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.driver, model.connection.values.host = driverMySQL, ""
 	model.connection.values.port, model.connection.values.user, model.connection.values.target = "3306", "alice", "app"
@@ -259,7 +259,7 @@ func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing
 
 func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When
@@ -275,7 +275,7 @@ func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 
 func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When
@@ -304,7 +304,7 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
 		openedTarget = target
 		return sharedsql.Opened{}, nil
-	})
+	}, false)
 	model.connection.values.driver, model.connection.values.host = driverMySQL, "localhost"
 	model.connection.values.port, model.connection.values.target = "3306", "app"
 	model.connection.values.user = "alice"
@@ -342,7 +342,7 @@ func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
 	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
 		openedTarget = target
 		return sharedsql.Opened{}, nil
-	})
+	}, false)
 	model.connection.values.driver, model.connection.values.host = driverPostgreSQL, "localhost"
 	model.connection.values.port, model.connection.values.target = "5432", "app"
 	model.connection.values.user = "alice"
@@ -360,7 +360,7 @@ func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
 
 func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.recentConnections = nil
 	model.connection.values.driver, model.connection.values.target = driverMySQL, "app"
 	model.connection.values.host, model.connection.values.port, model.connection.values.user = "db.example.test", "3307", "alice"
@@ -381,7 +381,7 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 
 func TestConnectionForm_recordsSQLiteProfileWithoutRemoteFields(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When
@@ -396,7 +396,7 @@ func TestConnectionForm_recordsSQLiteProfileWithoutRemoteFields(t *testing.T) {
 
 func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model = resolveConnectionCommand(model, model.connection.form.Init())
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
@@ -421,7 +421,7 @@ func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 
 func TestConnectionForm_f5AllowsBlankMySQLDatabase(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.driver = driverMySQL
 	model.connection.values.host, model.connection.values.port, model.connection.values.user = "localhost", "3306", "alice"
@@ -456,7 +456,7 @@ func TestConnectionForm_completionSequencesInitBeforeConnectionAction(t *testing
 
 func TestConnectionForm_retainsRejectedSQLiteConnection(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.name = "Missing"
 	model.connection.values.target = t.TempDir() + "/missing.db"

@@ -120,6 +120,9 @@ func (m Model) loadBrowse() tea.Cmd {
 }
 
 func (m Model) alterColumn() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return columnAlteredMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	table, service := m.SelectedTable, m.Database
 	change, err := m.columnForm.change()
 	if err != nil {
@@ -132,6 +135,9 @@ func (m Model) alterColumn() tea.Cmd {
 }
 
 func (m Model) updateBrowseRow() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return browseRowUpdatedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	statement, err := m.browseForm.updateStatement(m.SelectedTable)
 	if err != nil {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: err} }
@@ -217,6 +223,9 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 }
 
 func (m Model) deleteRow() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("connection is read-only")} }
+	}
 	if len(m.structureColumns) == 0 || m.browse.Cursor() < 0 || m.browse.Cursor() >= len(m.browseResult.Rows) {
 		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("no row selected")} }
 	}

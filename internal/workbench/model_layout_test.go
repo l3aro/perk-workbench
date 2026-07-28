@@ -16,7 +16,7 @@ import (
 
 func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.State = stateReady
 
 	// When
@@ -60,7 +60,7 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 
 func TestResize_wide_layout_uses_plan_formula(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.State = stateReady
 
 	// When
@@ -101,7 +101,7 @@ func TestResize_small_nonzero_dimensions_render_without_negative_sizes(t *testin
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			model := New("", context.Background(), testOpen)
+			model := New("", context.Background(), testOpen, false)
 			model.State, model.Focus = test.state, test.focus
 
 			// When
@@ -121,7 +121,7 @@ func TestResize_small_nonzero_dimensions_render_without_negative_sizes(t *testin
 
 func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	// Given
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.State = stateReady
 
 	// When

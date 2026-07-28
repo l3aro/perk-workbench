@@ -80,7 +80,7 @@ func (client waitingChatClient) ChatStream(ctx context.Context, _ ai.Request) (<
 }
 
 func TestChat_streamingRendersPartialContent(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
 	model.layout(140, 32)
@@ -145,7 +145,7 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 }
 
 func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
 	model.layout(140, 32)
@@ -217,7 +217,7 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(client, history)
 	model.layout(140, 32)
@@ -263,7 +263,7 @@ func TestChatSQL_returnsLatestFencedSQLBlock(t *testing.T) {
 }
 
 func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.layout(140, 32)
 	if model.chat.visible {
@@ -288,7 +288,7 @@ func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 }
 
 func TestChat_inputPaddingPreservesPaneHeight(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
 	model.layout(140, 32)
@@ -299,7 +299,7 @@ func TestChat_inputPaddingPreservesPaneHeight(t *testing.T) {
 }
 
 func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, nil)
 	model.fullscreen = true
@@ -328,7 +328,7 @@ func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
 }
 
 func TestChat_contextExcludesResultRowsByDefault(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.results.SetRows([]table.Row{{"secret"}})
 
 	if context := model.chatContext(); strings.Contains(context, "Visible results:") {
@@ -337,7 +337,7 @@ func TestChat_contextExcludesResultRowsByDefault(t *testing.T) {
 }
 
 func TestChat_contextIncludesResultRowsWhenEnabled(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.results.SetRows([]table.Row{{"secret"}})
 	updated, _ := model.handlePaletteCommand("chat.share_results")
@@ -350,7 +350,7 @@ func TestChat_contextIncludesResultRowsWhenEnabled(t *testing.T) {
 
 func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	started := make(chan struct{})
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(waitingChatClient{started: started}, nil)
 	model.layout(140, 32)
@@ -391,7 +391,7 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 }
 
 func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
-	model := New(":memory:", context.Background(), nil)
+	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	for _, item := range newCommandPalette(model).items {
 		if item.id == "ai.toggle" || item.id == "focus.chat" {
@@ -472,7 +472,7 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = service.Close() })
 
-	model := New("", ctx, nil)
+	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
 	model.databaseInfo = service.Info()
@@ -531,7 +531,7 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 
 	for _, terminalWidth := range []int{140, 100, 80, 60} {
 		t.Run(fmt.Sprintf("width_%d", terminalWidth), func(t *testing.T) {
-			model := New(":memory:", context.Background(), nil)
+			model := New(":memory:", context.Background(), nil, false)
 			model.State = stateReady
 			ctx := context.Background()
 			service, err := sqlite.Open(ctx, ":memory:")

@@ -93,7 +93,7 @@ func TestPicker_includes_only_resolved_regular_and_directory_targets(t *testing.
 func TestPicker_r_reloads_failed_directory(t *testing.T) {
 	// Given
 	directory := t.TempDir()
-	model := New("", context.Background(), testOpen)
+	model := New("", context.Background(), testOpen, false)
 	model.State = statePicking
 	updated, _ := model.Update(directoryReadMsg{dir: directory, err: errors.New("permission denied")})
 	model = updated.(Model)

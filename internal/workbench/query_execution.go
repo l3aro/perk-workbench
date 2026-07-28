@@ -41,7 +41,11 @@ func (m Model) startQueryStatement(statement string) (tea.Model, tea.Cmd) {
 	m.recordQueryHistory(query.Statement)
 	startedAt := time.Now()
 	return m, func() tea.Msg {
-		result, err := query.Service.Execute(query.Context, query.Statement)
+		exec := query.Service.Execute
+		if m.ReadOnly {
+			exec = query.Service.ExecuteReadOnly
+		}
+		result, err := exec(query.Context, query.Statement)
 		if err == nil {
 			return querySucceededMsg{requestID: query.RequestID, statement: query.Statement, startedAt: startedAt, result: result}
 		}

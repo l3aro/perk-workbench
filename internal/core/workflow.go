@@ -51,6 +51,7 @@ type Workflow struct {
 	Tab           Tab
 	Target        string
 	Status        string
+	ReadOnly      bool
 	Database      sharedsql.Service
 	SelectedTable string
 	BrowsePage    int
