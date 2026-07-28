@@ -88,6 +88,8 @@ func newChatModel() chatModel {
 	input.SetHeight(1)
 	input.KeyMap.InsertNewline.SetEnabled(false)
 	styles := input.Styles()
+	styles.Focused.Text = lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
+	styles.Blurred.Text = styles.Focused.Text
 	styles.Focused.CursorLine = lipgloss.NewStyle()
 	input.SetStyles(styles)
 	input.Blur()
@@ -127,7 +129,7 @@ func (m *Model) resizeChat() {
 	m.chat.input.SetWidth(width)
 	m.chat.input.SetHeight(1)
 	m.chat.viewport.SetWidth(width)
-	viewportHeight := height - 2
+	viewportHeight := height - 4
 	if m.compact {
 		viewportHeight -= 2
 	}

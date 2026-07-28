@@ -13,6 +13,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
@@ -283,6 +284,17 @@ func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 	model = updated.(Model)
 	if !model.chat.visible || model.editorWidth != 72 {
 		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
+	}
+}
+
+func TestChat_inputPaddingPreservesPaneHeight(t *testing.T) {
+	model := New(":memory:", context.Background(), nil)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	if got, want := lipgloss.Height(model.chatContentView()), model.height-4; got != want {
+		t.Fatalf("chat content height = %d, want %d", got, want)
 	}
 }
 

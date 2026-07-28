@@ -384,7 +384,7 @@ func (m Model) chatPaneView() string {
 func (m Model) chatContentView() string {
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.chat.viewport.View(),
-		m.chat.input.View(),
+		lipgloss.NewStyle().Padding(1, 0).Render(m.chat.input.View()),
 		m.chatModeBadge(),
 	)
 }
