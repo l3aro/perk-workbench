@@ -352,16 +352,16 @@ func (m Model) contentView() string {
 		width, height := max(1, m.width-2), max(1, m.height-4)
 		switch m.Focus {
 		case focusSchema:
-			return titledPane("Databases", m.schema.View(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
+			return titledPane("Databases <1>", m.schema.View(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusWorkspace:
-			return titledPane("Workspace", m.workspaceView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
+			return titledPane("Workspace <2>", m.workspaceView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusQueryLog:
-			return titledPane("Query Log", m.queryLogContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
+			return titledPane("Query Log <3>", m.queryLogContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusChat:
-			return titledPane("AI", m.chatContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
+			return titledPane("Assistant <4>", m.chatContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		}
 	}
-	left := titledPane("Databases", m.schema.View(), paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)))
+	left := titledPane("Databases <1>", m.schema.View(), paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)))
 	center := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
 	if !m.chat.visible {
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, center)
@@ -370,15 +370,15 @@ func (m Model) contentView() string {
 }
 
 func (m Model) rightView() string {
-	return titledPane("Workspace", m.workspaceView(), paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.workspaceHeight, 0)))
+	return titledPane("Workspace <2>", m.workspaceView(), paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.workspaceHeight, 0)))
 }
 
 func (m Model) queryLogPaneView() string {
-	return titledPane("Query Log", m.queryLogContentView(), paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)))
+	return titledPane("Query Log <3>", m.queryLogContentView(), paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)))
 }
 
 func (m Model) chatPaneView() string {
-	return titledPane("AI", m.chatContentView(), paneStyle(m.Focus == focusChat).Width(max(m.chatWidth-2, 0)).Height(max(m.height-2, 0)))
+	return titledPane("Assistant <4>", m.chatContentView(), paneStyle(m.Focus == focusChat).Width(max(m.chatWidth-2, 0)).Height(max(m.height-2, 0)))
 }
 
 func (m Model) chatContentView() string {
@@ -503,10 +503,6 @@ func (m Model) footer() string {
 		}
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
-		}
-		parts = append(parts, "1 tables", "2 tabs", "3 history")
-		if m.chat.visible {
-			parts = append(parts, "4 AI", "^g toggle AI")
 		}
 		parts = append(parts, "f fullscreen", "^p palette")
 		parts = append(parts, quitHint)
