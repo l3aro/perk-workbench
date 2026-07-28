@@ -143,6 +143,37 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	}
 }
 
+func TestSchemaClick_selectsTheRenderedTable(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "table", Name: "accounts"},
+		{Database: "main", Type: "table", Name: "projects"},
+	})
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	tableY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "└ projects") {
+			tableY = y
+			break
+		}
+	}
+	if tableY < 0 {
+		t.Fatal("rendered schema does not contain projects")
+	}
+
+	// When
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then
+	if got := model.SelectedTable; got != "projects" {
+		t.Fatalf("selected table = %q, want projects", got)
+	}
+}
+
 func readyModel(t *testing.T) Model {
 	t.Helper()
 	service, err := sqlite.Open(context.Background(), ":memory:")

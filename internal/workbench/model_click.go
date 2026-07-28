@@ -109,9 +109,9 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 
 func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 	// contentY = terminal Y - 1 (after header).
-	// Schema list renders inside pane: top border (1), TitleBar (title 1 + padding 1 = 2),
-	// StatusBar (status 1 + padding 1 = 2), then items. First item is at contentY=5.
-	itemY := contentY - 5
+	// Schema list renders inside pane: top border (1), TitleBar (2), StatusBar (1),
+	// then items. First item is at contentY=4.
+	itemY := contentY - 4
 	if itemY < 0 {
 		return m, nil
 	}
