@@ -21,6 +21,7 @@ type styledRune struct {
 func newSQLTextarea(width, height int) *sqlTextarea {
 	input := textarea.New()
 	input.Prompt = ""
+	input.Placeholder = "Enter a query…"
 	input.ShowLineNumbers = false
 	input.SetWidth(width)
 	input.SetHeight(height)
