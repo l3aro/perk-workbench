@@ -89,6 +89,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.contextMenu != nil && m.contextMenu.visible {
 		return m.updateContextMenu(message)
 	}
+	if m.quitDialog != nil {
+		completed, action := m.quitDialog.Update(message, m.width, m.height)
+		if !completed {
+			return m, nil
+		}
+		m.quitDialog = nil
+		switch action {
+		case "quit":
+			return m, tea.Quit
+		case "disconnect":
+			m.disconnect()
+		}
+		return m, nil
+	}
 	if mouse, ok := message.(tea.MouseMsg); ok {
 		if dialog := m.activeConfirmation(); dialog != nil {
 			completed, _ := dialog.Update(mouse, m.width, m.height)

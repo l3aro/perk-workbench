@@ -7,21 +7,6 @@ import (
 )
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
-	if m.quitDialog != nil {
-		completed, action := m.quitDialog.Update(message, m.width, m.height)
-		if !completed {
-			return m, nil
-		}
-		m.quitDialog = nil
-		switch action {
-		case "quit":
-			return m, tea.Quit
-		case "disconnect":
-			m.disconnect()
-		}
-		return m, nil
-	}
-
 	if m.queryLogDetail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			switch {
