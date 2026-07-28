@@ -456,6 +456,46 @@ func TestExecute_destructive_statement_clickingYes_runsQuery(t *testing.T) {
 	}
 }
 
+// TestExecute_destructive_fromInsertMode_Enter_confirms exercises:
+// SQL tab in insert mode → F5 on destructive query → queryConfirmation appears
+// → Enter. Enter must complete the dialog, not let formMode.route() consume it.
+// formMode must remain insert mode (dialog processing never changes it).
+func TestExecute_destructive_fromInsertMode_Enter_confirms(t *testing.T) {
+	// Given — SQL tab in insert mode with destructive query
+	model := readyModel(t)
+	model = resizeModel(model, 80, 24)
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	model.editor.setValue("CREATE TABLE projects (id INTEGER PRIMARY KEY)")
+
+	// When — F5 opens queryConfirmation
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+
+	if model.queryConfirmation == nil {
+		t.Fatal("F5 did not open query confirmation")
+	}
+	if model.formMode.mode != formModeInsert {
+		t.Fatalf("form mode = %d, want insert after confirmation opened", model.formMode.mode)
+	}
+
+	// When — Enter confirms the dialog
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Then — dialog completed, query running, formMode unchanged
+	if model.queryConfirmation != nil {
+		t.Fatal("Enter did not complete the query confirmation dialog")
+	}
+	if command == nil || !model.Running() {
+		t.Fatal("Enter did not confirm the destructive query")
+	}
+	if model.formMode.mode != formModeInsert {
+		t.Fatalf("Enter on confirmation changed form mode to %d, want insert", model.formMode.mode)
+	}
+}
+
 func TestExecute_history_recall_cycles_executed_statements_merged_2(t *testing.T) {
 	// Given
 	model := readyModel(t)

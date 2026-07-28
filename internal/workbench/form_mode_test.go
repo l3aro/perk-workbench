@@ -123,3 +123,112 @@ func TestFormMode_runningQueryEscapePrecedesSQLInsert(t *testing.T) {
 		t.Fatalf("running-query escape changed SQL mode to %d, want insert", model.formMode.mode)
 	}
 }
+
+// TestFormMode_confirmEnterDoesNotEnterInsert exercises the flow:
+// form normal mode → open discard confirmation → select an option with arrow
+// keys → press Enter. Enter must complete the dialog, not trigger form.edit
+// (which would enter insert mode on the underlying form).
+func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
+	// Given — column form open, discard confirmation showing
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	model = updated.(Model)
+	// Press Enter → opens column form (deferred Init cmd but form exists immediately)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	// Press Escape → triggers discard confirmation (formModeConfirm)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if !model.columnForm.confirming() {
+		t.Fatal("Escape did not reach discard confirmation")
+	}
+	if model.formMode.mode != formModeConfirm {
+		t.Fatalf("form mode = %d, want confirm", model.formMode.mode)
+	}
+
+	// When — navigate to "No" (second option) then press Enter
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+	if !model.columnForm.confirming() {
+		t.Fatal("right arrow dismissed the confirmation")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Then — dialog completed with "cancel" (No), form stays open, mode is normal
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("Enter on confirmation set mode = %d, want normal", model.formMode.mode)
+	}
+	if model.columnForm.confirming() {
+		t.Fatal("Enter on confirmation did not clear the dialog")
+	}
+	if !model.columnForm.active() {
+		t.Fatal("Enter on confirmation closed the form (cancel action should keep it open)")
+	}
+}
+
+func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
+	// Given — column form open, discard confirmation showing ("Yes" selected)
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if !model.columnForm.confirming() {
+		t.Fatal("Escape did not reach discard confirmation")
+	}
+
+	// When — Enter on default "Yes"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Then — dialog completed with "confirm", form closes, mode is normal
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("Enter on confirm set mode = %d, want normal", model.formMode.mode)
+	}
+	if model.columnForm.active() {
+		t.Fatal("Enter on confirm did not close the form")
+	}
+}
+
+// TestFormMode_quitDialogFromSQLTab_EnterCancelStaysNormal exercises the bug:
+// SQL tab normal mode → Ctrl+Q opens quitDialog (Disconnect/Quit/Cancel) →
+// navigate to Cancel → Enter. Enter must complete the dialog, not trigger
+// formRouteParent → form.edit (which enters insert mode on the SQL editor).
+func TestFormMode_quitDialogFromSQLTab_EnterCancelStaysNormal(t *testing.T) {
+	// Given — SQL tab in normal mode
+	model := readyModel(t)
+	model = resizeModel(model, 80, 24)
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+
+	// When — Ctrl+Q opens quitDialog
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	if model.quitDialog == nil {
+		t.Fatal("Ctrl+Q did not open quit dialog")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal after quit dialog opened", model.formMode.mode)
+	}
+
+	// When — navigate to "Cancel" (third option, index 2), then Enter
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Then — dialog cleared, formMode unchanged (not insert)
+	if model.quitDialog != nil {
+		t.Fatal("Enter on quit dialog did not clear the dialog")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("Enter on quit dialog set mode = %d, want normal", model.formMode.mode)
+	}
+}
