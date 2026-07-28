@@ -203,6 +203,67 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleSchemaTableClick handles left-click on structure, indexes, or foreignKeys tables.
+// Row-level selection only — no cell tracking, no double-click.
+func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
+	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil || m.compact {
+		return m, nil
+	}
+
+	var targetTable *table.Model
+	switch m.Tab {
+	case tabStructure:
+		if m.columnForm.active() {
+			return m, nil
+		}
+		targetTable = &m.structure
+	case tabIndexes:
+		if m.indexForm.active() {
+			return m, nil
+		}
+		targetTable = &m.indexes
+	case tabForeignKeys:
+		if m.foreignKeyForm.active() || m.relationshipDiagram {
+			return m, nil
+		}
+		targetTable = &m.foreignKeys
+	default:
+		return m, nil
+	}
+
+	rows := targetTable.Rows()
+	if len(rows) == 0 {
+		return m, nil
+	}
+
+	// Workspace X: skip schema pane (left) and pane left border (1).
+	workspaceX := max(absX-m.schemaWidth, 0) - 1
+	if workspaceX < 0 || workspaceX >= m.tableViewportWidth {
+		return m, nil
+	}
+
+	contentY := absY - 1
+	if contentY < 0 {
+		return m, nil
+	}
+
+	// Workspace pane: contentY=0 border, contentY=1 tab row, contentY=2 blank, contentY=3+ = table view.
+	tableLine := contentY - 3 // 0=header, 1..N=data rows
+	if tableLine < 1 {
+		return m, nil // Header or above.
+	}
+
+	rowHeight := targetTable.Height()
+	start := min(max(targetTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	dataRow := start + tableLine - 1
+	if dataRow < 0 || dataRow >= len(rows) {
+		return m, nil
+	}
+
+	targetTable.SetCursor(dataRow)
+	return m, nil
+}
+
 // handleBrowseClick handles left-click on the browse or results table.
 // It selects the cell and detects double-click for inline editing.
 func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {

@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
@@ -261,4 +262,272 @@ func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	if got, want := model.queryLogColumn, 2; got != want {
 		t.Fatalf("query log column = %d, want %d", got, want)
 	}
+}
+
+func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
+	// Schema metadata tables: Columns (structure), Indexes, Foreign Keys.
+	// All share the same coordinate-to-row mapping; Indexes is representative.
+	t.Run("indexes click on first data row selects that row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		// Provide 2 index rows so the table is populated.
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+			{Name: "idx_category", Columns: []string{"category"}},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 5 // contentY=4 → tableLine=1 → first data row
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.indexes.Cursor(); got != 0 {
+			t.Fatalf("indexes cursor on first row = %d, want 0", got)
+		}
+	})
+
+	t.Run("indexes click on second data row selects that row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+			{Name: "idx_category", Columns: []string{"category"}},
+			{Name: "idx_code", Columns: []string{"code"}},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 6 // contentY=5 → tableLine=2 → second data row
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.indexes.Cursor(); got != 1 {
+			t.Fatalf("indexes cursor on second row = %d, want 1", got)
+		}
+	})
+
+	t.Run("indexes click on visible row after scroll selects correct row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		// >10 rows so cursor at end scrolls start > 0.
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "i00", Columns: []string{"c0"}},
+			{Name: "i01", Columns: []string{"c1"}},
+			{Name: "i02", Columns: []string{"c2"}},
+			{Name: "i03", Columns: []string{"c3"}},
+			{Name: "i04", Columns: []string{"c4"}},
+			{Name: "i05", Columns: []string{"c5"}},
+			{Name: "i06", Columns: []string{"c6"}},
+			{Name: "i07", Columns: []string{"c7"}},
+			{Name: "i08", Columns: []string{"c8"}},
+			{Name: "i09", Columns: []string{"c9"}},
+		}})
+		model = updated.(Model)
+		// Scroll near end.
+		rows := model.indexes.Rows()
+		model.indexes.SetCursor(len(rows) - 1)
+		// Compute expected first visible row from the handler's own formula.
+		h := model.indexes.Height()
+		want := min(max(model.indexes.Cursor()-h+1, 0), max(len(rows)-h, 0))
+		if want <= 0 {
+			t.Fatalf("test setup: want=%d should be >0 for a scrolled assertion", want)
+		}
+		clickX := model.schemaWidth + 10
+		clickY := 5 // first visible line
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.indexes.Cursor(); got != want {
+			t.Fatalf("scrolled first-line cursor = %d, want %d", got, want)
+		}
+	})
+
+	t.Run("indexes click on header does not change cursor", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+			{Name: "idx_category", Columns: []string{"category"}},
+		}})
+		model = updated.(Model)
+		model.indexes.SetCursor(0)
+		clickX := model.schemaWidth + 10
+		clickY := 4 // contentY=3 → tableLine=0 → header
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.indexes.Cursor(); got != 0 {
+			t.Fatalf("header click changed cursor to %d, want 0", got)
+		}
+	})
+
+	t.Run("indexes click outside X bounds does not change cursor", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+		}})
+		model = updated.(Model)
+		model.indexes.SetCursor(0)
+		// Right of table content: workspaceX >= tableViewportWidth.
+		clickX := model.schemaWidth + 1 + model.tableViewportWidth + 5
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.indexes.Cursor(); got != 0 {
+			t.Fatalf("out-of-bounds X changed cursor to %d, want 0", got)
+		}
+	})
+
+	t.Run("indexes click with form active does not select row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+		}})
+		model = updated.(Model)
+		model = openIndexEditor(t, model, &sharedsql.IndexInfo{Name: "items_name", Columns: []string{"name"}})
+		model.indexes.SetCursor(0)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if !model.indexForm.active() {
+			t.Fatal("index form deactivated after click")
+		}
+		if got := model.indexes.Cursor(); got != 0 {
+			t.Fatalf("form-active click changed cursor to %d, want 0", got)
+		}
+	})
+
+	t.Run("structure click on data row selects that row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+			{Name: "id", Type: "INTEGER", PrimaryKey: 1},
+			{Name: "name", Type: "TEXT", Nullable: true},
+			{Name: "category", Type: "TEXT"},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.structure.Cursor(); got != 0 {
+			t.Fatalf("structure cursor = %d, want 0", got)
+		}
+	})
+
+	t.Run("structure click with form active does not select row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab = "items", tabStructure
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+			{Name: "name", Type: "TEXT", Nullable: true},
+		}})
+		model = updated.(Model)
+		// Open column form.
+		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		model = updated.(Model)
+		_ = model.columnForm.form.Init()
+		model.structure.SetCursor(0)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if !model.columnForm.active() {
+			t.Fatal("column form deactivated after click")
+		}
+	})
+
+	t.Run("foreign keys click on data row selects that row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "children", tabForeignKeys, focusWorkspace
+		updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: []sharedsql.ForeignKeyInfo{
+			{ID: "fk1", Columns: []string{"parent_id"}, ReferenceTable: "parents", ReferenceColumns: []string{"id"}, OnDelete: "CASCADE", OnUpdate: "NO ACTION"},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.foreignKeys.Cursor(); got != 0 {
+			t.Fatalf("foreign keys cursor = %d, want 0", got)
+		}
+	})
+
+	t.Run("foreign keys click with relationship diagram does not select row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "children", tabForeignKeys, focusWorkspace
+		model.relationshipDiagram = true
+		updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: []sharedsql.ForeignKeyInfo{
+			{ID: "fk1", Columns: []string{"parent_id"}, ReferenceTable: "parents", ReferenceColumns: []string{"id"}, OnDelete: "CASCADE", OnUpdate: "NO ACTION"},
+			{ID: "fk2", Columns: []string{"code"}, ReferenceTable: "parents", ReferenceColumns: []string{"code"}},
+		}})
+		model = updated.(Model)
+		model.foreignKeys.SetCursor(1)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.foreignKeys.Cursor(); got != 1 {
+			t.Fatalf("diagram-mode click changed cursor to %d, want 1", got)
+		}
+	})
+
+	t.Run("foreign keys click with form active does not select row", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "children", tabForeignKeys, focusWorkspace
+		updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: []sharedsql.ForeignKeyInfo{
+			{ID: "fk1", Columns: []string{"parent_id"}, ReferenceTable: "parents", ReferenceColumns: []string{"id"}},
+		}})
+		model = updated.(Model)
+		// Open FK form.
+		model.foreignKeyForm = newForeignKeyForm(nil)
+		_ = model.foreignKeyForm.form.Init()
+		model.foreignKeys.SetCursor(0)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if !model.foreignKeyForm.active() {
+			t.Fatal("FK form deactivated after click")
+		}
+	})
+
+	t.Run("click below table rows does not change cursor", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+		}})
+		model = updated.(Model)
+		model.indexes.SetCursor(0)
+		// Y in the query log area below the workspace.
+		clickX := model.schemaWidth + 10
+		clickY := model.workspaceHeight + 10
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if got := model.indexes.Cursor(); got != 0 {
+			t.Fatalf("Y out-of-bounds changed cursor to %d, want 0", got)
+		}
+	})
 }
