@@ -58,23 +58,74 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 func TestServiceBrowseTable_filters_sorts_and_limits(t *testing.T) {
 	service := newMemoryService(t)
 	ctx := context.Background()
-	if _, err := service.Execute(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+	if _, err := service.Execute(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, score INTEGER, seen DATE, note TEXT)"); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Ada", "Bob", "Adele"} {
-		if _, err := service.Execute(ctx, "INSERT INTO items (name) VALUES ('"+name+"')"); err != nil {
+	for _, values := range []string{
+		"('Ada', 10, '2024-01-01', NULL)",
+		"('Adele', 20, '2025-01-01', 'memo')",
+		"('Bob', 30, '2026-01-01', '')",
+		"('', 5, '2023-01-01', 'other')",
+	} {
+		if _, err := service.Execute(ctx, "INSERT INTO items (name, score, seen, note) VALUES "+values); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	result, err := service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{
-		Columns: []string{"id", "name"}, Filter: "ad", Sorts: []sharedsql.BrowseSort{{Column: "name", Descending: true}}, Limit: 1,
+		Columns: []string{"id", "name", "score", "seen", "note"},
+		Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "Ad%"}},
+		Sorts:   []sharedsql.BrowseSort{{Column: "name", Descending: true}},
+		Limit:   1,
 	})
 	if err != nil {
-		t.Fatalf("BrowseTable() error = %v", err)
+		t.Fatalf("browsing LIKE filter: %v", err)
 	}
 	if len(result.Rows) != 1 || result.Rows[0][1] == nil || *result.Rows[0][1] != "Adele" || !result.HasMore {
-		t.Fatalf("BrowseTable() = %#v, want first descending filtered row with another row available", result)
+		t.Fatalf("LIKE result = %#v, want first descending Ada%% match", result)
+	}
+
+	result, err = service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{
+		Columns: []string{"id", "name", "score", "seen", "note"},
+		Filters: []sharedsql.BrowseFilter{
+			{Column: "name", Operator: sharedsql.BrowseFilterNotLike, Value: "Ada%"},
+			{Column: "score", Operator: sharedsql.BrowseFilterGreater, Value: "10"},
+			{Column: "seen", Operator: sharedsql.BrowseFilterGreaterEqual, Value: "2026-01-01"},
+		},
+		Limit: 4,
+	})
+	if err != nil {
+		t.Fatalf("browsing combined filters: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][1] == nil || *result.Rows[0][1] != "Bob" {
+		t.Fatalf("combined filter result = %#v, want only Bob", result)
+	}
+
+	result, err = service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{
+		Columns: []string{"id", "name", "score", "seen", "note"},
+		Filters: []sharedsql.BrowseFilter{{Column: "note", Operator: sharedsql.BrowseFilterIsNull}},
+		Limit:   4,
+	})
+	if err != nil || len(result.Rows) != 1 || result.Rows[0][1] == nil || *result.Rows[0][1] != "Ada" {
+		t.Fatalf("IS NULL result = %#v, error = %v, want only Ada", result, err)
+	}
+
+	result, err = service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{
+		Columns: []string{"id", "name", "score", "seen", "note"},
+		Filters: []sharedsql.BrowseFilter{{Column: "note", Operator: sharedsql.BrowseFilterEqual, Value: ""}},
+		Limit:   4,
+	})
+	if err != nil || len(result.Rows) != 1 || result.Rows[0][1] == nil || *result.Rows[0][1] != "Bob" {
+		t.Fatalf("empty equality result = %#v, error = %v, want only Bob", result, err)
+	}
+
+	for _, filter := range []sharedsql.BrowseFilter{
+		{Column: "missing", Operator: sharedsql.BrowseFilterEqual, Value: "x"},
+		{Column: "name", Operator: sharedsql.BrowseFilterOperator("DROP TABLE"), Value: "x"},
+	} {
+		if _, err := service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{Columns: []string{"id", "name", "score", "seen", "note"}, Filters: []sharedsql.BrowseFilter{filter}, Limit: 4}); err == nil {
+			t.Fatalf("BrowseTable(%#v) error = nil, want validation error", filter)
+		}
 	}
 
 	if _, err := service.Execute(ctx, "CREATE TABLE ranked (group_name TEXT, rank INTEGER)"); err != nil {

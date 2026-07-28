@@ -109,6 +109,7 @@ var defaultDefs = []commandDef{
 	{id: "form.discard", scope: scopeForm, keys: []string{"esc"}, label: "discard"},
 	{id: "form.field_next", scope: scopeForm, keys: []string{"j", "down"}, label: "↓"},
 	{id: "form.field_prev", scope: scopeForm, keys: []string{"k", "up"}, label: "↑"},
+	{id: "browse_filter.apply", scope: scopeForm, keys: []string{"f5", "ctrl+s"}, label: "apply filters"},
 
 	// ── Form delete (index + FK forms) ──────────────────────────
 	{id: "form.delete", scope: scopeForm, keys: []string{"d"}, label: "delete"},

@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -109,8 +110,9 @@ func (m Model) loadBrowse() tea.Cmd {
 		for index, sort := range settings.sorts {
 			sorts[index] = sharedsql.BrowseSort{Column: sort.column, Descending: sort.desc}
 		}
+		filters := slices.Clone(settings.filters)
 		result, err := service.BrowseTable(m.appContext, tableName, sharedsql.BrowseOptions{
-			Columns: columns, Filter: settings.filter, Sorts: sorts,
+			Columns: columns, Filters: filters, Sorts: sorts,
 			Offset: page * settings.pageSize(), Limit: settings.pageSize(),
 		})
 		return browseTableMsg{table: tableName, page: page, tag: tag, startedAt: startedAt, result: result, err: err}
@@ -259,6 +261,22 @@ func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
 	return m, m.loadBrowse()
 }
 
+func (m Model) browseFilterStatement(filter sharedsql.BrowseFilter) string {
+	column := m.actionIdentifier(filter.Column)
+	switch filter.Operator {
+	case sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull:
+		return column + " " + string(filter.Operator)
+	case sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike:
+		cast := "TEXT"
+		if m.databaseInfo.Product == "MySQL" {
+			cast = "CHAR"
+		}
+		return "CAST(" + column + " AS " + cast + ") " + string(filter.Operator) + " " + quoteBrowseValue(filter.Value)
+	default:
+		return column + " " + string(filter.Operator) + " " + quoteBrowseValue(filter.Value)
+	}
+}
+
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.tag != m.browsePageTag {
 		return m, nil
@@ -275,8 +293,12 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	}
 	quotedTable := m.actionIdentifier(message.table)
 	statement := fmt.Sprintf("SELECT * FROM %s", quotedTable)
-	if m.browseSettings.filter != "" {
-		statement += " /* filter active */"
+	if len(m.browseSettings.filters) > 0 {
+		filters := make([]string, len(m.browseSettings.filters))
+		for index, filter := range m.browseSettings.filters {
+			filters[index] = m.browseFilterStatement(filter)
+		}
+		statement += " WHERE " + strings.Join(filters, " AND ")
 	}
 	if len(m.browseSettings.sorts) > 0 {
 		orders := make([]string, len(m.browseSettings.sorts))

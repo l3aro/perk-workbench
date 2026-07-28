@@ -453,8 +453,8 @@ func (m Model) structureView() string {
 }
 
 func (m Model) browseView() string {
-	if m.browseControls != nil {
-		return m.formViewport(m.browseControls.View(), 0)
+	if m.browseFilterForm != nil {
+		return m.formViewport(m.browseFilterForm.View(), m.browseFilterForm.scrollOffset)
 	}
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)

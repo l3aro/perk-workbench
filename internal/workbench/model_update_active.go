@@ -4,7 +4,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/huh/v2"
 )
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -92,26 +91,29 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.structure, command = m.structure.Update(message)
 			case tabBrowse:
-				if m.browseControls != nil {
-					if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-						m.browseControls = nil
+				if m.browseFilterForm != nil {
+					command, action := m.browseFilterForm.Update(message, m.keybindings)
+					if m.browseFilterForm.editing {
+						m.formMode.mode = formModeInsert
+					} else {
 						m.formMode.mode = formModeNormal
-						return m, nil
 					}
-					command = m.browseControls.update(message)
-					if m.browseControls.form.State != huh.StateCompleted {
-						return m, command
+					switch action {
+					case browseFilterDiscard:
+						m.browseFilterForm = nil
+					case browseFilterApply:
+						settings, err := m.browseFilterForm.apply()
+						if err != nil {
+							m.Status = safeText(err.Error())
+							return m, nil
+						}
+						m.browseSettings = settings
+						m.browseFilterForm = nil
+						m.BrowsePage, m.browseLoading = 0, true
+						m.browsePageTag++
+						return m, m.loadBrowse()
 					}
-					if err := m.browseControls.apply(); err != nil {
-						m.Status = safeText(err.Error())
-						return m, nil
-					}
-					m.browseSettings = *m.browseControls.settings
-					m.browseControls = nil
-					m.formMode.mode = formModeNormal
-					m.BrowsePage, m.browseLoading = 0, true
-					m.browsePageTag++
-					return m, m.loadBrowse()
+					return m, command
 				}
 				if m.browseForm.active() {
 					m.browseForm.height = m.height
@@ -126,7 +128,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, command
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
-					return m, m.openBrowseControls()
+					return m, m.openBrowseFilterForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.sort", []scope{scopeView, scopeGlobal}) {
 					return m, m.cycleBrowseSort()
@@ -369,5 +371,5 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) formActive() bool {
-	return m.columnForm.active() || m.browseForm.active() || m.browseControls != nil || m.indexForm.active() || m.foreignKeyForm.active()
+	return m.columnForm.active() || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
 }

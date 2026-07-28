@@ -137,20 +137,34 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options sharedsq
 		return sharedsql.Result{}, fmt.Errorf("invalid browse range: offset=%d limit=%d", options.Offset, options.Limit)
 	}
 	statement := "SELECT * FROM " + quoteIdentifier(name)
-	args := make([]any, 0, len(options.Columns)+2)
-	if options.Filter != "" && len(options.Columns) > 0 {
-		terms := make([]string, len(options.Columns))
-		for index, column := range options.Columns {
-			terms[index] = "CAST(" + quoteIdentifier(column) + " AS TEXT) LIKE ?"
-			args = append(args, "%"+options.Filter+"%")
+	args := make([]any, 0, len(options.Filters)+2)
+	valid := make(map[string]bool, len(options.Columns))
+	for _, column := range options.Columns {
+		valid[column] = true
+	}
+	if len(options.Filters) > 0 {
+		terms := make([]string, 0, len(options.Filters))
+		for _, filter := range options.Filters {
+			if !valid[filter.Column] {
+				return sharedsql.Result{}, fmt.Errorf("invalid browse filter column: %s", filter.Column)
+			}
+			column := quoteIdentifier(filter.Column)
+			switch filter.Operator {
+			case sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike:
+				terms = append(terms, "CAST("+column+" AS TEXT) "+string(filter.Operator)+" ?")
+				args = append(args, filter.Value)
+			case sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterLess, sharedsql.BrowseFilterLessEqual, sharedsql.BrowseFilterGreater, sharedsql.BrowseFilterGreaterEqual:
+				terms = append(terms, column+" "+string(filter.Operator)+" ?")
+				args = append(args, filter.Value)
+			case sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull:
+				terms = append(terms, column+" "+string(filter.Operator))
+			default:
+				return sharedsql.Result{}, fmt.Errorf("invalid browse filter operator: %q", filter.Operator)
+			}
 		}
-		statement += " WHERE " + strings.Join(terms, " OR ")
+		statement += " WHERE " + strings.Join(terms, " AND ")
 	}
 	if len(options.Sorts) > 0 {
-		valid := make(map[string]bool, len(options.Columns))
-		for _, column := range options.Columns {
-			valid[column] = true
-		}
 		orders := make([]string, 0, len(options.Sorts))
 		for _, sort := range options.Sorts {
 			if !valid[sort.Column] {

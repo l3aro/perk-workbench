@@ -230,7 +230,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "structure.edit":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
 	case "browse.edit", "browse.refine", "browse.sort", "browse.next_page", "browse.prev_page":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseControls == nil
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil
 	case "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.indexForm.active()
 	case "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":

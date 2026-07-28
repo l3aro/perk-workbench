@@ -436,20 +436,20 @@ func TestBrowse_y_yanks_moved_cell_value(t *testing.T) {
 	}
 }
 
-func TestBrowse_refineOpensControls(t *testing.T) {
+func TestBrowse_refineOpensFilterGrid(t *testing.T) {
 	model := readyBrowseModel(t)
 
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	model = updated.(Model)
 
-	if model.browseControls == nil || command == nil {
-		t.Fatalf("browse controls = %#v, command = %t, want opened controls", model.browseControls, command != nil)
+	if model.browseFilterForm == nil {
+		t.Fatal("browse filter form = nil, want opened grid")
 	}
 }
 
-func TestBrowse_loadUsesFilterAndLimit(t *testing.T) {
+func TestBrowse_loadUsesFiltersAndLimit(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.browseSettings = browseSettings{filter: "second", limit: 1}
+	model.browseSettings = browseSettings{filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%second%"}}, limit: 1}
 
 	updated, _ := model.Update(model.loadBrowse()())
 	model = updated.(Model)

@@ -110,12 +110,13 @@ func buildFromDefs(defs []commandDef) (Keybindings, error) {
 	}
 
 	idx := map[scope]map[string][]CommandID{}
-	for id, def := range cmds {
+	for _, definition := range defs {
+		def := cmds[definition.id]
 		if idx[def.scope] == nil {
 			idx[def.scope] = map[string][]CommandID{}
 		}
 		for _, stroke := range def.keys {
-			idx[def.scope][stroke] = append(idx[def.scope][stroke], id)
+			idx[def.scope][stroke] = append(idx[def.scope][stroke], def.id)
 		}
 	}
 

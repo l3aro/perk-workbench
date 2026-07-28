@@ -184,17 +184,17 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "browse.refine":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseControls == nil {
-			return m, m.openBrowseControls()
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
+			return m, m.openBrowseFilterForm()
 		}
 		return m, nil
 	case "browse.sort":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseControls == nil {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			return m, m.cycleBrowseSort()
 		}
 		return m, nil
 	case "browse.next_page":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			if m.browseLoading {
 				return m, nil
 			}
@@ -207,7 +207,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "browse.prev_page":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			if m.browseLoading {
 				return m, nil
 			}

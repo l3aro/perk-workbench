@@ -314,6 +314,24 @@ func TestQueryLog_uses_mysql_identifier_quoting_for_browse_statement(t *testing.
 	}
 }
 
+func TestQueryLog_records_applied_browse_filters(t *testing.T) {
+	model := readyModel(t)
+	model.SelectedTable = "office.customers"
+	model.databaseInfo.Product = "MySQL"
+	model.browseSettings.filters = []sharedsql.BrowseFilter{
+		{Column: "City", Operator: sharedsql.BrowseFilterLike, Value: "A%"},
+		{Column: "SupportRepId", Operator: sharedsql.BrowseFilterIsNotNull},
+	}
+
+	updated, _ := model.Update(browseTableMsg{table: "office.customers"})
+	model = updated.(Model)
+
+	want := "SELECT * FROM `office`.`customers` WHERE CAST(`City` AS CHAR) LIKE 'A%' AND `SupportRepId` IS NOT NULL LIMIT 25 OFFSET 0"
+	if got := model.queryLog.Rows()[0][2]; got != cellText(want) {
+		t.Fatalf("browse statement = %q, want %q", got, cellText(want))
+	}
+}
+
 func TestQueryLog_uses_elapsed_duration_for_live_browse_load(t *testing.T) {
 	// Given
 	model := readyModel(t)

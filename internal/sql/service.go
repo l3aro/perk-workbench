@@ -31,9 +31,31 @@ type Service interface {
 }
 type BrowseOptions struct {
 	Columns       []string
-	Filter        string
+	Filters       []BrowseFilter
 	Sorts         []BrowseSort
 	Offset, Limit int
+}
+
+type BrowseFilterOperator string
+
+const (
+	BrowseFilterNone         BrowseFilterOperator = ""
+	BrowseFilterLike         BrowseFilterOperator = "LIKE"
+	BrowseFilterNotLike      BrowseFilterOperator = "NOT LIKE"
+	BrowseFilterEqual        BrowseFilterOperator = "="
+	BrowseFilterNotEqual     BrowseFilterOperator = "!="
+	BrowseFilterLess         BrowseFilterOperator = "<"
+	BrowseFilterLessEqual    BrowseFilterOperator = "<="
+	BrowseFilterGreater      BrowseFilterOperator = ">"
+	BrowseFilterGreaterEqual BrowseFilterOperator = ">="
+	BrowseFilterIsNull       BrowseFilterOperator = "IS NULL"
+	BrowseFilterIsNotNull    BrowseFilterOperator = "IS NOT NULL"
+)
+
+type BrowseFilter struct {
+	Column   string
+	Operator BrowseFilterOperator
+	Value    string
 }
 
 type BrowseSort struct {
