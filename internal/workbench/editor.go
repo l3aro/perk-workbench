@@ -61,7 +61,17 @@ func (e *editor) acceptCompletion() {
 	item := e.completion.accept()
 	prefix := e.completion.prefix
 	if item.Label != "" && strings.HasPrefix(strings.ToLower(item.Label), strings.ToLower(prefix)) {
-		e.text.input.InsertString(item.InsertText[len(prefix):])
+		// Replace the typed prefix with the full completion text.
+		// We manually splice the value: delete |prefix| chars before cursor
+		// and insert the full InsertText.
+		lines := strings.Split(e.text.Value(), "\n")
+		line := e.text.input.Line()
+		col := e.text.input.Column()
+		prefixRunes := len([]rune(prefix))
+		lineRunes := []rune(lines[line])
+		newLine := string(lineRunes[:col-prefixRunes]) + item.InsertText + string(lineRunes[col:])
+		lines[line] = newLine
+		e.text.input.SetValue(strings.Join(lines, "\n"))
 		e.value = e.text.Value()
 	}
 	e.completion = completion{}

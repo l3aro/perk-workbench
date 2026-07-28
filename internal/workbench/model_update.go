@@ -10,6 +10,14 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
+func isIdentStart(text string) bool {
+	if text == "" {
+		return false
+	}
+	r := []rune(text)[0]
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_'
+}
+
 const browseDebounceDuration = 150 * time.Millisecond
 
 type browseDebounceMsg struct {
@@ -317,18 +325,21 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.sqlEditorActive() {
 			if m.editor.completionVisible() {
 				key := message.Key()
+				completionHandled := true
 				switch {
 				case key.Code == tea.KeyEscape:
 					m.editor.completion = completion{}
-					return m, nil
+					completionHandled = false // let escape also exit insert mode
 				case key.Code == tea.KeyUp || (key.Code == 'k' && key.Mod == tea.ModCtrl):
 					m.editor.completion.move(-1)
-					return m, nil
 				case key.Code == tea.KeyDown || (key.Code == 'j' && key.Mod == tea.ModCtrl):
 					m.editor.completion.move(1)
-					return m, nil
 				case key.Code == tea.KeyEnter || key.Code == tea.KeyTab:
 					m.editor.acceptCompletion()
+				default:
+					completionHandled = false
+				}
+				if completionHandled {
 					return m, nil
 				}
 			}
@@ -346,6 +357,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if m.editor.completionVisible() {
 					m.editor.completion.filter(sharedsql.CompletionPrefix(m.editor.value))
+				} else if isIdentStart(message.Text) {
+					m.editor.completion = completion{}
+					return m, tea.Batch(command, m.startCompletion())
 				}
 				return m, command
 			case formRouteParent:
