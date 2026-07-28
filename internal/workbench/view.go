@@ -449,7 +449,7 @@ func (m Model) structureView() string {
 	if m.columnForm.active() {
 		return m.formViewport(m.columnForm.View(), m.columnForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.structure, nil, m.structureOffset, m.tableViewportWidth, -1)
+	return tableViewportViewWithAlignment(m.structure, nil, m.structureOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabStructure), "", m.tableViewportWidth)
 }
 
 func (m Model) browseView() string {
@@ -476,7 +476,7 @@ func (m Model) indexesView() string {
 	if m.indexForm.active() {
 		return m.indexForm.View()
 	}
-	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, -1)
+	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabIndexes), "", m.tableViewportWidth)
 }
 
 func (m Model) foreignKeysView() string {
@@ -486,7 +486,7 @@ func (m Model) foreignKeysView() string {
 	if m.relationshipDiagram {
 		return m.relationshipView()
 	}
-	return tableViewportViewWithAlignment(m.foreignKeys, nil, m.foreignKeysOffset, m.tableViewportWidth, -1)
+	return tableViewportViewWithAlignment(m.foreignKeys, nil, m.foreignKeysOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabForeignKeys), "", m.tableViewportWidth)
 }
 
 func (m Model) footer() string {

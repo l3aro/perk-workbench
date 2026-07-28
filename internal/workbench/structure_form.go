@@ -65,12 +65,12 @@ func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnTy
 }
 
 func (m *Model) openColumnForm() tea.Cmd {
-	row := m.structure.Cursor()
-	if row < 0 || row >= len(m.structureColumns) {
+	column := m.selectedColumn()
+	if column == nil {
 		m.Status = "select a column"
 		return nil
 	}
-	m.columnForm = newColumnForm(m.structureColumns[row], sharedsql.ColumnTypes(m.databaseInfo))
+	m.columnForm = newColumnForm(*column, sharedsql.ColumnTypes(m.databaseInfo))
 	m.columnForm.keybindings = m.keybindings
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
