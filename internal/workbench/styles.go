@@ -293,7 +293,8 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 }
 
 func newSchemaList() list.Model {
-	model := newList("Databases", true)
+	model := newList("", true)
+	model.SetShowTitle(false)
 	model.SetDelegate(schemaItemDelegate{})
 	return model
 }
@@ -893,16 +894,16 @@ func (m Model) contentView() string {
 		width, height := max(1, m.width-2), max(1, m.height-4)
 		switch m.Focus {
 		case focusSchema:
-			return compactPane(m.schema.View(), width, height)
+			return titledPane("Databases", m.schema.View(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusWorkspace:
-			return compactPane(m.workspaceView(), width, height)
+			return titledPane("Workspace", m.workspaceView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusQueryLog:
-			return compactPane(m.queryLogContentView(), width, height)
+			return titledPane("Query Log", m.queryLogContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusChat:
-			return compactPane(m.chatContentView(), width, height)
+			return titledPane("AI", m.chatContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		}
 	}
-	left := paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)).Render(m.schema.View())
+	left := titledPane("Databases", m.schema.View(), paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)))
 	center := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
 	if !m.chat.visible {
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, center)
@@ -911,20 +912,19 @@ func (m Model) contentView() string {
 }
 
 func (m Model) rightView() string {
-	return paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.workspaceHeight, 0)).Render(m.workspaceView())
+	return titledPane("Workspace", m.workspaceView(), paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.workspaceHeight, 0)))
 }
 
 func (m Model) queryLogPaneView() string {
-	return paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)).Render(m.queryLogContentView())
+	return titledPane("Query Log", m.queryLogContentView(), paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)))
 }
 
 func (m Model) chatPaneView() string {
-	return paneStyle(m.Focus == focusChat).Width(max(m.chatWidth-2, 0)).Height(max(m.height-2, 0)).Render(m.chatContentView())
+	return titledPane("AI", m.chatContentView(), paneStyle(m.Focus == focusChat).Width(max(m.chatWidth-2, 0)).Height(max(m.height-2, 0)))
 }
 
 func (m Model) chatContentView() string {
 	return lipgloss.JoinVertical(lipgloss.Left,
-		headerStyle.Render(" AI "),
 		m.chat.viewport.View(),
 		m.chat.input.View(),
 		chrome.PaneStatus(statusStyle.Render(m.chatModeBadge()), "", m.chat.viewport.Width()),
