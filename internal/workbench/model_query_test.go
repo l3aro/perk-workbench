@@ -122,7 +122,7 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	}
 
 	// When
-	updated, command = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
 	model = updated.(Model)
 	model = updateFromCommand(model, command)
 

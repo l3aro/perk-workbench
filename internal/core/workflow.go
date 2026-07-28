@@ -32,8 +32,8 @@ type Tab uint8
 
 const (
 	TabSQL Tab = iota
-	TabStructure
 	TabBrowse
+	TabStructure
 	TabIndexes
 	TabForeignKeys
 )

@@ -62,7 +62,7 @@ func TestBrowseFilterGrid_editsAndAppliesFilters(t *testing.T) {
 	}
 }
 
-func TestBrowseFilterGrid_escapeRestoresInlineValue(t *testing.T) {
+func TestBrowseFilterGrid_escapePreservesInlineValue(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'l', Text: "l"})
@@ -70,8 +70,16 @@ func TestBrowseFilterGrid_escapeRestoresInlineValue(t *testing.T) {
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
-	if form := model.browseFilterForm; form == nil || form.fields[0].value != "" || form.editing {
-		t.Fatalf("filter form = %#v, want cancelled inline edit", form)
+	if form := model.browseFilterForm; form == nil || form.fields[0].value != "x" || form.editing {
+		t.Fatalf("filter form = %#v, want preserved inline value", form)
+	}
+
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if form := model.browseFilterForm; form.fields[0].operator != sharedsql.BrowseFilterEqual || form.editing {
+		t.Fatalf("filter form = %#v, want preserved operator selection", form)
 	}
 }
 

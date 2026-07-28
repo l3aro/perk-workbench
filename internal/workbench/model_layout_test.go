@@ -39,8 +39,8 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	if !model.compact {
 		t.Fatal("80-column terminal did not use compact layout")
 	}
-	if model.Tab != tabStructure {
-		t.Fatalf("tab = %v, want columns after SQL tab", model.Tab)
+	if model.Tab != tabBrowse {
+		t.Fatalf("tab = %v, want Browse after SQL tab", model.Tab)
 	}
 	if model.schemaWidth <= 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
 		t.Fatalf("compact layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)

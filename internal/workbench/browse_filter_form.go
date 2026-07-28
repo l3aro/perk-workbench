@@ -41,7 +41,6 @@ type browseFilterForm struct {
 	row              int
 	cell             browseFilterCell
 	operatorIndex    int
-	original         string
 	input            textinput.Model
 	editing          bool
 	width, height    int
@@ -233,10 +232,8 @@ func (f *browseFilterForm) beginEdit() (tea.Cmd, browseFilterAction) {
 	f.editing = true
 	if f.row == len(f.fields) {
 		f.cell = browseFilterRowsCell
-		f.original = f.limit
 		f.input.SetValue(f.limit)
 	} else if f.cell == browseFilterOperatorCell {
-		f.original = string(f.fields[f.row].operator)
 		options := f.operatorOptions()
 		f.operatorIndex = 0
 		for index, operator := range options {
@@ -247,8 +244,7 @@ func (f *browseFilterForm) beginEdit() (tea.Cmd, browseFilterAction) {
 		}
 		return nil, browseFilterNoAction
 	} else {
-		f.original = f.fields[f.row].value
-		f.input.SetValue(f.original)
+		f.input.SetValue(f.fields[f.row].value)
 	}
 	return f.input.Focus(), browseFilterNoAction
 }
@@ -256,11 +252,11 @@ func (f *browseFilterForm) beginEdit() (tea.Cmd, browseFilterAction) {
 func (f *browseFilterForm) updateEditor(keyPress tea.KeyPressMsg) (tea.Cmd, browseFilterAction) {
 	if keyPress.Key().Code == tea.KeyEscape {
 		if f.row == len(f.fields) {
-			f.limit = f.original
+			f.limit = f.input.Value()
 		} else if f.cell == browseFilterOperatorCell {
-			f.fields[f.row].operator = sharedsql.BrowseFilterOperator(f.original)
+			f.fields[f.row].operator = f.operatorOptions()[f.operatorIndex]
 		} else {
-			f.fields[f.row].value = f.original
+			f.fields[f.row].value = f.input.Value()
 		}
 		f.editing = false
 		f.input.Blur()
