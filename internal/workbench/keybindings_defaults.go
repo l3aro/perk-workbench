@@ -32,6 +32,8 @@ var defaultDefs = []commandDef{
 	{id: "schema.select_table", scope: scopeView, keys: []string{"enter"}, label: "open"},
 
 	// ── Structure tab (view) ────────────────────────────────────
+	{id: "structure.filter", scope: scopeView, keys: []string{"/"}, label: "filter columns"},
+	{id: "structure.reset", scope: scopeView, keys: []string{"r"}, label: "reset column filter"},
 	{id: "structure.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit column"},
 
 	// ── Browse tab (view) ───────────────────────────────────────
@@ -46,11 +48,15 @@ var defaultDefs = []commandDef{
 	{id: "browse.context_menu", scope: scopeView, keys: []string{","}, label: "context menu"},
 
 	// ── Indexes tab (view) ──────────────────────────────────────
+	{id: "indexes.filter", scope: scopeView, keys: []string{"/"}, label: "filter indexes"},
+	{id: "indexes.reset", scope: scopeView, keys: []string{"r"}, label: "reset index filter"},
 	{id: "indexes.create", scope: scopeView, keys: []string{"n"}, label: "new index"},
 	{id: "indexes.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit index"},
 	{id: "indexes.delete", scope: scopeView, keys: []string{"d"}, label: "delete index"},
 
 	// ── Foreign Keys tab (view) ─────────────────────────────────
+	{id: "foreign_keys.filter", scope: scopeView, keys: []string{"/"}, label: "filter foreign keys"},
+	{id: "foreign_keys.reset", scope: scopeView, keys: []string{"r"}, label: "reset foreign key filter"},
 	{id: "foreign_keys.toggle_diagram", scope: scopeView, keys: []string{"g"}, label: "diagram"},
 	{id: "foreign_keys.create", scope: scopeView, keys: []string{"n"}, label: "new FK"},
 	{id: "foreign_keys.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit FK"},

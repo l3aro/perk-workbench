@@ -152,6 +152,10 @@ func commandLabel(id CommandID, raw string) string {
 		return "tab ←"
 	case "schema.select_table":
 		return "open table"
+	case "structure.filter":
+		return "filter columns"
+	case "structure.reset":
+		return "reset column filter"
 	case "structure.edit":
 		return "edit column"
 	case "browse.edit":
@@ -166,12 +170,20 @@ func commandLabel(id CommandID, raw string) string {
 		return "next page"
 	case "browse.prev_page":
 		return "prev page"
+	case "indexes.filter":
+		return "filter indexes"
+	case "indexes.reset":
+		return "reset index filter"
 	case "indexes.create":
 		return "new index"
 	case "indexes.edit":
 		return "edit index"
 	case "indexes.delete":
 		return "delete index"
+	case "foreign_keys.filter":
+		return "filter foreign keys"
+	case "foreign_keys.reset":
+		return "reset foreign key filter"
 	case "foreign_keys.create":
 		return "new FK"
 	case "foreign_keys.edit":
@@ -229,13 +241,13 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusWorkspace && !m.formActive()
 	case "schema.select_table":
 		return m.State == stateReady && m.Focus == focusSchema
-	case "structure.edit":
+	case "structure.filter", "structure.reset", "structure.edit":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
 	case "browse.edit", "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil
-	case "indexes.create", "indexes.edit", "indexes.delete":
+	case "indexes.filter", "indexes.reset", "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.indexForm.active()
-	case "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
+	case "foreign_keys.filter", "foreign_keys.reset", "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.foreignKeyForm.active()
 	case "query_log.yank", "query_log.explain", "query_log.cursor_down", "query_log.cursor_up",
 		"query_log.top_first", "query_log.top_last", "query_log.detail", "query_log.next_page", "query_log.prev_page":
