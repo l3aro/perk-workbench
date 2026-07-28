@@ -1,8 +1,13 @@
 package workbench
 
 import (
+	"fmt"
+	"io"
 	"strings"
 
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/table"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -27,4 +32,221 @@ func titledPane(title, content string, style lipgloss.Style) string {
 		bodyStyle = bodyStyle.Height(height - 1)
 	}
 	return top + "\n" + bodyStyle.Render(content)
+}
+
+func paneStyle(focused bool) lipgloss.Style {
+	if focused {
+		return focusStyle
+	}
+	return panelStyle
+}
+
+func compactPane(content string, width, height int) string {
+	return paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height).Render(content)
+}
+
+func newList(title string, filtering bool) list.Model {
+	delegate := newListDelegate()
+	model := list.New([]list.Item{}, delegate, 0, 0)
+	applyListTheme(&model)
+	model.Title = title
+	model.SetFilteringEnabled(filtering)
+	model.SetShowPagination(false)
+	model.SetShowHelp(false)
+	model.DisableQuitKeybindings()
+	return model
+}
+
+func newListDelegate() list.DefaultDelegate {
+	delegate := list.NewDefaultDelegate()
+	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Foreground(lipgloss.Color(colorInk))
+	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(lipgloss.Color(colorMuted))
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color(colorAccent))
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color(colorAccent))
+	return delegate
+}
+
+func applyListTheme(model *list.Model) {
+	model.Styles.Title = headerStyle
+	model.Styles.NoItems = statusStyle
+}
+
+type schemaItemDelegate struct{}
+
+func (schemaItemDelegate) Height() int                         { return 1 }
+func (schemaItemDelegate) Spacing() int                        { return 0 }
+func (schemaItemDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
+	schema, ok := item.(schemaItem)
+	if !ok {
+		return
+	}
+	label := schema.Title()
+	if schema.root {
+		if schema.description == "collapsed" {
+			label = "▸ " + label
+		} else {
+			label = "▾ " + label
+		}
+	} else if schema.table != "" {
+		label = "  └ " + label
+	}
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
+	if index == model.Index() {
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
+	}
+	fmt.Fprint(writer, style.Render(label))
+}
+
+func newSchemaList() list.Model {
+	model := newList("", true)
+	model.SetShowTitle(false)
+	model.SetDelegate(schemaItemDelegate{})
+	return model
+}
+
+func newResultsTable() table.Model {
+	return table.New(
+		table.WithColumns([]table.Column{{Title: "Results", Width: 1}}),
+		table.WithFocused(true),
+		table.WithWidth(1),
+		table.WithHeight(2),
+		table.WithStyles(table.Styles{
+			Header:   headerStyle,
+			Cell:     lipgloss.NewStyle().Padding(0, spaceCompact),
+			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)),
+		}),
+	)
+}
+
+func resizeResultsTable(resultTable *table.Model, width, height int) {
+	tableWidth := max(width, tableContentWidth(resultTable.Columns()))
+	resultTable.SetWidth(tableWidth)
+	resultTable.SetHeight(height)
+	resultTable.SetStyles(table.Styles{
+		Header: headerStyle,
+		Cell:   lipgloss.NewStyle().Padding(0, spaceCompact),
+		Selected: lipgloss.NewStyle().
+			Width(tableWidth).
+			Foreground(lipgloss.Color(colorAccent)).
+			Background(lipgloss.Color(colorStripe)),
+	})
+}
+
+func tableContentWidth(columns []table.Column) int {
+	width := 0
+	for _, column := range columns {
+		width += column.Width + 2*spaceCompact
+	}
+	return width
+}
+
+func tableColumns(titles []string, rows []table.Row) []table.Column {
+	if len(titles) == 0 {
+		titles = []string{"Results"}
+	}
+
+	columns := make([]table.Column, len(titles))
+	for index, title := range titles {
+		columns[index] = table.Column{Title: title, Width: max(ansi.StringWidth(title), 1)}
+	}
+	for _, row := range rows {
+		for index, value := range row {
+			if index < len(columns) {
+				columns[index].Width = max(columns[index].Width, ansi.StringWidth(value))
+			}
+		}
+	}
+	return columns
+}
+
+func tableViewportView(resultTable table.Model, offset, width int) string {
+	return tableViewportViewWithAlignment(resultTable, nil, offset, width, -1)
+}
+
+func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bool, offset, width, selectedColumn int) string {
+	offset = min(max(offset, 0), max(resultTable.Width()-width, 0))
+	columns := resultTable.Columns()
+	lines := []string{headerStyle.Padding(0, 0).Render(tableLineWithSelection(columns, nil, numericColumns, offset, width, -1, false))}
+	rows, rowHeight := resultTable.Rows(), resultTable.Height()
+	start := min(max(resultTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
+		selectedRow := rowIndex == resultTable.Cursor()
+		row := tableLineWithSelection(columns, rows[rowIndex], numericColumns, offset, width, selectedColumn, selectedRow)
+		if selectedRow {
+			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(row)
+		}
+		lines = append(lines, row)
+	}
+	for range max(rowHeight-(len(lines)-1), 0) {
+		lines = append(lines, strings.Repeat(" ", width))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func tableLine(columns []table.Column, row table.Row, numericColumns []bool, offset, width int) string {
+	return tableLineWithSelection(columns, row, numericColumns, offset, width, -1, false)
+}
+
+func tableLineWithSelection(columns []table.Column, row table.Row, numericColumns []bool, offset, width, selectedColumn int, selectedRow bool) string {
+	cells := make([]string, len(columns))
+	for index, column := range columns {
+		value := column.Title
+		if row != nil {
+			value = ""
+			if index < len(row) {
+				value = row[index]
+			}
+		}
+		style := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Inline(true)
+		if row != nil && index < len(numericColumns) && numericColumns[index] {
+			style = style.Align(lipgloss.Right)
+		}
+		if selectedRow {
+			value = ansi.Strip(value)
+		}
+		cell := strings.Repeat(" ", spaceCompact) + style.Render(ansi.Truncate(value, column.Width, "…")) + strings.Repeat(" ", spaceCompact)
+		if selectedRow && index == selectedColumn {
+			cell = selectedCellStyle.Render(cell)
+		}
+		cells[index] = cell
+	}
+	return cropTableLine(strings.Join(cells, ""), offset, width)
+}
+
+func cropTableLine(line string, offset, width int) string {
+	var visible strings.Builder
+	var buf strings.Builder
+	total := offset + width
+	for len(line) > 0 {
+		cluster, _ := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
+		start := ansi.StringWidth(buf.String())
+		buf.WriteString(cluster)
+		if ansi.StringWidth(buf.String()) > total {
+			break
+		}
+		if start >= offset {
+			visible.WriteString(cluster)
+		}
+		line = line[len(cluster):]
+	}
+	return visible.String() + strings.Repeat(" ", max(width-ansi.StringWidth(visible.String()), 0))
+}
+
+func tableOffset(resultTable table.Model, offset, viewportWidth int) int {
+	return min(max(offset, 0), max(resultTable.Width()-viewportWidth, 0))
+}
+
+func colsHint(columns []table.Column, viewportWidth int) string {
+	if len(columns) <= 1 {
+		return ""
+	}
+	totalWidth := 0
+	for _, c := range columns {
+		totalWidth += c.Width + 2*spaceCompact
+	}
+	if totalWidth <= viewportWidth {
+		return ""
+	}
+	return fmt.Sprintf(" | %d cols", len(columns))
 }
