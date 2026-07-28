@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
@@ -48,6 +49,7 @@ type Model struct {
 	browsePageTag, editorEditTag, completionRequestTag                                             uint64
 	schema, picker, recent                                                                         list.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
+	structureRows, indexRows, foreignKeyRows                                                       []table.Row
 	structureColumns                                                                               []sharedsql.ColumnInfo
 	completionColumns                                                                              map[string][]string
 	completionTable                                                                                string
@@ -86,12 +88,15 @@ type Model struct {
 	queryConfirmation                                                                              *queryConfirmation
 	recentPath, queryLogPath                                                                       string
 	keybindings                                                                                    Keybindings
+	tableFilterInput                                                                               textinput.Model
 	width, height, schemaWidth, editorWidth, chatWidth                                             int
 	workspaceHeight, queryLogHeight                                                                int
 	editorHeight, resultsHeight, tableViewportWidth                                                int
 	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
 	structureColumn, browseColumn, resultsColumn, indexesColumn, foreignKeysColumn, queryLogColumn int
-	compact, fullscreen, relationshipDiagram                                                       bool
+	compact, fullscreen, relationshipDiagram, tableFiltering                                       bool
+	tableFilterTab                                                                                 workspaceTab
+	structureFilter, indexesFilter, foreignKeysFilter                                              string
 	lastClickTime                                                                                  time.Time
 	lastClickX, lastClickY                                                                         int
 	contextMenu                                                                                    *contextMenuModel
