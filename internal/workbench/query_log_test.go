@@ -326,7 +326,7 @@ func TestQueryLog_records_applied_browse_filters(t *testing.T) {
 	updated, _ := model.Update(browseTableMsg{table: "office.customers"})
 	model = updated.(Model)
 
-	want := "SELECT * FROM `office`.`customers` WHERE CAST(`City` AS CHAR) LIKE 'A%' AND `SupportRepId` IS NOT NULL LIMIT 25 OFFSET 0"
+	want := "SELECT * FROM `office`.`customers` WHERE `City` LIKE 'A%' AND `SupportRepId` IS NOT NULL LIMIT 25 OFFSET 0"
 	if got := model.queryLog.Rows()[0][2]; got != cellText(want) {
 		t.Fatalf("browse statement = %q, want %q", got, cellText(want))
 	}

@@ -130,6 +130,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseFilterForm()
 				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.reset", []scope{scopeView, scopeGlobal}) {
+					return m, m.resetBrowseFilters()
+				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.sort", []scope{scopeView, scopeGlobal}) {
 					return m, m.cycleBrowseSort()
 				}

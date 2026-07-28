@@ -231,7 +231,7 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options sharedsq
 			column := quoteIdentifier(filter.Column)
 			switch filter.Operator {
 			case sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike:
-				terms = append(terms, "CAST("+column+" AS TEXT) "+string(filter.Operator)+" $"+fmt.Sprint(len(args)+1))
+				terms = append(terms, column+" "+string(filter.Operator)+" $"+fmt.Sprint(len(args)+1))
 				args = append(args, filter.Value)
 			case sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterLess, sharedsql.BrowseFilterLessEqual, sharedsql.BrowseFilterGreater, sharedsql.BrowseFilterGreaterEqual:
 				terms = append(terms, column+" "+string(filter.Operator)+" $"+fmt.Sprint(len(args)+1))

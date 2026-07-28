@@ -43,6 +43,12 @@ func (m *Model) cycleBrowseSort() tea.Cmd {
 	m.browsePageTag++
 	return m.loadBrowse()
 }
+func (m *Model) resetBrowseFilters() tea.Cmd {
+	m.browseSettings.filters = nil
+	m.BrowsePage, m.browseLoading = 0, true
+	m.browsePageTag++
+	return m.loadBrowse()
+}
 
 func validateBrowseLimit(value string) error {
 	limit, err := strconv.Atoi(strings.TrimSpace(value))

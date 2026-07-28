@@ -73,6 +73,23 @@ func newBrowseFilterForm(columns []sharedsql.ColumnInfo, settings browseSettings
 	form.resizeInput()
 	return form
 }
+func (f *browseFilterForm) reset() {
+	saved := make(map[string]sharedsql.BrowseFilter, len(f.settings.filters))
+	for _, filter := range f.settings.filters {
+		saved[filter.Column] = filter
+	}
+	for index := range f.fields {
+		f.fields[index].operator, f.fields[index].value = sharedsql.BrowseFilterNone, ""
+		if filter, ok := saved[f.fields[index].column.Name]; ok {
+			f.fields[index].operator, f.fields[index].value = filter.Operator, filter.Value
+		}
+	}
+	f.limit = strconv.Itoa(f.settings.pageSize())
+	f.row, f.cell, f.scrollOffset, f.horizontalOffset = 0, browseFilterOperatorCell, 0, 0
+	f.editing = false
+	f.input.Blur()
+	f.revealSelection()
+}
 
 func (m *Model) openBrowseFilterForm() tea.Cmd {
 	if len(m.structureColumns) == 0 {
@@ -181,8 +198,20 @@ func (f *browseFilterForm) Update(message tea.Msg, bindings Keybindings) (tea.Cm
 	switch keyPress.Key().Code {
 	case tea.KeyEscape:
 		return nil, browseFilterDiscard
+	case 'r':
+		f.reset()
+		return nil, browseFilterNoAction
 	case 'i':
 		return f.beginEdit()
+	case tea.KeyBackspace:
+		if f.row < len(f.fields) {
+			if f.cell == browseFilterOperatorCell {
+				f.fields[f.row].operator = sharedsql.BrowseFilterNone
+			} else {
+				f.fields[f.row].value = ""
+			}
+		}
+		return nil, browseFilterNoAction
 	case tea.KeyUp, 'k':
 		f.row = max(f.row-1, 0)
 	case tea.KeyDown, 'j':
@@ -331,6 +360,6 @@ func (f browseFilterForm) View() string {
 	if f.editing {
 		mode = "INSERT"
 	}
-	lines = append(lines, cropTableLine(fmt.Sprintf("%s | i edit | F5/Ctrl+S apply | Esc cancel", mode), 0, f.width))
+	lines = append(lines, cropTableLine(fmt.Sprintf("%s | i edit | r reset | F5/Ctrl+S apply | Esc cancel", mode), 0, f.width))
 	return strings.Join(lines, "\n")
 }

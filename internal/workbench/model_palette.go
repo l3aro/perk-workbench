@@ -188,6 +188,11 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, m.openBrowseFilterForm()
 		}
 		return m, nil
+	case "browse.reset":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
+			return m, m.resetBrowseFilters()
+		}
+		return m, nil
 	case "browse.sort":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			return m, m.cycleBrowseSort()

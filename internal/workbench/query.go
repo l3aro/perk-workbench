@@ -266,12 +266,6 @@ func (m Model) browseFilterStatement(filter sharedsql.BrowseFilter) string {
 	switch filter.Operator {
 	case sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull:
 		return column + " " + string(filter.Operator)
-	case sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike:
-		cast := "TEXT"
-		if m.databaseInfo.Product == "MySQL" {
-			cast = "CHAR"
-		}
-		return "CAST(" + column + " AS " + cast + ") " + string(filter.Operator) + " " + quoteBrowseValue(filter.Value)
 	default:
 		return column + " " + string(filter.Operator) + " " + quoteBrowseValue(filter.Value)
 	}

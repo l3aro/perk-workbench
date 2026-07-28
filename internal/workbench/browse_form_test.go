@@ -439,7 +439,7 @@ func TestBrowse_y_yanks_moved_cell_value(t *testing.T) {
 func TestBrowse_refineOpensFilterGrid(t *testing.T) {
 	model := readyBrowseModel(t)
 
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
 
 	if model.browseFilterForm == nil {
