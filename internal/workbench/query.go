@@ -181,8 +181,9 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	}
 	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"}, rows))
 	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
-	m.structure.SetRows(rows)
+	m.structureRows = rows
 	m.structureColumns = message.columns
+	m.applyTableFilter(tabStructure)
 	m.structureOffset = 0
 	return m, nil
 }

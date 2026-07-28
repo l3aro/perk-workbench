@@ -73,8 +73,9 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.indexes.SetColumns(tableColumns([]string{"Name", "Kind", "Columns"}, rows))
 	resizeResultsTable(&m.indexes, m.tableViewportWidth, m.indexes.Height()+1)
-	m.indexes.SetRows(rows)
+	m.indexRows = rows
 	m.indexInfo = message.indexes
+	m.applyTableFilter(tabIndexes)
 	m.indexesOffset = 0
 	return m, nil
 }

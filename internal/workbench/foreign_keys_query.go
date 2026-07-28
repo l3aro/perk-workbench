@@ -83,8 +83,9 @@ func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.C
 	}
 	m.foreignKeys.SetColumns(tableColumns([]string{"ID", "Columns", "Reference table", "Reference columns", "On delete", "On update"}, rows))
 	resizeResultsTable(&m.foreignKeys, m.tableViewportWidth, m.foreignKeys.Height()+1)
-	m.foreignKeys.SetRows(rows)
+	m.foreignKeyRows = rows
 	m.foreignKeyInfo = message.foreignKeys
+	m.applyTableFilter(tabForeignKeys)
 	m.foreignKeysOffset = 0
 	return m, nil
 }
