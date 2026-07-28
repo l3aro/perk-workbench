@@ -60,18 +60,6 @@ func (m Model) View() tea.View {
 		return view
 	}
 	view.SetContent(fullContent)
-	if m.Focus == focusChat && !m.hasOverlay() {
-		if chatCursor := m.chat.input.Cursor(); chatCursor != nil {
-			cursor := *chatCursor
-			if m.compact {
-				cursor.X += 2
-			} else {
-				cursor.X += m.schemaWidth + m.editorWidth + 2
-			}
-			cursor.Y += 1 + m.chat.viewport.Height() + 2
-			view.Cursor = &cursor
-		}
-	}
 	return view
 }
 
@@ -397,7 +385,7 @@ func (m Model) chatContentView() string {
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.chat.viewport.View(),
 		m.chat.input.View(),
-		chrome.PaneStatus(statusStyle.Render(m.chatModeBadge()), "", m.chat.viewport.Width()),
+		m.chatModeBadge(),
 	)
 }
 

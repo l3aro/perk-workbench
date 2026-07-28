@@ -85,7 +85,6 @@ func newChatModel() chatModel {
 	input.Placeholder = "Ask about this database..."
 	input.Prompt = ""
 	input.ShowLineNumbers = false
-	input.SetVirtualCursor(false)
 	input.SetHeight(1)
 	input.KeyMap.InsertNewline.SetEnabled(false)
 	styles := input.Styles()
@@ -128,7 +127,11 @@ func (m *Model) resizeChat() {
 	m.chat.input.SetWidth(width)
 	m.chat.input.SetHeight(1)
 	m.chat.viewport.SetWidth(width)
-	m.chat.viewport.SetHeight(max(height-5, 1))
+	viewportHeight := height - 2
+	if m.compact {
+		viewportHeight -= 2
+	}
+	m.chat.viewport.SetHeight(max(viewportHeight, 1))
 	m.chat.initGlamour(width)
 	m.refreshChatView()
 }
