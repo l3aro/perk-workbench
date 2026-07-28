@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
 	"github.com/l3aro/perk-workbench/internal/ai"
 )
 
@@ -136,11 +137,14 @@ func (m *Model) refreshChatView() {
 	blocks := make([]string, 0, len(m.chat.messages)+1)
 	for _, message := range m.chat.messages {
 		var block string
-		content := safeText(message.Content)
+		var content string
+		if message.Role == ai.RoleAssistant {
+			content = safeMarkdown(message.Content)
+		} else {
+			content = safeText(message.Content)
+		}
 		if message.Role == ai.RoleAssistant && m.chat.glamour != nil {
-			if rendered, err := m.chat.glamour.Render(content); err == nil {
-				content = strings.TrimRight(rendered, "\n")
-			}
+			content = m.renderChatContent(content)
 		}
 		if message.Role == ai.RoleUser {
 			contentWidth := max(m.chat.viewport.Width()-2, 1)
@@ -166,11 +170,9 @@ func (m *Model) refreshChatView() {
 		blocks = append(blocks, thinkingStyle.Render(label))
 
 		if m.chat.streamBuffer != "" {
-			content := safeText(m.chat.streamBuffer)
+			content := safeMarkdown(m.chat.streamBuffer)
 			if m.chat.glamour != nil {
-				if rendered, err := m.chat.glamour.Render(content); err == nil {
-					content = strings.TrimRight(rendered, "\n")
-				}
+				content = m.renderChatContent(content)
 			}
 			blocks = append(blocks, content)
 		}
@@ -196,4 +198,118 @@ func (cm *chatModel) initGlamour(width int) {
 		return
 	}
 	cm.glamour = r
+}
+
+// renderChatContent renders assistant message content. Non-table markdown goes
+// through glamour; GFM table blocks are rendered with lipgloss/v2/table for
+// proper column alignment within the chat viewport width.
+func (m *Model) renderChatContent(content string) string {
+	if m.chat.glamour == nil || !strings.Contains(content, "\n|") && !strings.HasPrefix(content, "|") {
+		// No table likely — use glamour directly.
+		if m.chat.glamour != nil {
+			if rendered, err := m.chat.glamour.Render(content); err == nil {
+				return strings.TrimRight(rendered, "\n")
+			}
+		}
+		return content
+	}
+
+	// Split by blank lines to find table paragraphs.
+	paragraphs := strings.Split(content, "\n\n")
+	width := m.chat.viewport.Width()
+	if width < 1 {
+		width = 1
+	}
+	var out strings.Builder
+
+	for i, para := range paragraphs {
+		if i > 0 {
+			out.WriteString("\n\n")
+		}
+
+		lines := strings.Split(para, "\n")
+		if isGFMTable(lines) {
+			out.WriteString(renderTableLines(lines, width))
+		} else if m.chat.glamour != nil {
+			if rendered, err := m.chat.glamour.Render(para); err == nil {
+				out.WriteString(strings.TrimRight(rendered, "\n"))
+			} else {
+				out.WriteString(para)
+			}
+		} else {
+			out.WriteString(para)
+		}
+	}
+	return out.String()
+}
+
+// isGFMTable checks whether a set of lines forms a GFM table block.
+func isGFMTable(lines []string) bool {
+	if len(lines) < 3 {
+		return false
+	}
+	// All lines must be non-empty and start with '|' (possibly after whitespace).
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed == "" || trimmed[0] != '|' {
+			return false
+		}
+	}
+	// Second line must be a separator: |[-: ]+|
+	sep := strings.TrimSpace(lines[1])
+	withoutPipes := strings.ReplaceAll(sep, "|", "")
+	if len(withoutPipes) == 0 {
+		return false
+	}
+	for _, r := range withoutPipes {
+		if r != '-' && r != ':' && r != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+// renderTableLines renders a parsed GFM table with lipgloss/v2/table.
+func renderTableLines(lines []string, width int) string {
+	headCells := parseTableRow(lines[0])
+	tbl := table.New().
+		Width(width).
+		Border(lipgloss.NormalBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		StyleFunc(func(row, _ int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true)
+			}
+			return lipgloss.NewStyle()
+		})
+
+	tbl.Headers(headCells...)
+	for _, line := range lines[2:] {
+		cells := parseTableRow(line)
+		tbl.Row(cells...)
+	}
+
+	rendered := tbl.Render()
+	return rendered
+}
+
+// parseTableRow splits a GFM table row line into cells, stripping outer pipes
+// and trimming whitespace.
+func parseTableRow(line string) []string {
+	line = strings.TrimSpace(line)
+	// Remove leading and trailing pipe.
+	if strings.HasPrefix(line, "|") {
+		line = line[1:]
+	}
+	if strings.HasSuffix(line, "|") {
+		line = line[:len(line)-1]
+	}
+	parts := strings.Split(line, "|")
+	cells := make([]string, 0, len(parts))
+	for _, p := range parts {
+		cells = append(cells, strings.TrimSpace(p))
+	}
+	return cells
 }

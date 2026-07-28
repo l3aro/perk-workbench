@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -496,5 +497,81 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	last := model.chat.messages[len(model.chat.messages)-1]
 	if last.Role != ai.RoleAssistant || last.Content != "There is 1 row." {
 		t.Fatalf("last message = %#v, want assistant with final content", last)
+	}
+}
+
+func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
+	tableMD := "Here are the record counts:\n\n" +
+		"| Rank | Table | Row Count |\n" +
+		"|------|-------|-----------|\n" +
+		"| 🥇 | orderdetails | 2,996 |\n" +
+		"| 🥈 | orders | 326 |\n" +
+		"| 3 | payments | 273 |\n"
+
+	for _, terminalWidth := range []int{140, 100, 80, 60} {
+		t.Run(fmt.Sprintf("width_%d", terminalWidth), func(t *testing.T) {
+			model := New(":memory:", context.Background(), nil)
+			model.State = stateReady
+			ctx := context.Background()
+			service, err := sqlite.Open(ctx, ":memory:")
+			if err != nil {
+				t.Fatalf("opening test service: %v", err)
+			}
+			t.Cleanup(func() { _ = service.Close() })
+			model.SetAI(fakeChatClient{}, nil)
+			model.Database = service
+			model.databaseInfo = service.Info()
+			model.layout(terminalWidth, 32)
+
+			model.chat.messages = []ai.Message{
+				{Role: ai.RoleUser, Content: "which tables has most records?"},
+				{Role: ai.RoleAssistant, Content: tableMD},
+			}
+			model.refreshChatView()
+
+			content := model.chat.viewport.GetContent()
+			lines := strings.Split(content, "\n")
+			width := model.chat.viewport.Width()
+
+			for i, line := range lines {
+				if strings.TrimSpace(ansi.Strip(line)) == "" {
+					continue
+				}
+				visible := ansi.StringWidth(line)
+				if visible > width {
+					t.Errorf("line %d: visible width %d exceeds viewport width %d\n  raw=%q\n  stripped=%q",
+						i, visible, width, line, ansi.Strip(line))
+				}
+			}
+
+			// Assert table structure: multiple lines, box-drawing separators, no raw md.
+			stripped := ansi.Strip(content)
+
+			checkLines := strings.Split(stripped, "\n")
+			nonEmpty := 0
+			for _, l := range checkLines {
+				if strings.TrimSpace(l) != "" {
+					nonEmpty++
+				}
+			}
+			if nonEmpty < 5 {
+				t.Errorf("expected >= 5 non-empty lines (header+sep+3 rows), got %d", nonEmpty)
+			}
+
+			// Must contain box-drawing column separators.
+			if !strings.Contains(content, "│") {
+				t.Error("rendered content missing box-drawing column separators (│)")
+			}
+
+			// Must NOT contain raw GFM table separator syntax.
+			if strings.Contains(stripped, "|---") || strings.Contains(stripped, "----|") {
+				t.Error("rendered content contains raw markdown table separators instead of box-drawing")
+			}
+
+			// Must contain expected data values.
+			if !strings.Contains(stripped, "orderdetails") && !strings.Contains(stripped, "orderde") {
+				t.Error("missing expected table data content")
+			}
+		})
 	}
 }

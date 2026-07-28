@@ -1131,6 +1131,16 @@ func databaseSuffix(name string) bool {
 
 func safeText(input string) string { return sharedsql.SanitizeDisplay(input) }
 
+// safeMarkdown is like safeText but preserves newlines so markdown structure
+// (paragraphs, tables, lists) survives glamour rendering.
+func safeMarkdown(input string) string {
+	lines := strings.Split(input, "\n")
+	for i, line := range lines {
+		lines[i] = sharedsql.SanitizeDisplay(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // cellText truncates a cell value to MaxRunes runes and appends "…" for the
 // table display. The original full value remains in browseResult for editing.
 func cellText(input string) string {
