@@ -351,11 +351,42 @@ func numericDefault(value string) bool {
 	return true
 }
 
-func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit int) (sharedsql.Result, error) {
-	if offset < 0 || limit < 1 {
-		return sharedsql.Result{}, fmt.Errorf("invalid page: offset=%d limit=%d", offset, limit)
+func (s *Service) BrowseTable(ctx context.Context, name string, options sharedsql.BrowseOptions) (sharedsql.Result, error) {
+	if options.Offset < 0 || options.Limit < 1 || options.Limit > sharedsql.MaxRows {
+		return sharedsql.Result{}, fmt.Errorf("invalid browse range: offset=%d limit=%d", options.Offset, options.Limit)
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT * FROM "+mysqlTableIdentifier(name)+" LIMIT ? OFFSET ?", limit+1, offset)
+	statement := "SELECT * FROM " + mysqlTableIdentifier(name)
+	args := make([]any, 0, len(options.Columns)+2)
+	if options.Filter != "" && len(options.Columns) > 0 {
+		terms := make([]string, len(options.Columns))
+		for index, column := range options.Columns {
+			terms[index] = "CAST(" + quoteIdentifier(column) + " AS CHAR) LIKE ?"
+			args = append(args, "%"+options.Filter+"%")
+		}
+		statement += " WHERE " + strings.Join(terms, " OR ")
+	}
+	if len(options.Sorts) > 0 {
+		valid := make(map[string]bool, len(options.Columns))
+		for _, column := range options.Columns {
+			valid[column] = true
+		}
+		orders := make([]string, 0, len(options.Sorts))
+		for _, sort := range options.Sorts {
+			if !valid[sort.Column] {
+				continue
+			}
+			order := quoteIdentifier(sort.Column)
+			if sort.Descending {
+				order += " DESC"
+			}
+			orders = append(orders, order)
+		}
+		if len(orders) > 0 {
+			statement += " ORDER BY " + strings.Join(orders, ", ")
+		}
+	}
+	args = append(args, options.Limit+1, options.Offset)
+	rows, err := s.db.QueryContext(ctx, statement+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		return sharedsql.Result{}, fmt.Errorf("browsing table: %w", err)
 	}
@@ -363,9 +394,9 @@ func (s *Service) BrowseTable(ctx context.Context, name string, offset, limit in
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	result.HasMore = len(result.Rows) > limit
+	result.HasMore = len(result.Rows) > options.Limit
 	if result.HasMore {
-		result.Rows = result.Rows[:limit]
+		result.Rows = result.Rows[:options.Limit]
 	}
 	return result, nil
 }

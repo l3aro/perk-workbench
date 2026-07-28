@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 )
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -91,6 +92,27 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.structure, command = m.structure.Update(message)
 			case tabBrowse:
+				if m.browseControls != nil {
+					if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+						m.browseControls = nil
+						m.formMode.mode = formModeNormal
+						return m, nil
+					}
+					command = m.browseControls.update(message)
+					if m.browseControls.form.State != huh.StateCompleted {
+						return m, command
+					}
+					if err := m.browseControls.apply(); err != nil {
+						m.Status = safeText(err.Error())
+						return m, nil
+					}
+					m.browseSettings = *m.browseControls.settings
+					m.browseControls = nil
+					m.formMode.mode = formModeNormal
+					m.BrowsePage, m.browseLoading = 0, true
+					m.browsePageTag++
+					return m, m.loadBrowse()
+				}
 				if m.browseForm.active() {
 					m.browseForm.height = m.height
 					command, action := m.browseForm.Update(message, m.formMode)
@@ -102,6 +124,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.browseForm = browseForm{}
 					}
 					return m, command
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
+					return m, m.openBrowseControls()
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.sort", []scope{scopeView, scopeGlobal}) {
+					return m, m.cycleBrowseSort()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
 					return m, m.openCellEditor()
@@ -341,5 +369,5 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) formActive() bool {
-	return m.columnForm.active() || m.browseForm.active() || m.indexForm.active() || m.foreignKeyForm.active()
+	return m.columnForm.active() || m.browseForm.active() || m.browseControls != nil || m.indexForm.active() || m.foreignKeyForm.active()
 }

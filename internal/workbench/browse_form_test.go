@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -432,5 +433,57 @@ func TestBrowse_y_yanks_moved_cell_value(t *testing.T) {
 	}
 	if command == nil {
 		t.Fatal("expected copy command")
+	}
+}
+
+func TestBrowse_refineOpensControls(t *testing.T) {
+	model := readyBrowseModel(t)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	model = updated.(Model)
+
+	if model.browseControls == nil || command == nil {
+		t.Fatalf("browse controls = %#v, command = %t, want opened controls", model.browseControls, command != nil)
+	}
+}
+
+func TestBrowse_loadUsesFilterAndLimit(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseSettings = browseSettings{filter: "second", limit: 1}
+
+	updated, _ := model.Update(model.loadBrowse()())
+	model = updated.(Model)
+
+	if rows := model.browse.Rows(); len(rows) != 1 || rows[0][1] != "second" {
+		t.Fatalf("browse rows = %#v, want filtered row", rows)
+	}
+}
+
+func TestBrowse_sCyclesSelectedColumnSort(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1
+
+	for _, want := range []struct {
+		column int
+		sorts  []browseSort
+		titles []string
+	}{
+		{column: 1, sorts: []browseSort{{column: "name"}}, titles: []string{"id", "⌃ name"}},
+		{column: 0, sorts: []browseSort{{column: "name"}, {column: "id"}}, titles: []string{"⌃ id", "⌃ name"}},
+		{column: 1, sorts: []browseSort{{column: "name", desc: true}, {column: "id"}}, titles: []string{"⌃ id", "⌄ name"}},
+		{column: 1, sorts: []browseSort{{column: "id"}}, titles: []string{"⌃ id", "name"}},
+	} {
+		model.browseColumn = want.column
+		updated, command := model.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
+		model = updated.(Model)
+		model = resolveBrowseCommand(model, command())
+		if got := model.browseSettings.sorts; !slices.Equal(got, want.sorts) {
+			t.Fatalf("browse sorts = %#v, want %#v", got, want.sorts)
+		}
+		for index, title := range want.titles {
+			if got := model.browse.Columns()[index].Title; got != title {
+				t.Fatalf("sort title[%d] = %q, want %q", index, got, title)
+			}
+		}
 	}
 }

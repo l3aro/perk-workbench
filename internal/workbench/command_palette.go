@@ -156,6 +156,10 @@ func commandLabel(id CommandID, raw string) string {
 		return "edit column"
 	case "browse.edit":
 		return "edit row"
+	case "browse.refine":
+		return "filter and row limit"
+	case "browse.sort":
+		return "sort column"
 	case "browse.next_page":
 		return "next page"
 	case "browse.prev_page":
@@ -225,8 +229,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusSchema
 	case "structure.edit":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
-	case "browse.edit", "browse.next_page", "browse.prev_page":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active()
+	case "browse.edit", "browse.refine", "browse.sort", "browse.next_page", "browse.prev_page":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseControls == nil
 	case "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.indexForm.active()
 	case "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":

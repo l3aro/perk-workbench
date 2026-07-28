@@ -75,6 +75,7 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 
 func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	m.SelectTable(m.schemaTable(item))
+	m.browseSettings = browseSettings{}
 	m.structureColumns = nil
 	m.foreignKeyInfo = nil
 	m.referencingForeignKeyInfo = nil

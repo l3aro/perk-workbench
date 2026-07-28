@@ -57,6 +57,9 @@ func (m *Model) layout(width, height int) {
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
 	m.browseForm.setWidth(m.tableViewportWidth)
+	if m.browseControls != nil {
+		m.browseControls.setWidth(m.tableViewportWidth)
+	}
 	m.indexForm.setWidth(m.tableViewportWidth)
 	m.foreignKeyForm.setWidth(m.tableViewportWidth)
 	if m.explainPicker != nil {

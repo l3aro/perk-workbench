@@ -37,6 +37,8 @@ var defaultDefs = []commandDef{
 	// ── Browse tab (view) ───────────────────────────────────────
 	{id: "browse.edit", scope: scopeView, keys: []string{"enter"}, label: "edit row"},
 	{id: "browse.edit_cell", scope: scopeView, keys: []string{"i"}, label: "edit cell"},
+	{id: "browse.refine", scope: scopeView, keys: []string{"r"}, label: "filter and row limit"},
+	{id: "browse.sort", scope: scopeView, keys: []string{"s"}, label: "sort column"},
 	{id: "browse.next_page", scope: scopeView, keys: []string{"n"}, label: "next"},
 	{id: "browse.prev_page", scope: scopeView, keys: []string{"p"}, label: "prev"},
 	{id: "browse.yank_cell", scope: scopeView, keys: []string{"y"}, label: "copy cell"},

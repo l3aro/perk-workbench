@@ -38,7 +38,7 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 		t.Fatalf("TableInfo() indexes = %#v, want primary, unique, and regular index metadata", columns)
 	}
 
-	result, err := service.BrowseTable(ctx, "items", 0, 25)
+	result, err := service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{Columns: []string{"id", "name", "note"}, Limit: 25})
 	if err != nil {
 		t.Fatalf("BrowseTable() error = %v", err)
 	}
@@ -46,12 +46,55 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 		t.Fatalf("BrowseTable() = %#v, want first page without a total row count", result)
 	}
 
-	result, err = service.BrowseTable(ctx, "items", 25, 25)
+	result, err = service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{Columns: []string{"id", "name", "note"}, Offset: 25, Limit: 25})
 	if err != nil {
 		t.Fatalf("BrowseTable() second page error = %v", err)
 	}
 	if len(result.Rows) != 1 || result.HasMore {
 		t.Fatalf("BrowseTable() = %#v, want final page with no next page", result)
+	}
+}
+
+func TestServiceBrowseTable_filters_sorts_and_limits(t *testing.T) {
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Ada", "Bob", "Adele"} {
+		if _, err := service.Execute(ctx, "INSERT INTO items (name) VALUES ('"+name+"')"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{
+		Columns: []string{"id", "name"}, Filter: "ad", Sorts: []sharedsql.BrowseSort{{Column: "name", Descending: true}}, Limit: 1,
+	})
+	if err != nil {
+		t.Fatalf("BrowseTable() error = %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][1] == nil || *result.Rows[0][1] != "Adele" || !result.HasMore {
+		t.Fatalf("BrowseTable() = %#v, want first descending filtered row with another row available", result)
+	}
+
+	if _, err := service.Execute(ctx, "CREATE TABLE ranked (group_name TEXT, rank INTEGER)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, values := range []string{"('a', 1)", "('a', 2)", "('b', 1)"} {
+		if _, err := service.Execute(ctx, "INSERT INTO ranked VALUES "+values); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err = service.BrowseTable(ctx, "ranked", sharedsql.BrowseOptions{
+		Columns: []string{"group_name", "rank"},
+		Sorts:   []sharedsql.BrowseSort{{Column: "group_name", Descending: true}, {Column: "rank", Descending: true}},
+		Limit:   3,
+	})
+	if err != nil {
+		t.Fatalf("browsing multi-sort table: %v", err)
+	}
+	if got := []string{*result.Rows[0][0], *result.Rows[0][1], *result.Rows[1][0], *result.Rows[1][1]}; !slices.Equal(got, []string{"b", "1", "a", "2"}) {
+		t.Fatalf("multi-sort rows = %#v, want b/1 then a/2", got)
 	}
 }
 
@@ -104,7 +147,7 @@ func TestServiceAlterColumn_rebuildsSchemaAndRetainsRows(t *testing.T) {
 	if len(columns) != 3 || columns[1].Name != "title" || columns[1].Type != "VARCHAR(40)" || !columns[1].Nullable || columns[1].DefaultValue != nil {
 		t.Fatalf("TableInfo() = %#v, want altered title column", columns)
 	}
-	result, err := service.BrowseTable(ctx, "items", 0, 25)
+	result, err := service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{Columns: []string{"id", "name", "note"}, Limit: 25})
 	if err != nil {
 		t.Fatalf("browsing altered table: %v", err)
 	}

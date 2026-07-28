@@ -27,7 +27,18 @@ type Service interface {
 	ReplaceForeignKey(context.Context, string, string, ForeignKeyChange) error
 	DropForeignKey(context.Context, string, string) error
 	AlterColumn(context.Context, string, ColumnChange) error
-	BrowseTable(context.Context, string, int, int) (Result, error)
+	BrowseTable(context.Context, string, BrowseOptions) (Result, error)
+}
+type BrowseOptions struct {
+	Columns       []string
+	Filter        string
+	Sorts         []BrowseSort
+	Offset, Limit int
+}
+
+type BrowseSort struct {
+	Column     string
+	Descending bool
 }
 
 type DatabaseInfo struct {

@@ -71,6 +71,8 @@ type Model struct {
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
 	browseForm                                                                                     browseForm
+	browseControls                                                                                 *browseControls
+	browseSettings                                                                                 browseSettings
 	indexForm                                                                                      indexForm
 	foreignKeyForm                                                                                 foreignKeyForm
 	cellEditor                                                                                     *cellEditor

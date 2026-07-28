@@ -22,6 +22,7 @@ type tableInfoMsg struct {
 type browseTableMsg struct {
 	table     string
 	page      int
+	tag       uint64
 	startedAt time.Time
 	result    sharedsql.Result
 	err       error
@@ -96,11 +97,23 @@ func (m Model) loadTableInfo() tea.Cmd {
 }
 
 func (m Model) loadBrowse() tea.Cmd {
-	tableName, page, service := m.SelectedTable, m.BrowsePage, m.Database
+	tableName, page, tag, service := m.SelectedTable, m.BrowsePage, m.browsePageTag, m.Database
+	settings := m.browseSettings
+	columns := make([]string, len(m.structureColumns))
+	for index, column := range m.structureColumns {
+		columns[index] = column.Name
+	}
 	startedAt := time.Now()
 	return func() tea.Msg {
-		result, err := service.BrowseTable(m.appContext, tableName, page*browsePageSize, browsePageSize)
-		return browseTableMsg{table: tableName, page: page, startedAt: startedAt, result: result, err: err}
+		sorts := make([]sharedsql.BrowseSort, len(settings.sorts))
+		for index, sort := range settings.sorts {
+			sorts[index] = sharedsql.BrowseSort{Column: sort.column, Descending: sort.desc}
+		}
+		result, err := service.BrowseTable(m.appContext, tableName, sharedsql.BrowseOptions{
+			Columns: columns, Filter: settings.filter, Sorts: sorts,
+			Offset: page * settings.pageSize(), Limit: settings.pageSize(),
+		})
+		return browseTableMsg{table: tableName, page: page, tag: tag, startedAt: startedAt, result: result, err: err}
 	}
 }
 
@@ -247,7 +260,7 @@ func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
-	if message.table != m.SelectedTable || message.page != m.BrowsePage {
+	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.tag != m.browsePageTag {
 		return m, nil
 	}
 	m.browseLoading = false
@@ -261,14 +274,29 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		duration = time.Since(message.startedAt)
 	}
 	quotedTable := m.actionIdentifier(message.table)
-	statement := fmt.Sprintf("SELECT * FROM %s LIMIT %d OFFSET %d", quotedTable, browsePageSize, message.page*browsePageSize)
+	statement := fmt.Sprintf("SELECT * FROM %s", quotedTable)
+	if m.browseSettings.filter != "" {
+		statement += " /* filter active */"
+	}
+	if len(m.browseSettings.sorts) > 0 {
+		orders := make([]string, len(m.browseSettings.sorts))
+		for index, sort := range m.browseSettings.sorts {
+			orders[index] = m.actionIdentifier(sort.column)
+			if sort.desc {
+				orders[index] += " DESC"
+			}
+		}
+		statement += " ORDER BY " + strings.Join(orders, ", ")
+	}
+	pageSize := m.browseSettings.pageSize()
+	statement += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, message.page*pageSize)
 	m.appendQueryLog(queryLogEntry{
 		startedAt: message.startedAt,
 		statement: statement,
 		duration:  duration,
 		message:   queryLogMessage(statement, message.result.RowsAffected, len(message.result.Rows)),
 	})
-	start, end := message.page*browsePageSize+1, message.page*browsePageSize+len(message.result.Rows)
+	start, end := message.page*pageSize+1, message.page*pageSize+len(message.result.Rows)
 	if len(message.result.Rows) == 0 {
 		start = 0
 	}
@@ -279,11 +307,27 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) setBrowse(result sharedsql.Result) {
 	cursor := m.browse.Cursor()
+	selectedColumn := ""
+	if m.browseColumn >= 0 && m.browseColumn < len(m.browseResult.Columns) {
+		selectedColumn = m.browseResult.Columns[m.browseColumn]
+	}
 	m.browseResult = result
 	m.browseNumericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
-		titles[index] = safeText(column)
+		title := safeText(column)
+		for _, sort := range m.browseSettings.sorts {
+			if column != sort.column {
+				continue
+			}
+			if sort.desc {
+				title = "⌄ " + title
+			} else {
+				title = "⌃ " + title
+			}
+			break
+		}
+		titles[index] = title
 	}
 	rows := make([]table.Row, len(result.Rows))
 	for rowIndex, row := range result.Rows {
@@ -305,6 +349,13 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 		m.browse.SetCursor(min(cursor, len(rows)-1))
 	}
 	m.browseColumn, m.browseOffset = 0, 0
+	for index, column := range result.Columns {
+		if column == selectedColumn {
+			m.browseColumn = index
+			revealTableColumn(m.browse, index, &m.browseOffset, m.tableViewportWidth)
+			break
+		}
+	}
 }
 
 func numericColumns(types []string) []bool {

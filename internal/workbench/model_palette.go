@@ -183,6 +183,16 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, readDirectory(m.pickerDir)
 		}
 		return m, nil
+	case "browse.refine":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseControls == nil {
+			return m, m.openBrowseControls()
+		}
+		return m, nil
+	case "browse.sort":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseControls == nil {
+			return m, m.cycleBrowseSort()
+		}
+		return m, nil
 	case "browse.next_page":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() {
 			if m.browseLoading {
