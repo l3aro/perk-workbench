@@ -43,7 +43,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.cellEditor != nil || m.explainPicker != nil || m.savedQueryPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.cellEditor != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.queryConfirmation != nil {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
@@ -107,8 +107,6 @@ func (m Model) confirmContent() string {
 		raw = m.queryConfirmation.dialog.content(m.width)
 	case m.explainPicker != nil:
 		raw = m.explainPicker.form.View()
-	case m.savedQueryPicker != nil:
-		raw = m.savedQueryPicker.form.View()
 	case m.chatHistoryPicker != nil:
 		raw = m.chatHistoryPicker.View()
 	case m.quitDialog != nil:
@@ -394,7 +392,7 @@ func (m Model) queryLogContentView() string {
 	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
-		chrome.PaneStatus(statusStyle.Render("y copy cell | enter detail | e explain"), statusStyle.Render(summary), m.tableViewportWidth)
+		chrome.PaneStatus(statusStyle.Render("y copy cell | enter detail | e explain | n/p page"), statusStyle.Render(summary), m.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {

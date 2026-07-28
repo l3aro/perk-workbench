@@ -186,6 +186,9 @@ func readyModel(t *testing.T) Model {
 		}
 	})
 	model := New("", context.Background(), testOpen)
+	model.queryLogPath = t.TempDir() + "/data.db"
+	model.queryLogEntries = nil
+	model.renderQueryLog()
 	model.State, model.Database = stateReady, service
 	return model
 }

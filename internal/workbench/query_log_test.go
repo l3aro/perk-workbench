@@ -31,14 +31,14 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	updated, _ = model.Update(queryCanceledMsg{requestID: requestID, statement: "SELECT sleep", startedAt: started.Add(2 * time.Second)})
 	model = updated.(Model)
 
-	for index := 0; index < queryLogLimit-2; index++ {
+	for index := range queryLogLimit - 2 {
 		model.appendQueryLog(queryLogEntry{startedAt: started.Add(time.Duration(index+3) * time.Second), statement: "SELECT many", duration: time.Millisecond})
 	}
 
 	// Then
 	rows := model.queryLog.Rows()
-	if got, want := len(rows), queryLogLimit; got != want {
-		t.Fatalf("query log entries = %d, want %d", got, want)
+	if got, want := len(rows), defaultQueryLogPageSize; got != want {
+		t.Fatalf("visible query log rows = %d, want %d", got, want)
 	}
 	if got := strings.TrimSpace(ansi.Strip(rows[0][1])); got != iconSuccess {
 		t.Fatalf("latest query log status = %q, want %q", got, iconSuccess)
@@ -46,7 +46,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	if got, want := rows[0][2], "SELECT many"; got != want {
 		t.Fatalf("latest query log statement = %q, want %q", got, want)
 	}
-	if got := rows[len(rows)-1][2]; got != "bad SQL" {
+	if got := model.queryLogEntries[len(model.queryLogEntries)-1].statement; got != "bad SQL" {
 		t.Fatalf("oldest retained query = %q, want failed query after capped entries", got)
 	}
 }
@@ -342,7 +342,7 @@ func TestQueryLog_summary_reports_session_extrema(t *testing.T) {
 	summary := model.queryLogSummary()
 
 	// Then
-	if got, want := summary, "fastest 2ms | slowest 15ms"; got != want {
+	if got, want := summary, "page 1/1 | fastest 2ms | slowest 15ms"; got != want {
 		t.Fatalf("query log summary = %q, want %q", got, want)
 	}
 }

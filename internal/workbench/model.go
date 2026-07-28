@@ -60,13 +60,13 @@ type Model struct {
 	resultsStatus, browseStatus                                                                    string
 	queryLogEntries                                                                                []queryLogEntry
 	queryLogDetail                                                                                 *queryLogEntry
+	queryLogPage, queryLogPageSize                                                                 int
 	queryLogPendingG                                                                               bool
-	queryHistory, savedQueries                                                                     []string
+	queryHistory                                                                                   []string
 	historyIndex                                                                                   int
 	editor                                                                                         *editor
 	chat                                                                                           chatModel
 	explainPicker                                                                                  *explainPicker
-	savedQueryPicker                                                                               *savedQueryPicker
 	chatHistoryPicker                                                                              *huh.Form
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
@@ -82,7 +82,7 @@ type Model struct {
 	themePicker                                                                                    *themePicker
 	quitDialog                                                                                     *confirmationDialog
 	queryConfirmation                                                                              *queryConfirmation
-	recentPath, savedQueriesPath                                                                   string
+	recentPath, queryLogPath                                                                       string
 	keybindings                                                                                    Keybindings
 	width, height, schemaWidth, editorWidth, chatWidth                                             int
 	workspaceHeight, queryLogHeight                                                                int
@@ -172,13 +172,15 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase) Model {
 		completionColumns: map[string][]string{},
 		keybindings:       DefaultKeybindings(),
 		historyIndex:      -1,
+		queryLogPageSize:  queryLogPageSize(),
 	}
 	model.commandPalette = newCommandPalette(model)
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()
-	model.savedQueriesPath, _ = savedQueriesPath()
-	model.savedQueries = loadSavedQueries(model.savedQueriesPath)
+	model.queryLogPath, _ = queryLogPath()
+	model.queryLogEntries = loadQueryLog(model.queryLogPath)
+	model.renderQueryLog()
 	model.recentPath, _ = recentConnectionsPath()
 	model.recentConnections = loadRecentConnections(model.recentPath)
 	_ = model.recent.SetItems(recentListItems(model.recentConnections))

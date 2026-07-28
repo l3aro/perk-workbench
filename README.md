@@ -97,8 +97,8 @@ The container cannot access the native desktop clipboard; the terminal forwards 
 - `F5` runs the editor contents.
 - `Ctrl+Enter` runs the editor contents when the terminal reports the modified Enter key.
 - `Ctrl+S` runs the editor contents and works in terminals that cannot distinguish modified Enter keys.
-- `Ctrl+R` recalls earlier executed statements.
-- `Ctrl+K` saves the editor contents for this session; `Ctrl+O` selects a saved query.
+- `Ctrl+R` recalls earlier executed statements from this session.
+- Pane `3` retains recent query-log entries in `$XDG_CONFIG_HOME/perk-workbench/data.db`; they expire after 30 days by default. Set `PERK_QUERY_LOG_RETENTION_DAYS` to a non-negative day count (`0` clears the log). Use `n`/`p` to move through 25-entry pages; set `PERK_QUERY_LOG_PAGE_SIZE` to change the page size.
 - `Enter` in the schema pane loads and runs the selected table or view's DDL query.
 - `Escape` cancels an active query. In the editor, `Escape` switches from insert mode to normal mode.
 - `q` quits when the editor is empty or another pane owns focus. In an editor with text, `q` is inserted as text.

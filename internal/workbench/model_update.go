@@ -181,23 +181,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.blurTables()
 		return m, m.formMode.beginInsert(m.editor)
 	}
-	if m.savedQueryPicker != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.savedQueryPicker = nil
-			return m, nil
-		}
-		form, command := m.savedQueryPicker.form.Update(message)
-		m.savedQueryPicker.form = form.(*huh.Form)
-		if m.savedQueryPicker.form.State != huh.StateCompleted {
-			return m, command
-		}
-		m.editor.setValue(m.savedQueryPicker.selection)
-		m.savedQueryPicker = nil
-		m.Status = "loaded saved query"
-		m.Focus, m.Tab = focusWorkspace, tabSQL
-		m.blurTables()
-		return m, m.formMode.beginInsert(m.editor)
-	}
 	if m.chatHistoryPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
 			m.chatHistoryPicker = nil
@@ -320,21 +303,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.Focus, m.Tab = focusWorkspace, tabSQL
 			m.blurTables()
 			return m, m.formMode.beginInsert(m.editor)
-		}
-		if m.State == stateReady && !m.formActive() && !m.editor.completionVisible() && m.keybindings.Match(message, "query.save", []scope{scopeGlobal}) {
-			if saved, err := m.saveQuery(); err != nil {
-				m.Status = safeText(fmt.Sprintf("saving query: %v", err))
-			} else if saved {
-				m.Status = "saved query"
-			}
-			return m, nil
-		}
-		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.saved", []scope{scopeGlobal}) {
-			m.savedQueryPicker = newSavedQueryPicker(m.savedQueries, m.tableViewportWidth)
-			if m.savedQueryPicker != nil {
-				return m, m.savedQueryPicker.form.Init()
-			}
-			return m, nil
 		}
 		if m.sqlEditorActive() {
 			if m.editor.completionVisible() {

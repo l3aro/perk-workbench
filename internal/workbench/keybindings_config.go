@@ -36,6 +36,10 @@ func LoadKeybindings(path string) (Keybindings, error) {
 		return Keybindings{}, fmt.Errorf("keybindings config %q: %w", path, err)
 	}
 
+	// Removed in favor of the persisted query-log pane.
+	delete(flat, "query.save")
+	delete(flat, "query.saved")
+
 	b, err := NewKeybindings(flat)
 	if err != nil {
 		return Keybindings{}, fmt.Errorf("keybindings config %q: %w", path, err)

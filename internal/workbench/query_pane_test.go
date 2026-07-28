@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +118,40 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 		if got := model.queryLog.Cursor(); got != test.want {
 			t.Fatalf("query log cursor = %d, want %d after %s", got, test.want, test.key.String())
 		}
+	}
+}
+
+func TestQueryLog_n_and_p_change_pages(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	for index := range defaultQueryLogPageSize + 1 {
+		model.appendQueryLog(queryLogEntry{statement: fmt.Sprintf("SELECT %d", index)})
+	}
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
+	model = updated.(Model)
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.queryLogPage, 1; got != want {
+		t.Fatalf("query log page = %d, want %d", got, want)
+	}
+	if got, want := model.queryLog.Rows()[0][2], "SELECT 0"; got != want {
+		t.Fatalf("next page statement = %q, want %q", got, want)
+	}
+
+	// When
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.queryLogPage, 0; got != want {
+		t.Fatalf("query log page = %d, want %d", got, want)
+	}
+	if got, want := model.queryLog.Rows()[0][2], "SELECT 25"; got != want {
+		t.Fatalf("previous page statement = %q, want %q", got, want)
 	}
 }
 func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {

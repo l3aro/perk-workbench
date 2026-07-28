@@ -266,6 +266,22 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.queryLogPendingG = false
 				}
+				if m.keybindings.Match(keyPress, "query_log.next_page", []scope{scopeView, scopeGlobal}) {
+					if m.queryLogPage+1 < m.queryLogPageCount() {
+						m.queryLogPage++
+						m.queryLog.SetCursor(0)
+						m.renderQueryLog()
+					}
+					return m, nil
+				}
+				if m.keybindings.Match(keyPress, "query_log.prev_page", []scope{scopeView, scopeGlobal}) {
+					if m.queryLogPage > 0 {
+						m.queryLogPage--
+						m.queryLog.SetCursor(0)
+						m.renderQueryLog()
+					}
+					return m, nil
+				}
 				if moveTableCell(&m.queryLog, &m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
@@ -275,18 +291,18 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				switch {
 				case m.keybindings.Match(keyPress, "query_log.yank", []scope{scopeView, scopeGlobal}):
-					cursor := m.queryLog.Cursor()
-					if cursor < 0 || cursor >= len(m.queryLogEntries) {
+					entry, ok := m.queryLogSelectedEntry()
+					if !ok {
 						return m, nil
 					}
 					m.Status = "copied to clipboard"
-					return m, copyQueryLogStatement(queryLogCell(m.queryLogEntries[cursor], m.queryLogColumn))
+					return m, copyQueryLogStatement(queryLogCell(entry, m.queryLogColumn))
 				case m.keybindings.Match(keyPress, "query_log.explain", []scope{scopeView, scopeGlobal}):
-					cursor := m.queryLog.Cursor()
-					if cursor < 0 || cursor >= len(m.queryLogEntries) {
+					entry, ok := m.queryLogSelectedEntry()
+					if !ok {
 						return m, nil
 					}
-					m.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLogEntries[cursor].statement, m.tableViewportWidth)
+					m.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.tableViewportWidth)
 					if m.explainPicker == nil {
 						return m, nil
 					}
@@ -304,9 +320,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.queryLog.SetCursor(len(rows) - 1)
 					return m, nil
 				case m.keybindings.Match(keyPress, "query_log.detail", []scope{scopeView, scopeGlobal}):
-					cursor := m.queryLog.Cursor()
-					if cursor >= 0 && cursor < len(m.queryLogEntries) {
-						entry := m.queryLogEntries[cursor]
+					if entry, ok := m.queryLogSelectedEntry(); ok {
 						m.queryLogDetail = &entry
 					}
 					return m, nil

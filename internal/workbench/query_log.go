@@ -62,8 +62,37 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 	if len(m.queryLogEntries) > queryLogLimit {
 		m.queryLogEntries = m.queryLogEntries[:queryLogLimit]
 	}
-	rows := make([]table.Row, len(m.queryLogEntries))
-	for index, item := range m.queryLogEntries {
+	_ = saveQueryLog(m.queryLogPath, entry)
+	m.renderQueryLog()
+}
+
+func (m Model) queryLogPageCount() int {
+	return max((len(m.queryLogEntries)+m.queryLogPageSize-1)/m.queryLogPageSize, 1)
+}
+
+func (m Model) queryLogPageEntries() []queryLogEntry {
+	start := m.queryLogPage * m.queryLogPageSize
+	if start >= len(m.queryLogEntries) {
+		return nil
+	}
+	return m.queryLogEntries[start:min(start+m.queryLogPageSize, len(m.queryLogEntries))]
+}
+
+func (m Model) queryLogSelectedEntry() (queryLogEntry, bool) {
+	index := m.queryLogPage*m.queryLogPageSize + m.queryLog.Cursor()
+	if index < 0 || index >= len(m.queryLogEntries) {
+		return queryLogEntry{}, false
+	}
+	return m.queryLogEntries[index], true
+}
+
+func (m *Model) renderQueryLog() {
+	if m.queryLogPage >= m.queryLogPageCount() {
+		m.queryLogPage = m.queryLogPageCount() - 1
+	}
+	entries := m.queryLogPageEntries()
+	rows := make([]table.Row, len(entries))
+	for index, item := range entries {
 		var statusStr string
 		switch item.status {
 		case "failed":
@@ -81,7 +110,6 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 			cellText(item.message),
 		}
 	}
-	// Center status icons within column
 	statusColWidth := ansi.StringWidth("Status")
 	for _, row := range rows {
 		statusColWidth = max(statusColWidth, ansi.StringWidth(row[1]))
@@ -125,7 +153,7 @@ func (m Model) queryLogSummary() string {
 		fastest = min(fastest, entry.duration)
 		slowest = max(slowest, entry.duration)
 	}
-	return fmt.Sprintf("fastest %s | slowest %s", fastest.Round(time.Microsecond), slowest.Round(time.Microsecond))
+	return fmt.Sprintf("page %d/%d | fastest %s | slowest %s", m.queryLogPage+1, m.queryLogPageCount(), fastest.Round(time.Microsecond), slowest.Round(time.Microsecond))
 }
 
 func queryLogMessage(statement string, rowsAffected int64, rows int) string {

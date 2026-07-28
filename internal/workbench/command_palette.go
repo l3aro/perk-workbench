@@ -180,6 +180,10 @@ func commandLabel(id CommandID, raw string) string {
 		return "top"
 	case "query_log.top_last":
 		return "bottom"
+	case "query_log.next_page":
+		return "next page"
+	case "query_log.prev_page":
+		return "prev page"
 	case "detail.close":
 		return "close detail"
 	case "picker.reload":
@@ -228,7 +232,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.foreignKeyForm.active()
 	case "query_log.yank", "query_log.explain", "query_log.cursor_down", "query_log.cursor_up",
-		"query_log.top_first", "query_log.top_last", "query_log.detail":
+		"query_log.top_first", "query_log.top_last", "query_log.detail", "query_log.next_page", "query_log.prev_page":
 		return m.State == stateReady && m.Focus == focusQueryLog
 	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql", "chat.share_results":
 		return m.State == stateReady && m.Focus == focusChat

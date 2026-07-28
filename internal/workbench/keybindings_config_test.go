@@ -96,6 +96,20 @@ func TestLoadKeybindings_unknown_command(t *testing.T) {
 	}
 }
 
+func TestLoadKeybindings_ignoresRemovedSavedQueryBindings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "keybindings.json")
+	if err := os.WriteFile(path, []byte(`{"query":{"save":["ctrl+k"],"saved":["ctrl+o"]},"app.quit":["x"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, err := LoadKeybindings(path)
+	if err != nil {
+		t.Fatalf("LoadKeybindings: %v", err)
+	}
+	if got := b.DisplayKey("app.quit"); got != "x" {
+		t.Fatalf("app.quit key = %q, want x", got)
+	}
+}
+
 func TestLoadKeybindings_invalid_json(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "keybindings.json")
 	if err := os.WriteFile(path, []byte("{invalid}"), 0o600); err != nil {

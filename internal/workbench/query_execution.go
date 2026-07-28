@@ -3,9 +3,7 @@ package workbench
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -69,30 +67,6 @@ func (m *Model) recallQueryHistory() bool {
 	m.historyIndex = (m.historyIndex + 1) % len(m.queryHistory)
 	m.editor.setValue(m.queryHistory[m.historyIndex])
 	return true
-}
-
-func (m *Model) saveQuery() (bool, error) {
-	statement := m.editor.value
-	if strings.TrimSpace(statement) == "" {
-		return false, nil
-	}
-	if utf8.RuneCountInString(statement) > maxSavedQueryRunes {
-		return false, nil
-	}
-	for _, saved := range m.savedQueries {
-		if saved == statement {
-			return false, nil
-		}
-	}
-	queries := append(append([]string(nil), m.savedQueries...), statement)
-	if len(queries) > maxSavedQueries {
-		queries = queries[len(queries)-maxSavedQueries:]
-	}
-	if err := saveSavedQueries(m.savedQueriesPath, queries); err != nil {
-		return false, err
-	}
-	m.savedQueries = queries
-	return true, nil
 }
 
 func (m *Model) cancelQuery() {

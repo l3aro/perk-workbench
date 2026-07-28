@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -348,53 +347,6 @@ func TestExecute_history_recall_cycles_executed_statements(t *testing.T) {
 	}
 }
 
-func TestSavedQueries_save_and_select_restores_editor(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.savedQueriesPath = t.TempDir() + "/saved-queries.json"
-	model.editor.setValue("SELECT name FROM projects")
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	if got, want := model.Status, "saved query"; got != want {
-		t.Fatalf("save status = %q, want %q", got, want)
-	}
-	model.editor.setValue("SELECT changed")
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	if model.savedQueryPicker == nil {
-		t.Fatal("open saved queries did not show a picker")
-	}
-	model = updateFromCommand(model, command)
-	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	model = resolveYankCommand(model, command)
-
-	// Then
-	if got, want := model.editor.value, "SELECT name FROM projects"; got != want {
-		t.Fatalf("selected saved statement = %q, want %q", got, want)
-	}
-}
-
-func TestSavedQueries_persistAndReload(t *testing.T) {
-	// Given
-	path := t.TempDir() + "/saved-queries.json"
-	model := readyModel(t)
-	model.savedQueriesPath = path
-	model.editor.setValue("SELECT name FROM projects")
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	reloaded := loadSavedQueries(path)
-
-	// Then
-	if got, want := reloaded, []string{"SELECT name FROM projects"}; !slices.Equal(got, want) {
-		t.Fatalf("reloaded saved queries = %#v, want %#v", got, want)
-	}
-}
-
 func TestExecute_destructive_statement_requires_confirmation(t *testing.T) {
 	// Given
 	model := readyModel(t)
@@ -528,53 +480,6 @@ func TestExecute_history_recall_cycles_executed_statements_merged_2(t *testing.T
 	}
 }
 
-func TestSavedQueries_save_and_select_restores_editor_merged_2(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.savedQueriesPath = t.TempDir() + "/saved-queries.json"
-	model.editor.setValue("SELECT name FROM projects")
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	if got, want := model.Status, "saved query"; got != want {
-		t.Fatalf("save status = %q, want %q", got, want)
-	}
-	model.editor.setValue("SELECT changed")
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	if model.savedQueryPicker == nil {
-		t.Fatal("open saved queries did not show a picker")
-	}
-	model = updateFromCommand(model, command)
-	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	model = resolveYankCommand(model, command)
-
-	// Then
-	if got, want := model.editor.value, "SELECT name FROM projects"; got != want {
-		t.Fatalf("selected saved statement = %q, want %q", got, want)
-	}
-}
-
-func TestSavedQueries_persistAndReload_merged_2(t *testing.T) {
-	// Given
-	path := t.TempDir() + "/saved-queries.json"
-	model := readyModel(t)
-	model.savedQueriesPath = path
-	model.editor.setValue("SELECT name FROM projects")
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	reloaded := loadSavedQueries(path)
-
-	// Then
-	if got, want := reloaded, []string{"SELECT name FROM projects"}; !slices.Equal(got, want) {
-		t.Fatalf("reloaded saved queries = %#v, want %#v", got, want)
-	}
-}
-
 func TestExecute_history_recall_cycles_executed_statements_merged_3(t *testing.T) {
 	// Given
 	model := readyModel(t)
@@ -604,53 +509,6 @@ func TestExecute_history_recall_cycles_executed_statements_merged_3(t *testing.T
 	// Then
 	if got, want := model.editor.value, "SELECT 1"; got != want {
 		t.Fatalf("second recalled statement = %q, want %q", got, want)
-	}
-}
-
-func TestSavedQueries_save_and_select_restores_editor_merged_3(t *testing.T) {
-	// Given
-	model := readyModel(t)
-	model.savedQueriesPath = t.TempDir() + "/saved-queries.json"
-	model.editor.setValue("SELECT name FROM projects")
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	if got, want := model.Status, "saved query"; got != want {
-		t.Fatalf("save status = %q, want %q", got, want)
-	}
-	model.editor.setValue("SELECT changed")
-	updated, command := model.Update(tea.KeyPressMsg{Code: 'o', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	if model.savedQueryPicker == nil {
-		t.Fatal("open saved queries did not show a picker")
-	}
-	model = updateFromCommand(model, command)
-	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = updated.(Model)
-	model = resolveYankCommand(model, command)
-
-	// Then
-	if got, want := model.editor.value, "SELECT name FROM projects"; got != want {
-		t.Fatalf("selected saved statement = %q, want %q", got, want)
-	}
-}
-
-func TestSavedQueries_persistAndReload_merged_3(t *testing.T) {
-	// Given
-	path := t.TempDir() + "/saved-queries.json"
-	model := readyModel(t)
-	model.savedQueriesPath = path
-	model.editor.setValue("SELECT name FROM projects")
-
-	// When
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'k', Mod: tea.ModCtrl})
-	model = updated.(Model)
-	reloaded := loadSavedQueries(path)
-
-	// Then
-	if got, want := reloaded, []string{"SELECT name FROM projects"}; !slices.Equal(got, want) {
-		t.Fatalf("reloaded saved queries = %#v, want %#v", got, want)
 	}
 }
 
