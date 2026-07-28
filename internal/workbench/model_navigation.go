@@ -33,6 +33,22 @@ func moveTableCell(resultTable *table.Model, selectedColumn, offset *int, viewpo
 	return true
 }
 
+func moveTableRow(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
+	switch keyPress.Key().Code {
+	case tea.KeyUp, 'k':
+		resultTable.SetCursor(max(resultTable.Cursor()-1, 0))
+	case tea.KeyDown, 'j':
+		resultTable.SetCursor(min(resultTable.Cursor()+1, max(len(resultTable.Rows())-1, 0)))
+	case tea.KeyLeft, 'h':
+		*offset = tableOffset(*resultTable, *offset-max(viewportWidth/2, 1), viewportWidth)
+	case tea.KeyRight, 'l':
+		*offset = tableOffset(*resultTable, *offset+max(viewportWidth/2, 1), viewportWidth)
+	default:
+		return false
+	}
+	return true
+}
+
 func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int, viewportWidth int) {
 	columns := resultTable.Columns()
 	if len(columns) == 0 {

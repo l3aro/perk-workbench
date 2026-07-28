@@ -173,9 +173,6 @@ func tableViewportViewWithAlignment(resultTable table.Model, numericColumns []bo
 	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
 		selectedRow := rowIndex == resultTable.Cursor()
 		row := tableLineWithSelection(columns, rows[rowIndex], numericColumns, offset, width, selectedColumn, selectedRow)
-		if selectedRow {
-			row = lipgloss.NewStyle().Width(width).Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(row)
-		}
 		lines = append(lines, row)
 	}
 	for range max(rowHeight-(len(lines)-1), 0) {
@@ -206,15 +203,28 @@ func tableLineWithSelection(columns []table.Column, row table.Row, numericColumn
 			value = ansi.Strip(value)
 		}
 		cell := strings.Repeat(" ", spaceCompact) + style.Render(ansi.Truncate(value, column.Width, "…")) + strings.Repeat(" ", spaceCompact)
-		if selectedRow && index == selectedColumn {
-			cell = selectedCellStyle.Render(cell)
-		}
 		cells[index] = cell
 	}
-	return cropTableLine(strings.Join(cells, ""), offset, width)
+	line := cropTableLine(strings.Join(cells, ""), offset, width)
+	if !selectedRow {
+		return line
+	}
+	if selectedColumn < 0 || selectedColumn >= len(columns) {
+		return highlightedTableRow(line, 0, 0)
+	}
+	selectedStart := 0
+	for _, column := range columns[:selectedColumn] {
+		selectedStart += column.Width + 2*spaceCompact
+	}
+	return highlightedTableRow(line, selectedStart-offset, columns[selectedColumn].Width+2*spaceCompact)
 }
 
 func cropTableLine(line string, offset, width int) string {
+	visible := tableLineSegment(line, offset, width)
+	return visible + strings.Repeat(" ", max(width-ansi.StringWidth(visible), 0))
+}
+
+func tableLineSegment(line string, offset, width int) string {
 	var visible strings.Builder
 	var buf strings.Builder
 	total := offset + width
@@ -230,7 +240,20 @@ func cropTableLine(line string, offset, width int) string {
 		}
 		line = line[len(cluster):]
 	}
-	return visible.String() + strings.Repeat(" ", max(width-ansi.StringWidth(visible.String()), 0))
+	return visible.String()
+}
+
+func highlightedTableRow(line string, selectedStart, selectedWidth int) string {
+	lineWidth := ansi.StringWidth(line)
+	selectedEnd := min(max(selectedStart+selectedWidth, 0), lineWidth)
+	selectedStart = min(max(selectedStart, 0), lineWidth)
+	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe))
+	if selectedStart == selectedEnd {
+		return rowStyle.Render(line)
+	}
+	return rowStyle.Render(tableLineSegment(line, 0, selectedStart)) +
+		selectedCellStyle.Render(tableLineSegment(line, selectedStart, selectedEnd-selectedStart)) +
+		rowStyle.Render(tableLineSegment(line, selectedEnd, lineWidth-selectedEnd))
 }
 
 func tableOffset(resultTable table.Model, offset, viewportWidth int) int {

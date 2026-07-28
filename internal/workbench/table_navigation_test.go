@@ -131,6 +131,74 @@ func TestTableCellNavigation_movesRows_withFixedKeys(t *testing.T) {
 	}
 }
 
+func TestRowTables_scrollWithoutCellSelection(t *testing.T) {
+	tests := []struct {
+		name   string
+		setup  func(*Model)
+		table  func(*Model) *table.Model
+		column func(*Model) *int
+		offset func(*Model) *int
+		view   func(Model) string
+	}{
+		{
+			name:   "columns",
+			setup:  func(m *Model) { m.Tab = tabStructure },
+			table:  func(m *Model) *table.Model { return &m.structure },
+			column: func(m *Model) *int { return &m.structureColumn },
+			offset: func(m *Model) *int { return &m.structureOffset },
+			view:   func(m Model) string { return m.structureView() },
+		},
+		{
+			name:   "indexes",
+			setup:  func(m *Model) { m.Tab = tabIndexes },
+			table:  func(m *Model) *table.Model { return &m.indexes },
+			column: func(m *Model) *int { return &m.indexesColumn },
+			offset: func(m *Model) *int { return &m.indexesOffset },
+			view:   func(m Model) string { return m.indexesView() },
+		},
+		{
+			name:   "foreign keys",
+			setup:  func(m *Model) { m.Tab = tabForeignKeys },
+			table:  func(m *Model) *table.Model { return &m.foreignKeys },
+			column: func(m *Model) *int { return &m.foreignKeysColumn },
+			offset: func(m *Model) *int { return &m.foreignKeysOffset },
+			view:   func(m Model) string { return m.foreignKeysView() },
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := resizeModel(readyModel(t), 40, 24)
+			model.Focus = focusWorkspace
+			test.setup(&model)
+			resultTable := test.table(&model)
+			resultTable.SetColumns([]table.Column{{Title: "first", Width: 30}, {Title: "second", Width: 30}})
+			resultTable.SetRows([]table.Row{{strings.Repeat("one", 20), strings.Repeat("two", 20)}})
+			resizeResultsTable(resultTable, model.tableViewportWidth, 2)
+			*test.column(&model) = 1
+			model.focusActiveTable()
+
+			updated, _ := model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
+			model = updated.(Model)
+
+			if got := *test.offset(&model); got == 0 {
+				t.Fatal("right row-motion did not scroll the table")
+			}
+			if got := *test.column(&model); got != 1 {
+				t.Fatalf("selected column = %d, want unchanged", got)
+			}
+			model = resizeModel(model, 42, 24)
+			if got := *test.offset(&model); got == 0 {
+				t.Fatal("resize reset the row table's horizontal scroll")
+			}
+			body := strings.Split(test.view(model), "\n")[1]
+			if strings.Contains(body, "48;2;85;214;190") {
+				t.Fatalf("row view rendered a selected cell: %q", body)
+			}
+		})
+	}
+}
+
 func TestResults_cellNavigation_doesNotInterceptSQLInsertMode(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)

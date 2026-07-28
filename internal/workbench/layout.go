@@ -78,10 +78,10 @@ func (m *Model) layout(width, height int) {
 	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-5, 2))
 	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
 	resizeResultsTable(&m.foreignKeys, m.tableViewportWidth, max(m.workspaceHeight-4, 2))
-	revealTableColumn(m.structure, m.structureColumn, &m.structureOffset, m.tableViewportWidth)
+	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)
 	revealTableColumn(m.browse, m.browseColumn, &m.browseOffset, m.tableViewportWidth)
 	revealTableColumn(m.results, m.resultsColumn, &m.resultsOffset, m.tableViewportWidth)
-	revealTableColumn(m.indexes, m.indexesColumn, &m.indexesOffset, m.tableViewportWidth)
-	revealTableColumn(m.foreignKeys, m.foreignKeysColumn, &m.foreignKeysOffset, m.tableViewportWidth)
+	m.indexesOffset = tableOffset(m.indexes, m.indexesOffset, m.tableViewportWidth)
+	m.foreignKeysOffset = tableOffset(m.foreignKeys, m.foreignKeysOffset, m.tableViewportWidth)
 	revealTableColumn(m.queryLog, m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth)
 }

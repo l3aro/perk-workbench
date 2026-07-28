@@ -276,6 +276,45 @@ func TestResultsTable_selected_row_highlights_all_columns(t *testing.T) {
 	}
 }
 
+func TestResultsTable_selected_cell_keeps_trailing_row_highlight(t *testing.T) {
+	model := newResultsTable()
+	resizeResultsTable(&model, 18, 2)
+	model.SetColumns([]table.Column{{Title: "ID", Width: 4}, {Title: "Name", Width: 6}, {Title: "State", Width: 4}})
+	model.SetRows([]table.Row{{"1", "Ada", "active"}})
+
+	body := strings.Split(tableViewportViewWithAlignment(model, nil, 0, 18, 1), "\n")[1]
+	want := strings.TrimSuffix(lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(" act"), "\x1b[m")
+	if !strings.Contains(body, want) {
+		t.Fatalf("trailing cell lost selected-row highlight: %q", body)
+	}
+}
+
+func TestResultsTable_selected_row_styles_viewport_padding(t *testing.T) {
+	model := newResultsTable()
+	resizeResultsTable(&model, 10, 2)
+	model.SetColumns([]table.Column{{Title: "ID", Width: 1}})
+	model.SetRows([]table.Row{{""}})
+
+	body := strings.Split(tableViewportView(model, 0, 10), "\n")[1]
+	want := lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(strings.Repeat(" ", 10))
+	if body != want {
+		t.Fatalf("viewport padding lost selected-row highlight: %q", body)
+	}
+}
+
+func TestResultsTable_selected_cell_survives_left_crop(t *testing.T) {
+	model := newResultsTable()
+	model.SetColumns([]table.Column{{Title: "Name", Width: 4}, {Title: "State", Width: 4}})
+	model.SetRows([]table.Row{{"one", "two"}})
+	resizeResultsTable(&model, 5, 2)
+
+	body := strings.Split(tableViewportViewWithAlignment(model, nil, 3, 5, 0), "\n")[1]
+	want := selectedCellStyle.Render("e  ")
+	if !strings.Contains(body, want) {
+		t.Fatalf("left-cropped selected cell lost its highlight: %q", body)
+	}
+}
+
 func TestTableViewport_keeps_every_line_at_the_viewport_width(t *testing.T) {
 	// Given
 	model := newResultsTable()

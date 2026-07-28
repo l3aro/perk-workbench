@@ -451,7 +451,7 @@ func (m Model) structureView() string {
 	if m.columnForm.active() {
 		return m.formViewport(m.columnForm.View(), m.columnForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.structure, nil, m.structureOffset, m.tableViewportWidth, m.structureColumn)
+	return tableViewportViewWithAlignment(m.structure, nil, m.structureOffset, m.tableViewportWidth, -1)
 }
 
 func (m Model) browseView() string {
@@ -475,7 +475,7 @@ func (m Model) indexesView() string {
 	if m.indexForm.active() {
 		return m.indexForm.View()
 	}
-	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, m.indexesColumn)
+	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, -1)
 }
 
 func (m Model) foreignKeysView() string {
@@ -485,7 +485,7 @@ func (m Model) foreignKeysView() string {
 	if m.relationshipDiagram {
 		return m.relationshipView()
 	}
-	return tableViewportViewWithAlignment(m.foreignKeys, nil, m.foreignKeysOffset, m.tableViewportWidth, m.foreignKeysColumn)
+	return tableViewportViewWithAlignment(m.foreignKeys, nil, m.foreignKeysOffset, m.tableViewportWidth, -1)
 }
 
 func (m Model) footer() string {

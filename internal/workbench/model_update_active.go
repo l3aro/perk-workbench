@@ -86,7 +86,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}) {
 					return m, m.openColumnForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.structure, &m.structureColumn, &m.structureOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				m.structure, command = m.structure.Update(message)
@@ -206,7 +206,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return m, nil
 					}
-					if moveTableCell(&m.indexes, &m.indexesColumn, &m.indexesOffset, m.tableViewportWidth, keyPress) {
+					if moveTableRow(&m.indexes, &m.indexesOffset, m.tableViewportWidth, keyPress) {
 						return m, nil
 					}
 				}
@@ -250,7 +250,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return m, nil
 					}
-					if moveTableCell(&m.foreignKeys, &m.foreignKeysColumn, &m.foreignKeysOffset, m.tableViewportWidth, keyPress) {
+					if moveTableRow(&m.foreignKeys, &m.foreignKeysOffset, m.tableViewportWidth, keyPress) {
 						return m, nil
 					}
 				}
