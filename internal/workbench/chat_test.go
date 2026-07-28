@@ -370,6 +370,15 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
+
+	if model.chat.chatMode != formModeNormal {
+		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
+	}
+	if !model.chat.loading {
+		t.Fatal("first escape canceled the chat request")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
 	updated, _ = model.Update(<-response)
 	model = updated.(Model)
 

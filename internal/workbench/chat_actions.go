@@ -336,7 +336,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if keyPress, ok := message.(tea.KeyPressMsg); ok {
-		if m.chat.loading && keyPress.Key().Code == tea.KeyEscape {
+		if m.chat.loading && m.chat.chatMode != formModeInsert && keyPress.Key().Code == tea.KeyEscape {
 			if m.chat.cancel != nil {
 				m.chat.cancel()
 				m.chat.cancel = nil
