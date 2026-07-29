@@ -14,6 +14,98 @@ explicit enough for mutations.
 connect → explore → query → inspect → change
 ```
 
+## Install with npm
+
+The npm launcher installs the matching prebuilt binary. It supports these
+targets:
+
+- macOS Intel: `darwin-x64`
+- macOS Apple Silicon: `darwin-arm64`
+- Linux Intel: `linux-x64`
+- Linux ARM64: `linux-arm64`
+- Windows Intel: `win32-x64`
+
+Install globally:
+
+```bash
+npm install -g perk-workbench
+perk-workbench --help
+perk-workbench --version
+```
+
+Or run it without a global install:
+
+```bash
+npx perk-workbench --help
+npx perk-workbench --version
+```
+
+Perk Workbench needs a terminal with a TTY and alternate-screen support. The
+launcher does not compile Go code, run install hooks, download binaries, or
+create a GitHub Release. SQLite paths must already exist, except for
+`:memory:`. MySQL and PostgreSQL targets must be reachable.
+
+The npm command accepts the same target arguments as the Go binary:
+
+```bash
+perk-workbench demo/chinook-sqlite.db
+perk-workbench :memory:
+perk-workbench 'mysql:dsn'
+perk-workbench 'postgres:dsn'
+perk-workbench --read-only database.db
+```
+
+## Publish a release
+
+The trusted-publish workflow runs for tags matching exactly
+`vMAJOR.MINOR.PATCH` with an optional SemVer `-prerelease` suffix. For
+example, `v1.2.3` and `v1.2.3-rc.1` are valid. `1.2.3`, `v1.2`, and tags with
+build metadata such as `v1.2.3+build.1` are rejected. Stable tags publish to
+npm's `latest` dist-tag. Prerelease tags publish to `next`.
+
+Before the first release, perform this npm-name availability preflight. Each
+command should report that the package is not found. Stop if any name is
+already registered, and confirm ownership before publishing:
+
+```bash
+for package in \
+  perk-workbench \
+  perk-workbench-darwin-x64 \
+  perk-workbench-darwin-arm64 \
+  perk-workbench-linux-x64 \
+  perk-workbench-linux-arm64 \
+  perk-workbench-win32-x64; do
+  npm view "$package" name
+done
+```
+
+Configure npm trusted publishing for each of these six package names:
+
+1. `perk-workbench`
+2. `perk-workbench-darwin-x64`
+3. `perk-workbench-darwin-arm64`
+4. `perk-workbench-linux-x64`
+5. `perk-workbench-linux-arm64`
+6. `perk-workbench-win32-x64`
+
+For every package, add a GitHub Actions trusted publisher bound to owner
+`l3aro`, repository `perk-workbench`, and workflow
+`.github/workflows/npm-publish.yml`. Then verify that the repository is clean,
+create and push the tag, and let the workflow run:
+
+```bash
+git status --short
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The workflow builds and publishes the five platform packages first, followed
+by the `perk-workbench` launcher, using npm provenance and the selected
+`latest` or `next` dist-tag. It does not create a GitHub Release automatically.
+
+Every published package is MIT licensed. The repository includes the MIT
+notice in `LICENSE`.
+
 ## Start anywhere
 
 Open an existing SQLite database, create a temporary in-memory workspace, or
