@@ -167,7 +167,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
-					case m.keybindings.Match(keyPress, "browse.yank_cell", []scope{scopeView, scopeGlobal}):
+					case m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}):
 						return m, m.copyBrowseCell()
 					case m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}):
 						row := m.browse.Cursor()
@@ -229,6 +229,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					raw := m.rawCellValue("results", row, col, display)
 					return m, m.openCellViewer(m.results, col, raw)
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && m.results.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
+					return m, m.copySQLCell()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && moveTableCell(&m.results, &m.resultsColumn, &m.resultsOffset, m.tableViewportWidth, keyPress) {
 					return m, nil

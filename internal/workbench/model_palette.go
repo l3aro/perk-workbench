@@ -238,6 +238,14 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, m.openCellViewer(m.results, col, raw)
 		}
 		return m, nil
+	case "cell.yank":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
+			return m, m.copyBrowseCell()
+		}
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.formMode.editing() && m.results.Focused() {
+			return m, m.copySQLCell()
+		}
+		return m, nil
 	case "browse.next_page":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			if m.browseLoading {

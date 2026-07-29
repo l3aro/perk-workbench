@@ -46,7 +46,7 @@ var defaultDefs = []commandDef{
 	{id: "browse.sort", scope: scopeView, keys: []string{"s"}, label: "sort column"},
 	{id: "browse.next_page", scope: scopeView, keys: []string{"n"}, label: "next"},
 	{id: "browse.prev_page", scope: scopeView, keys: []string{"p"}, label: "prev"},
-	{id: "browse.yank_cell", scope: scopeView, keys: []string{"y"}, label: "copy cell"},
+	{id: "cell.yank", scope: scopeView, keys: []string{"y"}, label: "copy cell"},
 	{id: "browse.context_menu", scope: scopeView, keys: []string{","}, label: "context menu"},
 
 	// ── Indexes tab (view) ──────────────────────────────────────

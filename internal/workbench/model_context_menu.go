@@ -70,3 +70,16 @@ func (m *Model) copyBrowseCell() tea.Cmd {
 	m.Status = "copied to clipboard"
 	return copyQueryLogStatement(value)
 }
+
+func (m *Model) copySQLCell() tea.Cmd {
+	row, col := m.results.Cursor(), m.resultsColumn
+	if row < 0 || row >= len(m.resultsRaw) || col < 0 || col >= len(m.resultsRaw[row]) {
+		return nil
+	}
+	value := ""
+	if cell := m.resultsRaw[row][col]; cell != nil {
+		value = *cell
+	}
+	m.Status = "copied to clipboard"
+	return copyQueryLogStatement(value)
+}
