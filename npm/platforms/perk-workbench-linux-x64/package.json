@@ -1,0 +1,8 @@
+{
+  "name": "perk-workbench-linux-x64",
+  "version": "0.0.0",
+  "description": "perk-workbench native binary for linux x64",
+  "license": "MIT",
+  "os": ["linux"],
+  "cpu": ["x64"]
+}

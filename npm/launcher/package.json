@@ -1,0 +1,21 @@
+{
+  "name": "perk-workbench",
+  "version": "0.0.0",
+  "description": "A database workspace for your terminal",
+  "license": "MIT",
+  "bin": {
+    "perk-workbench": "./perk-workbench.cjs"
+  },
+  "optionalDependencies": {
+    "perk-workbench-darwin-x64": "0.0.0",
+    "perk-workbench-darwin-arm64": "0.0.0",
+    "perk-workbench-linux-x64": "0.0.0",
+    "perk-workbench-linux-arm64": "0.0.0",
+    "perk-workbench-win32-x64": "0.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["x64", "arm64"]
+}
