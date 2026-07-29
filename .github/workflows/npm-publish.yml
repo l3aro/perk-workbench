@@ -1,0 +1,28 @@
+name: Publish npm packages
+# Manual preflight: configure npm trusted publishers, each bound to
+# l3aro/perk-workbench and .github/workflows/npm-publish.yml, for:
+# perk-workbench, perk-workbench-darwin-x64, perk-workbench-darwin-arm64,
+# perk-workbench-linux-x64, perk-workbench-linux-arm64, and
+# perk-workbench-win32-x64.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - run: node scripts/npm-publish.mjs --tag "${GITHUB_REF_NAME}"
