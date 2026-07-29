@@ -322,3 +322,137 @@ func TestStructureForm_changeIncludesEmptyAttributesWhenCleared(t *testing.T) {
 		t.Fatalf("change().Attributes = %q, want empty string", *change.Attributes)
 	}
 }
+
+func TestNewEmptyColumnForm_opensWithDefaults(t *testing.T) {
+	form := newEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if !form.isNew {
+		t.Fatal("newEmptyColumnForm.isNew = false, want true")
+	}
+	if !form.active() {
+		t.Fatal("newEmptyColumnForm.active() = false, want true")
+	}
+	if form.values.name != "" {
+		t.Fatalf("form.values.name = %q, want empty", form.values.name)
+	}
+	if !form.values.nullable {
+		t.Fatal("new empty column defaults to NOT NULL; want nullable default")
+	}
+}
+
+func TestStructureForm_aKeyOpensEmptyColumnForm(t *testing.T) {
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
+	model = updated.(Model)
+	model.Focus = focusWorkspace
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+
+	if !model.columnForm.active() {
+		t.Fatal("pressing a in structure view did not open column form")
+	}
+	if !model.columnForm.isNew {
+		t.Fatal("column form opened via a is not marked as new")
+	}
+	if model.columnForm.values.name != "" {
+		t.Fatalf("new column form has pre-filled name = %q, want empty", model.columnForm.values.name)
+	}
+}
+
+func TestNewColumnForm_columnDefReturnsValidDef(t *testing.T) {
+	form := newEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.values.name = "note"
+	form.values.typeName = "TEXT"
+	form.typeChanged = true
+
+	def, err := form.columnDef()
+	if err != nil {
+		t.Fatalf("columnDef() error = %v", err)
+	}
+	if def.Name != "note" || def.Type != "TEXT" || !def.Nullable {
+		t.Fatalf("columnDef() = %#v, want {note TEXT nullable}", def)
+	}
+}
+
+func TestNewColumnForm_columnDefRejectsBlankName(t *testing.T) {
+	form := newEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.values.typeName = "TEXT"
+	form.typeChanged = true
+
+	if _, err := form.columnDef(); err == nil {
+		t.Fatal("columnDef() with blank name = nil, want error")
+	}
+}
+
+func TestAddColumnFlow_fullEndToEnd(t *testing.T) {
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	if _, err := model.Database.Execute(model.appContext, "INSERT INTO items (name) VALUES ('first')"); err != nil {
+		t.Fatalf("inserting row: %v", err)
+	}
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
+	model = updated.(Model)
+	model.Focus = focusWorkspace
+
+	// Press a to open empty column form
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	_ = model.columnForm.form.Init()
+	if !model.columnForm.active() {
+		t.Fatal("'a' did not open column form")
+	}
+
+	// Populate form values directly (skipping Huh navigation for reliability)
+	model.columnForm.values.name = "note"
+	model.columnForm.values.typeName = "TEXT"
+	model.columnForm.typeChanged = true
+
+	// F5 to trigger save confirmation
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
+	if !model.columnForm.confirming() {
+		t.Fatal("F5 did not open confirmation dialog")
+	}
+
+	// Confirm save — resolve the command chain
+	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
+
+	// Form must be closed after save
+	if model.columnForm.active() {
+		t.Fatal("column form still active after save")
+	}
+
+	// Verify column exists in database
+	columns, err := model.Database.TableInfo(model.appContext, "items")
+	if err != nil {
+		t.Fatalf("reading table info: %v", err)
+	}
+	found := false
+	for _, col := range columns {
+		if col.Name == "note" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("added column 'note' not found in table info: %#v", columns)
+	}
+
+	// Query log should contain an ADD COLUMN entry
+	foundLog := false
+	for _, entry := range model.queryLogEntries {
+		if strings.Contains(entry.statement, "ADD COLUMN") {
+			foundLog = true
+			break
+		}
+	}
+	if !foundLog {
+		t.Fatal("query log missing ADD COLUMN entry")
+	}
+}

@@ -27,6 +27,7 @@ type Service interface {
 	ReplaceForeignKey(context.Context, string, string, ForeignKeyChange) error
 	DropForeignKey(context.Context, string, string) error
 	AlterColumn(context.Context, string, ColumnChange) error
+	AddColumn(context.Context, string, ColumnDef) error
 	BrowseTable(context.Context, string, BrowseOptions) (Result, error)
 }
 type BrowseOptions struct {
@@ -108,6 +109,14 @@ type ColumnInfo struct {
 	DefaultValue *string
 	PrimaryKey   int
 	Indexes      []IndexKind
+}
+
+type ColumnDef struct {
+	Name         string
+	Type         string
+	Nullable     bool
+	DefaultValue *string
+	Attributes   *string
 }
 
 type ColumnChange struct {

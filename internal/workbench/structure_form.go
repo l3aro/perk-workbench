@@ -29,6 +29,7 @@ type columnForm struct {
 	width, height, scrollOffset     int
 	formType                        string
 	hadDefault, typeChanged, saving bool
+	isNew                           bool
 	confirmationSave                bool
 	keybindings                     Keybindings
 }
@@ -64,6 +65,18 @@ func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnTy
 	return form
 }
 
+func newEmptyColumnForm(typeOptions []sharedsql.ColumnType) columnForm {
+	form := columnForm{
+		values:      &columnFormValues{nullable: true},
+		typeOptions: typeOptions,
+		isNew:       true,
+		keybindings: DefaultKeybindings(),
+	}
+	form.selectType(0, nil)
+	form.rebuildForm()
+	return form
+}
+
 func (m *Model) openColumnForm() tea.Cmd {
 	column := m.selectedColumn()
 	if column == nil {
@@ -77,7 +90,15 @@ func (m *Model) openColumnForm() tea.Cmd {
 	return m.columnForm.form.Init()
 }
 
-func (f columnForm) active() bool { return f.previousName != "" }
+func (m *Model) openNewColumnForm() tea.Cmd {
+	m.columnForm = newEmptyColumnForm(sharedsql.ColumnTypes(m.databaseInfo))
+	m.columnForm.keybindings = m.keybindings
+	m.columnForm.setWidth(m.tableViewportWidth)
+	m.columnForm.setHeight(m.formViewportHeight())
+	return m.columnForm.form.Init()
+}
+
+func (f columnForm) active() bool { return f.form != nil }
 
 func (f columnForm) confirming() bool { return f.confirmation != nil }
 
@@ -114,7 +135,12 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
-		if _, err := f.change(); err != nil {
+		if f.isNew {
+			if _, err := f.columnDef(); err != nil {
+				f.validationError = err.Error()
+				return nil, columnFormNoAction
+			}
+		} else if _, err := f.change(); err != nil {
 			f.validationError = err.Error()
 			return nil, columnFormNoAction
 		}
@@ -156,7 +182,9 @@ func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) 
 func (f *columnForm) beginConfirmation(save bool) {
 	f.confirmationSave = save
 	title := "Discard column changes?"
-	if save {
+	if save && f.isNew {
+		title = "Add column?"
+	} else if save {
 		title = "Save column changes?"
 	}
 	f.confirmation = yesNoConfirmation(title, "", "confirm")
@@ -253,6 +281,24 @@ func (f columnForm) change() (sharedsql.ColumnChange, error) {
 		return sharedsql.ColumnChange{}, err
 	}
 	return change, nil
+}
+
+func (f columnForm) columnDef() (sharedsql.ColumnDef, error) {
+	typeDeclaration, err := f.typeDeclaration()
+	if err != nil {
+		return sharedsql.ColumnDef{}, err
+	}
+	def := sharedsql.ColumnDef{Name: f.values.name, Type: typeDeclaration, Nullable: f.values.nullable}
+	if value := strings.TrimSpace(f.values.defaultValue); value != "" {
+		def.DefaultValue = &value
+	}
+	if value := strings.TrimSpace(f.values.attributes); value != "" {
+		def.Attributes = &value
+	}
+	if err := sharedsql.ValidateColumnDef(def); err != nil {
+		return sharedsql.ColumnDef{}, err
+	}
+	return def, nil
 }
 
 func (f *columnForm) setWidth(width int) {

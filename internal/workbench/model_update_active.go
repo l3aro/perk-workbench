@@ -77,6 +77,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					switch action {
 					case columnFormSave:
 						m.columnForm.saving = true
+						if m.columnForm.isNew {
+							return m, m.addColumn()
+						}
 						return m, m.alterColumn()
 					case columnFormDiscard:
 						m.columnForm = columnForm{}
@@ -92,6 +95,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}):
 						return m, m.openColumnForm()
+					case m.keybindings.Match(keyPress, "structure.add", []scope{scopeView, scopeGlobal}):
+						return m, m.openNewColumnForm()
 					}
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {

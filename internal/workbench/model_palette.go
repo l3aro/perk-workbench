@@ -271,6 +271,11 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, m.openForeignKeyForm(nil)
 		}
 		return m, nil
+	case "structure.add":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.columnForm.active() {
+			return m, m.openNewColumnForm()
+		}
+		return m, nil
 	case "connection.switch_to_form":
 		if m.State == stateConnection && m.connection.focus == connectionFocusRecent {
 			m.connection.focus = connectionFocusForm

@@ -265,3 +265,45 @@ func TestServiceAlterColumn_rejectsAttributesChange(t *testing.T) {
 		t.Fatalf("TableInfo() = %#v, want unchanged schema after failed alteration", columns)
 	}
 }
+
+func TestServiceAddColumn_addsNewColumn(t *testing.T) {
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	if _, err := service.Execute(ctx, `INSERT INTO items (name) VALUES ('first')`); err != nil {
+		t.Fatalf("inserting row: %v", err)
+	}
+
+	if err := service.AddColumn(ctx, "items", sharedsql.ColumnDef{Name: "note", Type: "TEXT", Nullable: true}); err != nil {
+		t.Fatalf("AddColumn() error = %v", err)
+	}
+
+	columns, err := service.TableInfo(ctx, "items")
+	if err != nil {
+		t.Fatalf("reading table info after add: %v", err)
+	}
+	if len(columns) != 3 || columns[2].Name != "note" || columns[2].Type != "TEXT" || !columns[2].Nullable {
+		t.Fatalf("TableInfo() = %#v, want note column", columns)
+	}
+
+	result, err := service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{Columns: []string{"id", "name", "note"}, Limit: 25})
+	if err != nil {
+		t.Fatalf("browsing table after add: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][2] != nil {
+		t.Fatalf("BrowseTable() = %#v, want existing row with NULL note", result)
+	}
+}
+
+func TestServiceAddColumn_rejectsMissingName(t *testing.T) {
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, `CREATE TABLE items (id INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	if err := service.AddColumn(ctx, "items", sharedsql.ColumnDef{Name: "", Type: "TEXT"}); err == nil {
+		t.Fatal("AddColumn(empty name) = nil, want error")
+	}
+}

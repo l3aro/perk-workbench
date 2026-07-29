@@ -99,3 +99,18 @@ func (m Model) columnChangeStatement(table string, change sharedsql.ColumnChange
 	}
 	return statement
 }
+
+func (m Model) columnAddStatement(table string, def sharedsql.ColumnDef) string {
+	quotedTable := m.actionIdentifier(table)
+	statement := "ALTER TABLE " + quotedTable + " ADD COLUMN " + m.actionIdentifier(def.Name) + " " + strings.TrimSpace(def.Type)
+	if !def.Nullable {
+		statement += " NOT NULL"
+	}
+	if def.DefaultValue != nil {
+		statement += " DEFAULT " + *def.DefaultValue
+	}
+	if def.Attributes != nil && *def.Attributes != "" {
+		statement += " " + *def.Attributes
+	}
+	return statement
+}

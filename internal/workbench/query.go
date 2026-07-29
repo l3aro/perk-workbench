@@ -33,6 +33,7 @@ type columnAlteredMsg struct {
 	statement string
 	startedAt time.Time
 	err       error
+	kind      string
 }
 
 type browseRowUpdatedMsg struct {
@@ -122,16 +123,31 @@ func (m Model) loadBrowse() tea.Cmd {
 
 func (m Model) alterColumn() tea.Cmd {
 	if m.ReadOnly {
-		return func() tea.Msg { return columnAlteredMsg{err: fmt.Errorf("connection is read-only")} }
+		return func() tea.Msg { return columnAlteredMsg{kind: "altered", err: fmt.Errorf("connection is read-only")} }
 	}
 	table, service := m.SelectedTable, m.Database
 	change, err := m.columnForm.change()
 	if err != nil {
-		return func() tea.Msg { return columnAlteredMsg{err: err} }
+		return func() tea.Msg { return columnAlteredMsg{kind: "altered", err: err} }
 	}
 	statement, startedAt := m.columnChangeStatement(table, change), time.Now()
 	return func() tea.Msg {
-		return columnAlteredMsg{statement: statement, startedAt: startedAt, err: service.AlterColumn(m.appContext, table, change)}
+		return columnAlteredMsg{statement: statement, startedAt: startedAt, err: service.AlterColumn(m.appContext, table, change), kind: "altered"}
+	}
+}
+
+func (m Model) addColumn() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return columnAlteredMsg{kind: "added", err: fmt.Errorf("connection is read-only")} }
+	}
+	table, service := m.SelectedTable, m.Database
+	def, err := m.columnForm.columnDef()
+	if err != nil {
+		return func() tea.Msg { return columnAlteredMsg{kind: "added", err: err} }
+	}
+	statement, startedAt := m.columnAddStatement(table, def), time.Now()
+	return func() tea.Msg {
+		return columnAlteredMsg{statement: statement, startedAt: startedAt, err: service.AddColumn(m.appContext, table, def), kind: "added"}
 	}
 }
 
@@ -196,16 +212,26 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd) {
+	action := "altered column"
+	status := "column updated"
+	if message.kind == "added" {
+		action = "added column"
+		status = "column added"
+	}
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "altered column"))
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, action))
 	}
 	if message.err != nil {
+		actionMsg := "updating column"
+		if message.kind == "added" {
+			actionMsg = "adding column"
+		}
 		m.columnForm.saving = false
-		m.Status = safeText(fmt.Sprintf("updating column: %v", message.err))
+		m.Status = safeText(fmt.Sprintf(actionMsg+": %v", message.err))
 		return m, nil
 	}
 	m.columnForm = columnForm{}
-	m.Status = "column updated"
+	m.Status = status
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
 

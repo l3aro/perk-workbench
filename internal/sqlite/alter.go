@@ -52,6 +52,27 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	return s.rebuildTable(ctx, table, change)
 }
 
+func (s *Service) AddColumn(ctx context.Context, table string, col sharedsql.ColumnDef) error {
+	if err := sharedsql.ValidateColumnDef(col); err != nil {
+		return err
+	}
+	statement := "ALTER TABLE " + quoteIdentifier(table) + " ADD COLUMN " + quoteIdentifier(col.Name) + " " + strings.TrimSpace(col.Type)
+	if !col.Nullable {
+		statement += " NOT NULL"
+	}
+	if col.DefaultValue != nil {
+		statement += " DEFAULT " + *col.DefaultValue
+	}
+	if col.Attributes != nil && *col.Attributes != "" {
+		statement += " " + *col.Attributes
+	}
+	_, err := s.db.ExecContext(ctx, statement)
+	if err != nil {
+		return fmt.Errorf("adding column: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) rebuildTable(ctx context.Context, table string, change sharedsql.ColumnChange) (err error) {
 	prepare := func(*stdsql.Tx) error { return nil }
 	if change.Name != change.PreviousName {

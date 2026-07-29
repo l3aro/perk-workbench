@@ -32,6 +32,30 @@ func ValidateColumnChange(change ColumnChange) error {
 	return nil
 }
 
+func ValidateColumnDef(col ColumnDef) error {
+	if strings.TrimSpace(col.Name) == "" {
+		return errors.New("column name is required")
+	}
+	if strings.TrimSpace(col.Type) == "" {
+		return errors.New("column type is required")
+	}
+	if strings.IndexFunc(col.Name, unicode.IsControl) >= 0 {
+		return errors.New("column name contains control characters")
+	}
+	for _, value := range col.Type {
+		if !(unicode.IsLetter(value) || unicode.IsDigit(value) || unicode.IsSpace(value) || strings.ContainsRune("_(),'", value)) {
+			return errors.New("column type contains unsupported characters")
+		}
+	}
+	if col.DefaultValue != nil && (strings.Contains(*col.DefaultValue, ";") || strings.IndexFunc(*col.DefaultValue, unicode.IsControl) >= 0) {
+		return errors.New("column default contains unsupported characters")
+	}
+	if col.Attributes != nil && (strings.IndexFunc(*col.Attributes, unicode.IsControl) >= 0 || strings.Contains(*col.Attributes, ";")) {
+		return errors.New("column attributes contain unsupported characters")
+	}
+	return nil
+}
+
 // ValidateColumnAttributeChange returns an error when the caller does not
 // support column-level attribute changes and a non-nil, differing value is
 // requested.

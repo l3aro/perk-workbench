@@ -158,6 +158,8 @@ func commandLabel(id CommandID, raw string) string {
 		return "reset column filter"
 	case "structure.edit":
 		return "edit column"
+	case "structure.add":
+		return "add column"
 	case "browse.edit":
 		return "edit row"
 	case "browse.refine":
@@ -241,7 +243,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusWorkspace && !m.formActive()
 	case "schema.select_table":
 		return m.State == stateReady && m.Focus == focusSchema
-	case "structure.filter", "structure.reset", "structure.edit":
+	case "structure.filter", "structure.reset", "structure.edit", "structure.add":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
 	case "browse.edit", "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil

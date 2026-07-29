@@ -400,6 +400,27 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change sharedsq
 	return nil
 }
 
+func (s *Service) AddColumn(ctx context.Context, table string, col sharedsql.ColumnDef) error {
+	if err := sharedsql.ValidateColumnDef(col); err != nil {
+		return err
+	}
+	identifier := postgresTableIdentifier(table)
+	statement := "ALTER TABLE " + identifier + " ADD COLUMN " + quoteIdentifier(col.Name) + " " + strings.TrimSpace(col.Type)
+	if !col.Nullable {
+		statement += " NOT NULL"
+	}
+	if col.DefaultValue != nil {
+		statement += " DEFAULT " + postgresDefault(*col.DefaultValue)
+	}
+	if col.Attributes != nil && *col.Attributes != "" {
+		statement += " " + *col.Attributes
+	}
+	if _, err := s.db.ExecContext(ctx, statement); err != nil {
+		return fmt.Errorf("adding column: %w", err)
+	}
+	return nil
+}
+
 func postgresDefault(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
