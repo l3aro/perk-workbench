@@ -249,6 +249,9 @@ func (m *Model) disconnect() {
 	m.recentPath, _ = recentConnectionsPath()
 	m.recentConnections = loadRecentConnections(m.recentPath)
 	_ = m.recent.SetItems(recentListItems(m.recentConnections))
+	m.chat.yoloWrites = false
+	m.chat.pendingWrite = nil
+	m.chat.roundState = nil
 }
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {

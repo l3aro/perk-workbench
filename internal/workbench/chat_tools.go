@@ -12,20 +12,22 @@ import (
 
 // databaseTools returns tool definitions for AI assistant database introspection.
 // These are read-only tools that let the AI query the database safely.
+// databaseTools returns tool definitions for AI assistant database introspection and writes.
+// Read-only connections expose only read tools.
 func (m Model) databaseTools() []ai.ToolDefinition {
 	if m.Database == nil {
 		return nil
 	}
 
 	product := m.databaseInfo.Product
-	return []ai.ToolDefinition{
+	tools := []ai.ToolDefinition{
 		{
-			Name: "sql",
+			Name: "sql_read",
 			Description: "Execute a read-only SQL query against the " + product + " database and return tabular results. " +
 				"Use this to explore schema, count rows, sample data, list tables, check server variables, and answer questions about the database content. " +
 				"Only SELECT, EXPLAIN, SHOW, PRAGMA, and DESCRIBE-type queries are allowed; mutations are rejected. " +
 				"If the user asks to INSERT, UPDATE, DELETE, CREATE, ALTER, or DROP, do NOT call this tool — " +
-				"instead output the write SQL in a markdown code block with the language set to `sql` and the user can execute it from the SQL tab. " +
+				"instead use the sql_write tool for mutations. " +
 				"Returns up to 500 rows. Each cell is truncated to 40 characters.",
 			InputSchema: map[string]any{
 				"type": "object",
@@ -47,6 +49,29 @@ func (m Model) databaseTools() []ai.ToolDefinition {
 			},
 		},
 	}
+
+	if !m.ReadOnly {
+		tools = append(tools, ai.ToolDefinition{
+			Name: "sql_write",
+			Description: "Execute exactly one SQL write/DDL statement against the " + product + " database. " +
+				"Use this for INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, and other mutations. " +
+				"The statement is executed immediately and requires your confirmation before running. " +
+				"Read-only queries should use sql_read instead. " +
+				"Each call executes exactly one statement; batch multiple statements into separate calls.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":        "string",
+						"description": "The SQL statement to execute",
+					},
+				},
+				"required": []string{"query"},
+			},
+		})
+	}
+
+	return tools
 }
 
 // executeTool runs one tool call and returns the result.
@@ -54,7 +79,7 @@ func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult 
 	result := ai.ToolResult{CallID: call.ID, Name: call.Name}
 
 	switch call.Name {
-	case "sql":
+	case "sql_read":
 		query, _ := call.Input["query"].(string)
 		query = strings.TrimSpace(query)
 		if query == "" {

@@ -46,12 +46,74 @@ type chatModel struct {
 	chatMode       formMode
 	glamour        *glamour.TermRenderer
 	streamBuffer   string // accumulated streaming content
+
+	// Tool round state for resumable multi-call turns.
+	gen      int64 // incremented on each startChat; checked on async completions
+	roundGen int64 // the gen value when the current tool round started
+
+	// Pending assistant write awaiting confirmation.
+	pendingWrite *pendingWrite
+
+	// YOLO writes: when true, sql_write executes without per-statement modal.
+	yoloWrites bool
+
+	// Resumable tool-round state. Non-nil during an active multi-call turn.
+	roundState *toolRoundState
 }
 
 type chatResponseMsg struct {
 	conversationID string
 	response       ai.Response
 	err            error
+}
+
+// toolRoundState holds resumable state for one tool-round sequence.
+// It is set by startChat and cleared when the round ends (no more tool calls).
+type toolRoundState struct {
+	gen            int64
+	messages       []ai.Message
+	agentID        string
+	client         chatClient
+	history        chatHistory
+	chatContext    context.Context
+	cancel         context.CancelFunc
+	contextText    string
+	toolsDefs      []ai.ToolDefinition
+	conversationID string
+	toolCalls      []ai.ToolCall
+	nextCall       int
+	toolRound      int
+	maxToolRounds  int
+}
+
+// pendingWrite holds state for a sql_write call awaiting user confirmation.
+type pendingWrite struct {
+	generation int64
+	call       ai.ToolCall
+	statement  string
+	dialog     *confirmationDialog
+}
+
+// assistantToolStartMsg is sent by startChat's closure with the first
+// Complete response containing tool calls. updateChat stores the state.
+type assistantToolStartMsg struct {
+	gen   int64
+	state toolRoundState
+}
+
+// assistantToolContinueMsg signals updateChat to resume tool-round processing.
+type assistantToolContinueMsg struct {
+	gen int64
+}
+
+// assistantWriteResultMsg carries the result of an async sql_write execution.
+type assistantWriteResultMsg struct {
+	gen      int64
+	callID   string
+	callName string
+	content  string
+	err      string
+	declined bool // user declined the write; stop round
 }
 
 // chatStreamMsg is sent for each streaming delta from the AI.
