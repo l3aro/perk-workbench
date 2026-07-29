@@ -2,11 +2,21 @@ package workbench
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/ai"
+)
+
+const (
+	assistantToolPhaseTimeout        = 2 * time.Minute
+	assistantFinalizationTimeout     = 20 * time.Second
+	assistantMaxToolCalls            = 64
+	assistantRepeatedToolResultLimit = 3
 )
 
 func (m *Model) startChat() tea.Cmd {
@@ -36,7 +46,7 @@ func (m *Model) startChat() tea.Cmd {
 	toolsDefs := m.databaseTools()
 	baseMessages := append([]ai.Message(nil), m.chat.messages...)
 
-	chatContext, cancel := context.WithCancel(m.appContext)
+	rootContext, cancel := context.WithCancel(m.appContext)
 	m.chat.cancel = cancel
 
 	contextText := m.chatContext()
@@ -44,14 +54,14 @@ func (m *Model) startChat() tea.Cmd {
 	return func() tea.Msg {
 		if history != nil {
 			if conversationID == "" {
-				conversation, err := history.NewConversation(chatContext, truncateChatTitle(prompt))
+				conversation, err := history.NewConversation(rootContext, truncateChatTitle(prompt))
 				if err != nil {
 					cancel()
 					return chatStreamMsg{conversationID: "", err: err}
 				}
 				conversationID = conversation.ID
 			}
-			if err := history.AppendMessage(chatContext, conversationID, userMessage); err != nil {
+			if err := history.AppendMessage(rootContext, conversationID, userMessage); err != nil {
 				cancel()
 				return chatStreamMsg{conversationID: conversationID, err: err}
 			}
@@ -60,7 +70,7 @@ func (m *Model) startChat() tea.Cmd {
 		supportTools := len(toolsDefs) > 0 && client.SupportsTools(agentID)
 
 		if !supportTools {
-			eventCh, err := client.ChatStream(chatContext, ai.Request{
+			eventCh, err := client.ChatStream(rootContext, ai.Request{
 				AgentID:  agentID,
 				Messages: baseMessages,
 				Context:  contextText,
@@ -71,16 +81,36 @@ func (m *Model) startChat() tea.Cmd {
 			}
 			return readStreamEvent(eventCh, conversationID)
 		}
+		toolDeadline := time.Now().Add(assistantToolPhaseTimeout)
+		toolContext, toolCancel := context.WithDeadline(rootContext, toolDeadline)
+		toolState := toolRoundState{
+			gen:            gen,
+			messages:       baseMessages,
+			agentID:        agentID,
+			client:         client,
+			history:        history,
+			rootContext:    rootContext,
+			chatContext:    toolContext,
+			cancel:         cancel,
+			toolCancel:     toolCancel,
+			contextText:    contextText,
+			toolsDefs:      toolsDefs,
+			conversationID: conversationID,
+			toolDeadline:   toolDeadline,
+		}
 
-		// --- Tool round: first Complete call. ---
-		const maxToolRounds = 8
-		turn, err := client.Complete(chatContext, ai.Request{
+		// Tool calls run until the phase deadline, then one tools-disabled
+		// finalization request gets the answer from gathered results.
+		turn, err := client.Complete(toolContext, ai.Request{
 			AgentID:  agentID,
 			Messages: baseMessages,
 			Context:  contextText,
 			Tools:    toolsDefs,
 		})
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return assistantToolPhaseExpiredMsg{gen: gen, state: &toolState}
+			}
 			cancel()
 			return chatStreamMsg{conversationID: conversationID, err: err}
 		}
@@ -94,32 +124,13 @@ func (m *Model) startChat() tea.Cmd {
 			return readStreamEvent(ch, conversationID)
 		}
 
-		// Append assistant message with tool calls to a local copy.
-		msgs := append(append([]ai.Message(nil), baseMessages...), ai.Message{
+		toolState.messages = append(append([]ai.Message(nil), baseMessages...), ai.Message{
 			Role:      ai.RoleAssistant,
 			Content:   turn.Content,
 			ToolCalls: turn.ToolCalls,
 		})
-
-		return assistantToolStartMsg{
-			gen: gen,
-			state: toolRoundState{
-				gen:            gen,
-				messages:       msgs,
-				agentID:        agentID,
-				client:         client,
-				history:        history,
-				chatContext:    chatContext,
-				cancel:         cancel,
-				contextText:    contextText,
-				toolsDefs:      toolsDefs,
-				conversationID: conversationID,
-				toolCalls:      turn.ToolCalls,
-				nextCall:       0,
-				toolRound:      0,
-				maxToolRounds:  maxToolRounds,
-			},
-		}
+		toolState.toolCalls = turn.ToolCalls
+		return assistantToolStartMsg{gen: gen, state: toolState}
 	}
 }
 
@@ -228,6 +239,10 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.conversationID = message.conversationID
 		}
 		if message.err != nil {
+			if m.chat.roundState != nil {
+				m.chat.roundState.releaseContexts()
+				m.chat.roundState = nil
+			}
 			if m.chat.cancel != nil {
 				m.chat.cancel()
 			}
@@ -247,6 +262,10 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.done {
 			// If canceled, discard partial content.
 			if m.chat.canceled {
+				if m.chat.roundState != nil {
+					m.chat.roundState.releaseContexts()
+					m.chat.roundState = nil
+				}
 				if m.chat.cancel != nil {
 					m.chat.cancel()
 				}
@@ -258,6 +277,10 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.Status = "AI request canceled"
 				return m, nil
 			}
+			wasFinalizing := m.chat.roundState != nil && m.chat.roundState.finalizing
+			if m.chat.roundState != nil {
+				m.chat.roundState.releaseContexts()
+			}
 			// Stream completed successfully — cancel the context.
 			if m.chat.cancel != nil {
 				m.chat.cancel()
@@ -267,6 +290,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.canceled = false
 			content := m.chat.streamBuffer
 			m.chat.streamBuffer = ""
+			m.chat.roundState = nil
 			if content == "" {
 				m.refreshChatView()
 				m.Status = "AI returned empty response"
@@ -279,6 +303,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 				Content: content,
 			})
 			m.refreshChatView()
+			if wasFinalizing {
+				m.Status = "Assistant response complete"
+			}
 			// Persist to history asynchronously. Always report result.
 			if m.chat.history != nil && m.chat.conversationID != "" {
 				history, cid := m.chat.history, m.chat.conversationID
@@ -337,6 +364,21 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return assistantToolContinueMsg{gen: message.gen}
 		}
 
+	case assistantToolPhaseExpiredMsg:
+		if message.gen != m.chat.gen {
+			return m, nil // stale
+		}
+		if message.state != nil {
+			m.chat.roundState = message.state
+			m.chat.messages = message.state.messages
+			m.chat.conversationID = message.state.conversationID
+			m.chat.cancel = message.state.cancel
+		}
+		if m.chat.roundState == nil {
+			return m, nil
+		}
+		return m.startToolFinalization("tool time budget reached")
+
 	case assistantToolContinueMsg:
 		if message.gen != m.chat.gen || m.chat.roundState == nil {
 			return m, nil
@@ -348,9 +390,18 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // stale
 		}
 		return m.handleWriteResult(message)
+
+	case assistantToolResultMsg:
+		if message.gen != m.chat.gen {
+			return m, nil // stale
+		}
+		return m.handleToolResult(message)
 	}
 	if keyPress, ok := message.(tea.KeyPressMsg); ok {
 		if m.chat.loading && m.chat.chatMode != formModeInsert && keyPress.Key().Code == tea.KeyEscape {
+			if m.chat.roundState != nil {
+				m.chat.roundState.releaseContexts()
+			}
 			if m.chat.cancel != nil {
 				m.chat.cancel()
 				m.chat.cancel = nil
@@ -454,6 +505,14 @@ func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
 		return m.startNextToolRound()
 	}
 
+	if !rs.finalizing && time.Now().After(rs.toolDeadline) {
+		return m.startToolFinalization("tool time budget reached")
+	}
+	if !rs.finalizing && rs.toolCallCount >= assistantMaxToolCalls {
+		return m.startToolFinalization("tool-call budget reached")
+	}
+	rs.toolCallCount++
+
 	call := rs.toolCalls[rs.nextCall]
 
 	switch call.Name {
@@ -462,11 +521,14 @@ func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
 		query = strings.TrimSpace(query)
 		if query == "" {
 			rs.nextCall++
+			content := "Error: query argument is required"
 			rs.messages = append(rs.messages, ai.Message{
-				Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name,
-				Content: "Error: query argument is required",
+				Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name, Content: content,
 			})
 			m.chat.messages = rs.messages
+			if rs.recordToolResult(call, content) {
+				return m.startToolFinalization("repeated tool result")
+			}
 			return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
 		}
 		if m.chat.yoloWrites {
@@ -501,17 +563,22 @@ func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
-		result := m.executeTool(rs.chatContext, call)
-		content := result.Content
-		if result.Error != "" {
-			content = "Error: " + result.Error
+		ctx := rs.chatContext
+		gen := rs.gen
+		callID := call.ID
+		callName := call.Name
+		return m, func() tea.Msg {
+			result := m.executeTool(ctx, call)
+			content := result.Content
+			errStr := ""
+			if result.Error != "" {
+				errStr = result.Error
+			}
+			return assistantToolResultMsg{
+				gen: gen, callID: callID, callName: callName,
+				content: content, err: errStr,
+			}
 		}
-		rs.nextCall++
-		rs.messages = append(rs.messages, ai.Message{
-			Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name, Content: content,
-		})
-		m.chat.messages = rs.messages
-		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
 	}
 }
 
@@ -525,26 +592,57 @@ func (m Model) handleWriteResult(msg assistantWriteResultMsg) (tea.Model, tea.Cm
 	m.chat.pendingWrite = nil
 
 	if msg.declined {
-		// User declined — append error result and stop the round.
+		// User declined — append the result and end this run explicitly.
 		rs.messages = append(rs.messages, ai.Message{
 			Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName,
 			Content: "Error: " + msg.err,
 		})
 		m.chat.messages = rs.messages
-		return m.finishToolRound()
+		return m.stopToolRound("Assistant write canceled")
 	}
 
 	content := msg.content
 	if msg.err != "" {
 		content = "Error: " + msg.err
 	}
+	call := rs.toolCalls[rs.nextCall]
 	rs.messages = append(rs.messages, ai.Message{
 		Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName, Content: content,
 	})
 	rs.nextCall++
 	m.chat.messages = rs.messages
+	if rs.recordToolResult(call, content) {
+		return m.startToolFinalization("repeated tool result")
+	}
 
-	// Continue to next call or next round.
+	if rs.nextCall < len(rs.toolCalls) {
+		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
+	}
+	return m.startNextToolRound()
+}
+
+// handleToolResult processes the outcome of an async read-only tool execution.
+func (m Model) handleToolResult(msg assistantToolResultMsg) (tea.Model, tea.Cmd) {
+	rs := m.chat.roundState
+	if rs == nil || msg.gen != rs.gen {
+		return m, nil
+	}
+
+	content := msg.content
+	if msg.err != "" {
+		content = "Error: " + msg.err
+	}
+
+	call := rs.toolCalls[rs.nextCall]
+	rs.messages = append(rs.messages, ai.Message{
+		Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName, Content: content,
+	})
+	rs.nextCall++
+	m.chat.messages = rs.messages
+	if rs.recordToolResult(call, content) {
+		return m.startToolFinalization("repeated tool result")
+	}
+
 	if rs.nextCall < len(rs.toolCalls) {
 		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
 	}
@@ -557,33 +655,33 @@ func (m Model) startNextToolRound() (tea.Model, tea.Cmd) {
 	if rs == nil {
 		return m, nil
 	}
+	if !rs.finalizing && time.Now().After(rs.toolDeadline) {
+		return m.startToolFinalization("tool time budget reached")
+	}
+	if !rs.finalizing && rs.toolCallCount >= assistantMaxToolCalls {
+		return m.startToolFinalization("tool-call budget reached")
+	}
 
-	rs.toolRound++
 	rs.nextCall = 0
 	rs.toolCalls = nil
 
-	if rs.toolRound >= rs.maxToolRounds {
-		return m.finishToolRound()
-	}
-
-	// Capture values for the closure (no m access inside).
 	client := rs.client
 	chatContext := rs.chatContext
 	agentID := rs.agentID
 	contextText := rs.contextText
 	toolsDefs := rs.toolsDefs
 	msgs := rs.messages
-	toolRound := rs.toolRound
-	maxToolRounds := rs.maxToolRounds
 	gen := rs.gen
 	history := rs.history
 	cancel := rs.cancel
 	conversationID := rs.conversationID
+	finalizing := rs.finalizing
 
 	return m, func() tea.Msg {
 		roundTools := toolsDefs
-		if toolRound == maxToolRounds-1 {
+		if finalizing {
 			roundTools = nil
+			contextText += "\n\nTool use is no longer available. Answer the user now using the gathered results. If evidence is incomplete, state that plainly."
 		}
 		turn, err := client.Complete(chatContext, ai.Request{
 			AgentID:  agentID,
@@ -592,9 +690,17 @@ func (m Model) startNextToolRound() (tea.Model, tea.Cmd) {
 			Tools:    roundTools,
 		})
 		if err != nil {
+			if !finalizing && errors.Is(err, context.DeadlineExceeded) {
+				return assistantToolPhaseExpiredMsg{gen: gen}
+			}
 			return chatStreamMsg{conversationID: conversationID, err: err}
 		}
-
+		if finalizing && len(turn.ToolCalls) > 0 {
+			turn.ToolCalls = nil
+			if strings.TrimSpace(turn.Content) == "" {
+				turn.Content = "I couldn't produce a final answer before the tool budget ended."
+			}
+		}
 		if len(turn.ToolCalls) == 0 {
 			ch := make(chan ai.StreamEvent, 2)
 			ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: turn.Content}
@@ -606,36 +712,91 @@ func (m Model) startNextToolRound() (tea.Model, tea.Cmd) {
 		newMsgs := append(msgs, ai.Message{
 			Role: ai.RoleAssistant, Content: turn.Content, ToolCalls: turn.ToolCalls,
 		})
-
 		return assistantToolStartMsg{
 			gen: gen,
 			state: toolRoundState{
-				gen:            gen,
-				messages:       newMsgs,
-				agentID:        agentID,
-				client:         client,
-				history:        history,
-				chatContext:    chatContext,
-				cancel:         cancel,
-				contextText:    contextText,
-				toolsDefs:      toolsDefs,
-				conversationID: conversationID,
-				toolCalls:      turn.ToolCalls,
-				nextCall:       0,
-				toolRound:      toolRound,
-				maxToolRounds:  maxToolRounds,
+				gen:                     gen,
+				messages:                newMsgs,
+				agentID:                 agentID,
+				client:                  client,
+				history:                 history,
+				rootContext:             rs.rootContext,
+				chatContext:             chatContext,
+				toolCancel:              rs.toolCancel,
+				cancel:                  cancel,
+				contextText:             rs.contextText,
+				toolsDefs:               toolsDefs,
+				conversationID:          conversationID,
+				toolCalls:               turn.ToolCalls,
+				toolCallCount:           rs.toolCallCount,
+				toolDeadline:            rs.toolDeadline,
+				lastToolResultSignature: rs.lastToolResultSignature,
+				repeatedToolResults:     rs.repeatedToolResults,
 			},
 		}
 	}
 }
 
-// finishToolRound stops the current tool round, cleaning up state.
-func (m Model) finishToolRound() (tea.Model, tea.Cmd) {
+func (m Model) startToolFinalization(reason string) (tea.Model, tea.Cmd) {
+	rs := m.chat.roundState
+	if rs == nil || rs.finalizing {
+		return m, nil
+	}
+	rs.skipRemainingToolCalls("tool budget ended")
+	if rs.toolCancel != nil {
+		rs.toolCancel()
+		rs.toolCancel = nil
+	}
+	rs.finalizing = true
+	rs.chatContext, rs.finalizationCancel = context.WithTimeout(rs.rootContext, assistantFinalizationTimeout)
+	m.chat.messages = rs.messages
+	m.Status = "Assistant finalizing: " + reason
+	return m.startNextToolRound()
+}
+
+func (rs *toolRoundState) recordToolResult(call ai.ToolCall, content string) bool {
+	input, err := json.Marshal(call.Input)
+	if err != nil {
+		rs.lastToolResultSignature = ""
+		rs.repeatedToolResults = 0
+		return false
+	}
+	signature := call.Name + "\x00" + string(input) + "\x00" + content
+	if signature == rs.lastToolResultSignature {
+		rs.repeatedToolResults++
+	} else {
+		rs.lastToolResultSignature = signature
+		rs.repeatedToolResults = 1
+	}
+	return rs.repeatedToolResults >= assistantRepeatedToolResultLimit
+}
+
+func (rs *toolRoundState) releaseContexts() {
+	if rs.toolCancel != nil {
+		rs.toolCancel()
+	}
+	if rs.finalizationCancel != nil {
+		rs.finalizationCancel()
+	}
+}
+
+func (rs *toolRoundState) skipRemainingToolCalls(reason string) {
+	for rs.nextCall < len(rs.toolCalls) {
+		call := rs.toolCalls[rs.nextCall]
+		rs.messages = append(rs.messages, ai.Message{
+			Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name, Content: "Skipped: " + reason,
+		})
+		rs.nextCall++
+	}
+}
+
+// stopToolRound cleans up a deliberately stopped tool run.
+func (m Model) stopToolRound(status string) (tea.Model, tea.Cmd) {
 	rs := m.chat.roundState
 	if rs == nil {
 		return m, nil
 	}
-
+	rs.releaseContexts()
 	if rs.cancel != nil {
 		rs.cancel()
 	}
@@ -644,6 +805,6 @@ func (m Model) finishToolRound() (tea.Model, tea.Cmd) {
 	m.chat.roundState = nil
 	m.chat.pendingWrite = nil
 	m.refreshChatView()
-	m.Status = "Tool execution stopped"
+	m.Status = status
 	return m, nil
 }

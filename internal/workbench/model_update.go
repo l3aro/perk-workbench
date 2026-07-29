@@ -47,10 +47,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := message.(assistantToolStartMsg); ok {
 		return m.updateChat(message)
 	}
+	if _, ok := message.(assistantToolPhaseExpiredMsg); ok {
+		return m.updateChat(message)
+	}
 	if _, ok := message.(assistantToolContinueMsg); ok {
 		return m.updateChat(message)
 	}
 	if _, ok := message.(assistantWriteResultMsg); ok {
+		return m.updateChat(message)
+	}
+	if _, ok := message.(assistantToolResultMsg); ok {
 		return m.updateChat(message)
 	}
 
@@ -170,6 +176,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		rs := m.chat.roundState
 		if rs == nil || gen != rs.gen {
 			return m, nil
+		}
+		if time.Now().After(rs.toolDeadline) {
+			return m, func() tea.Msg {
+				return assistantWriteResultMsg{
+					gen: gen, callID: call.ID, callName: call.Name,
+					err: "tool time budget ended before write approval",
+				}
+			}
 		}
 		chatContext := rs.chatContext
 		db := m.Database
@@ -310,6 +324,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			return m, nil
 		}
+
+		// Route chat Escape before global keybindings so chat's
+		// insert→normal→cancel precedence wins over query.cancel etc.
+		if m.Focus == focusChat && message.Key().Code == tea.KeyEscape {
+			return m.updateChat(message)
+		}
+
 		if m.State == stateReady && !m.formActive() && !m.schema.SettingFilter() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) && !(m.Focus == focusChat && m.chat.chatMode == formModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):

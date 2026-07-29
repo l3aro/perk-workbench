@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -67,23 +68,29 @@ type chatResponseMsg struct {
 	err            error
 }
 
-// toolRoundState holds resumable state for one tool-round sequence.
-// It is set by startChat and cleared when the round ends (no more tool calls).
+// toolRoundState holds resumable state for one assistant run with tools.
+// It is set by startChat and cleared when the run ends.
 type toolRoundState struct {
-	gen            int64
-	messages       []ai.Message
-	agentID        string
-	client         chatClient
-	history        chatHistory
-	chatContext    context.Context
-	cancel         context.CancelFunc
-	contextText    string
-	toolsDefs      []ai.ToolDefinition
-	conversationID string
-	toolCalls      []ai.ToolCall
-	nextCall       int
-	toolRound      int
-	maxToolRounds  int
+	gen                     int64
+	messages                []ai.Message
+	agentID                 string
+	client                  chatClient
+	history                 chatHistory
+	rootContext             context.Context
+	chatContext             context.Context
+	cancel                  context.CancelFunc
+	toolCancel              context.CancelFunc
+	finalizationCancel      context.CancelFunc
+	contextText             string
+	toolsDefs               []ai.ToolDefinition
+	conversationID          string
+	toolCalls               []ai.ToolCall
+	nextCall                int
+	toolCallCount           int
+	toolDeadline            time.Time
+	finalizing              bool
+	lastToolResultSignature string
+	repeatedToolResults     int
 }
 
 // pendingWrite holds state for a sql_write call awaiting user confirmation.
@@ -101,9 +108,25 @@ type assistantToolStartMsg struct {
 	state toolRoundState
 }
 
+// assistantToolPhaseExpiredMsg switches an expired tool phase to finalization.
+// state is provided only when the initial tool request expired.
+type assistantToolPhaseExpiredMsg struct {
+	gen   int64
+	state *toolRoundState
+}
+
 // assistantToolContinueMsg signals updateChat to resume tool-round processing.
 type assistantToolContinueMsg struct {
 	gen int64
+}
+
+// assistantToolResultMsg carries the result of an async read-only tool execution.
+type assistantToolResultMsg struct {
+	gen      int64
+	callID   string
+	callName string
+	content  string
+	err      string
 }
 
 // assistantWriteResultMsg carries the result of an async sql_write execution.
