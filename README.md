@@ -1,202 +1,118 @@
 # Perk Workbench
 
-Perk Workbench is a small terminal workbench for exploring an existing SQLite or MySQL database. It opens one database, lists its tables and views, runs one SQL statement at a time, and shows the result or status in a Bubble Tea interface.
+## A database workspace for your terminal
 
-## Requirements
+Perk Workbench turns a terminal into a focused database workspace. Connect to
+SQLite, MySQL, or PostgreSQL, then move from schema discovery to SQL, data
+editing, and relationship inspection without switching tools.
 
-- Go 1.25 or newer
-- A terminal with alternate screen support
-- An existing SQLite database file, or the in-memory target `:memory:`
-- A reachable MySQL server when using a MySQL connection
+It is built for the moments between “what is in this database?” and “make this
+change”: quick enough for exploration, visual enough for browsing, and
+explicit enough for mutations.
 
-## Start
-
-Run the workbench with an existing database:
-
-```bash
-go run ./cmd/perk-workbench <database.db>
+```text
+connect → explore → query → inspect → change
 ```
 
-For a temporary database:
+## Start anywhere
+
+Open an existing SQLite database, create a temporary in-memory workspace, or
+connect to a remote database:
 
 ```bash
+go run ./cmd/perk-workbench database.db
 go run ./cmd/perk-workbench :memory:
+go run ./cmd/perk-workbench 'mysql:dsn'
+go run ./cmd/perk-workbench 'postgres:dsn'
+go run ./cmd/perk-workbench              # choose a connection interactively
+go run ./cmd/perk-workbench --read-only database.db
 ```
 
-With no argument, the application opens a database picker. The picker includes `:memory:`, directories, and regular files whose names end in `.db`, `.sqlite`, or `.sqlite3`. It follows valid symlinks and omits broken links and unsupported files. A missing path supplied on the command line is not created. Press Enter on a database failure to return to the picker.
+The connection screen also supports recent profiles. Passwords are entered
+when connecting and are never stored in profiles.
 
-Select MySQL or PostgreSQL in the connection form to enter the server, credentials, and database. Successful connections are available as named profiles in `$XDG_CONFIG_HOME/perk-workbench/connections.json`; profiles store only the driver, name, host, port, username, and database target. Passwords are never written to disk and must be entered each time a remote profile connects. To open a MySQL target directly, prefix a standard driver DSN with `mysql:`, for example:
-
-```bash
-go run ./cmd/perk-workbench 'mysql:alice:secret@tcp(127.0.0.1:3306)/app'
-```
-
-## Docker Compose
-
-The Compose development environment mounts this source directory and the sibling `../demo` directory at `/demo`. It opens the bundled demo database by default:
+Docker Compose starts the included Chinook demo database:
 
 ```bash
 docker compose run --rm dev
 ```
 
-For a demo directory elsewhere, set `DEMO_DIR` to its host path:
+Set `DEMO_DIR` to use another demo directory.
 
-```bash
-DEMO_DIR=/path/to/demo docker compose run --rm dev
-```
+## One workspace, several ways to work
 
-Run the product checks in the same container environment:
+### See the database before touching it
 
-```bash
-docker compose run --rm dev go test -race ./cmd/... ./internal/...
-docker compose run --rm dev go vet ./cmd/... ./internal/...
-docker compose run --rm dev go build ./cmd/perk-workbench
-docker compose run --rm dev gofmt -l cmd internal
-```
+- Browse the schema tree and switch between tables, views, and other objects.
+- Inspect columns, types, nullability, and primary keys in **Structure**.
+- View, filter, create, edit, and drop indexes.
+- View and manage foreign keys, then open a relationship diagram.
+- Browse table data page by page with sorting and per-column filters.
+- Open a cell in a full-value viewer with JSON pretty-printing.
 
-The Compose `dev` service forwards the host terminal's color capability
-variables (`TERM` and `COLORTERM`) so Lipgloss renders RGB colors inside the
-container. Without them, true-color hex values collapse into a reduced ANSI
-palette that is hard to read.
+### Write SQL when you know what you want
 
-### Clipboard in tmux
+- Use the SQL editor with context-aware completion (`Ctrl+Space`).
+- Open the query in an external editor (`Ctrl+E`).
+- Recall previous SQL from history (`Ctrl+R`).
+- Run asynchronously and cancel a query in progress (`Escape`).
+- Keep the previous result visible when a new query fails.
 
-The query log copies the selected cell with `y`. When running Perk Workbench through Docker Compose inside tmux, enable application-originated OSC 52 clipboard requests:
+Each run accepts one statement. Empty input, comments, multi-statement input,
+and trigger creation are rejected. Table output is capped at 500 rows and 300
+runes per cell; the cell viewer shows the complete value.
 
-```bash
-tmux set-option -g set-clipboard on
-```
+### Edit data without writing every form by hand
 
-To keep the setting after restarting tmux, add this line to `~/.tmux.conf` and reload it:
+In **Browse**, use row editing (`Enter`, requires a primary key), cell editing
+(`i`), and the context menu (`,`). Copy a cell with `y`. Read-only mode blocks
+all `INSERT`, `UPDATE`, `DELETE`, and DDL operations.
 
-```tmux
-set -g set-clipboard on
-```
+### Keep an audit trail
 
-```bash
-tmux source-file ~/.tmux.conf
-```
+The **Query Log** is persisted and paginated. Open query details, revisit
+history, and choose a query from the explain picker. Retention defaults to 30
+days and page size to 25; both are configurable with environment variables.
 
-The container cannot access the native desktop clipboard; the terminal forwards OSC 52 instead.
+### Ask the optional AI assistant
 
-## Keys
+The assistant can use the current schema, database version, and editor SQL as
+context. It provides:
 
-### Picker
+- `sql_read` for safe database exploration.
+- `sql_write` on writable connections, with approval before each mutation.
+- Optional sharing of result rows with the conversation (`Ctrl+Shift+R`).
+- Bounded tool rounds with a deadline, call cap, and repeated-result detection.
 
-- `Up` and `Down` move through the list.
-- Type to filter the list.
-- `Enter` opens the selected database or enters a selected directory.
-- `r` reloads the current directory.
-- `q` or `Ctrl+C` quits.
+Read-only connections do not expose `sql_write`. YOLO mode is available only
+on writable connections when approval prompts are intentionally disabled.
 
-### Workbench
+## Navigation that stays out of the way
 
-- `Tab` moves focus forward: schema, workspace, query log, AI chat, then schema.
-- `Shift+Tab` moves focus backward through the same panes.
-- When an Assistant agent is configured, `4` focuses AI chat, `Ctrl+G` toggles it, and `f` makes the focused pane fullscreen.
-- `F5` runs the editor contents.
-- `Ctrl+Enter` runs the editor contents when the terminal reports the modified Enter key.
-- `Ctrl+S` runs the editor contents and works in terminals that cannot distinguish modified Enter keys.
-- `Ctrl+R` recalls earlier executed statements from this session.
-- Pane `3` retains recent query-log entries in `$XDG_CONFIG_HOME/perk-workbench/data.db`; they expire after 30 days by default. Set `PERK_QUERY_LOG_RETENTION_DAYS` to a non-negative day count (`0` clears the log). Use `n`/`p` to move through 25-entry pages; set `PERK_QUERY_LOG_PAGE_SIZE` to change the page size.
-- `Enter` in the schema pane loads and runs the selected table or view's DDL query.
-- `Escape` cancels an active query. In the editor, `Escape` switches from insert mode to normal mode.
-- `q` quits when the editor is empty or another pane owns focus. In an editor with text, `q` is inserted as text.
-- Raw `Ctrl+C` requests quit. If a query is running, the query is canceled first and the program exits after cancellation completes.
+The screen is organized into four focusable panes: schema, workspace, query
+log, and AI chat. The workspace contains SQL, Browse, Structure, Indexes, and
+Foreign Keys tabs.
 
-### AI chat
+- `Tab`, `]`, `[` — move between panes
+- `1`–`4` — focus a pane directly
+- `f` — toggle fullscreen
+- `Ctrl+P` — open the command palette
+- `g` — show the foreign-key relationship diagram
+- `v` — inspect the selected cell
+- `y` — copy the selected cell
 
-AI is optional. Define personal defaults in `$XDG_CONFIG_HOME/perk-workbench/ai.json`; a `.perk-workbench/ai.json` file in the current project fully replaces matching provider and agent IDs.
+All commands have configurable key bindings. Use dotted command IDs and
+scope-based overrides in
+`$XDG_CONFIG_HOME/perk-workbench/keybindings.json`; an empty array disables a
+command. Themes include Ocean, Nord, Monokai, Dracula, Catppuccin, and
+Solarized.
 
-```json
-{
-  "providers": {
-    "openrouter": {
-      "name": "OpenRouter",
-      "api": "openai-compatible",
-      "base_url": "https://openrouter.ai/api/v1",
-      "api_key": "env:OPENROUTER_API_KEY",
-      "models": ["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"]
-    }
-  },
-  "agents": {
-    "assistant": {
-      "name": "Assistant",
-      "provider": "openrouter",
-      "model": "openai/gpt-5-mini",
-      "system_prompt": "Help users work safely with their database."
-    },
-    "oracle": {
-      "name": "Oracle",
-      "provider": "openrouter",
-      "model": "anthropic/claude-sonnet-4.5",
-      "system_prompt": "Reason carefully about complex database tasks."
-    }
-  }
-}
-```
+## Requirements
 
-- Provider `api` values are `openai`, `anthropic`, `gemini`, and `openai-compatible`.
-- Any complete string value may be `env:VARIABLE_NAME`; partial `${...}` substitutions are not supported.
-- `assistant` is required when AI is configured. `spark` and `oracle` are optional. Chat defaults to Assistant; use `@Spark` or `/lite`, and `@Oracle` or `/premium`, to select the optional agents. Complex prompts can route to Oracle when it is configured.
-- The active database product/version, schema object names, and editor SQL are sent with a request. Visible result rows stay local until enabled with `Ctrl+Shift+R` in AI chat or the `share result rows` command-palette action. Context is capped before transmission.
-- AI never executes SQL. `Ctrl+A` in the chat pane, or the command palette action, copies the latest fenced SQL block into the editor for review and normal execution.
-- Conversations are saved automatically in `$XDG_STATE_HOME/perk-workbench/conversations.db` (or `~/.local/state/perk-workbench/conversations.db`). The history stores prompts and responses, not provider configuration, API keys, schema snapshots, result rows, or request context.
+Go 1.25 and an alternate-screen terminal. SQLite targets must already exist,
+except for `:memory:`; MySQL and PostgreSQL targets must be reachable.
 
-### Custom key bindings
-
-Key bindings are configurable through `$XDG_CONFIG_HOME/perk-workbench/keybindings.json`. The file path is
-`~/.config/perk-workbench/keybindings.json` on Linux, and the platform equivalent on macOS and Windows.
-
-Commands can be grouped by their dotted prefix:
-
-```json
-{
-  "app": {
-    "quit": ["ctrl+q"]
-  },
-  "query": {
-    "execute": ["f1"],
-    "cancel": ["esc"]
-  },
-  "form": {
-    "save": []
-  }
-}
-```
-
-Commands with no group, or a mix of both formats, also work:
-
-```json
-{
-  "focus.schema": ["f1"],
-  "query": { "execute": ["f5"] }
-}
-```
-
-- Omitted commands retain their built-in defaults.
-- A listed array replaces the command's default key aliases.
-- An empty array (`[]`) disables the command.
-- Unknown command IDs, invalid key names, or malformed JSON cause the program to print an error and exit.
-- Keys active in narrower scopes (forms, active pane) take precedence over global bindings.
-
-### Editor
-
-The SQL editor starts in normal mode. Press `i` to enter text, `Escape` to return to normal mode, and `Ctrl+E` in insert mode to edit SQL through `$EDITOR`.
-
-The editor does not provide inline Vim motions, operators, visual mode, command mode, registers, or syntax highlighting.
-
-## SQL behavior
-
-The workbench accepts SQLite and MySQL connections. It accepts one SQL statement per run and rejects empty input, comments-only input, multiple statements, trailing tokens after a semicolon, and trigger creation, including temporary triggers. Semicolons inside strings, comments, or quoted identifiers are allowed.
-
-Queries run asynchronously with cancellation. Results retain up to 500 rows and mark larger results as truncated. Cell values are made safe for terminal display, `NULL` values are shown as `NULL`, and long cells are capped at 300 runes. A failed query leaves the previous result table visible.
-
-The application does not create SQLite databases, provide migrations, or offer a multi-statement script runner.
-
-## Development checks
-
-Run the product regression suite and quality checks:
+## Development
 
 ```bash
 go test -race ./cmd/... ./internal/...
@@ -205,4 +121,12 @@ go build ./cmd/perk-workbench
 gofmt -l cmd internal
 ```
 
-The repository-wide `go test -race ./...` command also discovers pre-existing ignored example packages under `agent/skills/golang-cli/assets/examples`. Those samples have missing placeholder dependencies and are outside the product scope. They are not modified by the product checks above.
+Configuration paths:
+
+- AI: `$XDG_CONFIG_HOME/perk-workbench/ai.json`
+- Local AI override: `.perk-workbench/ai.json`
+- Conversation history: `$XDG_STATE_HOME/perk-workbench/conversations.db`
+- Remote connection profiles: `$XDG_CONFIG_HOME/perk-workbench/connections.json`
+
+Perk Workbench is a workbench, not a migration runner: it does not create
+missing database files, provide migrations, or run multi-statement scripts.
