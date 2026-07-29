@@ -15,6 +15,8 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench"
 )
 
+const usage = "Usage: perk-workbench [--read-only] [database]\n"
+
 func parseTarget(args []string) (target string, readOnly bool, _ error) {
 	nonFlags := make([]string, 0, len(args))
 	for _, a := range args {
@@ -67,6 +69,10 @@ func loadAI() (*ai.Client, *ai.History, error) {
 }
 
 func main() {
+	if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
+		fmt.Print(usage)
+		return
+	}
 	target, readOnly, err := parseTarget(os.Args[1:])
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -1,6 +1,15 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestUsage_includesWorkbenchCommand(t *testing.T) {
+	if !strings.Contains(usage, "perk-workbench") {
+		t.Fatalf("usage = %q, want perk-workbench command", usage)
+	}
+}
 
 func TestParseTarget(t *testing.T) {
 	tests := []struct {
