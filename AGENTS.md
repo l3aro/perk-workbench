@@ -25,8 +25,8 @@ go test -race ./cmd/perk-workbench -run TestParseTarget
 ## Running
 
 ```bash
-go run ./cmd/perk demo/chinook-sqlite.db
-go run ./cmd/perk path/to/database.db
+go run ./cmd/perk-workbench demo/chinook-sqlite.db
+go run ./cmd/perk-workbench path/to/database.db
 make sqlite                 # demo SQLite database (recommended)
 make mysql                  # starts MySQL and opens its office demo database
 make postgres               # starts PostgreSQL and opens its employees demo database

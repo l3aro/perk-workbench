@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 
 func TestQueryLog_persistsInSQLiteAndExpires(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.db")
-	t.Setenv("PERK_QUERY_LOG_RETENTION_DAYS", "1")
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS", "1")
 	entry := queryLogEntry{startedAt: time.Now(), statement: "SELECT current", duration: time.Millisecond, message: "completed"}
 	if err := saveQueryLog(path, entry); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestNew_loadsPersistedQueryLog(t *testing.T) {
 }
 
 func TestQueryLogRetentionDays_defaultsToThirty(t *testing.T) {
-	t.Setenv("PERK_QUERY_LOG_RETENTION_DAYS", "invalid")
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS", "invalid")
 	if got := queryLogRetentionDays(); got != defaultQueryLogRetentionDays {
 		t.Fatalf("retention days = %d, want %d", got, defaultQueryLogRetentionDays)
 	}
@@ -85,11 +85,11 @@ func TestQueryLogPath_usesXDGConfigDirectory(t *testing.T) {
 }
 
 func TestQueryLogPageSize_defaultsToTwentyFive(t *testing.T) {
-	t.Setenv("PERK_QUERY_LOG_PAGE_SIZE", "invalid")
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_PAGE_SIZE", "invalid")
 	if got := queryLogPageSize(); got != defaultQueryLogPageSize {
 		t.Fatalf("page size = %d, want %d", got, defaultQueryLogPageSize)
 	}
-	t.Setenv("PERK_QUERY_LOG_PAGE_SIZE", "7")
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_PAGE_SIZE", "7")
 	if got, want := queryLogPageSize(), 7; got != want {
 		t.Fatalf("page size = %d, want %d", got, want)
 	}

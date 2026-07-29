@@ -23,7 +23,7 @@ func queryLogPath() (string, error) {
 }
 
 func queryLogRetentionDays() int {
-	days, err := strconv.Atoi(os.Getenv("PERK_QUERY_LOG_RETENTION_DAYS"))
+	days, err := strconv.Atoi(os.Getenv("PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS"))
 	if err != nil || days < 0 {
 		return defaultQueryLogRetentionDays
 	}
@@ -31,7 +31,7 @@ func queryLogRetentionDays() int {
 }
 
 func queryLogPageSize() int {
-	size, err := strconv.Atoi(os.Getenv("PERK_QUERY_LOG_PAGE_SIZE"))
+	size, err := strconv.Atoi(os.Getenv("PERK_WORKBENCH_QUERY_LOG_PAGE_SIZE"))
 	if err != nil || size < 1 {
 		return defaultQueryLogPageSize
 	}

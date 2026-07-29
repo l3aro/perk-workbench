@@ -35,9 +35,9 @@ func TestLoadFiles_projectProfileReplacesUserProfile(t *testing.T) {
 }
 
 func TestResolveValue_readsExactEnvironmentReference(t *testing.T) {
-	t.Setenv("PERK_TEST_KEY", "secret")
+	t.Setenv("PERK_WORKBENCH_TEST_KEY", "secret")
 
-	value, err := ResolveValue("env:PERK_TEST_KEY")
+	value, err := ResolveValue("env:PERK_WORKBENCH_TEST_KEY")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -96,7 +96,7 @@ func anyToStrings(arr []any) ([]string, error) {
 }
 
 // MustLoadKeybindings is like LoadKeybindings but panics on error.
-// Suitable for cmd/perk startup.
+// Suitable for cmd/perk-workbench startup.
 func MustLoadKeybindings(path string) Keybindings {
 	b, err := LoadKeybindings(path)
 	if err != nil {

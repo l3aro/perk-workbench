@@ -113,7 +113,7 @@ func externalEditorProcess(value string, tag uint64, location externalEditorLoca
 	if location.kind == externalEditorTargetSQL {
 		extension = "sql"
 	}
-	file, err := os.CreateTemp("", "perk-editor-*."+extension)
+	file, err := os.CreateTemp("", "perk-workbench-editor-*."+extension)
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating editor file: %w", err)
 	}
