@@ -37,6 +37,41 @@ func TestLoadKeybindings_missing_file_returns_defaults(t *testing.T) {
 	}
 }
 
+func TestLoadKeybindings_second_call_success(t *testing.T) {
+	// Regression: first call writes the default config, second call reads it back.
+	// The writer skips palette-only commands (keys: nil), so the file should never
+	// contain null; this test verifies the full round-trip.
+	path := filepath.Join(t.TempDir(), "nonexistent", "keybindings.json")
+	if _, err := LoadKeybindings(path); err != nil {
+		t.Fatalf("first call (create): %v", err)
+	}
+
+	b, err := LoadKeybindings(path)
+	if err != nil {
+		t.Fatalf("second call (read back): %v", err)
+	}
+	if b.DisplayKey("app.quit") == "" {
+		t.Fatal("second call loaded empty keybindings")
+	}
+}
+
+func TestLoadKeybindings_null_nested_value_ignored(t *testing.T) {
+	// Regression: existing config files with null values (e.g. from a palette-only
+	// command written by an older version) must not cause errors.
+	config := `{"ai":{"yolo_writes.toggle":null},"app":{"quit":["x"]}}`
+	path := filepath.Join(t.TempDir(), "keybindings.json")
+	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, err := LoadKeybindings(path)
+	if err != nil {
+		t.Fatalf("LoadKeybindings with null nested value: %v", err)
+	}
+	if got := b.DisplayKey("app.quit"); got != "x" {
+		t.Fatalf("app.quit key = %q, want x", got)
+	}
+}
+
 func TestLoadKeybindings_empty_config_returns_defaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "keybindings.json")
 	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {

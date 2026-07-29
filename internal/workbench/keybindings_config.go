@@ -40,6 +40,9 @@ func LoadKeybindings(path string) (Keybindings, error) {
 	delete(flat, "query.save")
 	delete(flat, "query.saved")
 
+	// Renamed: merged into cell.yank.
+	delete(flat, "browse.yank_cell")
+
 	b, err := NewKeybindings(flat)
 	if err != nil {
 		return Keybindings{}, fmt.Errorf("keybindings config %q: %w", path, err)
@@ -66,6 +69,9 @@ func flattenConfig(raw map[string]any) (map[string][]string, error) {
 		case map[string]any:
 			// Nested format: "group": {"sub": ["key1"]}
 			for subKey, subVal := range v {
+				if subVal == nil {
+					continue
+				}
 				subArr, ok := subVal.([]any)
 				if !ok {
 					return nil, fmt.Errorf("key %q: expected array of strings, got %T", key+"."+subKey, subVal)
@@ -120,6 +126,9 @@ func KeybindingsPath() string {
 func writeDefaultConfig(path string) error {
 	groups := make(map[string]map[string][]string)
 	for _, d := range defaultDefs {
+		if d.keys == nil {
+			continue
+		}
 		id := string(d.id)
 		dot := strings.IndexByte(id, '.')
 		if dot < 0 {
