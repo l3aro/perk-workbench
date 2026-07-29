@@ -583,3 +583,82 @@ func assertResultsPlaceholder(t *testing.T, resultTable table.Model) {
 		t.Fatalf("rows = %#v, want no rows", got)
 	}
 }
+
+func TestSQL_y_yanks_focused_cell_value(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	requestID := startQuery(t, &model)
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+		Columns: []string{"name", "note"},
+		Rows: [][]*string{{
+			stringPointer("projects"),
+			nil,
+		}},
+		UntruncatedRows: [][]*string{{
+			stringPointer("projects"),
+			nil,
+		}},
+	}})
+	model = updated.(Model)
+	model.Focus = focusWorkspace
+	model.Tab = tabSQL
+	model.resultsColumn = 1
+	model.results.Focus()
+
+	// When — y yanks the selected cell
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — nil cell yields empty string, status set, command returned
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("expected copy command")
+	}
+
+	// When — yank another cell with a value
+	model.resultsColumn = 0
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if command == nil {
+		t.Fatal("expected copy command")
+	}
+}
+
+func TestSQL_y_ignored_without_focus_or_during_edit(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	requestID := startQuery(t, &model)
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+		Columns:         []string{"name"},
+		Rows:            [][]*string{{stringPointer("projects")}},
+		UntruncatedRows: [][]*string{{stringPointer("projects")}},
+	}})
+	model = updated.(Model)
+	model.Focus = focusWorkspace
+	model.Tab = tabSQL
+
+	// When — results not focused
+	model.results.Blur()
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — no status change
+	if model.Status == "copied to clipboard" {
+		t.Fatal("y copied without focused results")
+	}
+
+	// When — editor is editing
+	model.formMode = &formModeController{mode: formModeInsert}
+	model.results.Focus()
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — no status change
+	if model.Status == "copied to clipboard" {
+		t.Fatal("y copied while editing form")
+	}
+}
