@@ -10,12 +10,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
@@ -390,6 +392,51 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	}
 }
 
+func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
+	started := make(chan struct{})
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.fullscreen = true
+	model.SetAI(waitingChatClient{started: started}, nil)
+	model.layout(140, 32)
+	model.chat.input.SetValue("cancel this request")
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("sending chat did not return a command")
+	}
+
+	response := make(chan tea.Msg, 1)
+	go func() { response <- command() }()
+	<-started
+
+	// First Escape: exit insert mode.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.chat.chatMode != formModeNormal {
+		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
+	}
+	if !model.chat.loading {
+		t.Fatal("first escape canceled the chat request")
+	}
+
+	// Second Escape: cancel the agent call.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(<-response)
+	model = updated.(Model)
+
+	if model.chat.loading {
+		t.Fatal("chat request remains loading after cancellation")
+	}
+	if model.Status != "AI request canceled" {
+		t.Fatalf("status = %q, want cancellation status", model.Status)
+	}
+}
+
 func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
@@ -418,7 +465,7 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	}
 }
 
-// exhaustClient requests tools for 7 rounds then checks Tools == nil on round 8.
+// exhaustClient reaches the hard tool-call fuse, then checks finalization disables tools.
 type exhaustClient struct {
 	round         int
 	finalToolsNil bool
@@ -436,17 +483,44 @@ func (c *exhaustClient) ChatStream(_ context.Context, _ ai.Request) (<-chan ai.S
 }
 func (c *exhaustClient) Complete(_ context.Context, req ai.Request) (ai.Response, error) {
 	c.round++
-	if c.round < 8 {
+	if c.round <= assistantMaxToolCalls {
 		return ai.Response{Agent: "Assistant", ToolCalls: []ai.ToolCall{{
-			ID: "call_exhaust", Name: "get_connection_info",
-			Input: map[string]any{},
+			ID: fmt.Sprintf("call_exhaust_%d", c.round), Name: "get_connection_info",
+			Input: map[string]any{"page": c.round},
 		}}}, nil
 	}
 	if len(req.Tools) != 0 {
-		return ai.Response{}, errors.New("expected nil/empty Tools on final round")
+		return ai.Response{}, errors.New("expected nil/empty Tools on finalization")
 	}
 	c.finalToolsNil = true
-	return ai.Response{Agent: "Assistant", Content: "final answer after exhausting tool rounds"}, nil
+	return ai.Response{Agent: "Assistant", Content: "final answer after a long tool run"}, nil
+}
+
+type deadlineClient struct {
+	calls         int
+	finalToolsNil bool
+}
+
+func (c *deadlineClient) AgentForPrompt(string) string { return "assistant" }
+func (c *deadlineClient) SupportsTools(string) bool    { return true }
+func (c *deadlineClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
+	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
+}
+func (c *deadlineClient) ChatStream(_ context.Context, _ ai.Request) (<-chan ai.StreamEvent, error) {
+	ch := make(chan ai.StreamEvent)
+	close(ch)
+	return ch, nil
+}
+func (c *deadlineClient) Complete(_ context.Context, req ai.Request) (ai.Response, error) {
+	c.calls++
+	if c.calls == 1 {
+		return ai.Response{}, context.DeadlineExceeded
+	}
+	if len(req.Tools) != 0 {
+		return ai.Response{}, errors.New("expected nil/empty Tools after tool deadline")
+	}
+	c.finalToolsNil = true
+	return ai.Response{Agent: "Assistant", Content: "final answer after tool deadline"}, nil
 }
 
 // toolChatClient simulates an OpenAI provider that uses tools.
@@ -676,6 +750,288 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 	if !strings.Contains(stripped, "final answer") {
 		t.Fatalf("viewport = %q, want final-answer content", stripped)
 	}
+}
+
+func TestChat_toolDeadlineFinalizesOnFreshContext(t *testing.T) {
+	ctx := context.Background()
+	service, err := sqlite.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatalf("opening test service: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+
+	model := New("", ctx, nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.Database = service
+	model.databaseInfo = service.Info()
+	model.Target = ":memory:"
+
+	client := &deadlineClient{}
+	model.SetAI(client, nil)
+	model.layout(140, 32)
+	model.chat.input.SetValue("investigate")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = driveToolRoundToCompletion(t, model, cmd)
+
+	if !client.finalToolsNil {
+		t.Fatal("tool deadline did not start a tools-disabled finalization")
+	}
+	if got := ansi.Strip(model.chat.viewport.GetContent()); !strings.Contains(got, "final answer after tool") || !strings.Contains(got, "deadline") {
+		t.Fatalf("viewport = %q, want final answer", got)
+	}
+	if model.Status != "Assistant response complete" {
+		t.Fatalf("status = %q, want completed finalization", model.Status)
+	}
+}
+
+func TestToolRoundState_repeatedToolResultTriggersFinalization(t *testing.T) {
+	state := toolRoundState{}
+	call := ai.ToolCall{Name: "get_connection_info", Input: map[string]any{"scope": "current"}}
+	for range assistantRepeatedToolResultLimit - 1 {
+		if state.recordToolResult(call, "SQLite") {
+			t.Fatal("repetition detected too early")
+		}
+	}
+	if !state.recordToolResult(call, "SQLite") {
+		t.Fatal("expected repeated tool result detection")
+	}
+}
+
+func TestToolRoundState_skipsUnexecutedCallsBeforeFinalization(t *testing.T) {
+	state := toolRoundState{
+		toolCalls: []ai.ToolCall{
+			{ID: "done", Name: "sql", Input: map[string]any{"query": "SELECT 1"}},
+			{ID: "skip", Name: "sql", Input: map[string]any{"query": "SELECT 2"}},
+		},
+		nextCall: 1,
+	}
+	state.skipRemainingToolCalls("tool budget ended")
+
+	if state.nextCall != len(state.toolCalls) || len(state.messages) != 1 {
+		t.Fatalf("state = %#v, want remaining tool call recorded", state)
+	}
+	if got := state.messages[0]; got.ToolID != "skip" || got.Content != "Skipped: tool budget ended" {
+		t.Fatalf("tool result = %#v", got)
+	}
+}
+
+func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
+	ctx := context.Background()
+	entered := make(chan struct{})
+	db := &blockingDB{entered: entered}
+
+	model := New("", ctx, nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.Database = db
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "SQLite"}
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	gen := int64(1)
+	model.chat.gen = gen
+	model.chat.loading = true
+
+	toolCtx, toolCancel := context.WithCancel(ctx)
+	model.chat.roundState = &toolRoundState{
+		gen:         gen,
+		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
+		client:      model.chat.client,
+		chatContext: toolCtx,
+		toolCancel:  toolCancel,
+		toolCalls: []ai.ToolCall{{
+			ID: "call_block", Name: "sql_read",
+			Input: map[string]any{"query": "SELECT 1"},
+		}},
+		toolDeadline: time.Now().Add(30 * time.Second),
+	}
+
+	// Send assistantToolContinueMsg — must return immediately with an async cmd.
+	modelI, cmd := model.Update(assistantToolContinueMsg{gen: gen})
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd for async tool execution")
+	}
+	model = modelI.(Model)
+	if !model.chat.loading {
+		t.Fatal("model should still be loading")
+	}
+	if model.chat.roundState == nil {
+		t.Fatal("roundState should still be present")
+	}
+
+	// Run the blocking cmd in a goroutine.
+	done := make(chan tea.Msg, 1)
+	go func() {
+		done <- cmd()
+	}()
+
+	// Wait for the mock to enter the blocking call.
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("tool execution did not start within 5s")
+	}
+
+	// Send Escape — must cancel immediately without blocking.
+	modelI, escCmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = modelI.(Model)
+	if escCmd != nil {
+		t.Fatal("Escape should not produce a cmd")
+	}
+	if model.chat.roundState != nil {
+		t.Fatal("Escape should clear roundState")
+	}
+
+	// The blocking command must unblock via context cancellation.
+	select {
+	case msg := <-done:
+		if result, ok := msg.(assistantToolResultMsg); !ok {
+			t.Fatalf("expected assistantToolResultMsg, got %T", msg)
+		} else if result.err == "" {
+			t.Fatal("expected error from canceled context")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocking tool did not unblock within 5s after cancel")
+	}
+}
+
+func TestAssistant_fullScreenEscapeExitsInsertModeThenCancels(t *testing.T) {
+	ctx := context.Background()
+	rootCtx, rootCancel := context.WithCancel(ctx)
+	toolCtx, toolCancel := context.WithCancel(rootCtx)
+
+	model := New("", ctx, nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.fullscreen = true
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	gen := int64(1)
+	model.chat.gen = gen
+	model.chat.loading = true
+	model.chat.cancel = rootCancel
+	model.chat.chatMode = formModeInsert
+	model.chat.roundState = &toolRoundState{
+		gen:         gen,
+		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
+		client:      model.chat.client,
+		chatContext: toolCtx,
+		toolCancel:  toolCancel,
+		toolCalls: []ai.ToolCall{{
+			ID: "call_esc", Name: "sql_read",
+			Input: map[string]any{"query": "SELECT 1"},
+		}},
+		toolDeadline: time.Now().Add(30 * time.Second),
+	}
+
+	// First Escape: must exit insert mode, not cancel.
+	modelI, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = modelI.(Model)
+	if cmd != nil {
+		t.Fatal("Escape from insert mode should not produce a cmd")
+	}
+	if model.chat.chatMode != formModeNormal {
+		t.Fatal("first Escape should exit insert mode")
+	}
+	if !model.chat.loading {
+		t.Fatal("first Escape should NOT interrupt loading")
+	}
+	if model.chat.roundState == nil {
+		t.Fatal("first Escape should NOT clear roundState")
+	}
+
+	// Second Escape: must cancel the agent call.
+	modelI, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = modelI.(Model)
+	if model.chat.roundState != nil {
+		t.Fatal("second Escape should clear roundState")
+	}
+	if !model.chat.canceled {
+		t.Fatal("second Escape should mark canceled")
+	}
+}
+
+func TestAssistant_fullscreenTransitionPreservesEscapeOrder(t *testing.T) {
+	ctx := context.Background()
+
+	model := New("", ctx, nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	// Toggle fullscreen via keybinding (works in normal mode).
+	modelI, _ := model.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
+	model = modelI.(Model)
+	if !model.fullscreen {
+		t.Fatal("expected fullscreen after toggle")
+	}
+
+	rootCtx, rootCancel := context.WithCancel(ctx)
+	toolCtx, toolCancel := context.WithCancel(rootCtx)
+	gen := int64(1)
+	model.chat.gen = gen
+	model.chat.loading = true
+	model.chat.cancel = rootCancel
+	model.chat.chatMode = formModeInsert
+	model.chat.roundState = &toolRoundState{
+		gen:         gen,
+		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
+		client:      model.chat.client,
+		chatContext: toolCtx,
+		toolCancel:  toolCancel,
+		toolCalls: []ai.ToolCall{{
+			ID: "call_t", Name: "sql_read",
+			Input: map[string]any{"query": "SELECT 1"},
+		}},
+		toolDeadline: time.Now().Add(30 * time.Second),
+	}
+
+	// First Escape: exit insert mode, not cancel.
+	modelI, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = modelI.(Model)
+	if model.chat.chatMode != formModeNormal {
+		t.Fatal("first Escape should exit insert mode after fullscreen transition")
+	}
+	if !model.chat.loading {
+		t.Fatal("first Escape should NOT interrupt loading after fullscreen transition")
+	}
+	if model.chat.roundState == nil {
+		t.Fatal("first Escape should NOT clear roundState after fullscreen transition")
+	}
+
+	// Second Escape: cancel the agent call.
+	modelI, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = modelI.(Model)
+	if model.chat.roundState != nil {
+		t.Fatal("second Escape should clear roundState after fullscreen transition")
+	}
+	if !model.chat.canceled {
+		t.Fatal("second Escape should mark canceled after fullscreen transition")
+	}
+}
+
+type blockingDB struct {
+	sharedsql.Service
+	entered chan struct{}
+}
+
+func (d *blockingDB) Close() error { return nil }
+func (d *blockingDB) Execute(_ context.Context, _ string) (sharedsql.Result, error) {
+	return sharedsql.Result{}, nil
+}
+func (d *blockingDB) ExecuteReadOnly(ctx context.Context, _ string) (sharedsql.Result, error) {
+	close(d.entered)
+	<-ctx.Done()
+	return sharedsql.Result{}, ctx.Err()
+}
+func (d *blockingDB) ListSchema(_ context.Context) ([]sharedsql.SchemaObject, error) { return nil, nil }
+func (d *blockingDB) TableInfo(_ context.Context, _ string) ([]sharedsql.ColumnInfo, error) {
+	return nil, nil
+}
+func (d *blockingDB) ListIndexes(_ context.Context, _ string) ([]sharedsql.IndexInfo, error) {
+	return nil, nil
 }
 
 func TestChatContext_includesLastFailedQuery(t *testing.T) {

@@ -89,6 +89,11 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	updated, cmd = model.Update(msg)
 	model = updated.(Model)
 
+	// sql_read result → advances to sql_write
+	msg = cmd()
+	updated, cmd = model.Update(msg)
+	model = updated.(Model)
+
 	// sql_write → pendingWrite
 	msg = cmd()
 	updated, cmd = model.Update(msg)
