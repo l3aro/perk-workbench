@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -26,21 +25,20 @@ func (m *Model) startChat() tea.Cmd {
 	m.chat.loading = true
 	m.chat.canceled = false
 	m.chat.streamBuffer = ""
+	m.chat.gen++
+	m.chat.pendingWrite = nil
+	m.chat.roundState = nil
 	m.refreshChatView()
 
-	// Clone the model state needed inside the closure.
+	gen := m.chat.gen
 	client, history, conversationID := m.chat.client, m.chat.history, m.chat.conversationID
 	agentID := client.AgentForPrompt(prompt)
 	toolsDefs := m.databaseTools()
-
-	// Build the message list. Internal tool-round messages are kept separate
-	// from the visible transcript.
 	baseMessages := append([]ai.Message(nil), m.chat.messages...)
 
 	chatContext, cancel := context.WithCancel(m.appContext)
 	m.chat.cancel = cancel
 
-	// contextText is captured at send time; tool results extend the message list, not context.
 	contextText := m.chatContext()
 
 	return func() tea.Msg {
@@ -59,11 +57,9 @@ func (m *Model) startChat() tea.Cmd {
 			}
 		}
 
-		// Check whether tools are available and supported.
 		supportTools := len(toolsDefs) > 0 && client.SupportsTools(agentID)
 
 		if !supportTools {
-			// No tools — use the original streaming path unchanged.
 			eventCh, err := client.ChatStream(chatContext, ai.Request{
 				AgentID:  agentID,
 				Messages: baseMessages,
@@ -76,66 +72,54 @@ func (m *Model) startChat() tea.Cmd {
 			return readStreamEvent(eventCh, conversationID)
 		}
 
-		// --- Tool round: non-streaming request with tools. ---
-		// maxToolRounds is the total budget (7 tool-enabled + 1 forced-answer).
-		// On the final round tools are dropped so the AI must synthesize
-		// an answer from what it already learned.
-		messages := append([]ai.Message(nil), baseMessages...)
+		// --- Tool round: first Complete call. ---
 		const maxToolRounds = 8
-		for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
-			roundTools := toolsDefs
-			forceAnswer := toolRound == maxToolRounds-1
-			if forceAnswer {
-				roundTools = nil
-			}
-			turn, err := client.Complete(chatContext, ai.Request{
-				AgentID:  agentID,
-				Messages: messages,
-				Context:  contextText,
-				Tools:    roundTools,
-			})
-			if err != nil {
-				cancel()
-				return chatStreamMsg{conversationID: conversationID, err: err}
-			}
-
-			if len(turn.ToolCalls) == 0 {
-				// Final answer ready. Deliver through a synthetic channel so the
-				// existing UI/persistence path works correctly.
-				ch := make(chan ai.StreamEvent, 2)
-				ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: turn.Content}
-				ch <- ai.StreamEvent{Kind: ai.EventDone, Response: &turn}
-				close(ch)
-				return readStreamEvent(ch, conversationID)
-			}
-
-			// Append assistant message with tool calls.
-			messages = append(messages, ai.Message{
-				Role:      ai.RoleAssistant,
-				Content:   turn.Content,
-				ToolCalls: turn.ToolCalls,
-			})
-
-			// Execute each tool call and append results.
-			for _, call := range turn.ToolCalls {
-				result := m.executeTool(chatContext, call)
-				resultMsg := ai.Message{
-					Role:     ai.RoleTool,
-					ToolID:   call.ID,
-					ToolName: call.Name,
-					Content:  result.Content,
-				}
-				if result.Error != "" {
-					resultMsg.Content = "Error: " + result.Error
-				}
-				messages = append(messages, resultMsg)
-			}
+		turn, err := client.Complete(chatContext, ai.Request{
+			AgentID:  agentID,
+			Messages: baseMessages,
+			Context:  contextText,
+			Tools:    toolsDefs,
+		})
+		if err != nil {
+			cancel()
+			return chatStreamMsg{conversationID: conversationID, err: err}
 		}
 
-		// Provider/impl could still return tool calls even without tools —
-		// deliver whatever content we got, or a clear protocol error.
-		cancel()
-		return chatStreamMsg{conversationID: conversationID, err: fmt.Errorf("maximum tool rounds exceeded")}
+		if len(turn.ToolCalls) == 0 {
+			// No tool calls — deliver as final answer.
+			ch := make(chan ai.StreamEvent, 2)
+			ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: turn.Content}
+			ch <- ai.StreamEvent{Kind: ai.EventDone, Response: &turn}
+			close(ch)
+			return readStreamEvent(ch, conversationID)
+		}
+
+		// Append assistant message with tool calls to a local copy.
+		msgs := append(append([]ai.Message(nil), baseMessages...), ai.Message{
+			Role:      ai.RoleAssistant,
+			Content:   turn.Content,
+			ToolCalls: turn.ToolCalls,
+		})
+
+		return assistantToolStartMsg{
+			gen: gen,
+			state: toolRoundState{
+				gen:            gen,
+				messages:       msgs,
+				agentID:        agentID,
+				client:         client,
+				history:        history,
+				chatContext:    chatContext,
+				cancel:         cancel,
+				contextText:    contextText,
+				toolsDefs:      toolsDefs,
+				conversationID: conversationID,
+				toolCalls:      turn.ToolCalls,
+				nextCall:       0,
+				toolRound:      0,
+				maxToolRounds:  maxToolRounds,
+			},
+		}
 	}
 }
 
@@ -339,14 +323,41 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.chat.messages = append(m.chat.messages, ai.Message{Role: ai.RoleAssistant, Agent: message.response.Agent, Content: message.response.Content})
 		m.refreshChatView()
 		return m, nil
+
+	case assistantToolStartMsg:
+		if message.gen != m.chat.gen {
+			return m, nil // stale
+		}
+		m.chat.roundState = &message.state
+		m.chat.messages = message.state.messages
+		m.chat.conversationID = message.state.conversationID
+		m.chat.cancel = message.state.cancel
+		m.refreshChatView()
+		return m, func() tea.Msg {
+			return assistantToolContinueMsg{gen: message.gen}
+		}
+
+	case assistantToolContinueMsg:
+		if message.gen != m.chat.gen || m.chat.roundState == nil {
+			return m, nil
+		}
+		return m.processNextToolCall()
+
+	case assistantWriteResultMsg:
+		if message.gen != m.chat.gen {
+			return m, nil // stale
+		}
+		return m.handleWriteResult(message)
 	}
 	if keyPress, ok := message.(tea.KeyPressMsg); ok {
 		if m.chat.loading && m.chat.chatMode != formModeInsert && keyPress.Key().Code == tea.KeyEscape {
 			if m.chat.cancel != nil {
 				m.chat.cancel()
 				m.chat.cancel = nil
-				m.chat.canceled = true
 			}
+			m.chat.canceled = true
+			m.chat.roundState = nil
+			m.chat.pendingWrite = nil
 			return m, nil
 		}
 		switch {
@@ -429,4 +440,210 @@ func (m *Model) toggleChatResultSharing() {
 		return
 	}
 	m.Status = "AI result sharing: off"
+}
+
+// processNextToolCall executes the next pending tool call in the current round.
+// sql_write with YOLO off creates a pendingWrite modal instead of executing.
+func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
+	rs := m.chat.roundState
+	if rs == nil {
+		return m, nil
+	}
+
+	if rs.nextCall >= len(rs.toolCalls) {
+		return m.startNextToolRound()
+	}
+
+	call := rs.toolCalls[rs.nextCall]
+
+	switch call.Name {
+	case "sql_write":
+		query, _ := call.Input["query"].(string)
+		query = strings.TrimSpace(query)
+		if query == "" {
+			rs.nextCall++
+			rs.messages = append(rs.messages, ai.Message{
+				Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name,
+				Content: "Error: query argument is required",
+			})
+			m.chat.messages = rs.messages
+			return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
+		}
+		if m.chat.yoloWrites {
+			// Execute async through the same result path as approved writes.
+			db := m.Database
+			chatCtx := rs.chatContext
+			gen := rs.gen
+			callID := call.ID
+			callName := call.Name
+			return m, func() tea.Msg {
+				res, err := db.Execute(chatCtx, query)
+				content := ""
+				errStr := ""
+				if err != nil {
+					errStr = "executing statement: " + err.Error()
+				} else {
+					content = formatResult(res)
+				}
+				return assistantWriteResultMsg{
+					gen: gen, callID: callID, callName: callName,
+					content: content, err: errStr,
+				}
+			}
+		}
+		// Show confirmation modal.
+		m.chat.pendingWrite = &pendingWrite{
+			generation: rs.gen,
+			call:       call,
+			statement:  query,
+			dialog:     yesNoConfirmation("Run assistant SQL write?", query, "run"),
+		}
+		return m, nil
+
+	default:
+		result := m.executeTool(rs.chatContext, call)
+		content := result.Content
+		if result.Error != "" {
+			content = "Error: " + result.Error
+		}
+		rs.nextCall++
+		rs.messages = append(rs.messages, ai.Message{
+			Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name, Content: content,
+		})
+		m.chat.messages = rs.messages
+		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
+	}
+}
+
+// handleWriteResult processes the outcome of an async sql_write execution.
+func (m Model) handleWriteResult(msg assistantWriteResultMsg) (tea.Model, tea.Cmd) {
+	rs := m.chat.roundState
+	if rs == nil || msg.gen != rs.gen {
+		return m, nil
+	}
+
+	m.chat.pendingWrite = nil
+
+	if msg.declined {
+		// User declined — append error result and stop the round.
+		rs.messages = append(rs.messages, ai.Message{
+			Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName,
+			Content: "Error: " + msg.err,
+		})
+		m.chat.messages = rs.messages
+		return m.finishToolRound()
+	}
+
+	content := msg.content
+	if msg.err != "" {
+		content = "Error: " + msg.err
+	}
+	rs.messages = append(rs.messages, ai.Message{
+		Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName, Content: content,
+	})
+	rs.nextCall++
+	m.chat.messages = rs.messages
+
+	// Continue to next call or next round.
+	if rs.nextCall < len(rs.toolCalls) {
+		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
+	}
+	return m.startNextToolRound()
+}
+
+// startNextToolRound issues the next Complete call from a command closure.
+func (m Model) startNextToolRound() (tea.Model, tea.Cmd) {
+	rs := m.chat.roundState
+	if rs == nil {
+		return m, nil
+	}
+
+	rs.toolRound++
+	rs.nextCall = 0
+	rs.toolCalls = nil
+
+	if rs.toolRound >= rs.maxToolRounds {
+		return m.finishToolRound()
+	}
+
+	// Capture values for the closure (no m access inside).
+	client := rs.client
+	chatContext := rs.chatContext
+	agentID := rs.agentID
+	contextText := rs.contextText
+	toolsDefs := rs.toolsDefs
+	msgs := rs.messages
+	toolRound := rs.toolRound
+	maxToolRounds := rs.maxToolRounds
+	gen := rs.gen
+	history := rs.history
+	cancel := rs.cancel
+	conversationID := rs.conversationID
+
+	return m, func() tea.Msg {
+		roundTools := toolsDefs
+		if toolRound == maxToolRounds-1 {
+			roundTools = nil
+		}
+		turn, err := client.Complete(chatContext, ai.Request{
+			AgentID:  agentID,
+			Messages: msgs,
+			Context:  contextText,
+			Tools:    roundTools,
+		})
+		if err != nil {
+			return chatStreamMsg{conversationID: conversationID, err: err}
+		}
+
+		if len(turn.ToolCalls) == 0 {
+			ch := make(chan ai.StreamEvent, 2)
+			ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: turn.Content}
+			ch <- ai.StreamEvent{Kind: ai.EventDone, Response: &turn}
+			close(ch)
+			return readStreamEvent(ch, conversationID)
+		}
+
+		newMsgs := append(msgs, ai.Message{
+			Role: ai.RoleAssistant, Content: turn.Content, ToolCalls: turn.ToolCalls,
+		})
+
+		return assistantToolStartMsg{
+			gen: gen,
+			state: toolRoundState{
+				gen:            gen,
+				messages:       newMsgs,
+				agentID:        agentID,
+				client:         client,
+				history:        history,
+				chatContext:    chatContext,
+				cancel:         cancel,
+				contextText:    contextText,
+				toolsDefs:      toolsDefs,
+				conversationID: conversationID,
+				toolCalls:      turn.ToolCalls,
+				nextCall:       0,
+				toolRound:      toolRound,
+				maxToolRounds:  maxToolRounds,
+			},
+		}
+	}
+}
+
+// finishToolRound stops the current tool round, cleaning up state.
+func (m Model) finishToolRound() (tea.Model, tea.Cmd) {
+	rs := m.chat.roundState
+	if rs == nil {
+		return m, nil
+	}
+
+	if rs.cancel != nil {
+		rs.cancel()
+	}
+	m.chat.loading = false
+	m.chat.cancel = nil
+	m.chat.roundState = nil
+	m.chat.pendingWrite = nil
+	m.refreshChatView()
+	m.Status = "Tool execution stopped"
+	return m, nil
 }

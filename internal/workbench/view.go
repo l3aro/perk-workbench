@@ -69,7 +69,8 @@ func (m Model) View() tea.View {
 func (m Model) hasConfirming() bool {
 	return m.explainPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil ||
-		(m.cellEditor != nil && m.cellEditor.confirming)
+		(m.cellEditor != nil && m.cellEditor.confirming) ||
+		(m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil)
 }
 
 func (m Model) activeConfirmation() *confirmationDialog {
@@ -92,6 +93,8 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.deleteConfirm
 	case m.cellEditor != nil && m.cellEditor.confirming:
 		return m.cellEditor.confirm
+	case m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil:
+		return m.chat.pendingWrite.dialog
 	default:
 		return nil
 	}
@@ -126,6 +129,8 @@ func (m Model) confirmContent() string {
 		raw = m.connection.confirmation.content(m.width)
 	case m.deleteConfirm != nil:
 		raw = m.deleteConfirm.content(m.width)
+	case m.chat.pendingWrite != nil:
+		return m.chat.pendingWrite.dialog.content(m.width)
 	}
 	if raw == "" {
 		return ""
@@ -601,7 +606,8 @@ func (m Model) footer() string {
 		}
 		parts = append(parts, "f fullscreen", "^p palette")
 		parts = append(parts, quitHint)
-		return safeText(strings.Join(parts, " | "))
+		result := safeText(strings.Join(parts, " | "))
+		return result
 	}
 	quitKey := m.keybindings.DisplayKey("app.quit")
 	quitHint := chrome.FormatFooterKey(quitKey) + " quit"
@@ -622,8 +628,14 @@ func (m Model) modeBadge() string {
 }
 
 func (m Model) chatModeBadge() string {
+	left := ""
 	if m.chat.chatMode == formModeInsert {
-		return modeInsertStyle.Render("INSERT")
+		left = modeInsertStyle.Render("INSERT")
+	} else {
+		left = modeNormalStyle.Render("NORMAL")
 	}
-	return modeNormalStyle.Render("NORMAL")
+	if m.chat.yoloWrites {
+		return chrome.PaneStatus(left, statusFailedStyle.Render("YOLO"), m.chat.viewport.Width())
+	}
+	return left
 }

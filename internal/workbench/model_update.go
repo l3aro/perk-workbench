@@ -43,6 +43,16 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := message.(chatPersistMsg); ok {
 		return m.updateChat(message)
 	}
+	// Route tool-round messages early for the same reason.
+	if _, ok := message.(assistantToolStartMsg); ok {
+		return m.updateChat(message)
+	}
+	if _, ok := message.(assistantToolContinueMsg); ok {
+		return m.updateChat(message)
+	}
+	if _, ok := message.(assistantWriteResultMsg); ok {
+		return m.updateChat(message)
+	}
 
 	if m.themePicker != nil {
 		keyPress, ok := message.(tea.KeyPressMsg)
@@ -134,6 +144,49 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.startQueryStatement(statement)
+	}
+	if m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil {
+		completed, action := m.chat.pendingWrite.dialog.Update(message, m.width, m.height)
+		if !completed {
+			return m, nil
+		}
+		call := m.chat.pendingWrite.call
+		statement := m.chat.pendingWrite.statement
+		gen := m.chat.pendingWrite.generation
+
+		if action != "run" {
+			// Decline — send error result and stop round.
+			m.chat.pendingWrite = nil
+			return m, func() tea.Msg {
+				return assistantWriteResultMsg{
+					gen: gen, callID: call.ID, callName: call.Name,
+					err: "execution canceled by user", declined: true,
+				}
+			}
+		}
+
+		// Approved — execute write asynchronously.
+		m.chat.pendingWrite = nil
+		rs := m.chat.roundState
+		if rs == nil || gen != rs.gen {
+			return m, nil
+		}
+		chatContext := rs.chatContext
+		db := m.Database
+		return m, func() tea.Msg {
+			res, err := db.Execute(chatContext, statement)
+			content := ""
+			errStr := ""
+			if err != nil {
+				errStr = err.Error()
+			} else {
+				content = formatResult(res)
+			}
+			return assistantWriteResultMsg{
+				gen: gen, callID: call.ID, callName: call.Name,
+				content: content, err: errStr,
+			}
+		}
 	}
 	if m.cellEditor != nil {
 		keyPress, isKeyPress := message.(tea.KeyPressMsg)
@@ -489,7 +542,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
-	case chatResponseMsg, chatStreamMsg, chatPersistMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg:
+	case chatResponseMsg, chatStreamMsg, chatPersistMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg,
+		assistantToolStartMsg, assistantToolContinueMsg, assistantWriteResultMsg:
 		return m.updateChat(message)
 	}
 
