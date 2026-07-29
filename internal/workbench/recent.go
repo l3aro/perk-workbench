@@ -17,6 +17,7 @@ type recentConnection struct {
 	Host     string           `json:"host,omitempty"`
 	Port     string           `json:"port,omitempty"`
 	User     string           `json:"user,omitempty"`
+	MySQLTLS mysqlTLSMode     `json:"mysqlTLS,omitempty"`
 	ReadOnly bool             `json:"readOnly,omitempty"`
 }
 

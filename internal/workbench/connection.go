@@ -53,6 +53,9 @@ func (m *Model) recordConnection() {
 		connection.Host = strings.TrimSpace(m.connection.values.host)
 		connection.Port = strings.TrimSpace(m.connection.values.port)
 		connection.User = strings.TrimSpace(m.connection.values.user)
+		if connection.Driver == driverMySQL {
+			connection.MySQLTLS = m.connection.values.mysqlTLS
+		}
 	}
 	connections := make([]recentConnection, 0, min(len(m.recentConnections)+1, maxRecentConnections))
 	connections = append(connections, connection)
@@ -91,6 +94,10 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	}
 	m.connection.values.driver, m.connection.values.name, m.connection.values.target = connection.Driver, connection.Name, connection.Target
 	m.connection.values.host, m.connection.values.port, m.connection.values.user = connection.Host, connection.Port, connection.User
+	m.connection.values.mysqlTLS = connection.MySQLTLS
+	if m.connection.values.mysqlTLS == "" {
+		m.connection.values.mysqlTLS = mysqlTLSVerify
+	}
 	m.connection.values.readOnly = connection.ReadOnly
 	m.connection.values.pass = ""
 	command := m.connection.rebuildForm()
@@ -117,7 +124,7 @@ func (m *Model) deleteSelectedRecentConnection() {
 }
 
 func (m *Model) newConnection() tea.Cmd {
-	m.connection.values = &connectionFormValues{port: "3306", action: connectionActionTest}
+	m.connection.values = &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSVerify, action: connectionActionTest}
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.formMode.mode = formModeNormal

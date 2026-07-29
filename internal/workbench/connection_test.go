@@ -28,6 +28,27 @@ func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 	if dsn.User != "alice" || dsn.Passwd != "secret" || dsn.Addr != "[2001:db8::1]:3307" || dsn.DBName != "app" {
 		t.Fatalf("MySQL DSN = %#v, want separate field values", dsn)
 	}
+	if dsn.TLSConfig != "true" {
+		t.Fatalf("MySQL TLS config = %q, want verified TLS", dsn.TLSConfig)
+	}
+}
+
+func TestConnectionForm_buildsMySQLDSNWithSelectedTLSMode(t *testing.T) {
+	// Given
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
+	form.values.user, form.values.mysqlTLS = "root", mysqlTLSSkipVerify
+
+	// When
+	dsn, err := mysql.ParseDSN(form.targetValue())
+
+	// Then
+	if err != nil {
+		t.Fatalf("parsing MySQL DSN: %v", err)
+	}
+	if dsn.TLSConfig != "skip-verify" {
+		t.Fatalf("MySQL TLS config = %q, want skip-verify", dsn.TLSConfig)
+	}
 }
 
 func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
@@ -365,6 +386,7 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	model.connection.values.driver, model.connection.values.target = driverMySQL, "app"
 	model.connection.values.host, model.connection.values.port, model.connection.values.user = "db.example.test", "3307", "alice"
 	model.connection.values.pass = "secret"
+	model.connection.values.mysqlTLS = mysqlTLSSkipVerify
 
 	// When
 	model.recordConnection()
@@ -374,7 +396,7 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 		t.Fatalf("recent MySQL profiles = %#v, want one", model.recentConnections)
 	}
 	profile := model.recentConnections[0]
-	if profile.Driver != driverMySQL || profile.Host != "db.example.test" || profile.Port != "3307" || profile.User != "alice" || profile.Target != "app" {
+	if profile.Driver != driverMySQL || profile.Host != "db.example.test" || profile.Port != "3307" || profile.User != "alice" || profile.Target != "app" || profile.MySQLTLS != mysqlTLSSkipVerify {
 		t.Fatalf("remote profile = %#v, want non-secret connection fields", profile)
 	}
 }
