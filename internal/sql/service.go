@@ -76,13 +76,14 @@ type Opened struct {
 }
 
 type Result struct {
-	Columns      []string
-	ColumnTypes  []string
-	Rows         [][]*string
-	RowsAffected int64
-	HasMore      bool
-	Duration     time.Duration
-	Truncated    bool
+	Columns         []string
+	ColumnTypes     []string
+	Rows            [][]*string
+	UntruncatedRows [][]*string
+	RowsAffected    int64
+	HasMore         bool
+	Duration        time.Duration
+	Truncated       bool
 }
 
 type SchemaObject struct {

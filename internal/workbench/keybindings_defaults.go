@@ -39,6 +39,7 @@ var defaultDefs = []commandDef{
 	// ── Browse tab (view) ───────────────────────────────────────
 	{id: "browse.edit", scope: scopeView, keys: []string{"enter"}, label: "edit row"},
 	{id: "browse.edit_cell", scope: scopeView, keys: []string{"i"}, label: "edit cell"},
+	{id: "cell.view", scope: scopeView, keys: []string{"v"}, label: "view cell"},
 	{id: "browse.refine", scope: scopeView, keys: []string{"/"}, label: "filter and row limit"},
 	{id: "browse.reset", scope: scopeView, keys: []string{"r"}, label: "reset filters"},
 	{id: "browse.sort", scope: scopeView, keys: []string{"s"}, label: "sort column"},

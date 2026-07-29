@@ -6,6 +6,27 @@ import (
 	"fmt"
 )
 
+// rawRow converts scanned database values to strings without truncation
+// or display sanitization. Newlines and the full value are preserved for
+// the cell viewer.
+func rawRow(values []any) []*string {
+	row := make([]*string, len(values))
+	for index, value := range values {
+		if value == nil {
+			continue
+		}
+		switch v := value.(type) {
+		case []byte:
+			s := string(v)
+			row[index] = &s
+		default:
+			s := fmt.Sprint(value)
+			row[index] = &s
+		}
+	}
+	return row
+}
+
 func CollectRows(rows *sql.Rows) (Result, error) {
 	columns, err := rows.Columns()
 	if err != nil {
@@ -34,6 +55,7 @@ func CollectRows(rows *sql.Rows) (Result, error) {
 		}
 		if len(result.Rows) < MaxRows {
 			result.Rows = append(result.Rows, DisplayRow(values))
+			result.UntruncatedRows = append(result.UntruncatedRows, rawRow(values))
 		} else {
 			result.Truncated = true
 		}

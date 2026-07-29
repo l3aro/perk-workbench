@@ -150,6 +150,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseForm()
 				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+					row := m.browse.Cursor()
+					col := m.browseColumn
+					display := ""
+					if row >= 0 && row < len(m.browse.Rows()) && col >= 0 && col < len(m.browse.Rows()[row]) {
+						display = m.browse.Rows()[row][col]
+					}
+					raw := m.rawCellValue("browse", row, col, display)
+					return m, m.openCellViewer(m.browse, col, raw)
+				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
 					case m.keybindings.Match(keyPress, "browse.yank_cell", []scope{scopeView, scopeGlobal}):
@@ -205,6 +215,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.browse, command = m.browse.Update(message)
 			case tabSQL:
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && m.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+					row := m.results.Cursor()
+					col := m.resultsColumn
+					display := ""
+					if row >= 0 && row < len(m.results.Rows()) && col >= 0 && col < len(m.results.Rows()[row]) {
+						display = m.results.Rows()[row][col]
+					}
+					raw := m.rawCellValue("results", row, col, display)
+					return m, m.openCellViewer(m.results, col, raw)
+				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && moveTableCell(&m.results, &m.resultsColumn, &m.resultsOffset, m.tableViewportWidth, keyPress) {
 					return m, nil
 				}

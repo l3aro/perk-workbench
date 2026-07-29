@@ -45,6 +45,9 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	if len(result.Rows) != 25 || result.Columns[0] != "id" || !result.HasMore {
 		t.Fatalf("BrowseTable() = %#v, want first page without a total row count", result)
 	}
+	if len(result.UntruncatedRows) != len(result.Rows) {
+		t.Fatalf("BrowseTable() UntruncatedRows = %d, want %d (matching Rows)", len(result.UntruncatedRows), len(result.Rows))
+	}
 
 	result, err = service.BrowseTable(ctx, "items", sharedsql.BrowseOptions{Columns: []string{"id", "name", "note"}, Offset: 25, Limit: 25})
 	if err != nil {
@@ -52,6 +55,9 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	}
 	if len(result.Rows) != 1 || result.HasMore {
 		t.Fatalf("BrowseTable() = %#v, want final page with no next page", result)
+	}
+	if len(result.UntruncatedRows) != len(result.Rows) {
+		t.Fatalf("BrowseTable() second page UntruncatedRows = %d, want %d (matching Rows)", len(result.UntruncatedRows), len(result.Rows))
 	}
 }
 

@@ -29,6 +29,9 @@ type browseDebounceMsg struct {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, ok := message.(tea.WindowSizeMsg); ok {
 		m.layout(window.Width, window.Height)
+		if m.cellViewer != nil {
+			m.cellViewer.resize(max(m.width-8, 1), max(m.height-10, 1))
+		}
 		return m, nil
 	}
 
@@ -85,6 +88,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handlePaletteCommand(selectMsg.id)
 			}
 		}
+	}
+	if m.cellViewer != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.cellViewer = nil
+			return m, nil
+		}
+		cmd := m.cellViewer.update(message)
+		return m, cmd
 	}
 	if m.contextMenu != nil && m.contextMenu.visible {
 		return m.updateContextMenu(message)

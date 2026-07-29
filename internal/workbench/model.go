@@ -59,6 +59,7 @@ type Model struct {
 	browseNumericColumns, resultsNumericColumns                                                    []bool
 	databaseInfo                                                                                   sharedsql.DatabaseInfo
 	browseResult                                                                                   sharedsql.Result
+	resultsRaw                                                                                     [][]*string
 	resultsStatus, browseStatus                                                                    string
 	queryLogEntries                                                                                []queryLogEntry
 	queryLogDetail                                                                                 *queryLogEntry
@@ -78,6 +79,7 @@ type Model struct {
 	indexForm                                                                                      indexForm
 	foreignKeyForm                                                                                 foreignKeyForm
 	cellEditor                                                                                     *cellEditor
+	cellViewer                                                                                     *cellViewer
 	connection                                                                                     connectionForm
 	recentConnections                                                                              []recentConnection
 	schemaObjects                                                                                  []sharedsql.SchemaObject
@@ -239,6 +241,8 @@ func (m *Model) disconnect() {
 	m.schema.SetItems(nil)
 	m.structure.SetRows(nil)
 	m.browse.SetRows(nil)
+	m.resultsRaw = nil
+	m.browseResult = sharedsql.Result{}
 	m.results.SetRows(nil)
 	m.indexes.SetRows(nil)
 	m.foreignKeys.SetRows(nil)

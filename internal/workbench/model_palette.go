@@ -208,6 +208,28 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, m.cycleBrowseSort()
 		}
 		return m, nil
+	case "cell.view":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
+			row := m.browse.Cursor()
+			col := m.browseColumn
+			display := ""
+			if row >= 0 && row < len(m.browse.Rows()) && col >= 0 && col < len(m.browse.Rows()[row]) {
+				display = m.browse.Rows()[row][col]
+			}
+			raw := m.rawCellValue("browse", row, col, display)
+			return m, m.openCellViewer(m.browse, col, raw)
+		}
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.formMode.editing() && m.results.Focused() {
+			row := m.results.Cursor()
+			col := m.resultsColumn
+			display := ""
+			if row >= 0 && row < len(m.results.Rows()) && col >= 0 && col < len(m.results.Rows()[row]) {
+				display = m.results.Rows()[row][col]
+			}
+			raw := m.rawCellValue("results", row, col, display)
+			return m, m.openCellViewer(m.results, col, raw)
+		}
+		return m, nil
 	case "browse.next_page":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil {
 			if m.browseLoading {

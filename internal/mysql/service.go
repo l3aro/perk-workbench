@@ -411,6 +411,7 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options sharedsq
 	result.HasMore = len(result.Rows) > options.Limit
 	if result.HasMore {
 		result.Rows = result.Rows[:options.Limit]
+		result.UntruncatedRows = result.UntruncatedRows[:options.Limit]
 	}
 	return result, nil
 }

@@ -65,6 +65,7 @@ func (m *Model) setResults(result sharedsql.Result) {
 		}
 		rows[rowIndex] = cells
 	}
+	m.resultsRaw = result.UntruncatedRows
 	m.results.SetRows(nil)
 	m.results.SetColumns(tableColumns(titles, rows))
 	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))

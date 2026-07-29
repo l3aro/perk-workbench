@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"fmt"
 	"image"
 	"strings"
 	"time"
@@ -43,7 +44,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.cellEditor != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
+	if m.cellEditor != nil || m.cellViewer != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
 		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.queryConfirmation != nil {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
@@ -55,6 +56,8 @@ func (m Model) View() tea.View {
 			dialog.draw(canvas)
 		} else if dialog := m.confirmContent(); dialog != "" {
 			m.drawConfirmDialog(canvas, dialog)
+		} else if m.cellViewer != nil {
+			m.drawCellViewer(canvas)
 		}
 		view.SetContent(canvas.Render())
 		return view
@@ -95,7 +98,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -135,6 +138,94 @@ func (m Model) confirmContent() string {
 		b.WriteString(strings.TrimRight(line, " "))
 	}
 	return b.String()
+}
+
+func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
+	cv := m.cellViewer
+	if cv == nil {
+		return
+	}
+	bounds := canvas.Bounds()
+
+	padX := 2
+	title := "View " + cv.column
+	titleWidth := ansi.StringWidth(title)
+
+	// Body height = actual rendered lines, capped at scroll window.
+	// Short content makes a compact dialog.
+	vpContent := cv.viewport.View()
+	vpLines := strings.Split(vpContent, "\n")
+	bodyRows := max(min(len(vpLines), cv.viewport.Height()), 1)
+
+	viewW := cv.viewport.Width()
+	contentW := max(viewW, titleWidth)
+	innerW := contentW + padX*2
+	innerH := 1 + 1 + bodyRows + 1 + 1 // title + top pad + body + bottom pad + footer
+
+	borderW := innerW + 2
+	borderH := innerH + 2
+	if borderW > bounds.Dx() || borderH > bounds.Dy() {
+		return
+	}
+
+	x := max(0, (bounds.Dx()-borderW)/2)
+	y := max(0, (bounds.Dy()-borderH)/2)
+
+	// Fill panel background
+	panelStyle := uv.Style{Bg: chrome.ParseHex(colorPanel)}
+	bgCell := uv.Cell{Content: " ", Width: 1, Style: panelStyle}
+	canvas.FillArea(&bgCell, image.Rect(x, y, x+borderW, y+borderH))
+
+	// Border
+	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
+	canvas.SetCell(x, y, &uv.Cell{Content: "\u250c", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "\u2510", Width: 1, Style: borderStyle})
+	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "\u2514", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "\u2518", Width: 1, Style: borderStyle})
+	for cx := x + 1; cx < x+borderW-1; cx++ {
+		canvas.SetCell(cx, y, &uv.Cell{Content: "\u2500", Width: 1, Style: borderStyle})
+		canvas.SetCell(cx, y+borderH-1, &uv.Cell{Content: "\u2500", Width: 1, Style: borderStyle})
+	}
+	for cy := y + 1; cy < y+borderH-1; cy++ {
+		canvas.SetCell(x, cy, &uv.Cell{Content: "\u2502", Width: 1, Style: borderStyle})
+		canvas.SetCell(x+borderW-1, cy, &uv.Cell{Content: "\u2502", Width: 1, Style: borderStyle})
+	}
+
+	// Styles matching confirmation dialog
+	accent := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
+	ink := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorPanel)}
+	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
+
+	// Content area starts at (x+1, y+1)
+	cx0 := x + 1
+	cy0 := y + 1
+
+	// Row 0: title (accent/bold, matching confirmation dialog style)
+	drawConfirmationText(canvas, title, cx0+padX, cy0, accent)
+
+	// Row 1: blank padding
+
+	// Rows 2..2+bodyRows-1: viewport content
+	vpStartY := cy0 + 2
+	for i := 0; i < bodyRows; i++ {
+		drawConfirmationText(canvas, vpLines[i], cx0+padX, vpStartY+i, ink)
+	}
+
+	// Last row: footer with bindings left, V%/H% right
+	footerY := cy0 + innerH - 1
+
+	bindings := "w wrap | Esc close"
+	drawConfirmationText(canvas, bindings, cx0+padX, footerY, muted)
+
+	vPct := int(cv.viewport.ScrollPercent() * 100)
+	hPct := int(cv.viewport.HorizontalScrollPercent() * 100)
+	pctStr := fmt.Sprintf("V:%d%% H:%d%%", vPct, hPct)
+	pctWidth := ansi.StringWidth(pctStr)
+	pctX := cx0 + innerW - padX - pctWidth
+	if pctX < cx0+padX {
+		pctX = cx0 + padX
+	}
+	drawConfirmationText(canvas, pctStr, pctX, footerY, muted)
 }
 
 func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {

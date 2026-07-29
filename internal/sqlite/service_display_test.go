@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -20,12 +21,30 @@ func TestServiceExecuteDisplayCells(t *testing.T) {
 		t.Fatalf("display cell = %q, want %q", got, "red blue")
 	}
 
-	result, err = service.Execute(context.Background(), "SELECT printf('%.*c', 301, 'x')")
+	result, err = service.Execute(context.Background(), "SELECT printf('%.*c', 301, 'x') || char(10) || 'tail'")
 	if err != nil {
 		t.Fatalf("executing long cell: %v", err)
 	}
-	if got, want := len([]rune(*result.Rows[0][0])), 301; got != want {
-		t.Fatalf("display cell rune count = %d, want %d (full value preserved)", got, want)
+	if got, want := len([]rune(*result.Rows[0][0])), 306; got != want {
+		t.Fatalf("display cell rune count = %d, want %d (full length, no truncation at driver level)", got, want)
+	}
+	if got, want := len(result.UntruncatedRows), 1; got != want {
+		t.Fatalf("UntruncatedRows count = %d, want 1", got)
+	}
+	full := *result.UntruncatedRows[0][0]
+	if len([]rune(full)) != 306 {
+		t.Fatalf("UntruncatedRows full value rune count = %d, want 306", len([]rune(full)))
+	}
+	if !strings.Contains(full, "\ntail") {
+		t.Fatalf("UntruncatedRows missing newline and tail: %q", full)
+	}
+	// Rows is sanitized: newline replaced with space, but not truncated.
+	display := *result.Rows[0][0]
+	if strings.Contains(display, "\n") {
+		t.Fatal("Rows display value contains newline (should be space)")
+	}
+	if len([]rune(display)) != 306 {
+		t.Fatalf("Rows display value rune count = %d, want 306 (driver does not truncate)", len([]rune(display)))
 	}
 }
 
