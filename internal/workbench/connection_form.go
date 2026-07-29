@@ -13,11 +13,16 @@ import (
 )
 
 type connectionDriver string
+type mysqlTLSMode string
 
 const (
 	driverSQLite     connectionDriver = "sqlite"
 	driverMySQL      connectionDriver = "mysql"
 	driverPostgreSQL connectionDriver = "postgres"
+
+	mysqlTLSVerify     mysqlTLSMode = "true"
+	mysqlTLSSkipVerify mysqlTLSMode = "skip-verify"
+	mysqlTLSDisabled   mysqlTLSMode = "false"
 )
 
 const (
@@ -42,6 +47,7 @@ type connectionFormValues struct {
 	name, target string
 	host, port   string
 	user, pass   string
+	mysqlTLS     mysqlTLSMode
 	readOnly     bool
 	action       string
 }
@@ -49,7 +55,7 @@ type connectionFormValues struct {
 type connectionTestMsg struct{ err error }
 
 func newConnectionForm() connectionForm {
-	form := connectionForm{values: &connectionFormValues{port: "3306", action: connectionActionTest}, width: 80}
+	form := connectionForm{values: &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSVerify, action: connectionActionTest}, width: 80}
 	_ = form.rebuildForm()
 	return form
 }
@@ -78,6 +84,17 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 			newEditableInput(huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser), &f.values.user),
 			newEditableInput(huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword), &f.values.pass),
 			newEditableInput(huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target), &f.values.target),
+		)
+		if f.values.driver == driverMySQL {
+			fields = append(fields,
+				huh.NewSelect[mysqlTLSMode]().Key("mysql-tls").Title("TLS").Options(
+					huh.NewOption("Verify certificate", mysqlTLSVerify),
+					huh.NewOption("Encrypt, don't verify certificate", mysqlTLSSkipVerify),
+					huh.NewOption("Disable TLS", mysqlTLSDisabled),
+				).Value(&f.values.mysqlTLS),
+			)
+		}
+		fields = append(fields,
 			huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are requested each time and never saved."),
 		)
 	} else {
@@ -172,7 +189,11 @@ func (f connectionForm) targetValue() string {
 		config.Net = "tcp"
 		config.Addr = net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port))
 		config.DBName = strings.TrimSpace(f.values.target)
-		config.TLSConfig = "true"
+		tls := f.values.mysqlTLS
+		if tls == "" {
+			tls = mysqlTLSVerify
+		}
+		config.TLSConfig = string(tls)
 		return config.FormatDSN()
 	}
 	if f.values.driver == driverPostgreSQL {
