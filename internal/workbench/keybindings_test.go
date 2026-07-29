@@ -8,10 +8,20 @@ import (
 
 func TestKeybindings_defaults_include_all_commands(t *testing.T) {
 	b := DefaultKeybindings()
-	// Every registered command must have at least one key in its primary scope.
+	// Every registered command must have at least one key in its primary scope,
+	// unless it is a palette-only command (keys: nil).
 	for id, cmd := range b.commands {
 		if len(cmd.keys) == 0 {
-			t.Errorf("command %q has zero default keys", id)
+			paletteOnly := false
+			for _, def := range defaultDefs {
+				if def.id == id && def.keys == nil {
+					paletteOnly = true
+					break
+				}
+			}
+			if !paletteOnly {
+				t.Errorf("command %q has zero default keys", id)
+			}
 		}
 	}
 }

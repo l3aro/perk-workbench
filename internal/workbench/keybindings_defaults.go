@@ -84,6 +84,9 @@ var defaultDefs = []commandDef{
 	{id: "chat.apply_sql", scope: scopeView, keys: []string{"ctrl+a"}, label: "apply SQL"},
 	{id: "chat.share_results", scope: scopeView, keys: []string{"ctrl+shift+r"}, label: "share result rows"},
 
+	// ── AI (global, palette-only) ───────────────────────────────
+	{id: "ai.yolo_writes.toggle", scope: scopeGlobal, keys: nil, label: "toggle AI YOLO writes"},
+
 	// ── Query Log Detail overlay (view) ─────────────────────────
 	{id: "detail.yank", scope: scopeView, keys: []string{"y"}, label: "copy"},
 	{id: "detail.explain", scope: scopeView, keys: []string{"e"}, label: "explain"},

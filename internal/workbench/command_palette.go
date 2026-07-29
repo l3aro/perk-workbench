@@ -232,6 +232,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "ai.toggle":
 		return m.chat.enabled
+	case "ai.yolo_writes.toggle":
+		return m.chat.enabled && m.Database != nil && !m.ReadOnly
 	case "focus.chat":
 		return m.chat.visible
 	}

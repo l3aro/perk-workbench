@@ -96,6 +96,14 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "ai.toggle":
 		m.toggleAI()
 		return m, nil
+	case "ai.yolo_writes.toggle":
+		m.chat.yoloWrites = !m.chat.yoloWrites
+		if m.chat.yoloWrites {
+			m.Status = "AI writes: on"
+		} else {
+			m.Status = "AI writes: off"
+		}
+		return m, nil
 	case "chat.new":
 		if m.State == stateReady && m.Focus == focusChat {
 			m.newChatConversation()
