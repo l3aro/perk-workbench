@@ -468,7 +468,7 @@ func (c *toolChatClient) Complete(_ context.Context, req ai.Request) (ai.Respons
 	c.round++
 	if c.round == 1 {
 		return ai.Response{Agent: "Assistant", ToolCalls: []ai.ToolCall{{
-			ID: "call_test", Name: "sql",
+			ID: "call_test", Name: "sql_read",
 			Input: map[string]any{"query": "SELECT 1"},
 		}}}, nil
 	}
@@ -492,6 +492,22 @@ func (c *toolChatClient) Complete(_ context.Context, req ai.Request) (ai.Respons
 		return ai.Response{Agent: "Assistant", Content: "There is 1 row."}, nil
 	}
 	return ai.Response{Agent: "Assistant", Content: "Fallback"}, nil
+}
+
+// driveToolRoundToCompletion feeds tool-round messages until loading is cleared.
+func driveToolRoundToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
+	t.Helper()
+	for cmd != nil && model.chat.loading {
+		msg := cmd()
+		if msg == nil {
+			t.Fatal("tool round stalled: cmd returned nil message")
+		}
+		var nextCmd tea.Cmd
+		modelI, nextCmd := model.Update(msg)
+		model = modelI.(Model)
+		cmd = nextCmd
+	}
+	return model
 }
 
 func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
@@ -523,15 +539,8 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	// Round 1: Complete returns a tool call → synthetic delta event.
-	msg := command()
-	updated, cmd := model.Update(msg)
-	model = updated.(Model)
-
-	// Round 2: tool results appended, second Complete returns final answer → synthetic done.
-	msg = cmd()
-	updated, _ = model.Update(msg)
-	model = updated.(Model)
+	// Drive the message-driven tool round to completion.
+	model = driveToolRoundToCompletion(t, model, command)
 
 	// Verify the final answer is displayed.
 	if model.chat.loading {
@@ -653,18 +662,9 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if cmd == nil {
-		t.Fatal("expected command from startChat")
-	}
 
-	// The closure runs all 8 tool rounds synchronously and returns a synthetic
-	// stream with a delta event followed by a done event.
-	msg := cmd()                               // delta event
-	updated, cmd = model.Update(msg)           // processes delta, returns follow-up for done
-	model = updated.(Model)
-	msg = cmd()                                // done event
-	updated, _ = model.Update(msg)             // processes done -> final answer displayed
-	model = updated.(Model)
+	// Drive the message-driven tool round to completion.
+	model = driveToolRoundToCompletion(t, model, cmd)
 
 	if model.chat.loading {
 		t.Fatal("model still loading after all rounds")
