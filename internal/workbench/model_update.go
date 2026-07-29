@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -506,6 +507,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case directoryReadMsg:
 		m.pickerDir = message.dir
 		if message.err != nil {
+			log.Error("reading directory", message.err)
 			m.Status = safeText(fmt.Sprintf("unable to read directory: %v", message.err))
 			return m, nil
 		}
@@ -517,6 +519,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.picker.SetItems(items)
 	case pickerSelectionMsg:
 		if message.err != nil {
+			log.Error("opening selection", message.err)
 			m.Status = safeText(fmt.Sprintf("unable to open selection: %v", message.err))
 			return m, nil
 		}

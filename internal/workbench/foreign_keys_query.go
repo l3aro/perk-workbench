@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -79,6 +80,7 @@ func (m Model) deleteForeignKey() tea.Cmd {
 func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
+			log.Error("loading foreign keys", message.err)
 			m.Status = safeText(fmt.Sprintf("loading foreign keys: %v", message.err))
 		}
 		return m, nil
@@ -99,6 +101,7 @@ func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.C
 func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
+			log.Error("loading referencing foreign keys", message.err)
 			m.Status = safeText(fmt.Sprintf("loading referencing foreign keys: %v", message.err))
 		}
 		return m, nil

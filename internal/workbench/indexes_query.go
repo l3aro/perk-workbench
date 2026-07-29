@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -63,6 +64,7 @@ func (m Model) deleteIndex() tea.Cmd {
 func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
+			log.Error("loading indexes", message.err)
 			m.Status = safeText(fmt.Sprintf("loading indexes: %v", message.err))
 		}
 		return m, nil

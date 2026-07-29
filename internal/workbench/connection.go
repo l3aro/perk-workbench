@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"github.com/l3aro/perk-workbench/internal/log"
 )
 
 type connectionActionMsg struct{ action string }
@@ -182,6 +183,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if test, ok := message.(connectionTestMsg); ok {
 		if test.err != nil {
+			log.Error("connection test", test.err)
 			m.Status = "connection test failed"
 		} else {
 			m.Status = "connection test succeeded: " + safeText(m.connection.connectionName())

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/dustin/go-humanize"
 	"github.com/l3aro/perk-workbench/internal/chrome"
+	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -175,6 +176,7 @@ func (m Model) updateBrowseRow() tea.Cmd {
 func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
+			log.Error("loading structure", message.err)
 			m.Status = safeText(fmt.Sprintf("loading structure: %v", message.err))
 		}
 		return m, nil
@@ -312,16 +314,6 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.tag != m.browsePageTag {
 		return m, nil
 	}
-	m.browseLoading = false
-	if message.err != nil {
-		m.Status = safeText(fmt.Sprintf("loading browse: %v", message.err))
-		return m, nil
-	}
-	m.setBrowse(message.result)
-	duration := message.result.Duration
-	if !message.startedAt.IsZero() {
-		duration = time.Since(message.startedAt)
-	}
 	quotedTable := m.actionIdentifier(message.table)
 	statement := fmt.Sprintf("SELECT * FROM %s", quotedTable)
 	if len(m.browseSettings.filters) > 0 {
@@ -343,6 +335,28 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	}
 	pageSize := m.browseSettings.pageSize()
 	statement += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, message.page*pageSize)
+
+	m.browseLoading = false
+	if message.err != nil {
+		duration := time.Duration(0)
+		if !message.startedAt.IsZero() {
+			duration = time.Since(message.startedAt)
+		}
+		m.appendQueryLog(queryLogEntry{
+			startedAt: message.startedAt,
+			statement: statement,
+			duration:  duration,
+			message:   message.err.Error(),
+			status:    "failed",
+		})
+		m.Status = safeText(fmt.Sprintf("loading browse: %v", message.err))
+		return m, nil
+	}
+	m.setBrowse(message.result)
+	duration := message.result.Duration
+	if !message.startedAt.IsZero() {
+		duration = time.Since(message.startedAt)
+	}
 	m.appendQueryLog(queryLogEntry{
 		startedAt: message.startedAt,
 		statement: statement,

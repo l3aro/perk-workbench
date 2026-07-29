@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/log"
 )
 
 func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil {
+		log.Error("open database", message.err)
 		if m.connection.focus == connectionFocusForm {
 			m.State = stateConnection
 			m.Status = safeText(fmt.Sprintf("database unavailable: %v", message.err))
