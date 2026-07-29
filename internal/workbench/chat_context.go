@@ -35,6 +35,17 @@ func (m Model) chatContext() string {
 		}
 		context.WriteString("\n")
 	}
+	// Scan from newest to oldest for the first failed query.
+	for _, entry := range m.queryLogEntries {
+		if entry.status == "failed" {
+			context.WriteString("Last failed query:\n")
+			context.WriteString(entry.statement)
+			context.WriteString("\nError:\n")
+			context.WriteString(entry.message)
+			context.WriteString("\n")
+			break
+		}
+	}
 	if len(m.schemaObjects) > 0 {
 		context.WriteString("Schema:\n")
 		for _, object := range m.schemaObjects {

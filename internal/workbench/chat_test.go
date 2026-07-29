@@ -418,6 +418,37 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	}
 }
 
+// exhaustClient requests tools for 7 rounds then checks Tools == nil on round 8.
+type exhaustClient struct {
+	round         int
+	finalToolsNil bool
+}
+
+func (c *exhaustClient) AgentForPrompt(string) string { return "assistant" }
+func (c *exhaustClient) SupportsTools(string) bool    { return true }
+func (c *exhaustClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
+	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
+}
+func (c *exhaustClient) ChatStream(_ context.Context, _ ai.Request) (<-chan ai.StreamEvent, error) {
+	ch := make(chan ai.StreamEvent)
+	close(ch)
+	return ch, nil
+}
+func (c *exhaustClient) Complete(_ context.Context, req ai.Request) (ai.Response, error) {
+	c.round++
+	if c.round < 8 {
+		return ai.Response{Agent: "Assistant", ToolCalls: []ai.ToolCall{{
+			ID: "call_exhaust", Name: "get_connection_info",
+			Input: map[string]any{},
+		}}}, nil
+	}
+	if len(req.Tools) != 0 {
+		return ai.Response{}, errors.New("expected nil/empty Tools on final round")
+	}
+	c.finalToolsNil = true
+	return ai.Response{Agent: "Assistant", Content: "final answer after exhausting tool rounds"}, nil
+}
+
 // toolChatClient simulates an OpenAI provider that uses tools.
 type toolChatClient struct {
 	round int
@@ -594,5 +625,97 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 				t.Error("missing expected table data content")
 			}
 		})
+	}
+}
+
+func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
+	ctx := context.Background()
+	service, err := sqlite.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatalf("opening test service: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+
+	model := New("", ctx, nil, false)
+	model.State = stateReady
+	model.Database = service
+	model.databaseInfo = service.Info()
+	model.Target = ":memory:"
+
+	ec := &exhaustClient{}
+	model.SetAI(ec, nil)
+	model.Focus = focusChat
+	model.layout(140, 32)
+
+	model.chat.input.SetValue("investigate")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+
+	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd == nil {
+		t.Fatal("expected command from startChat")
+	}
+
+	// The closure runs all 8 tool rounds synchronously and returns a synthetic
+	// stream with a delta event followed by a done event.
+	msg := cmd()                               // delta event
+	updated, cmd = model.Update(msg)           // processes delta, returns follow-up for done
+	model = updated.(Model)
+	msg = cmd()                                // done event
+	updated, _ = model.Update(msg)             // processes done -> final answer displayed
+	model = updated.(Model)
+
+	if model.chat.loading {
+		t.Fatal("model still loading after all rounds")
+	}
+	if !ec.finalToolsNil {
+		t.Fatal("final round was not reached or Tools was not nil")
+	}
+	stripped := ansi.Strip(model.chat.viewport.GetContent())
+	if !strings.Contains(stripped, "final answer") {
+		t.Fatalf("viewport = %q, want final-answer content", stripped)
+	}
+}
+
+func TestChatContext_includesLastFailedQuery(t *testing.T) {
+	model := New("", context.Background(), nil, false)
+	model.State = stateReady
+
+	// No failed queries → no error context.
+	ctx := model.chatContext()
+	if strings.Contains(ctx, "Last failed query") {
+		t.Fatal("context includes failed query when there are none")
+	}
+
+	// Add a failed query.
+	model.queryLogEntries = []queryLogEntry{
+		{statement: "SELECT * FROM nonexistent", message: "no such table: nonexistent", status: "failed"},
+	}
+	ctx = model.chatContext()
+	if !strings.Contains(ctx, "no such table: nonexistent") {
+		t.Fatal("context should include first failed query error")
+	}
+	if !strings.Contains(ctx, "SELECT * FROM nonexistent") {
+		t.Fatal("context should include failed query statement")
+	}
+
+	// Newer successful query does not hide the failure.
+	model.queryLogEntries = []queryLogEntry{
+		{statement: "SELECT 1", status: "success"},
+		{statement: "SELECT * FROM nonexistent", message: "no such table: nonexistent", status: "failed"},
+	}
+	ctx = model.chatContext()
+	if !strings.Contains(ctx, "no such table: nonexistent") {
+		t.Fatal("context should still include failed query even after a successful one")
+	}
+
+	// All successful → no error context.
+	model.queryLogEntries = []queryLogEntry{
+		{statement: "SELECT 1", status: "success"},
+	}
+	ctx = model.chatContext()
+	if strings.Contains(ctx, "Last failed query") {
+		t.Fatal("context includes failed query when all succeeded")
 	}
 }

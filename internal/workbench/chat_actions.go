@@ -77,15 +77,22 @@ func (m *Model) startChat() tea.Cmd {
 		}
 
 		// --- Tool round: non-streaming request with tools. ---
+		// maxToolRounds is the total budget (7 tool-enabled + 1 forced-answer).
+		// On the final round tools are dropped so the AI must synthesize
+		// an answer from what it already learned.
 		messages := append([]ai.Message(nil), baseMessages...)
-		const maxToolRounds = 4
-		toolRound := 0
-		for ; toolRound < maxToolRounds; toolRound++ {
+		const maxToolRounds = 8
+		for toolRound := 0; toolRound < maxToolRounds; toolRound++ {
+			roundTools := toolsDefs
+			forceAnswer := toolRound == maxToolRounds-1
+			if forceAnswer {
+				roundTools = nil
+			}
 			turn, err := client.Complete(chatContext, ai.Request{
 				AgentID:  agentID,
 				Messages: messages,
 				Context:  contextText,
-				Tools:    toolsDefs,
+				Tools:    roundTools,
 			})
 			if err != nil {
 				cancel()
@@ -125,12 +132,10 @@ func (m *Model) startChat() tea.Cmd {
 			}
 		}
 
-		// Fallback: all maxToolRounds consumed with tool calls still returned.
+		// Provider/impl could still return tool calls even without tools —
+		// deliver whatever content we got, or a clear protocol error.
 		cancel()
-		return chatStreamMsg{
-			conversationID: conversationID,
-			err:            fmt.Errorf("maximum tool rounds exceeded"),
-		}
+		return chatStreamMsg{conversationID: conversationID, err: fmt.Errorf("maximum tool rounds exceeded")}
 	}
 }
 
