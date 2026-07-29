@@ -15,7 +15,15 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench"
 )
 
+// version is injected at build time with -ldflags=-X main.version=<version>.
+// A bare build reports "devel".
+var version = "devel"
+
 const usage = "Usage: perk-workbench [--read-only] [database]\n"
+
+func versionOutput() string {
+	return "perk-workbench " + version + "\n"
+}
 
 func parseTarget(args []string) (target string, readOnly bool, _ error) {
 	nonFlags := make([]string, 0, len(args))
@@ -71,6 +79,10 @@ func loadAI() (*ai.Client, *ai.History, error) {
 func main() {
 	if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
 		fmt.Print(usage)
+		return
+	}
+	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		fmt.Print(versionOutput())
 		return
 	}
 	target, readOnly, err := parseTarget(os.Args[1:])

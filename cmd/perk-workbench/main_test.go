@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -8,6 +9,29 @@ import (
 func TestUsage_includesWorkbenchCommand(t *testing.T) {
 	if !strings.Contains(usage, "perk-workbench") {
 		t.Fatalf("usage = %q, want perk-workbench command", usage)
+	}
+}
+
+func TestVersion_default_is_devel(t *testing.T) {
+	if version != "devel" {
+		t.Fatalf("version = %q, want %q", version, "devel")
+	}
+}
+
+func TestVersionOutput_format(t *testing.T) {
+	want := fmt.Sprintf("perk-workbench %s\n", version)
+	if got := versionOutput(); got != want {
+		t.Fatalf("versionOutput() = %q, want %q", got, want)
+	}
+}
+
+func TestVersionOutput_includes_devel_by_default(t *testing.T) {
+	out := versionOutput()
+	if !strings.HasPrefix(out, "perk-workbench ") {
+		t.Fatalf("versionOutput() = %q, want prefix perk-workbench ", out)
+	}
+	if !strings.HasSuffix(out, "devel\n") {
+		t.Fatalf("versionOutput() = %q, want suffix devel\\n", out)
 	}
 }
 
