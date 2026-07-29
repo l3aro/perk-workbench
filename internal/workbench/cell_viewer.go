@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/chrome"
 )
 
 // cellViewer is a read-only viewport overlay for inspecting a table cell value.
@@ -27,7 +28,7 @@ type cellViewer struct {
 // to toggle word wrap off for horizontal scrolling.
 func newCellViewer(column, value string, width, height int) *cellViewer {
 	vp := viewport.New(viewport.WithWidth(width), viewport.WithHeight(height))
-	vp.SetContent(sanitizeCellViewer(value))
+	vp.SetContent(chrome.DetailValue(sanitizeCellViewer(value)))
 	vp.FillHeight = false
 	vp.MouseWheelEnabled = true
 	vp.SoftWrap = true

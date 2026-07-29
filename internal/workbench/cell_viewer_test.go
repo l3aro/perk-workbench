@@ -327,6 +327,55 @@ func TestCellViewer_not_in_palette_when_inactive(t *testing.T) {
 	}
 }
 
+func TestCellViewer_formats_json_content(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{
+			name:  "valid object indented",
+			value: `{"customer":{"name":"Ada"},"ids":[1,2]}`,
+			want:  "{\n  \"customer\": {\n    \"name\": \"Ada\"\n  },\n  \"ids\": [\n    1,\n    2\n  ]\n}",
+		},
+		{
+			name:  "valid array indented",
+			value: `[{"a":1},{"b":2}]`,
+			want:  "[\n  {\n    \"a\": 1\n  },\n  {\n    \"b\": 2\n  }\n]",
+		},
+		{
+			name:  "malformed JSON unchanged",
+			value: `{"customer":}`,
+			want:  `{"customer":}`,
+		},
+		{
+			name:  "plain text unchanged",
+			value: "hello world",
+			want:  "hello world",
+		},
+		{
+			name:  "JSON number scalar unchanged",
+			value: "42",
+			want:  "42",
+		},
+		{
+			name:  "JSON string scalar unchanged",
+			value: `"just a string"`,
+			want:  `"just a string"`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cv := newCellViewer("col", test.value, 80, 20)
+			got := cv.viewport.GetContent()
+			if got != test.want {
+				t.Fatalf("newCellViewer GetContent =\n%s\nwant:\n%s", got, test.want)
+			}
+		})
+	}
+}
+
 func TestCellViewer_draw_has_title_padding_footer(t *testing.T) {
 	// Given — a cell viewer with short content (2 lines, compact dialog)
 	cv := newCellViewer("testcol", "hello\nworld", 40, 10)
