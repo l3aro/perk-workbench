@@ -3,6 +3,8 @@ package workbench
 import (
 	"context"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -381,6 +383,7 @@ func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
 
 func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	// Given
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
 	model.recentConnections = nil
 	model.connection.values.driver, model.connection.values.target = driverMySQL, "app"
@@ -398,6 +401,9 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	profile := model.recentConnections[0]
 	if profile.Driver != driverMySQL || profile.Host != "db.example.test" || profile.Port != "3307" || profile.User != "alice" || profile.Target != "app" || profile.MySQLTLS != mysqlTLSSkipVerify {
 		t.Fatalf("remote profile = %#v, want non-secret connection fields", profile)
+	}
+	if profile.Pass != "secret" {
+		t.Fatalf("remote profile password = %q, want secret", profile.Pass)
 	}
 }
 
@@ -492,5 +498,77 @@ func TestConnectionForm_retainsRejectedSQLiteConnection(t *testing.T) {
 	// Then
 	if model.State != stateConnection || model.connection.values.name != "Missing" || model.connection.values.target == "" {
 		t.Fatalf("rejected connection = state %v, name %q, target %q", model.State, model.connection.values.name, model.connection.values.target)
+	}
+}
+
+func TestConnectionForm_resolvesEnvVarPassword(t *testing.T) {
+	t.Setenv("PERK_TEST_DB_PASS", "resolved-secret")
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
+	form.values.user, form.values.pass, form.values.target = "admin", "${PERK_TEST_DB_PASS}", "app"
+	dsn, err := mysql.ParseDSN(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing MySQL DSN: %v", err)
+	}
+	if dsn.Passwd != "resolved-secret" {
+		t.Fatalf("MySQL DSN password = %q, want resolved-secret", dsn.Passwd)
+	}
+}
+
+func TestConnectionForm_resolvesFilePassword(t *testing.T) {
+	dir := t.TempDir()
+	passFile := filepath.Join(dir, "db_pass")
+	if err := os.WriteFile(passFile, []byte("file-secret\n"), 0o600); err != nil {
+		t.Fatalf("writing password file: %v", err)
+	}
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
+	form.values.user, form.values.pass, form.values.target = "admin", "file://"+passFile, "app"
+	dsn, err := mysql.ParseDSN(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing MySQL DSN: %v", err)
+	}
+	if dsn.Passwd != "file-secret" {
+		t.Fatalf("MySQL DSN password = %q, want file-secret", dsn.Passwd)
+	}
+}
+
+func TestConnectionForm_resolvesPostgresEnvVarPassword(t *testing.T) {
+	t.Setenv("PG_PASS", "pg-resolved")
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "db.example.test", "5432"
+	form.values.user, form.values.pass, form.values.target = "analyst", "${PG_PASS}", "analytics"
+	target := form.targetValue()
+	if !strings.Contains(target, "pg-resolved") {
+		t.Fatalf("PostgreSQL target = %q, want resolved password", target)
+	}
+	if strings.Contains(target, "${PG_PASS}") {
+		t.Fatalf("PostgreSQL target = %q, must not contain unresolved reference", target)
+	}
+}
+
+func TestConnectionForm_doesNotResolveLiteralPassword(t *testing.T) {
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
+	form.values.user, form.values.pass, form.values.target = "admin", "literal-secret", "app"
+	dsn, err := mysql.ParseDSN(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing MySQL DSN: %v", err)
+	}
+	if dsn.Passwd != "literal-secret" {
+		t.Fatalf("MySQL DSN password = %q, want literal-secret", dsn.Passwd)
+	}
+}
+
+func TestConnectionForm_resolvesMissingEnvVarToEmpty(t *testing.T) {
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
+	form.values.user, form.values.pass, form.values.target = "admin", "${MISSING_VAR}", "app"
+	dsn, err := mysql.ParseDSN(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing MySQL DSN: %v", err)
+	}
+	if dsn.Passwd != "" {
+		t.Fatalf("MySQL DSN password = %q, want empty for missing env var", dsn.Passwd)
 	}
 }

@@ -47,6 +47,7 @@ func (m *Model) recordConnection() {
 		Driver:   driver,
 		Name:     name,
 		Target:   target,
+		Pass:     m.connection.values.pass,
 		ReadOnly: m.ReadOnly,
 	}
 	if connection.Driver != driverSQLite {
@@ -99,7 +100,7 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 		m.connection.values.mysqlTLS = mysqlTLSVerify
 	}
 	m.connection.values.readOnly = connection.ReadOnly
-	m.connection.values.pass = ""
+	m.connection.values.pass = connection.Pass
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.Status = "editing " + safeText(connection.Name)

@@ -95,7 +95,7 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 			)
 		}
 		fields = append(fields,
-			huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are requested each time and never saved."),
+			huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are stored encrypted at rest. Use ${ENV_VAR} or file:///path to reference secrets without persistence."),
 		)
 	} else {
 		fields = append(fields, newEditableInput(huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.values.target).Validate(requiredConnectionTarget), &f.values.target))
@@ -182,10 +182,11 @@ func (f connectionForm) driverName() string {
 }
 
 func (f connectionForm) targetValue() string {
+	pass := resolveSecretRef(f.values.pass)
 	if f.values.driver == driverMySQL {
 		config := mysql.NewConfig()
 		config.User = strings.TrimSpace(f.values.user)
-		config.Passwd = f.values.pass
+		config.Passwd = pass
 		config.Net = "tcp"
 		config.Addr = net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port))
 		config.DBName = strings.TrimSpace(f.values.target)
@@ -199,7 +200,7 @@ func (f connectionForm) targetValue() string {
 	if f.values.driver == driverPostgreSQL {
 		target := &url.URL{
 			Scheme: "postgres",
-			User:   url.UserPassword(strings.TrimSpace(f.values.user), f.values.pass),
+			User:   url.UserPassword(strings.TrimSpace(f.values.user), pass),
 			Host:   net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port)),
 			Path:   strings.TrimSpace(f.values.target),
 		}
