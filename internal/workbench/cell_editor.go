@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -144,9 +145,15 @@ func (m *Model) openCellEditor() tea.Cmd {
 			Value(&e.editedVal)
 	}
 
+	km := huh.NewDefaultKeyMap()
+	km.Input.Submit = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "save"))
+	km.Input.Next = key.NewBinding(key.WithDisabled())
+	km.Input.AcceptSuggestion = key.NewBinding(key.WithDisabled())
+	km.Text.Submit = key.NewBinding(key.WithKeys("ctrl+s"), key.WithHelp("ctrl+s", "save"))
+	km.Text.Next = key.NewBinding(key.WithDisabled())
 	e.input = newForm(
 		huh.NewGroup(field),
-	).WithShowHelp(true).WithWidth(width)
+	).WithShowHelp(true).WithWidth(width).WithKeyMap(km)
 	m.cellEditor = e
 	return e.input.Init()
 }
