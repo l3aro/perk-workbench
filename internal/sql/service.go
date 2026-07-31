@@ -27,6 +27,7 @@ type Service interface {
 	ReplaceForeignKey(context.Context, string, string, ForeignKeyChange) error
 	DropForeignKey(context.Context, string, string) error
 	AlterColumn(context.Context, string, ColumnChange) error
+	DropColumn(context.Context, string, string) error
 	AddColumn(context.Context, string, ColumnDef) error
 	BrowseTable(context.Context, string, BrowseOptions) (Result, error)
 }

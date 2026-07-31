@@ -114,3 +114,7 @@ func (m Model) columnAddStatement(table string, def sharedsql.ColumnDef) string 
 	}
 	return statement
 }
+
+func (m Model) dropColumnStatement(table, name string) string {
+	return "ALTER TABLE " + m.actionIdentifier(table) + " DROP COLUMN " + m.actionIdentifier(name)
+}

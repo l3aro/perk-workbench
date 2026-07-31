@@ -55,7 +55,11 @@ func (m Model) deleteIndex() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return indexDeletedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	table, service, name := m.SelectedTable, m.Database, m.indexForm.previous
+	name := m.deletePendingName
+	if name == "" {
+		name = m.indexForm.previous
+	}
+	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropIndexStatement(table, name), time.Now()
 	return func() tea.Msg {
 		return indexDeletedMsg{statement: statement, startedAt: startedAt, err: service.DropIndex(m.appContext, table, name)}

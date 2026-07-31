@@ -63,8 +63,11 @@ func TestForeignKeysTab_loadsAndManagesForeignKeys(t *testing.T) {
 	// When
 	model.foreignKeys.SetCursor(0)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
+	if model.deleteConfirm == nil || len(model.foreignKeys.Rows()) != 1 {
+		t.Fatal("d did not open delete confirmation")
+	}
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.foreignKeyForm.active() || model.foreignKeyForm.confirming() || len(model.foreignKeys.Rows()) != 1 {
+	if model.deleteConfirm != nil || len(model.foreignKeys.Rows()) != 1 {
 		t.Fatal("negative delete confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})

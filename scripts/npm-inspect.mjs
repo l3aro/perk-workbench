@@ -47,6 +47,7 @@ async function inspectArchive(path, version) {
 
   if (manifest.name === 'perk-workbench') {
     assert.ok(entries.has('package/perk-workbench.cjs'), `${path}: missing launcher`);
+    assert.ok(entries.has('package/README.md'), `${path}: missing README`);
     assert.deepEqual(manifest.bin, { 'perk-workbench': './perk-workbench.cjs' });
     for (const [platform, arch] of targets) {
       assert.equal(manifest.optionalDependencies[packageName(platform, arch)], version);

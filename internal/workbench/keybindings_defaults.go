@@ -36,6 +36,7 @@ var defaultDefs = []commandDef{
 	{id: "structure.reset", scope: scopeView, keys: []string{"r"}, label: "reset column filter"},
 	{id: "structure.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit column"},
 	{id: "structure.add", scope: scopeView, keys: []string{"a"}, label: "add column"},
+	{id: "structure.delete", scope: scopeView, keys: []string{"d"}, label: "delete column"},
 
 	// ── Browse tab (view) ───────────────────────────────────────
 	{id: "browse.edit", scope: scopeView, keys: []string{"enter"}, label: "edit row"},

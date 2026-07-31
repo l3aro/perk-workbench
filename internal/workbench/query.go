@@ -37,6 +37,12 @@ type columnAlteredMsg struct {
 	kind      string
 }
 
+type columnDeletedMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
+
 type browseRowUpdatedMsg struct {
 	statement string
 	startedAt time.Time
@@ -152,6 +158,21 @@ func (m Model) addColumn() tea.Cmd {
 	}
 }
 
+func (m Model) deleteColumn() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return columnDeletedMsg{err: fmt.Errorf("connection is read-only")} }
+	}
+	name := m.deletePendingName
+	if name == "" {
+		name = m.columnForm.previousName
+	}
+	table, service := m.SelectedTable, m.Database
+	statement, startedAt := m.dropColumnStatement(table, name), time.Now()
+	return func() tea.Msg {
+		return columnDeletedMsg{statement: statement, startedAt: startedAt, err: service.DropColumn(m.appContext, table, name)}
+	}
+}
+
 func (m Model) updateBrowseRow() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: fmt.Errorf("connection is read-only")} }
@@ -234,6 +255,20 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 	}
 	m.columnForm = columnForm{}
 	m.Status = status
+	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
+}
+
+func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped column"))
+	}
+	if message.err != nil {
+		m.columnForm.saving = false
+		m.Status = safeText(fmt.Sprintf("deleting column: %v", message.err))
+		return m, nil
+	}
+	m.columnForm = columnForm{}
+	m.Status = "column deleted"
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
 

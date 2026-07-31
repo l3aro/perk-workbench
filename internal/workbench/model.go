@@ -103,6 +103,8 @@ type Model struct {
 	lastClickX, lastClickY                                                                         int
 	contextMenu                                                                                    *contextMenuModel
 	deleteConfirm                                                                                  *confirmationDialog
+	deletePending                                                                                  string
+	deletePendingName                                                                              string
 }
 
 type pickerItem struct{ raw, title, description string }

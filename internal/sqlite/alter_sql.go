@@ -162,3 +162,28 @@ func unsupportedColumnConstraint(definition string) bool {
 	}
 	return false
 }
+
+func rewriteDropColumn(createSQL, temporary, name string) (string, error) {
+	open, close, err := tableDefinitionBounds(createSQL)
+	if err != nil {
+		return "", err
+	}
+	definitions, err := splitDefinitions(createSQL[open+1 : close])
+	if err != nil {
+		return "", err
+	}
+	filtered := make([]string, 0, len(definitions))
+	removed := false
+	for _, definition := range definitions {
+		defName, _ := definitionName(definition)
+		if strings.EqualFold(defName, name) {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, definition)
+	}
+	if !removed {
+		return "", fmt.Errorf("column %q was not found in the table definition", name)
+	}
+	return "CREATE TABLE " + quoteIdentifier(temporary) + " (" + strings.Join(filtered, ", ") + ")" + createSQL[close+1:], nil
+}

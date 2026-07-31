@@ -16,6 +16,7 @@ const (
 	columnFormNoAction columnFormAction = iota
 	columnFormSave
 	columnFormDiscard
+	columnFormDelete
 )
 
 type columnForm struct {
@@ -31,6 +32,7 @@ type columnForm struct {
 	hadDefault, typeChanged, saving bool
 	isNew                           bool
 	confirmationSave                bool
+	confirmationDelete              bool
 	keybindings                     Keybindings
 }
 
@@ -119,6 +121,9 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		if f.confirmationSave {
 			return nil, columnFormSave
 		}
+		if f.confirmationDelete {
+			return nil, columnFormDelete
+		}
 		return nil, columnFormDiscard
 	}
 	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
@@ -144,12 +149,18 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 			f.validationError = err.Error()
 			return nil, columnFormNoAction
 		}
-		f.beginConfirmation(true)
+		f.beginConfirmation(true, false)
 		controller.beginConfirm()
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
-		f.beginConfirmation(false)
+		f.beginConfirmation(false, false)
 		controller.beginConfirm()
+		return nil, columnFormNoAction
+	case f.keybindings.Match(keyPress, "form.delete", []scope{scopeForm, scopeView, scopeGlobal}):
+		if f.previousName != "" {
+			f.beginConfirmation(false, true)
+			controller.beginConfirm()
+		}
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.nextField(), columnFormNoAction
@@ -179,13 +190,16 @@ func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) 
 	return command, columnFormNoAction
 }
 
-func (f *columnForm) beginConfirmation(save bool) {
+func (f *columnForm) beginConfirmation(save, delete bool) {
 	f.confirmationSave = save
+	f.confirmationDelete = delete
 	title := "Discard column changes?"
 	if save && f.isNew {
 		title = "Add column?"
 	} else if save {
 		title = "Save column changes?"
+	} else if delete {
+		title = "Delete column?"
 	}
 	f.confirmation = yesNoConfirmation(title, "", "confirm")
 }

@@ -44,6 +44,7 @@ async function stagePackage(name, version) {
   const destination = join(output, name);
   await cp(source, destination, { recursive: true });
   await cp(join(root, 'LICENSE'), join(destination, 'LICENSE'));
+  await cp(join(root, 'README.md'), join(destination, 'README.md'));
   await manifest(join(source, 'package.json'), join(destination, 'package.json'), version);
   return destination;
 }

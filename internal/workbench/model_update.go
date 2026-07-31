@@ -495,10 +495,29 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.deleteConfirm = nil
-		if action == "delete" {
+		pending := m.deletePending
+		m.deletePending = ""
+		if action != "delete" {
+			m.deletePendingName = ""
+			return m, nil
+		}
+		switch pending {
+		case "column":
+			cmd := m.deleteColumn()
+			m.deletePendingName = ""
+			return m, cmd
+		case "index":
+			cmd := m.deleteIndex()
+			m.deletePendingName = ""
+			return m, cmd
+		case "foreign_key":
+			cmd := m.deleteForeignKey()
+			m.deletePendingName = ""
+			return m, cmd
+		default:
+			m.deletePendingName = ""
 			return m, m.deleteRow()
 		}
-		return m, nil
 	}
 
 	switch message := message.(type) {
@@ -558,6 +577,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateConnection(message)
 	case columnAlteredMsg:
 		return m.updateColumnAltered(message)
+	case columnDeletedMsg:
+		return m.updateColumnDeleted(message)
 	case browseRowUpdatedMsg:
 		return m.updateBrowseRowUpdated(message)
 	case deleteRowMsg:

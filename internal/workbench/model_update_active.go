@@ -83,6 +83,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.alterColumn()
 					case columnFormDiscard:
 						m.columnForm = columnForm{}
+					case columnFormDelete:
+						m.columnForm.saving = true
+						return m, m.deleteColumn()
 					}
 					return m, command
 				}
@@ -97,6 +100,16 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.openColumnForm()
 					case m.keybindings.Match(keyPress, "structure.add", []scope{scopeView, scopeGlobal}):
 						return m, m.openNewColumnForm()
+					case m.keybindings.Match(keyPress, "structure.delete", []scope{scopeView, scopeGlobal}):
+						if column := m.selectedColumn(); column != nil {
+							m.deletePending = "column"
+							m.deletePendingName = column.Name
+							m.deleteConfirm = newConfirmationDialog("Delete column?", "", []confirmationOption{
+								{label: "Yes, delete", action: "delete"},
+								{label: "Cancel", action: "cancel"},
+							})
+						}
+						return m, nil
 					}
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
@@ -271,9 +284,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case m.keybindings.Match(keyPress, "indexes.delete", []scope{scopeView, scopeGlobal}):
 						if index := m.selectedIndex(); index != nil {
-							_ = m.openIndexForm(index)
-							m.indexForm.beginConfirmation(false, true)
-							m.formMode.beginConfirm()
+							m.deletePending = "index"
+							m.deletePendingName = index.Name
+							m.deleteConfirm = newConfirmationDialog("Delete index?", "", []confirmationOption{
+								{label: "Yes, delete", action: "delete"},
+								{label: "Cancel", action: "cancel"},
+							})
 						}
 						return m, nil
 					}
@@ -317,9 +333,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.delete", []scope{scopeView, scopeGlobal}):
 						if foreignKey := m.selectedForeignKey(); foreignKey != nil {
-							_ = m.openForeignKeyForm(foreignKey)
-							m.foreignKeyForm.beginConfirmation(false, true)
-							m.formMode.beginConfirm()
+							m.deletePending = "foreign_key"
+							m.deletePendingName = foreignKey.ID
+							m.deleteConfirm = newConfirmationDialog("Delete foreign key?", "", []confirmationOption{
+								{label: "Yes, delete", action: "delete"},
+								{label: "Cancel", action: "cancel"},
+							})
 						}
 						return m, nil
 					}

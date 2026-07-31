@@ -73,6 +73,15 @@ func (s *Service) AddColumn(ctx context.Context, table string, col sharedsql.Col
 	return nil
 }
 
+func (s *Service) DropColumn(ctx context.Context, table, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("column name is required")
+	}
+	return s.rebuildTableWithSQL(ctx, table, func(*stdsql.Tx) error { return nil }, func(createSQL string) (string, error) {
+		return rewriteDropColumn(createSQL, "__perk_workbench_column_edit", name)
+	})
+}
+
 func (s *Service) rebuildTable(ctx context.Context, table string, change sharedsql.ColumnChange) (err error) {
 	prepare := func(*stdsql.Tx) error { return nil }
 	if change.Name != change.PreviousName {

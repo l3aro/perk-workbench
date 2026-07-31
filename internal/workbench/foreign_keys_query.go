@@ -70,7 +70,11 @@ func (m Model) deleteForeignKey() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return foreignKeyDeletedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	table, service, previous := m.SelectedTable, m.Database, m.foreignKeyForm.previous
+	previous := m.deletePendingName
+	if previous == "" {
+		previous = m.foreignKeyForm.previous
+	}
+	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropForeignKeyStatement(table, previous), time.Now()
 	return func() tea.Msg {
 		return foreignKeyDeletedMsg{statement: statement, startedAt: startedAt, err: service.DropForeignKey(m.appContext, table, previous)}

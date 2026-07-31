@@ -421,6 +421,16 @@ func (s *Service) AddColumn(ctx context.Context, table string, col sharedsql.Col
 	return nil
 }
 
+func (s *Service) DropColumn(ctx context.Context, table, name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("column name is required")
+	}
+	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+postgresTableIdentifier(table)+" DROP COLUMN "+quoteIdentifier(name)); err != nil {
+		return fmt.Errorf("dropping column: %w", err)
+	}
+	return nil
+}
+
 func postgresDefault(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
