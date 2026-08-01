@@ -262,8 +262,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.indexForm.active()
 	case "foreign_keys.filter", "foreign_keys.reset", "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.foreignKeyForm.active()
-	case "query_log.yank", "query_log.explain", "query_log.cursor_down", "query_log.cursor_up",
-		"query_log.top_first", "query_log.top_last", "query_log.detail", "query_log.next_page", "query_log.prev_page":
+	case "query_log.yank", "query_log.explain", "query_log.detail", "query_log.context_menu",
+		"query_log.cursor_down", "query_log.cursor_up", "query_log.top_first", "query_log.top_last", "query_log.next_page", "query_log.prev_page":
 		return m.State == stateReady && m.Focus == focusQueryLog
 	case "chat.new", "chat.history", "chat.delete", "chat.clear", "chat.apply_sql", "chat.share_results":
 		return m.State == stateReady && m.Focus == focusChat

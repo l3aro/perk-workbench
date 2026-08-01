@@ -74,6 +74,7 @@ var defaultDefs = []commandDef{
 	{id: "query_log.yank", scope: scopeView, keys: []string{"y"}, label: "copy"},
 	{id: "query_log.explain", scope: scopeView, keys: []string{"e"}, label: "explain"},
 	{id: "query_log.detail", scope: scopeView, keys: []string{"enter"}, label: "detail"},
+	{id: "query_log.context_menu", scope: scopeView, keys: []string{","}, label: "context menu"},
 	{id: "query_log.top_first", scope: scopeView, keys: []string{"g"}, label: "top"},
 	{id: "query_log.top_last", scope: scopeView, keys: []string{"G"}, label: "bottom"},
 	{id: "query_log.next_page", scope: scopeView, keys: []string{"n"}, label: "next page"},

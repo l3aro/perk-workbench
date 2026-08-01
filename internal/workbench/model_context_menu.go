@@ -20,10 +20,39 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 				{label: "Yes, delete", action: "delete"},
 				{label: "Cancel", action: "cancel"},
 			})
+		case "query_log_yank":
+			entry, ok := m.queryLogSelectedEntry()
+			if !ok {
+				return m, nil
+			}
+			m.Status = "copied to clipboard"
+			return m, copyQueryLogStatement(queryLogCell(entry, m.queryLogColumn))
+		case "query_log_explain":
+			entry, ok := m.queryLogSelectedEntry()
+			if !ok {
+				return m, nil
+			}
+			m.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.tableViewportWidth)
+			if m.explainPicker == nil {
+				return m, nil
+			}
+			return m, m.explainPicker.form.Init()
+		case "query_log_detail":
+			if entry, ok := m.queryLogSelectedEntry(); ok {
+				m.queryLogDetail = &entry
+			}
 		}
 		return m, nil
 	}
-
+	selectShortcut := func(shortcut string) (tea.Model, tea.Cmd, bool) {
+		for _, option := range menu.options {
+			if option.keys == shortcut {
+				model, command := selectAction(option.action)
+				return model, command, true
+			}
+		}
+		return m, nil, false
+	}
 	switch msg := message.(type) {
 	case tea.KeyPressMsg:
 		switch msg.Keystroke() {
@@ -33,12 +62,10 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			menu.selected = max(menu.selected-1, 0)
 		case "down", "j":
 			menu.selected = min(menu.selected+1, max(len(menu.options)-1, 0))
-		case "i":
-			return selectAction("edit_cell")
-		case "y":
-			return selectAction("copy_cell")
-		case "d":
-			return selectAction("delete_row")
+		default:
+			if model, command, ok := selectShortcut(msg.Keystroke()); ok {
+				return model, command
+			}
 		case "enter":
 			if menu.selected >= 0 && menu.selected < len(menu.options) {
 				return selectAction(menu.options[menu.selected].action)

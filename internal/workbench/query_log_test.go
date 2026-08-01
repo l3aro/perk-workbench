@@ -193,6 +193,105 @@ func TestQueryLogDetail_e_opens_explain_picker(t *testing.T) {
 	}
 }
 
+func TestQueryLog_contextMenuExposesAndExecutesShortcuts(t *testing.T) {
+	tests := []struct {
+		name  string
+		keys  []tea.KeyPressMsg
+		check func(*testing.T, Model)
+	}{
+		{
+			name: "copy",
+			keys: []tea.KeyPressMsg{{Code: 'y', Text: "y"}},
+			check: func(t *testing.T, model Model) {
+				if model.Status != "copied to clipboard" {
+					t.Fatalf("status = %q, want copied status", model.Status)
+				}
+			},
+		},
+		{
+			name: "detail",
+			keys: []tea.KeyPressMsg{{Code: tea.KeyEnter}},
+			check: func(t *testing.T, model Model) {
+				if model.queryLogDetail == nil {
+					t.Fatal("detail action did not open query log detail")
+				}
+			},
+		},
+		{
+			name: "explain",
+			keys: []tea.KeyPressMsg{{Code: tea.KeyDown}, {Code: tea.KeyDown}, {Code: tea.KeyEnter}},
+			check: func(t *testing.T, model Model) {
+				if model.explainPicker == nil {
+					t.Fatal("explain action did not open explain picker")
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model := resizeModel(readyModel(t), 100, 24)
+			model.Focus = focusQueryLog
+			model.queryLog.Focus()
+			model.appendQueryLog(queryLogEntry{statement: "SELECT 1", status: "success"})
+			model.queryLog.SetCursor(0)
+			model.databaseInfo.Product = "SQLite"
+			updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+			model = updated.(Model)
+			if model.contextMenu == nil || len(model.contextMenu.options) != 3 {
+				t.Fatalf("context menu = %#v, want three query-log actions", model.contextMenu)
+			}
+			for index, want := range []string{"enter", "y", "e"} {
+				if got := model.contextMenu.options[index].keys; got != want {
+					t.Errorf("option %d shortcut = %q, want %q", index, got, want)
+				}
+			}
+			for _, key := range test.keys {
+				updated, _ = model.Update(key)
+				model = updated.(Model)
+			}
+			if model.contextMenu != nil {
+				t.Fatal("query-log context menu remained open after action")
+			}
+			test.check(t, model)
+		})
+	}
+}
+
+func TestQueryLog_contextMenuMouseSelectsRenderedDetail(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusQueryLog
+	model.queryLog.Focus()
+	model.appendQueryLog(queryLogEntry{statement: "SELECT 1", status: "success"})
+	model.queryLog.SetCursor(0)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	if model.contextMenu == nil {
+		t.Fatal("comma did not open query-log context menu")
+	}
+
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	clickX, clickY := -1, -1
+	for y, line := range lines {
+		if x := strings.Index(line, "Detail"); x >= 0 {
+			clickX, clickY = x, y
+			break
+		}
+	}
+	if clickX < 0 {
+		t.Fatal("rendered query-log context menu does not contain Detail")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.contextMenu != nil {
+		t.Fatal("query-log context menu remained open after mouse selection")
+	}
+	if model.queryLogDetail == nil {
+		t.Fatal("mouse-selected Detail action did not open query-log detail")
+	}
+}
+
 func TestQueryLog_records_browse_page_load(t *testing.T) {
 	// Given
 	model := readyModel(t)

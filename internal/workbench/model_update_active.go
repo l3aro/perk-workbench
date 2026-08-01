@@ -358,6 +358,33 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					m.queryLogPendingG = false
 				}
+				if m.keybindings.Match(keyPress, "query_log.context_menu", []scope{scopeView, scopeGlobal}) {
+					if len(m.queryLog.Rows()) == 0 {
+						return m, nil
+					}
+					options := []menuOption{
+						{label: "Detail", action: "query_log_detail", keys: "enter"},
+						{label: "Copy cell", action: "query_log_yank", keys: "y"},
+						{label: "Explain", action: "query_log_explain", keys: "e"},
+					}
+					maxLabel, maxKeys := 0, 0
+					for _, option := range options {
+						maxLabel = max(maxLabel, len(option.label))
+						maxKeys = max(maxKeys, len(option.keys))
+					}
+					contentWidth := max(maxLabel+2+maxKeys+2, len("Row actions")+2, 24)
+					menuWidth := contentWidth + 2
+					menuX := min(max(m.schemaWidth+1, 0), max(m.width-menuWidth, 0))
+					menuY := min(max(m.workspaceHeight+4, 0), max(m.height-(4+len(options)), 0))
+					m.contextMenu = &contextMenuModel{
+						options:  options,
+						selected: 0,
+						visible:  true,
+						x:        menuX,
+						y:        menuY,
+					}
+					return m, nil
+				}
 				if m.keybindings.Match(keyPress, "query_log.next_page", []scope{scopeView, scopeGlobal}) {
 					if m.queryLogPage+1 < m.queryLogPageCount() {
 						m.queryLogPage++
