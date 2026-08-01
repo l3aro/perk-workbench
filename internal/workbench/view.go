@@ -197,7 +197,7 @@ func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
 	}
 
 	// Styles matching confirmation dialog
-	accent := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
+	titleStyle := uv.Style{Fg: chrome.ParseHex(colorTitle), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
 	ink := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorPanel)}
 	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
 
@@ -205,8 +205,8 @@ func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
 	cx0 := x + 1
 	cy0 := y + 1
 
-	// Row 0: title (accent/bold, matching confirmation dialog style)
-	drawConfirmationText(canvas, title, cx0+padX, cy0, accent)
+	// Row 0: title (title color/bold, matching confirmation dialog style)
+	drawConfirmationText(canvas, title, cx0+padX, cy0, titleStyle)
 
 	// Row 1: blank padding
 
@@ -305,6 +305,7 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 
 	bg := uv.Style{Bg: chrome.ParseHex(colorPanel)}
 	selectedBg := uv.Style{Bg: chrome.ParseHex(colorAccent), Fg: chrome.ParseHex(colorCanvas)}
+	titleFg := uv.Style{Fg: chrome.ParseHex(colorTitle)}
 	inkFg := uv.Style{Fg: chrome.ParseHex(colorInk)}
 	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
 
@@ -327,7 +328,7 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 	cx0 := menuX + 1
 	titleLine := " " + title + strings.Repeat(" ", contentWidth-len(title)-1)
 	for i, ch := range titleLine {
-		canvas.SetCell(cx0+i, menuY+1, &uv.Cell{Content: string(ch), Width: 1, Style: inkFg})
+		canvas.SetCell(cx0+i, menuY+1, &uv.Cell{Content: string(ch), Width: 1, Style: titleFg})
 	}
 
 	for cx := cx0; cx < menuX+borderW-1; cx++ {
@@ -495,7 +496,7 @@ func (m Model) workspaceView() string {
 	tabs := []string{"SQL", "Browse", "Columns", "Indexes", "Foreign Keys"}
 	for index := range tabs {
 		if workspaceTab(index) == m.Tab {
-			tabs[index] = headerStyle.Render(tabs[index])
+			tabs[index] = connectionActionSelectedStyle.Render(tabs[index])
 		} else {
 			tabs[index] = statusStyle.Render(tabs[index])
 		}

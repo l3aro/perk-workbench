@@ -151,10 +151,10 @@ func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 	bounds := canvas.Bounds()
 	layout := d.layout(bounds.Dx(), bounds.Dy())
 	panelStyle := uv.Style{Bg: chrome.ParseHex(colorPanel)}
-	accent := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
+	title := uv.Style{Fg: chrome.ParseHex(colorTitle), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
 	border := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel)}
 	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
-	selected := uv.Style{Fg: chrome.ParseHex(colorCanvas), Bg: chrome.ParseHex(colorAccent)}
+	selected := uv.Style{Fg: chrome.ParseHex(colorCanvas), Bg: chrome.ParseHex(colorConfirm)}
 	unselected := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorStripe)}
 
 	lastButtonY := layout.y
@@ -188,7 +188,7 @@ func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 	for row := layout.y; row <= lastButtonY; row++ {
 		canvas.SetCell(layout.x, row, &uv.Cell{Content: "┃", Width: 1, Style: border})
 	}
-	drawConfirmationText(canvas, d.title, layout.x+4, layout.y, accent)
+	drawConfirmationText(canvas, d.title, layout.x+4, layout.y, title)
 	for index, line := range layout.description {
 		drawConfirmationText(canvas, line, layout.x+4, layout.y+index+1, muted)
 	}
