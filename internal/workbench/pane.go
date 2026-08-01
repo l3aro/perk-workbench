@@ -24,7 +24,7 @@ func titledPane(title, content string, style lipgloss.Style) string {
 		label = " " + ansi.Truncate(title, labelWidth-2, "") + " "
 	}
 	top := borderStyle.Render(border.TopLeft) +
-		lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk)).Bold(true).Render(label) +
+		lipgloss.NewStyle().Foreground(lipgloss.Color(colorTitle)).Bold(true).Render(label) +
 		borderStyle.Render(strings.Repeat(border.Top, max(width-lipgloss.Width(border.TopLeft)-lipgloss.Width(label)-lipgloss.Width(border.TopRight), 0))) +
 		borderStyle.Render(border.TopRight)
 	bodyStyle := style.Copy().BorderTop(false)
