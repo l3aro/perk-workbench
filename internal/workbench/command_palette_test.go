@@ -48,6 +48,39 @@ func TestCommandPalette_navigationAndSelection(t *testing.T) {
 	}
 }
 
+func TestCommandPalette_filterRequiresSlashAndExitKeepsQuery(t *testing.T) {
+	palette := &commandPalette{
+		items:    []commandPaletteItem{{id: "first", label: "first"}, {id: "second", label: "second"}},
+		filtered: []commandPaletteItem{{id: "first", label: "first"}, {id: "second", label: "second"}},
+		visible:  true,
+	}
+
+	palette.handleKey(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	if palette.filtering || len(palette.query) != 0 {
+		t.Fatal("ordinary key entered filtering")
+	}
+	palette.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
+	if !palette.filtering {
+		t.Fatal("slash did not enter filtering")
+	}
+	for _, char := range []rune{'s', 'e', 'c'} {
+		palette.handleKey(tea.KeyPressMsg{Code: char, Text: string(char)})
+	}
+	palette.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if palette.filtering || string(palette.query) != "sec" {
+		t.Fatalf("after escape: filtering=%t query=%q", palette.filtering, string(palette.query))
+	}
+	if len(palette.filtered) != 1 || palette.filtered[0].id != "second" {
+		t.Fatalf("filtered items = %#v, want second", palette.filtered)
+	}
+
+	palette.handleKey(tea.KeyPressMsg{Code: '/'})
+	palette.handleKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if palette.filtering || !palette.visible || string(palette.query) != "sec" {
+		t.Fatalf("after enter: filtering=%t visible=%t query=%q", palette.filtering, palette.visible, string(palette.query))
+	}
+}
+
 func TestCommandPalette_filterNoDuplicates(t *testing.T) {
 	// Regression: filtered and items must not share a backing array.
 	// When they do, each applyFilter call corrupts p.items while ranging,
@@ -112,11 +145,15 @@ func TestModelCommandPalette_opensThemePicker(t *testing.T) {
 		}
 	}
 
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
 	for _, character := range "theme" {
 		updated, _ = model.Update(tea.KeyPressMsg{Code: character, Text: string(character)})
 		model = updated.(Model)
 	}
 
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 

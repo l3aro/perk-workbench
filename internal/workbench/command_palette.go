@@ -30,6 +30,7 @@ type commandPalette struct {
 	filtered     []commandPaletteItem
 	cursor       int
 	query        []rune
+	filtering    bool
 	visible      bool
 	contextTitle string
 }
@@ -310,6 +311,26 @@ func (p *commandPalette) applyFilter() {
 // handleKey processes a key press while the palette is visible.
 // Returns (selectMsg, close, consumed).
 func (p *commandPalette) handleKey(msg tea.KeyPressMsg) (commandPaletteSelectMsg, bool, bool) {
+	stroke := msg.Keystroke()
+	if p.filtering {
+		switch msg.Key().Code {
+		case tea.KeyEscape, tea.KeyEnter:
+			p.filtering = false
+			return commandPaletteSelectMsg{}, false, true
+		case tea.KeyBackspace:
+			if len(p.query) > 0 {
+				p.query = p.query[:len(p.query)-1]
+				p.applyFilter()
+			}
+			return commandPaletteSelectMsg{}, false, true
+		}
+		if len(stroke) == 1 && stroke[0] >= ' ' && stroke[0] <= '~' {
+			p.query = append(p.query, rune(stroke[0]))
+			p.applyFilter()
+		}
+		return commandPaletteSelectMsg{}, false, true
+	}
+
 	switch msg.Key().Code {
 	case tea.KeyEscape:
 		p.visible = false
@@ -331,30 +352,19 @@ func (p *commandPalette) handleKey(msg tea.KeyPressMsg) (commandPaletteSelectMsg
 			p.cursor++
 		}
 		return commandPaletteSelectMsg{}, false, true
-	case tea.KeyBackspace:
-		if len(p.query) > 0 {
-			p.query = p.query[:len(p.query)-1]
-			p.applyFilter()
-		}
-		return commandPaletteSelectMsg{}, false, true
 	default:
-		stroke := msg.Keystroke()
 		if len(stroke) == 1 {
 			switch stroke[0] {
+			case '/':
+				p.filtering = true
 			case 'j':
 				if p.cursor < len(p.filtered)-1 {
 					p.cursor++
 				}
-				return commandPaletteSelectMsg{}, false, true
 			case 'k':
 				if p.cursor > 0 {
 					p.cursor--
 				}
-				return commandPaletteSelectMsg{}, false, true
-			}
-			if stroke[0] >= ' ' && stroke[0] <= '~' {
-				p.query = append(p.query, rune(stroke[0]))
-				p.applyFilter()
 			}
 		}
 		return commandPaletteSelectMsg{}, false, true
@@ -439,7 +449,10 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	}
 
 	// Help line.
-	helpLine := mutedStyle.Render(" j/k or arrows navigate | enter select | esc close")
+	helpLine := mutedStyle.Render(" / filter | j/k or arrows navigate | enter select | esc close")
+	if p.filtering {
+		helpLine = mutedStyle.Render(" enter/esc stop filtering | backspace erase")
+	}
 	for cy := boxY + 1; cy < boxY+palH-1; cy++ {
 		canvas.SetCell(boxX, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 		canvas.SetCell(boxX+palW-1, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
