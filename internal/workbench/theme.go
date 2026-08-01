@@ -12,6 +12,7 @@ var (
 	activeTheme                                                                       = themeOcean
 	colorCanvas, colorPanel, colorStripe                                              string
 	colorInk, colorMuted, colorAccent                                                 string
+	colorTitle, colorConfirm, colorFocused                                            string
 	colorBorder, colorModeNormal                                                      string
 	colorModeInsert                                                                   string
 	headerStyle, footerStyle, statusStyle, thinkingStyle                              lipgloss.Style
@@ -35,26 +36,32 @@ func setTheme(name appTheme) {
 	case themeDracula:
 		colorCanvas, colorPanel, colorStripe = "#282a36", "#343746", "#44475a"
 		colorInk, colorMuted, colorAccent = "#f8f8f2", "#b1b2c7", "#bd93f9"
+		colorTitle, colorConfirm, colorFocused = "#ff79c6", "#ff5555", "#50fa7b"
 		colorBorder, colorModeNormal, colorModeInsert = "#6272a4", "#8be9fd", "#50fa7b"
 	case themeNord:
 		colorCanvas, colorPanel, colorStripe = "#2e3440", "#3b4252", "#434c5e"
 		colorInk, colorMuted, colorAccent = "#eceff4", "#d8dee9", "#88c0d0"
+		colorTitle, colorConfirm, colorFocused = "#ebcb8b", "#bf616a", "#a3be8c"
 		colorBorder, colorModeNormal, colorModeInsert = "#4c566a", "#81a1c1", "#a3be8c"
 	case themeMonokai:
 		colorCanvas, colorPanel, colorStripe = "#272822", "#2f302a", "#3e3d32"
 		colorInk, colorMuted, colorAccent = "#f8f8f2", "#75715e", "#a6e22e"
+		colorTitle, colorConfirm, colorFocused = "#f92672", "#f92672", "#a6e22e"
 		colorBorder, colorModeNormal, colorModeInsert = "#49483e", "#66d9ef", "#fd971f"
 	case themeCatppuccin:
 		colorCanvas, colorPanel, colorStripe = "#1e1e2e", "#313244", "#45475a"
 		colorInk, colorMuted, colorAccent = "#cdd6f4", "#a6adc8", "#cba6f7"
+		colorTitle, colorConfirm, colorFocused = "#f9e2af", "#f38ba8", "#a6e3a1"
 		colorBorder, colorModeNormal, colorModeInsert = "#6c7086", "#89b4fa", "#a6e3a1"
 	case themeSolarized:
 		colorCanvas, colorPanel, colorStripe = "#002b36", "#073642", "#123f4a"
 		colorInk, colorMuted, colorAccent = "#839496", "#657b83", "#268bd2"
+		colorTitle, colorConfirm, colorFocused = "#d33682", "#dc322f", "#859900"
 		colorBorder, colorModeNormal, colorModeInsert = "#0e5553", "#268bd2", "#859900"
 	default:
 		colorCanvas, colorPanel, colorStripe = "#10151f", "#17202e", "#1c2838"
-		colorInk, colorMuted, colorAccent = "#e6edf3", "#8b9bb4", "#55d6be"
+		colorInk, colorMuted, colorAccent = "#e6edf3", "#8b9bb4", "#94e2d5"
+		colorTitle, colorConfirm, colorFocused = "#89b4fa", "#f38ba8", "#f9e2af"
 		colorBorder, colorModeNormal, colorModeInsert = "#324155", "#58a6ff", "#3fb950"
 	}
 	resetStyles()
@@ -63,7 +70,7 @@ func setTheme(name appTheme) {
 func resetStyles() {
 	headerStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
-		Background(lipgloss.Color(colorAccent)).
+		Background(lipgloss.Color(colorTitle)).
 		Bold(true).
 		Padding(0, spaceCompact)
 	footerStyle = lipgloss.NewStyle().
@@ -139,6 +146,8 @@ func resetStyles() {
 var formTheme = huh.ThemeFunc(func(bool) *huh.Styles {
 	theme := huh.ThemeCharm(true)
 	accent := lipgloss.Color(colorAccent)
+	focused := lipgloss.Color(colorFocused)
+	title := lipgloss.Color(colorTitle)
 	ink := lipgloss.Color(colorInk)
 	muted := lipgloss.Color(colorMuted)
 	panel := lipgloss.Color(colorPanel)
@@ -147,24 +156,28 @@ var formTheme = huh.ThemeFunc(func(bool) *huh.Styles {
 
 	theme.Focused.Base = theme.Focused.Base.BorderForeground(accent)
 	theme.Focused.Card = theme.Focused.Base.Background(panel)
-	theme.Focused.Title = theme.Focused.Title.Foreground(accent)
-	theme.Focused.NoteTitle = theme.Focused.NoteTitle.Foreground(accent)
+	theme.Focused.Title = theme.Focused.Title.Foreground(title)
+	theme.Focused.NoteTitle = theme.Focused.NoteTitle.Foreground(title)
 	theme.Focused.Description = theme.Focused.Description.Foreground(muted)
-	theme.Focused.SelectSelector = theme.Focused.SelectSelector.Foreground(accent)
-	theme.Focused.NextIndicator = theme.Focused.NextIndicator.Foreground(accent)
-	theme.Focused.PrevIndicator = theme.Focused.PrevIndicator.Foreground(accent)
+	theme.Focused.SelectSelector = theme.Focused.SelectSelector.Foreground(focused)
+	theme.Focused.NextIndicator = theme.Focused.NextIndicator.Foreground(focused)
+	theme.Focused.PrevIndicator = theme.Focused.PrevIndicator.Foreground(focused)
+	theme.Focused.MultiSelectSelector = theme.Focused.MultiSelectSelector.Foreground(focused)
 	theme.Focused.Option = theme.Focused.Option.Foreground(ink)
-	theme.Focused.SelectedOption = theme.Focused.SelectedOption.Foreground(accent)
+	theme.Focused.SelectedOption = theme.Focused.SelectedOption.Foreground(focused)
 	theme.Focused.UnselectedOption = theme.Focused.UnselectedOption.Foreground(ink)
-	theme.Focused.FocusedButton = theme.Focused.FocusedButton.Foreground(canvas).Background(accent)
+	theme.Focused.FocusedButton = theme.Focused.FocusedButton.Foreground(canvas).Background(focused)
 	theme.Focused.BlurredButton = theme.Focused.BlurredButton.Foreground(ink).Background(stripe)
-	theme.Focused.TextInput.Cursor = theme.Focused.TextInput.Cursor.Foreground(accent)
+	theme.Focused.TextInput.Cursor = theme.Focused.TextInput.Cursor.Foreground(focused)
 	theme.Focused.TextInput.Placeholder = theme.Focused.TextInput.Placeholder.Foreground(muted)
-	theme.Focused.TextInput.Prompt = theme.Focused.TextInput.Prompt.Foreground(accent)
+	theme.Focused.TextInput.Prompt = theme.Focused.TextInput.Prompt.Foreground(focused)
 	theme.Focused.TextInput.Text = theme.Focused.TextInput.Text.Foreground(ink)
 	theme.Blurred = theme.Focused
-	theme.Blurred.Base = theme.Blurred.Base.BorderStyle(lipgloss.HiddenBorder())
-	theme.Blurred.Card = theme.Blurred.Base.Background(panel)
+	theme.Blurred.SelectedOption = theme.Blurred.SelectedOption.Foreground(accent)
+	theme.Blurred.FocusedButton = theme.Blurred.FocusedButton.Foreground(canvas).Background(accent)
+	theme.Blurred.MultiSelectSelector = theme.Blurred.MultiSelectSelector.Foreground(accent)
+	theme.Blurred.TextInput.Cursor = theme.Blurred.TextInput.Cursor.Foreground(accent)
+	theme.Blurred.TextInput.Prompt = theme.Blurred.TextInput.Prompt.Foreground(accent)
 	theme.Blurred.NextIndicator = lipgloss.NewStyle()
 	theme.Blurred.PrevIndicator = lipgloss.NewStyle()
 	theme.Group.Title = theme.Focused.Title

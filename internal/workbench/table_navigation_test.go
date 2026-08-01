@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -11,6 +12,14 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
+
+// accentBgRGB returns the ANSI truecolor background sequence for the current
+// theme's selection accent, so assertions track palette changes.
+func accentBgRGB() string {
+	var red, green, blue uint8
+	fmt.Sscanf(colorAccent, "#%02x%02x%02x", &red, &green, &blue)
+	return fmt.Sprintf("48;2;%d;%d;%d", red, green, blue)
+}
 
 func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) {
 	// Given
@@ -49,7 +58,7 @@ func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) 
 		t.Fatalf("right-selected column was not revealed: columns=%#v tableWidth=%d viewportWidth=%d", model.results.Columns(), model.results.Width(), model.tableViewportWidth)
 	}
 	resultLines := strings.Split(tableViewportViewWithAlignment(model.results, model.resultsNumericColumns, model.resultsOffset, model.tableViewportWidth, model.resultsColumn), "\n")
-	if !strings.Contains(resultLines[1], "48;2;85;214;190") {
+	if !strings.Contains(resultLines[1], accentBgRGB()) {
 		t.Fatal("selected result cell is not visibly styled after F5 and Right")
 	}
 
@@ -192,7 +201,7 @@ func TestRowTables_scrollWithoutCellSelection(t *testing.T) {
 				t.Fatal("resize reset the row table's horizontal scroll")
 			}
 			body := strings.Split(test.view(model), "\n")[1]
-			if strings.Contains(body, "48;2;85;214;190") {
+			if strings.Contains(body, accentBgRGB()) {
 				t.Fatalf("row view rendered a selected cell: %q", body)
 			}
 		})
@@ -254,7 +263,7 @@ func TestTableViewport_selectedCellOverridesSelectedRowStyle(t *testing.T) {
 	if !strings.Contains(lines[1], "48;2;28;40;56") {
 		t.Fatalf("selected row does not retain its stripe background: %q", lines[1])
 	}
-	if !strings.Contains(lines[1], "48;2;85;214;190") {
+	if !strings.Contains(lines[1], accentBgRGB()) {
 		t.Fatal("selected cell does not override the selected-row background")
 	}
 }
