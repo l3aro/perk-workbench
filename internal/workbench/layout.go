@@ -66,7 +66,7 @@ func (m *Model) layout(width, height int) {
 		m.explainPicker.setWidth(m.tableViewportWidth)
 	}
 	if m.tableViewportWidth != previousViewportWidth {
-		for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.foreignKeys, &m.queryLog} {
+		for _, resultTable := range []*table.Model{&m.results, &m.structure, &m.browse, &m.indexes, &m.foreignKeys} {
 			columns := resultTable.Columns()
 			titles := make([]string, len(columns))
 			for index, column := range columns {
@@ -74,6 +74,7 @@ func (m *Model) layout(width, height int) {
 			}
 			resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 		}
+		m.renderQueryLog()
 	}
 	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
 	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(m.queryLogHeight-5, 2))

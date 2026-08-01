@@ -122,7 +122,10 @@ func (m *Model) renderQueryLog() {
 	}
 	height := m.queryLog.Height()
 	m.queryLog.SetRows(nil)
-	m.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, rows))
+	columns := tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, rows)
+	columns[2].Width = min(columns[2].Width, 50)
+	columns[4].Width = min(columns[4].Width, 50)
+	m.queryLog.SetColumns(columns)
 	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(height+1, 2))
 	m.queryLog.SetRows(rows)
 }

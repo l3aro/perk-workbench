@@ -153,6 +153,16 @@ func TestQueryLog_displayTruncatesLongStatementAndMessage(t *testing.T) {
 	if got, want := model.queryLog.Rows()[0][4], cellText(message); got != want {
 		t.Fatalf("display message = %q, want %q", got, want)
 	}
+	if got := model.queryLog.Columns()[2].Width; got > 50 {
+		t.Fatalf("statement column width = %d, want at most 50", got)
+	}
+	if got := model.queryLog.Columns()[4].Width; got > 50 {
+		t.Fatalf("message column width = %d, want at most 50", got)
+	}
+	model = resizeModel(model, 160, 24)
+	if got := model.queryLog.Columns()[2].Width; got > 50 {
+		t.Fatalf("statement column width after resize = %d, want at most 50", got)
+	}
 	if got, want := model.queryLogEntries[0].statement, statement; got != want {
 		t.Fatalf("stored statement = %q, want full value", got)
 	}
