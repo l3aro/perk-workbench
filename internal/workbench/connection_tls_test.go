@@ -49,6 +49,27 @@ func TestConnectionForm_defaultsPostgreSQLTLSToDisabled(t *testing.T) {
 	}
 }
 
+func TestConnectionForm_restoresPostgreSQLTLSFromRecentProfile(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+	model.recentConnections = []recentConnection{{
+		Driver:        driverPostgreSQL,
+		Name:          "Local Docker",
+		Host:          "127.0.0.1",
+		Port:          "5432",
+		User:          "postgres",
+		PostgreSQLTLS: postgresTLSEncrypt,
+	}}
+	_ = model.recent.SetItems(recentListItems(model.recentConnections))
+	model.connection.setFocus(connectionFocusRecent)
+
+	command := model.editSelectedRecentConnection()
+	model = resolveConnectionCommand(model, command)
+
+	if model.connection.values.postgresTLS != postgresTLSEncrypt {
+		t.Fatalf("PostgreSQL TLS mode = %q, want %q", model.connection.values.postgresTLS, postgresTLSEncrypt)
+	}
+}
+
 func TestConnectionForm_restoresMySQLTLSFromRecentProfile(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
@@ -94,5 +115,25 @@ func TestRecentConnections_persistMySQLTLSMode(t *testing.T) {
 	// Then
 	if len(loaded) != 1 || loaded[0].MySQLTLS != mysqlTLSSkipVerify {
 		t.Fatalf("loaded connections = %#v, want persisted MySQL TLS mode", loaded)
+	}
+}
+func TestRecentConnections_persistPostgreSQLTLSMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "connections.json")
+	connections := []recentConnection{{
+		Driver:        driverPostgreSQL,
+		Name:          "Local Docker",
+		Host:          "127.0.0.1",
+		Port:          "5432",
+		User:          "postgres",
+		PostgreSQLTLS: postgresTLSEncrypt,
+	}}
+
+	if err := saveRecentConnections(path, connections); err != nil {
+		t.Fatalf("saving recent connections: %v", err)
+	}
+	loaded := loadRecentConnections(path)
+
+	if len(loaded) != 1 || loaded[0].PostgreSQLTLS != postgresTLSEncrypt {
+		t.Fatalf("loaded connections = %#v, want persisted PostgreSQL TLS mode", loaded)
 	}
 }

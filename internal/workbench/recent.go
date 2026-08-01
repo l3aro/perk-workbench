@@ -20,15 +20,16 @@ const (
 )
 
 type recentConnection struct {
-	Driver   connectionDriver `json:"driver"`
-	Name     string           `json:"name"`
-	Target   string           `json:"target"`
-	Host     string           `json:"host,omitempty"`
-	Port     string           `json:"port,omitempty"`
-	User     string           `json:"user,omitempty"`
-	Pass     string           `json:"pass,omitempty"`
-	MySQLTLS mysqlTLSMode     `json:"mysqlTLS,omitempty"`
-	ReadOnly bool             `json:"readOnly,omitempty"`
+	Driver        connectionDriver `json:"driver"`
+	Name          string           `json:"name"`
+	Target        string           `json:"target"`
+	Host          string           `json:"host,omitempty"`
+	Port          string           `json:"port,omitempty"`
+	User          string           `json:"user,omitempty"`
+	Pass          string           `json:"pass,omitempty"`
+	MySQLTLS      mysqlTLSMode     `json:"mysqlTLS,omitempty"`
+	PostgreSQLTLS postgresTLSMode  `json:"postgresTLS,omitempty"`
+	ReadOnly      bool             `json:"readOnly,omitempty"`
 }
 
 func (c recentConnection) FilterValue() string { return c.Name + " " + c.Target }

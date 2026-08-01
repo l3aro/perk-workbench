@@ -54,8 +54,11 @@ func (m *Model) recordConnection() {
 		connection.Host = strings.TrimSpace(m.connection.values.host)
 		connection.Port = strings.TrimSpace(m.connection.values.port)
 		connection.User = strings.TrimSpace(m.connection.values.user)
-		if connection.Driver == driverMySQL {
+		switch connection.Driver {
+		case driverMySQL:
 			connection.MySQLTLS = m.connection.values.mysqlTLS
+		case driverPostgreSQL:
+			connection.PostgreSQLTLS = m.connection.values.postgresTLS
 		}
 	}
 	connections := make([]recentConnection, 0, min(len(m.recentConnections)+1, maxRecentConnections))
@@ -97,7 +100,11 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	m.connection.values.host, m.connection.values.port, m.connection.values.user = connection.Host, connection.Port, connection.User
 	m.connection.values.mysqlTLS = connection.MySQLTLS
 	if m.connection.values.mysqlTLS == "" {
-		m.connection.values.mysqlTLS = mysqlTLSVerify
+		m.connection.values.mysqlTLS = mysqlTLSDisabled
+	}
+	m.connection.values.postgresTLS = connection.PostgreSQLTLS
+	if m.connection.values.postgresTLS == "" {
+		m.connection.values.postgresTLS = postgresTLSDisabled
 	}
 	m.connection.values.readOnly = connection.ReadOnly
 	m.connection.values.pass = connection.Pass
@@ -125,7 +132,7 @@ func (m *Model) deleteSelectedRecentConnection() {
 }
 
 func (m *Model) newConnection() tea.Cmd {
-	m.connection.values = &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSVerify, action: connectionActionTest}
+	m.connection.values = &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.formMode.mode = formModeNormal
