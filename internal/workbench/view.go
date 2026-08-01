@@ -489,7 +489,7 @@ func (m Model) queryLogContentView() string {
 	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
 	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
-		chrome.PaneStatus(statusStyle.Render("y copy cell | enter detail | e explain | n/p page"), statusStyle.Render(summary), m.tableViewportWidth)
+		chrome.PaneStatus(statusStyle.Render("n/p page"), statusStyle.Render(summary), m.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {

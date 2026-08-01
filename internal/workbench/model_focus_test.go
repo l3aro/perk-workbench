@@ -225,8 +225,8 @@ func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	if bottom := strings.TrimSpace(workspace[strings.LastIndex(workspace, "\n")+1:]); !strings.HasPrefix(bottom, "NORMAL") || !strings.HasSuffix(bottom, "L/H tabs") {
 		t.Fatalf("workspace hint = %q, want bottom-left NORMAL followed by tab view", workspace)
 	}
-	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); !strings.HasPrefix(bottom, "y copy cell | enter detail | e explain") {
-		t.Fatalf("history hint = %q, want query-history shortcuts", history)
+	if bottom := strings.TrimSpace(history[strings.LastIndex(history, "\n")+1:]); !strings.HasPrefix(bottom, "n/p page") {
+		t.Fatalf("history hint = %q, want pagination hint", history)
 	}
 	if strings.Contains(footer, "e explain") || strings.Contains(footer, "L/H tabs") {
 		t.Fatalf("footer = %q, want contextual hints omitted", footer)
