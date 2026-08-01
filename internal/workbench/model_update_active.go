@@ -50,7 +50,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.results, command = m.results.Update(message)
 				return m, command
 			}
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}) {
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.schema.SettingFilter() && m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}) {
 				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 					if item.root {
 						m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]

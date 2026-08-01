@@ -108,10 +108,13 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
-	// contentY = terminal Y - 1 (after header).
-	// Schema list renders inside pane: top border (1), TitleBar (2), StatusBar (1),
-	// then items. First item is at contentY=4.
-	itemY := contentY - 4
+	// contentY = terminal Y - 1 (after header). Filtering adds one status
+	// line above the visible list items.
+	itemOffset := 4
+	if m.schema.IsFiltered() || m.schema.SettingFilter() {
+		itemOffset = 5
+	}
+	itemY := contentY - itemOffset
 	if itemY < 0 {
 		return m, nil
 	}

@@ -276,19 +276,85 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 
-	// When
+	// Escape exits filter editing without clearing the applied filter.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-
-	// Then
 	if model.schema.SettingFilter() {
 		t.Fatal("schema filter remains active after escape")
 	}
-	if got := model.schema.FilterValue(); got != "" {
-		t.Fatalf("filter value = %q, want empty", got)
+	if got := model.schema.FilterValue(); got != "q1" {
+		t.Fatalf("filter value = %q, want preserved q1", got)
 	}
-	if got := model.schema.VisibleItems(); len(got) != 2 {
-		t.Fatalf("visible items = %#v, want both tables", got)
+	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].FilterValue() != "queue_1" {
+		t.Fatalf("visible items = %#v, want queue_1", got)
+	}
+
+	// Enter follows the same exit path and preserves the filter without selecting.
+	selectedBeforeFilter := model.SelectedTable
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	if !model.schema.SettingFilter() {
+		t.Fatal("slash did not re-enter schema filtering")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.schema.SettingFilter() || model.schema.FilterValue() != "q1" {
+		t.Fatalf("after enter: filtering=%t value=%q, want inactive/q1", model.schema.SettingFilter(), model.schema.FilterValue())
+	}
+	if model.SelectedTable != selectedBeforeFilter {
+		t.Fatalf("enter selected table %q, want unchanged %q", model.SelectedTable, selectedBeforeFilter)
+	}
+}
+
+func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
+	exitKeys := []struct {
+		name string
+		exit *tea.KeyPressMsg
+	}{
+		{name: "active", exit: nil},
+		{name: "enter", exit: &tea.KeyPressMsg{Code: tea.KeyEnter}},
+		{name: "escape", exit: &tea.KeyPressMsg{Code: tea.KeyEscape}},
+	}
+	for _, test := range exitKeys {
+		t.Run(test.name, func(t *testing.T) {
+			model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+			model.State, model.Focus = stateReady, focusSchema
+			model.schema.SetItems([]list.Item{
+				schemaItem{title: "accounts", description: "table"},
+				schemaItem{title: "queue_1", description: "table"},
+			})
+
+			updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+			model = updated.(Model)
+			updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+			model = updated.(Model)
+			model = updateFromCommand(model, command)
+			updated, command = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+			model = updated.(Model)
+			model = updateFromCommand(model, command)
+			if test.exit != nil {
+				updated, _ = model.Update(*test.exit)
+				model = updated.(Model)
+			}
+
+			lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+			clickY := -1
+			for y, line := range lines {
+				if strings.Contains(line, "queue_1") {
+					clickY = y
+					break
+				}
+			}
+			if clickY < 0 {
+				t.Fatal("filtered schema does not render queue_1")
+			}
+
+			updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: clickY, Button: tea.MouseLeft})
+			model = updated.(Model)
+			if model.SelectedTable != "queue_1" {
+				t.Fatalf("filtered click selected %q, want queue_1", model.SelectedTable)
+			}
+		})
 	}
 }
 

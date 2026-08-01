@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -102,6 +103,11 @@ func newSchemaList() list.Model {
 	model := newList("", true)
 	model.SetShowTitle(false)
 	model.SetDelegate(schemaItemDelegate{})
+	model.KeyMap.CancelWhileFiltering = key.NewBinding(key.WithDisabled())
+	model.KeyMap.AcceptWhileFiltering = key.NewBinding(
+		key.WithKeys("enter", "esc"),
+		key.WithHelp("enter/esc", "stop filtering"),
+	)
 	return model
 }
 
