@@ -40,7 +40,7 @@ export function publishPackages(archives, distTag, publish = run) {
     return matches[0];
   });
   for (const archive of publishArchives) {
-    publish('npm', ['publish', archive, '--provenance', '--access', 'public', '--tag', distTag]);
+    publish('npm', ['publish', join(output, archive), '--provenance', '--access', 'public', '--tag', distTag]);
   }
 }
 

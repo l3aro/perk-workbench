@@ -35,7 +35,7 @@ async function fakeReleaseFixture(archives) {
   const npm = join(bin, 'npm');
   await writeFile(npm, '#!/bin/sh\nprintf "%s\\n" "$*" >> "$NPM_LOG"\nexit 0\n');
   await chmod(npm, 0o755);
-  return { directory, bin, log: join(directory, 'npm.log') };
+  return { directory, bin, log: join(directory, 'npm.log'), output };
 }
 
 async function runFakeRelease(fixture) {
@@ -90,12 +90,8 @@ test('publishes all platform archives before the launcher', () => {
   assert.deepEqual(
     invocations.map((invocation) => invocation[2]),
     [
-      'perk-workbench-darwin-arm64-1.2.3.tgz',
-      'perk-workbench-darwin-x64-1.2.3.tgz',
-      'perk-workbench-linux-arm64-1.2.3.tgz',
-      'perk-workbench-linux-x64-1.2.3.tgz',
-      'perk-workbench-win32-x64-1.2.3.tgz',
-      'perk-workbench-1.2.3.tgz',
+      ...platformArchives.map((archive) => join(root, 'dist', 'npm', archive)),
+      join(root, 'dist', 'npm', 'perk-workbench-1.2.3.tgz'),
     ],
   );
   for (const invocation of invocations) {
@@ -121,7 +117,7 @@ test('publishes platform archives before the launcher when the CLI runs against 
 
     // Then
     const log = await readFile(fixture.log, 'utf8');
-    assert.deepEqual(log.trim().split('\n').map((line) => line.split(' ')[1]), [...platformArchives, 'perk-workbench-1.2.3.tgz']);
+    assert.deepEqual(log.trim().split('\n').map((line) => line.split(' ')[1]), [...platformArchives, 'perk-workbench-1.2.3.tgz'].map((archive) => join(fixture.output, archive)));
   } finally {
     await rm(fixture.directory, { recursive: true, force: true });
   }
