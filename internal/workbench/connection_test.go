@@ -30,8 +30,8 @@ func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 	if dsn.User != "alice" || dsn.Passwd != "secret" || dsn.Addr != "[2001:db8::1]:3307" || dsn.DBName != "app" {
 		t.Fatalf("MySQL DSN = %#v, want separate field values", dsn)
 	}
-	if dsn.TLSConfig != "true" {
-		t.Fatalf("MySQL TLS config = %q, want verified TLS", dsn.TLSConfig)
+	if dsn.TLSConfig != "false" {
+		t.Fatalf("MySQL TLS config = %q, want TLS disabled by default", dsn.TLSConfig)
 	}
 }
 
@@ -53,6 +53,19 @@ func TestConnectionForm_buildsMySQLDSNWithSelectedTLSMode(t *testing.T) {
 	}
 }
 
+func TestConnectionForm_buildsPostgreSQLDSNWithSelectedTLSMode(t *testing.T) {
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "127.0.0.1", "5432"
+	form.values.user, form.values.target, form.values.postgresTLS = "alice", "app", postgresTLSEncrypt
+
+	target, err := url.Parse(form.targetValue())
+	if err != nil {
+		t.Fatalf("parsing PostgreSQL DSN: %v", err)
+	}
+	if target.Query().Get("sslmode") != "require" {
+		t.Fatalf("PostgreSQL sslmode = %q, want require", target.Query().Get("sslmode"))
+	}
+}
 func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
 	for _, test := range []struct {
 		name, present, absent string

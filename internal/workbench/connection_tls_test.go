@@ -18,10 +18,34 @@ func TestConnectionForm_rendersMySQLTLSChoices(t *testing.T) {
 	view := form.View()
 
 	// Then
-	for _, choice := range []string{"TLS", "Verify certificate", "Encrypt, don't verify certificate", "Disable TLS"} {
+	for _, choice := range []string{"TLS", "Verify certificate", "Encrypt, don't verify certificate", "Don't encrypt"} {
 		if !strings.Contains(view, choice) {
 			t.Fatalf("MySQL form = %q, want %q", view, choice)
 		}
+	}
+}
+
+func TestConnectionForm_rendersPostgreSQLTLSChoices(t *testing.T) {
+	form := newConnectionForm()
+	form.values.driver = driverPostgreSQL
+	form.rebuildForm()
+	_ = form.form.Init()
+
+	view := form.View()
+	for _, choice := range []string{"TLS", "Verify certificate", "Encrypt, don't verify certificate", "Don't encrypt"} {
+		if !strings.Contains(view, choice) {
+			t.Fatalf("PostgreSQL form = %q, want %q", view, choice)
+		}
+	}
+}
+
+func TestConnectionForm_defaultsPostgreSQLTLSToDisabled(t *testing.T) {
+	form := newConnectionForm()
+	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "127.0.0.1", "5432"
+
+	target := form.targetValue()
+	if !strings.Contains(target, "sslmode=disable") {
+		t.Fatalf("PostgreSQL DSN = %q, want sslmode=disable", target)
 	}
 }
 

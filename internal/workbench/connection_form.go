@@ -14,6 +14,7 @@ import (
 
 type connectionDriver string
 type mysqlTLSMode string
+type postgresTLSMode string
 
 const (
 	driverSQLite     connectionDriver = "sqlite"
@@ -23,6 +24,10 @@ const (
 	mysqlTLSVerify     mysqlTLSMode = "true"
 	mysqlTLSSkipVerify mysqlTLSMode = "skip-verify"
 	mysqlTLSDisabled   mysqlTLSMode = "false"
+
+	postgresTLSVerifyFull postgresTLSMode = "verify-full"
+	postgresTLSEncrypt    postgresTLSMode = "require"
+	postgresTLSDisabled   postgresTLSMode = "disable"
 )
 
 const (
@@ -48,6 +53,7 @@ type connectionFormValues struct {
 	host, port   string
 	user, pass   string
 	mysqlTLS     mysqlTLSMode
+	postgresTLS  postgresTLSMode
 	readOnly     bool
 	action       string
 }
@@ -55,7 +61,7 @@ type connectionFormValues struct {
 type connectionTestMsg struct{ err error }
 
 func newConnectionForm() connectionForm {
-	form := connectionForm{values: &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSVerify, action: connectionActionTest}, width: 80}
+	form := connectionForm{values: &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}, width: 80}
 	_ = form.rebuildForm()
 	return form
 }
@@ -85,13 +91,22 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 			newEditableInput(huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword), &f.values.pass),
 			newEditableInput(huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target), &f.values.target),
 		)
-		if f.values.driver == driverMySQL {
+		switch f.values.driver {
+		case driverMySQL:
 			fields = append(fields,
-				huh.NewSelect[mysqlTLSMode]().Key("mysql-tls").Title("TLS").Options(
+				huh.NewSelect[mysqlTLSMode]().Key("tls").Title("TLS").Options(
 					huh.NewOption("Verify certificate", mysqlTLSVerify),
 					huh.NewOption("Encrypt, don't verify certificate", mysqlTLSSkipVerify),
-					huh.NewOption("Disable TLS", mysqlTLSDisabled),
+					huh.NewOption("Don't encrypt", mysqlTLSDisabled),
 				).Value(&f.values.mysqlTLS),
+			)
+		case driverPostgreSQL:
+			fields = append(fields,
+				huh.NewSelect[postgresTLSMode]().Key("tls").Title("TLS").Options(
+					huh.NewOption("Verify certificate", postgresTLSVerifyFull),
+					huh.NewOption("Encrypt, don't verify certificate", postgresTLSEncrypt),
+					huh.NewOption("Don't encrypt", postgresTLSDisabled),
+				).Value(&f.values.postgresTLS),
 			)
 		}
 		fields = append(fields,
@@ -192,7 +207,7 @@ func (f connectionForm) targetValue() string {
 		config.DBName = strings.TrimSpace(f.values.target)
 		tls := f.values.mysqlTLS
 		if tls == "" {
-			tls = mysqlTLSVerify
+			tls = mysqlTLSDisabled
 		}
 		config.TLSConfig = string(tls)
 		return config.FormatDSN()
@@ -204,7 +219,11 @@ func (f connectionForm) targetValue() string {
 			Host:   net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port)),
 			Path:   strings.TrimSpace(f.values.target),
 		}
-		target.RawQuery = url.Values{"sslmode": {"verify-full"}}.Encode()
+		tls := f.values.postgresTLS
+		if tls == "" {
+			tls = postgresTLSDisabled
+		}
+		target.RawQuery = url.Values{"sslmode": {string(tls)}}.Encode()
 		return target.String()
 	}
 	return strings.TrimSpace(f.values.target)
