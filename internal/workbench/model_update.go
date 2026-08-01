@@ -450,6 +450,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch message := message.(type) {
 	case tea.MouseClickMsg:
+		if m.tableFiltering {
+			m.closeTableFilter()
+		}
 		cmds := []tea.Cmd{}
 		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
 			model, cmd := m.handleLeftClick(message.X, message.Y)

@@ -68,12 +68,72 @@ func TestTableFilters_filterAndResetEachWorkspaceTable(t *testing.T) {
 
 			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 			model = updated.(Model)
+			if model.tableFiltering || model.tableFilterValue(test.tab) != test.query || len(rowsForTab(model, test.tab)) != 1 {
+				t.Fatalf("filter after escape = active %t/value %q/rows %#v, want inactive/%q/one row",
+					model.tableFiltering, model.tableFilterValue(test.tab), rowsForTab(model, test.tab), test.query)
+			}
+
+			updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+			model = updated.(Model)
+			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			if model.tableFiltering || model.tableFilterValue(test.tab) != test.query {
+				t.Fatalf("filter after enter = active %t/value %q, want inactive/%q",
+					model.tableFiltering, model.tableFilterValue(test.tab), test.query)
+			}
+
 			updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 			model = updated.(Model)
 			if model.tableFilterValue(test.tab) != "" || len(rowsForTab(model, test.tab)) != 2 {
 				t.Fatalf("filter/rows after reset = %q/%#v, want empty/two rows", model.tableFilterValue(test.tab), rowsForTab(model, test.tab))
 			}
 		})
+	}
+}
+
+func TestTableFilters_mouseTabSwitchClosesSession(t *testing.T) {
+	model := readyModel(t)
+	model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{
+		{Name: "id", Type: "INTEGER"},
+		{Name: "name", Type: "TEXT"},
+	}})
+	model = updated.(Model)
+	model.indexRows = []table.Row{{"items_name"}, {"items_category"}}
+	model.indexes.SetRows(model.indexRows)
+	model.layout(100, 24)
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+	model = updated.(Model)
+	if !model.tableFiltering || model.tableFilterValue(tabStructure) != "i" {
+		t.Fatalf("filter session = %t/query %q, want active/i", model.tableFiltering, model.tableFilterValue(tabStructure))
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{
+		X:      model.schemaWidth + 25,
+		Y:      2,
+		Button: tea.MouseLeft,
+	})
+	model = updated.(Model)
+	if model.tableFiltering {
+		t.Fatal("table filter remained active after tab click")
+	}
+	if model.Tab != tabIndexes {
+		t.Fatalf("active tab = %v, want indexes", model.Tab)
+	}
+	if model.tableFilterValue(tabStructure) != "i" || len(model.structure.Rows()) != 1 {
+		t.Fatalf("columns filter = %q/rows %#v, want i/one row", model.tableFilterValue(tabStructure), model.structure.Rows())
+	}
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updated.(Model)
+	if model.indexes.Cursor() != 1 {
+		t.Fatalf("indexes cursor = %d, want 1 after j", model.indexes.Cursor())
+	}
+	if model.tableFilterValue(tabStructure) != "i" {
+		t.Fatalf("hidden columns filter changed to %q after indexes navigation", model.tableFilterValue(tabStructure))
 	}
 }
 

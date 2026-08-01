@@ -18,10 +18,14 @@ func (m *Model) openTableFilter() tea.Cmd {
 	return m.tableFilterInput.Focus()
 }
 
+func (m *Model) closeTableFilter() {
+	m.tableFiltering = false
+	m.tableFilterInput.Blur()
+}
+
 func (m *Model) updateTableFilter(message tea.KeyPressMsg) tea.Cmd {
-	if message.Key().Code == tea.KeyEscape {
-		m.tableFiltering = false
-		m.tableFilterInput.Blur()
+	if code := message.Key().Code; code == tea.KeyEscape || code == tea.KeyEnter {
+		m.closeTableFilter()
 		return nil
 	}
 	var command tea.Cmd
@@ -89,7 +93,7 @@ func (m *Model) applyTableFilter(tab workspaceTab) {
 
 func (m Model) tableFilterStatus(tab workspaceTab) string {
 	if m.tableFiltering && m.tableFilterTab == tab {
-		return m.tableFilterInput.View() + " | esc done"
+		return m.tableFilterInput.View() + " | enter/esc done"
 	}
 	if query := m.tableFilterValue(tab); query != "" {
 		return "/ filter | r reset | " + query
