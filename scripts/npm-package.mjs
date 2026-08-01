@@ -32,6 +32,7 @@ function run(command, args, options = {}) {
 async function manifest(template, destination, version) {
   const contents = JSON.parse(await readFile(template, 'utf8'));
   contents.version = version;
+  contents.repository = { type: 'git', url: 'https://github.com/l3aro/perk-workbench' };
   if (contents.optionalDependencies) {
     for (const name of Object.keys(contents.optionalDependencies)) contents.optionalDependencies[name] = version;
   }
