@@ -144,7 +144,6 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 }
 
 func TestSchemaClick_selectsTheRenderedTable(t *testing.T) {
-	// Given
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusSchema
 	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
@@ -152,25 +151,26 @@ func TestSchemaClick_selectsTheRenderedTable(t *testing.T) {
 		{Database: "main", Type: "table", Name: "accounts"},
 		{Database: "main", Type: "table", Name: "projects"},
 	})
-	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
-	tableY := -1
-	for y, line := range lines {
-		if strings.Contains(line, "└ projects") {
-			tableY = y
-			break
+
+	for _, want := range []string{"accounts", "projects"} {
+		lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+		tableY := -1
+		for y, line := range lines {
+			if strings.Contains(line, "└ "+want) {
+				tableY = y
+				break
+			}
 		}
-	}
-	if tableY < 0 {
-		t.Fatal("rendered schema does not contain projects")
-	}
+		if tableY < 0 {
+			t.Fatalf("rendered schema does not contain %s", want)
+		}
 
-	// When
-	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseLeft})
-	model = updated.(Model)
-
-	// Then
-	if got := model.SelectedTable; got != "projects" {
-		t.Fatalf("selected table = %q, want projects", got)
+		updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if got := model.SelectedTable; got != want {
+			t.Fatalf("click on rendered %s selected table %q", want, got)
+		}
+		model.Focus = focusSchema
 	}
 }
 

@@ -341,6 +341,77 @@ func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	}
 }
 
+func TestSchemaTable_mouseClickUsesRenderedRow(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+	updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+		{Name: "idx_name", Columns: []string{"name"}},
+		{Name: "idx_unique_rendered_target", Columns: []string{"category"}},
+	}})
+	model = updated.(Model)
+
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	clickY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "idx_unique_rendered_target") {
+			clickY = y
+			break
+		}
+	}
+	if clickY < 0 {
+		t.Fatal("rendered indexes table does not contain target row")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{
+		X:      model.schemaWidth + 10,
+		Y:      clickY,
+		Button: tea.MouseLeft,
+	})
+	model = updated.(Model)
+	if got := model.indexes.Cursor(); got != 1 {
+		t.Fatalf("clicked rendered row selected cursor %d, want 1", got)
+	}
+}
+
+func TestBrowse_mouseClickUsesRenderedRow(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.SelectedTable, model.Tab, model.Focus = "items", tabBrowse, focusWorkspace
+	updated, _ := model.Update(browseTableMsg{
+		table: "items",
+		page:  0,
+		result: sqlite.Result{
+			Columns: []string{"name"},
+			Rows: [][]*string{
+				{stringPointer("first-rendered-row")},
+				{stringPointer("second-unique-rendered-row")},
+			},
+		},
+	})
+	model = updated.(Model)
+
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	clickY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "second-unique-rendered-row") {
+			clickY = y
+			break
+		}
+	}
+	if clickY < 0 {
+		t.Fatal("rendered browse table does not contain target row")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{
+		X:      model.schemaWidth + 10,
+		Y:      clickY,
+		Button: tea.MouseLeft,
+	})
+	model = updated.(Model)
+	if got := model.browse.Cursor(); got != 1 {
+		t.Fatalf("clicked rendered row selected cursor %d, want 1", got)
+	}
+}
+
 func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 	// Schema metadata tables: Columns (structure), Indexes, Foreign Keys.
 	// All share the same coordinate-to-row mapping; Indexes is representative.
