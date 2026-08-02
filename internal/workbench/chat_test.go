@@ -181,6 +181,96 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	}
 }
 
+// TestChat_slashNewStartsNewConversation guards the /new slash command: it
+// must clear messages and the conversation ID without sending a request.
+func TestChat_slashNewStartsNewConversation(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	model.chat.conversationID = "existing"
+	model.chat.messages = []ai.Message{{Role: ai.RoleUser, Content: "old turn"}}
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
+	model = updated.(Model)
+	model.chat.input.SetValue("/new")
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	if command != nil {
+		t.Fatal("/new must not send a request")
+	}
+	if model.chat.conversationID != "" {
+		t.Fatalf("conversation ID = %q, want cleared", model.chat.conversationID)
+	}
+	if len(model.chat.messages) != 0 {
+		t.Fatalf("messages = %#v, want cleared", model.chat.messages)
+	}
+	if got := model.chat.input.Value(); got != "" {
+		t.Fatalf("input = %q, want cleared", got)
+	}
+}
+
+// TestChat_slashCompletionSuggestsCommands guards the chat slash-command
+// autocomplete: typing "/n" must show a "/new" suggestion of kind command,
+// Tab must accept it, and Enter on the complete command runs it.
+func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+
+	// Type "/n".
+	for _, ch := range []rune{'/', 'n'} {
+		updated, _ = model.Update(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+		model = updated.(Model)
+	}
+
+	if !model.chat.completion.visible() {
+		t.Fatal("completion should be visible for \"/n\"")
+	}
+	if item := model.chat.completion.accept(); item.Label != "/new" || item.Kind != KindCommand {
+		t.Fatalf("suggestion = %#v, want /new command", item)
+	}
+	if got := ansi.Strip(model.chatContentView()); !strings.Contains(got, "command") {
+		t.Fatal("overlay does not show the command type")
+	}
+	linesWithOverlay := len(strings.Split(ansi.Strip(model.chatContentView()), "\n"))
+
+	// Tab accepts: input becomes "/new", completion hides.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	if got := model.chat.input.Value(); got != "/new" {
+		t.Fatalf("input = %q, want /new", got)
+	}
+	if model.chat.completion.visible() {
+		t.Fatal("completion should hide after accept")
+	}
+	// The dropdown overlays the viewport: content height must not change.
+	if lines := len(strings.Split(ansi.Strip(model.chatContentView()), "\n")); lines != linesWithOverlay {
+		t.Fatalf("content lines = %d with overlay, %d after, want equal", linesWithOverlay, lines)
+	}
+
+	// Enter runs the /new command: no request, messages cleared.
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("Enter after /new must not send a request")
+	}
+	if len(model.chat.messages) != 0 {
+		t.Fatalf("messages = %#v, want cleared", model.chat.messages)
+	}
+}
+
 func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady

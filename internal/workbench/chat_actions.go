@@ -30,6 +30,11 @@ func (m *Model) startChat() tea.Cmd {
 	if prompt == "" || m.chat.loading {
 		return nil
 	}
+	if prompt == "/new" {
+		m.newChatConversation()
+		m.Status = "new conversation"
+		return nil
+	}
 	if m.chat.client == nil {
 		m.Status = "AI is not configured"
 		return nil
@@ -38,6 +43,7 @@ func (m *Model) startChat() tea.Cmd {
 	userMessage := ai.Message{Role: ai.RoleUser, Content: prompt}
 	m.chat.messages = append(m.chat.messages, userMessage)
 	m.chat.input.Reset()
+	m.chat.completion = completion{}
 	m.chat.loading = true
 	m.chat.canceled = false
 	m.chat.streamBuffer = ""
@@ -198,6 +204,7 @@ func (m *Model) newChatConversation() {
 	m.chat.messages = nil
 	m.chat.conversationID = ""
 	m.chat.input.Reset()
+	m.chat.completion = completion{}
 	m.refreshChatView()
 }
 
@@ -470,9 +477,33 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Insert mode
 		if keyPress.Key().Code == tea.KeyEscape {
+			m.chat.completion = completion{}
 			m.chat.chatMode = formModeNormal
 			m.chat.input.Blur()
 			return m, nil
+		}
+		if m.chat.completion.visible() {
+			key := keyPress.Key()
+			switch {
+			case key.Code == tea.KeyUp:
+				m.chat.completion.move(-1)
+				return m, nil
+			case key.Code == tea.KeyDown:
+				m.chat.completion.move(1)
+				return m, nil
+			case key.Code == tea.KeyTab:
+				m.acceptChatCompletion()
+				return m, nil
+			case key.Code == tea.KeyEnter:
+				item := m.chat.completion.accept()
+				m.chat.completion = completion{}
+				if item.InsertText == "" || item.InsertText == m.chat.input.Value() {
+					// Already complete (e.g. "/new"): Enter runs it.
+					return m, m.startChat()
+				}
+				m.chat.input.SetValue(item.InsertText)
+				return m, nil
+			}
 		}
 		if keyPress.Key().Code == tea.KeyEnter {
 			return m, m.startChat()
@@ -482,6 +513,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.chat.chatMode == formModeInsert {
 		input, command := m.chat.input.Update(message)
 		m.chat.input = input
+		m.updateChatCompletion()
 		return m, command
 	}
 	return m, nil

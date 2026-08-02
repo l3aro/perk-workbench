@@ -477,8 +477,20 @@ func (m Model) chatPaneView() string {
 }
 
 func (m Model) chatContentView() string {
+	view := m.chat.viewport.View()
+	if dropdown := m.chatCompletionOverlay(); dropdown != "" {
+		lines := strings.Split(view, "\n")
+		overlayLines := strings.Split(dropdown, "\n")
+		start := len(lines) - len(overlayLines)
+		if start < 0 {
+			overlayLines = overlayLines[len(overlayLines)-len(lines):]
+			start = 0
+		}
+		copy(lines[start:], overlayLines)
+		view = strings.Join(lines, "\n")
+	}
 	return lipgloss.JoinVertical(lipgloss.Left,
-		m.chat.viewport.View(),
+		view,
 		lipgloss.NewStyle().Padding(1, 0).Render(m.chat.input.View()),
 		m.chatModeBadge(),
 	)
