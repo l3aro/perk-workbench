@@ -650,8 +650,12 @@ func (m Model) chatModeBadge() string {
 	right := ""
 	if m.chat.loading {
 		right = chatSpinnerFrames[m.chat.spinnerFrame%len(chatSpinnerFrames)]
-	} else if m.chat.yoloWrites {
-		right = statusFailedStyle.Render("YOLO")
+	}
+	if m.chat.yoloWrites {
+		if right != "" {
+			right += " "
+		}
+		right += statusFailedStyle.Render("YOLO")
 	}
 	if right == "" {
 		return left

@@ -64,6 +64,30 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 	}
 }
 
+// TestChat_spinnerWithYOLO guards that loading shows the spinner to the left
+// of the YOLO indicator instead of replacing it.
+func TestChat_spinnerWithYOLO(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	model.chat.yoloWrites = true
+	model.chat.loading = true
+	model.chat.spinnerFrame = 2
+	badge := model.chatModeBadge()
+	if !strings.Contains(badge, "⠹") {
+		t.Fatalf("badge = %q, want spinner while loading with YOLO on", badge)
+	}
+	spinner, _, found := strings.Cut(ansi.Strip(badge), "YOLO")
+	if !found {
+		t.Fatalf("badge = %q, want YOLO indicator while loading", badge)
+	}
+	if !strings.Contains(spinner, "⠹") {
+		t.Fatalf("badge = %q, spinner must sit left of YOLO", badge)
+	}
+}
+
 type fakeChatClient struct{}
 
 func (fakeChatClient) AgentForPrompt(string) string { return "assistant" }
