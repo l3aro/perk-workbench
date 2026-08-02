@@ -271,6 +271,72 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	}
 }
 
+// TestChat_completionArrowNavigation guards dropdown navigation: Up/Down and
+// Ctrl+K/Ctrl+J move the selection (wrapping), typing refilters, and Tab
+// accepts the selected item.
+func TestChat_completionArrowNavigation(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	if got := len(model.chat.completion.matches); got != 3 {
+		t.Fatalf("matches = %d, want 3", got)
+	}
+
+	move := func(code rune, mod tea.KeyMod) {
+		updated, _ = model.Update(tea.KeyPressMsg{Code: code, Mod: mod})
+		model = updated.(Model)
+	}
+	move(tea.KeyDown, 0)
+	if got := model.chat.completion.selected; got != 1 {
+		t.Fatalf("selected after Down = %d, want 1", got)
+	}
+	// A no-text event (the terminal's key-release echo) must not reset it.
+	updated, _ = model.Update(tea.KeyReleaseMsg{Code: tea.KeyDown})
+	model = updated.(Model)
+	if got := model.chat.completion.selected; got != 1 {
+		t.Fatalf("selected after key release = %d, want 1", got)
+	}
+	move(tea.KeyDown, 0)
+	if got := model.chat.completion.selected; got != 2 {
+		t.Fatalf("selected after 2x Down = %d, want 2", got)
+	}
+	// Wraps around the list.
+	move(tea.KeyDown, 0)
+	if got := model.chat.completion.selected; got != 0 {
+		t.Fatalf("selected after wrap = %d, want 0", got)
+	}
+	// Up arrow walks back.
+	move(tea.KeyUp, 0)
+	if got := model.chat.completion.selected; got != 2 {
+		t.Fatalf("selected after Up = %d, want 2", got)
+	}
+	// Ctrl+J / Ctrl+K behave like Down/Up.
+	move('j', tea.ModCtrl)
+	if got := model.chat.completion.selected; got != 0 {
+		t.Fatalf("selected after Ctrl+J = %d, want 0", got)
+	}
+	move('k', tea.ModCtrl)
+	if got := model.chat.completion.selected; got != 2 {
+		t.Fatalf("selected after Ctrl+K = %d, want 2", got)
+	}
+
+	// Tab accepts the selected item, not the first one.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	want := "/share-results"
+	if got := model.chat.input.Value(); got != want {
+		t.Fatalf("input = %q, want %q", got, want)
+	}
+}
+
 // TestChat_yoloCommandsToggleWrites guards the YOLO commands: the suggestion
 // is state-aware (only the action for the current state), Tab accepts it, and
 // Enter runs it without sending a request.

@@ -26,9 +26,15 @@ func (m Model) chatCommands() []CompletionItem {
 }
 
 // updateChatCompletion shows slash-command suggestions while the chat input
-// starts with "/", and clears them otherwise.
+// starts with "/", and clears them otherwise. When the input text is
+// unchanged it leaves the current matches and selection alone: events that
+// carry no text (e.g. key releases echoed through the textarea) must not
+// reset the dropdown to its first item.
 func (m *Model) updateChatCompletion() {
 	value := m.chat.input.Value()
+	if value == m.chat.completion.prefix {
+		return
+	}
 	if !strings.HasPrefix(value, "/") {
 		m.chat.completion = completion{}
 		return
