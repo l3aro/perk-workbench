@@ -38,6 +38,29 @@ perk-workbench 'mysql:user:pass@tcp(host:3306)/db'
 perk-workbench 'postgres://user:pass@host:5432/db'
 ```
 
+Or configure the connection with Laravel-compatible environment variables, then launch without an argument:
+
+```bash
+export DB_CONNECTION=mysql
+export DB_HOST=127.0.0.1
+export DB_PORT=3306
+export DB_DATABASE=office
+export DB_USERNAME=root
+export DB_PASSWORD=secret
+perk-workbench
+```
+
+Accepted `DB_CONNECTION` values are `sqlite`, `mysql`, and `pgsql`. SQLite requires `DB_DATABASE`; remote ports default to 3306 (MySQL) and 5432 (pgsql). A database argument passed on the command line overrides these variables. A `.env` file in the working directory is read as a fallback; real environment variables take precedence over it, and a command-line argument overrides both.
+
+| Variable | Required | Default |
+|---|---|---|
+| `DB_CONNECTION` | yes | — (`sqlite`, `mysql`, or `pgsql`) |
+| `DB_HOST` | `sqlite`: no · `mysql`/`pgsql`: yes | — |
+| `DB_PORT` | no | `3306` (`mysql`) · `5432` (`pgsql`) |
+| `DB_DATABASE` | `sqlite`: yes · `mysql`/`pgsql`: no | — |
+| `DB_USERNAME` | `mysql`/`pgsql`: yes | — |
+| `DB_PASSWORD` | no | empty |
+
 ## Features
 
 | | |

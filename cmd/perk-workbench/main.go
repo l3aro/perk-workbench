@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/go-sql-driver/mysql"
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
 	"github.com/l3aro/perk-workbench/internal/database"
@@ -42,6 +47,114 @@ func parseTarget(args []string) (target string, readOnly bool, _ error) {
 		return nonFlags[0], readOnly, nil
 	default:
 		return "", false, fmt.Errorf("expected zero or one target, got %d", len(nonFlags))
+	}
+}
+
+// environmentTarget builds a connection target from Laravel-style DB_*
+// environment variables, or "" when no complete supported configuration is
+// present. Unsupported drivers and incomplete configs fall through to the
+// picker rather than failing startup on ambient unrelated variables.
+func environmentTarget(lookup func(string) (string, bool)) string {
+	get := func(key string) string {
+		v, ok := lookup(key)
+		if !ok {
+			return ""
+		}
+		return v
+	}
+	switch strings.ToLower(strings.TrimSpace(get("DB_CONNECTION"))) {
+	case "sqlite":
+		return strings.TrimSpace(get("DB_DATABASE"))
+	case "mysql":
+		host := strings.TrimSpace(get("DB_HOST"))
+		user := strings.TrimSpace(get("DB_USERNAME"))
+		if host == "" || user == "" {
+			return ""
+		}
+		port := strings.TrimSpace(get("DB_PORT"))
+		if port == "" {
+			port = "3306"
+		} else if !validPort(port) {
+			return ""
+		}
+		config := mysql.NewConfig()
+		config.User = user
+		config.Passwd = get("DB_PASSWORD") // untrimmed
+		config.Net = "tcp"
+		config.Addr = net.JoinHostPort(host, port)
+		config.DBName = strings.TrimSpace(get("DB_DATABASE"))
+		config.TLSConfig = "false" // match the connection form's default
+		return "mysql:" + config.FormatDSN()
+	case "pgsql":
+		host := strings.TrimSpace(get("DB_HOST"))
+		user := strings.TrimSpace(get("DB_USERNAME"))
+		if host == "" || user == "" {
+			return ""
+		}
+		port := strings.TrimSpace(get("DB_PORT"))
+		if port == "" {
+			port = "5432"
+		} else if !validPort(port) {
+			return ""
+		}
+		target := &url.URL{
+			Scheme: "postgres",
+			User:   url.UserPassword(user, get("DB_PASSWORD")), // untrimmed
+			Host:   net.JoinHostPort(host, port),
+			Path:   strings.TrimSpace(get("DB_DATABASE")),
+		}
+		target.RawQuery = url.Values{"sslmode": {"disable"}}.Encode() // match the connection form's default
+		return "postgres:" + target.String()
+	default:
+		return ""
+	}
+}
+
+func validPort(value string) bool {
+	port, err := strconv.Atoi(value)
+	return err == nil && port >= 1 && port <= 65535
+}
+
+// loadDotEnv reads KEY=VALUE pairs from path (typically ".env" in the
+// working directory). A missing file is not an error; malformed lines are
+// skipped. Supported syntax: blank lines, # comments, an optional "export "
+// prefix, and single- or double-quoted values.
+func loadDotEnv(path string) map[string]string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	vars := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			value = value[1 : len(value)-1]
+		}
+		if key != "" {
+			vars[key] = value
+		}
+	}
+	return vars
+}
+
+// preferEnv returns a lookup that consults the real environment first and
+// falls back to .env file values, so exported variables always win.
+func preferEnv(real func(string) (string, bool), file map[string]string) func(string) (string, bool) {
+	return func(key string) (string, bool) {
+		if value, ok := real(key); ok {
+			return value, true
+		}
+		value, ok := file[key]
+		return value, ok
 	}
 }
 
@@ -89,6 +202,14 @@ func main() {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+	if target == "" {
+		// .env in the working directory is a fallback for unset variables;
+		// real environment variables take precedence and a CLI target
+		// overrides everything.
+		if envTarget := environmentTarget(preferEnv(os.LookupEnv, loadDotEnv(".env"))); envTarget != "" {
+			target = envTarget
+		}
 	}
 	if err := run(target, readOnly); err != nil {
 		fmt.Fprintln(os.Stderr, err)
