@@ -6,11 +6,23 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// chatCommands are the slash commands offered as chat input completions.
-func chatCommands() []CompletionItem {
-	return []CompletionItem{
+// chatCommands are the AI chat slash commands offered as input completions.
+// The YOLO and result-sharing suggestions are state-aware: they offer the
+// action that makes sense now.
+func (m Model) chatCommands() []CompletionItem {
+	commands := []CompletionItem{
 		{Label: "/new", InsertText: "/new", Kind: KindCommand},
 	}
+	yolo := "/yolo-off"
+	if !m.chat.yoloWrites {
+		yolo = "/yolo-on"
+	}
+	commands = append(commands, CompletionItem{Label: yolo, InsertText: yolo, Kind: KindCommand})
+	share := "/unshare-results"
+	if !m.chat.shareResults {
+		share = "/share-results"
+	}
+	return append(commands, CompletionItem{Label: share, InsertText: share, Kind: KindCommand})
 }
 
 // updateChatCompletion shows slash-command suggestions while the chat input
@@ -22,7 +34,7 @@ func (m *Model) updateChatCompletion() {
 		return
 	}
 	if len(m.chat.completion.items) == 0 {
-		m.chat.completion = newCompletion(chatCommands())
+		m.chat.completion = newCompletion(m.chatCommands())
 	}
 	m.chat.completion.filter(value)
 }

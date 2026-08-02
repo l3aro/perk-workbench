@@ -271,6 +271,77 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	}
 }
 
+// TestChat_yoloCommandsToggleWrites guards the YOLO commands: the suggestion
+// is state-aware (only the action for the current state), Tab accepts it, and
+// Enter runs it without sending a request.
+func TestChat_yoloCommandsToggleWrites(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+
+	// Off state suggests only "/yolo-on".
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	matches := model.chat.completion.matches
+	if len(matches) != 1 || matches[0].Label != "/yolo-on" || matches[0].Kind != KindCommand {
+		t.Fatalf("matches = %#v, want only /yolo-on command", matches)
+	}
+
+	// Tab accepts; Enter runs it without sending a request.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	if got := model.chat.input.Value(); got != "/yolo-on" {
+		t.Fatalf("input = %q, want /yolo-on", got)
+	}
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("YOLO command must not send a request")
+	}
+	if !model.chat.yoloWrites {
+		t.Fatal("yoloWrites = false, want true")
+	}
+
+	// On state suggests only "/yolo-off".
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	matches = model.chat.completion.matches
+	if len(matches) != 1 || matches[0].Label != "/yolo-off" {
+		t.Fatalf("matches = %#v, want only /yolo-off", matches)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updated.(Model)
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("YOLO command must not send a request")
+	}
+	if model.chat.yoloWrites {
+		t.Fatal("yoloWrites = true, want false")
+	}
+
+	// Prose mentioning YOLO must be sent to the AI, not executed as a command.
+	model.chat.input.SetValue("turn on YOLO")
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("prose prompt must be sent to the AI")
+	}
+	if model.chat.yoloWrites {
+		t.Fatal("prose prompt toggled yoloWrites")
+	}
+}
+
 func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady

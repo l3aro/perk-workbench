@@ -522,11 +522,17 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 	model.Focus = focusChat
 	model.layout(140, 32)
 
-	// Enable YOLO via palette command path.
-	updated2, _ := model.handlePaletteCommand("ai.yolo_writes.toggle")
+	// Enable YOLO via the AI slash command.
+	model.chat.input.SetValue("/yolo-on")
+	updated2, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated2.(Model)
+	updated2, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated2.(Model)
+	if cmd != nil {
+		t.Fatal("YOLO command must not send a request")
+	}
 	if !model.chat.yoloWrites {
-		t.Fatal("yoloWrites should be true after toggle")
+		t.Fatal("yoloWrites should be true after command")
 	}
 	if !strings.Contains(model.chatContentView(), "YOLO") {
 		t.Error("chat pane missing YOLO indicator")

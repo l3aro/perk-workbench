@@ -30,9 +30,34 @@ func (m *Model) startChat() tea.Cmd {
 	if prompt == "" || m.chat.loading {
 		return nil
 	}
-	if prompt == "/new" {
+	switch strings.ToLower(prompt) {
+	case "/new":
 		m.newChatConversation()
 		m.Status = "new conversation"
+		return nil
+	case "/yolo-on":
+		m.chat.yoloWrites = true
+		m.chat.input.Reset()
+		m.chat.completion = completion{}
+		m.Status = "AI writes: on"
+		return nil
+	case "/yolo-off":
+		m.chat.yoloWrites = false
+		m.chat.input.Reset()
+		m.chat.completion = completion{}
+		m.Status = "AI writes: off"
+		return nil
+	case "/share-results":
+		m.chat.shareResults = true
+		m.chat.input.Reset()
+		m.chat.completion = completion{}
+		m.Status = "AI result sharing: on"
+		return nil
+	case "/unshare-results":
+		m.chat.shareResults = false
+		m.chat.input.Reset()
+		m.chat.completion = completion{}
+		m.Status = "AI result sharing: off"
 		return nil
 	}
 	if m.chat.client == nil {
