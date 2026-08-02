@@ -81,24 +81,16 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	model = updated.(Model)
 
 	// First response: assistantToolStartMsg
-	msg := cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// sql_read executes immediately
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// sql_read result → advances to sql_write
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// sql_write → pendingWrite
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 	if model.chat.pendingWrite == nil {
 		t.Fatal("expected pendingWrite after sql_write call")
 	}
@@ -111,9 +103,7 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	}
 
 	// Write result
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// get_connection_info + next round → final answer
 	model = driveToolRoundToCompletion(t, model, cmd)
@@ -186,13 +176,9 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	msg := cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 	if model.chat.pendingWrite == nil {
 		t.Fatal("expected pendingWrite")
 	}
@@ -272,13 +258,9 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	msg := cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 	if model.chat.pendingWrite == nil {
 		t.Fatal("expected pendingWrite for first write")
 	}
@@ -290,19 +272,13 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 		t.Fatal("expected write cmd after approval")
 	}
 
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// Second round: corrected write.
 	// Drive tool round: assistantToolStartMsg → continue → sql_write → pendingWrite
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	if model.chat.pendingWrite == nil {
 		t.Fatal("expected pendingWrite for corrected write")
@@ -315,9 +291,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 		t.Fatal("expected write cmd")
 	}
 
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// Final answer.
 	model = driveToolRoundToCompletion(t, model, cmd)
@@ -375,9 +349,7 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 
 	// Drive the tool round until the write awaits confirmation.
 	for model.chat.pendingWrite == nil && cmd != nil {
-		msg := cmd()
-		updated, cmd = model.Update(msg)
-		model = updated.(Model)
+		model, cmd = resolveChatCommand(model, cmd)
 	}
 	if model.chat.pendingWrite == nil {
 		t.Fatal("expected pendingWrite after sql_write call")
@@ -411,9 +383,7 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("second Escape should produce the declined write result")
 	}
-	msg := cmd()
-	updated, _ = model.Update(msg)
-	model = updated.(Model)
+	model, _ = resolveChatCommand(model, cmd)
 
 	if model.chat.pendingWrite != nil {
 		t.Fatal("second Escape should clear the write confirmation")
@@ -507,9 +477,7 @@ func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 
 	// Drive the tool round until the write awaits confirmation.
 	for model.chat.pendingWrite == nil && cmd != nil {
-		msg := cmd()
-		updated, cmd = model.Update(msg)
-		model = updated.(Model)
+		model, cmd = resolveChatCommand(model, cmd)
 	}
 	if model.chat.pendingWrite == nil {
 		t.Fatal("expected pendingWrite after sql_write call")

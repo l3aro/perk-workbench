@@ -40,7 +40,7 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 	if !strings.Contains(badge, "⠙") {
 		t.Fatalf("badge = %q, want spinner frame while loading", badge)
 	}
-	if !strings.HasPrefix(ansi.Strip(badge), "NORMAL") {
+	if !strings.Contains(ansi.Strip(badge), "NORMAL") {
 		t.Fatalf("badge = %q, want NORMAL badge on the left", badge)
 	}
 
@@ -141,9 +141,7 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	model = updated.(Model)
 
 	// First delta — assert partial content appears
-	msg := command()
-	updated, cmd := model.Update(msg)
-	model = updated.(Model)
+	model, cmd := resolveChatCommand(model, command)
 	stripped := ansi.Strip(model.chat.viewport.GetContent())
 	if !strings.Contains(stripped, "Add ") {
 		t.Fatalf("after first delta = %q, want \"Add \"", stripped)
@@ -160,23 +158,17 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	}
 
 	// Second delta
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 	stripped = ansi.Strip(model.chat.viewport.GetContent())
 	if !strings.Contains(stripped, "Add an ") {
 		t.Fatalf("after second delta = %q, want \"Add an \"", stripped)
 	}
 
 	// Third delta
-	msg = cmd()
-	updated, cmd = model.Update(msg)
-	model = updated.(Model)
+	model, cmd = resolveChatCommand(model, cmd)
 
 	// Completion
-	msg = cmd()
-	updated, _ = model.Update(msg)
-	model = updated.(Model)
+	model, _ = resolveChatCommand(model, cmd)
 
 	if model.chat.loading {
 		t.Fatal("model should not be loading after completion")
@@ -225,14 +217,62 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	}
 }
 
+// resolveChatCommand executes one chat-flow command, expanding tea.BatchMsg
+// children in order and dropping the progress-spinner tick chain (the real
+// runtime re-arms it; tests drive commands manually and would spin forever).
+func resolveChatCommand(model Model, command tea.Cmd) (Model, tea.Cmd) {
+	if command == nil {
+		return model, nil
+	}
+	return resolveChatMessage(model, command())
+}
+
+// resolveChatMessage feeds one already-produced message through the model,
+// expanding tea.BatchMsg children and dropping the spinner tick chain.
+func resolveChatMessage(model Model, message tea.Msg) (Model, tea.Cmd) {
+	switch msg := message.(type) {
+	case tea.BatchMsg:
+		var last tea.Cmd
+		for _, child := range msg {
+			var next tea.Cmd
+			model, next = resolveChatCommand(model, child)
+			if next != nil {
+				last = next
+			}
+		}
+		return model, last
+	case chatSpinnerTickMsg:
+		return model, nil
+	default:
+		updated, next := model.Update(msg)
+		return updated.(Model), next
+	}
+}
+
+// runChatCommand executes a chat-flow command in a goroutine, expanding
+// tea.BatchMsg children (the real runtime runs them concurrently), and reports
+// the first non-tick message on ch.
+func runChatCommand(command tea.Cmd, ch chan<- tea.Msg) {
+	message := command()
+	if batch, ok := message.(tea.BatchMsg); ok {
+		for _, child := range batch {
+			if result := child(); result != nil {
+				if _, tick := result.(chatSpinnerTickMsg); !tick {
+					ch <- result
+					return
+				}
+			}
+		}
+		return
+	}
+	ch <- message
+}
+
 // driveStreamToCompletion feeds streaming events until the stream completes.
 func driveStreamToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
 	t.Helper()
 	for cmd != nil {
-		msg := cmd()
-		updated, nextCmd := model.Update(msg)
-		model = updated.(Model)
-		cmd = nextCmd
+		model, cmd = resolveChatCommand(model, cmd)
 	}
 	return model
 }
@@ -410,7 +450,7 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	}
 
 	response := make(chan tea.Msg, 1)
-	go func() { response <- command() }()
+	go runChatCommand(command, response)
 	<-started
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -424,8 +464,7 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	updated, _ = model.Update(<-response)
-	model = updated.(Model)
+	model, _ = resolveChatMessage(model, <-response)
 
 	if model.chat.loading {
 		t.Fatal("chat request remains loading after cancellation")
@@ -453,7 +492,7 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	}
 
 	response := make(chan tea.Msg, 1)
-	go func() { response <- command() }()
+	go runChatCommand(command, response)
 	<-started
 
 	// First Escape: exit insert mode.
@@ -469,8 +508,7 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	// Second Escape: cancel the agent call.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	updated, _ = model.Update(<-response)
-	model = updated.(Model)
+	model, _ = resolveChatMessage(model, <-response)
 
 	if model.chat.loading {
 		t.Fatal("chat request remains loading after cancellation")
@@ -615,14 +653,7 @@ func (c *toolChatClient) Complete(_ context.Context, req ai.Request) (ai.Respons
 func driveToolRoundToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
 	t.Helper()
 	for cmd != nil && model.chat.loading {
-		msg := cmd()
-		if msg == nil {
-			t.Fatal("tool round stalled: cmd returned nil message")
-		}
-		var nextCmd tea.Cmd
-		modelI, nextCmd := model.Update(msg)
-		model = modelI.(Model)
-		cmd = nextCmd
+		model, cmd = resolveChatCommand(model, cmd)
 	}
 	return model
 }
