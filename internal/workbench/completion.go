@@ -17,6 +17,7 @@ const (
 	KindSchema
 	KindFunction
 	KindBufferWord
+	KindCommand
 )
 
 func (k CompletionKind) String() string {
@@ -35,6 +36,8 @@ func (k CompletionKind) String() string {
 		return "function"
 	case KindBufferWord:
 		return "buffer"
+	case KindCommand:
+		return "command"
 	default:
 		return ""
 	}

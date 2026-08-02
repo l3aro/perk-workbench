@@ -46,8 +46,9 @@ type chatModel struct {
 	historyChoice  string
 	chatMode       formMode
 	glamour        *glamour.TermRenderer
-	streamBuffer   string // accumulated streaming content
-	spinnerFrame   int    // progress spinner frame while loading
+	streamBuffer   string     // accumulated streaming content
+	spinnerFrame   int        // progress spinner frame while loading
+	completion     completion // slash-command suggestions while typing
 
 	// Tool round state for resumable multi-call turns.
 	gen      int64 // incremented on each startChat; checked on async completions
