@@ -153,6 +153,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.startQueryStatement(statement)
 	}
 	if m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil {
+		// While in chat insert mode, Escape exits insert mode first so the
+		// write confirmation cannot interrupt the agent on the first press;
+		// a second Escape (now in normal mode) declines the write.
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape && m.chat.chatMode == formModeInsert {
+			m.chat.chatMode = formModeNormal
+			m.chat.input.Blur()
+			return m, nil
+		}
 		completed, action := m.chat.pendingWrite.dialog.Update(message, m.width, m.height)
 		if !completed {
 			return m, nil

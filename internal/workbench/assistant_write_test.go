@@ -336,6 +336,105 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	}
 }
 
+// TestChat_assistantWrite_escapeExitsInsertFirst guards the Escape precedence
+// while the write confirmation is up: the first Escape must exit insert mode
+// (keeping the confirmation and the agent run intact), and only the second
+// Escape — now in normal mode — declines the write and interrupts the agent.
+func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
+	ctx := context.Background()
+	service, err := sqlite.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatalf("opening test service: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	_, err = service.Execute(ctx, "CREATE TABLE esc_test (id INTEGER PRIMARY KEY, val TEXT)")
+	if err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+
+	model := New("", ctx, nil, false)
+	model.State = stateReady
+	model.Database = service
+	model.databaseInfo = service.Info()
+	model.Target = ":memory:"
+
+	tc := &toolWriteClient{
+		firstCalls: []ai.ToolCall{
+			{ID: "call_esc", Name: "sql_write", Input: map[string]any{"query": "INSERT INTO esc_test (val) VALUES ('nope')"}},
+		},
+	}
+	model.SetAI(tc, nil)
+	model.Focus = focusChat
+	model.layout(140, 32)
+
+	model.chat.input.SetValue("insert")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Drive the tool round until the write awaits confirmation.
+	for model.chat.pendingWrite == nil && cmd != nil {
+		msg := cmd()
+		updated, cmd = model.Update(msg)
+		model = updated.(Model)
+	}
+	if model.chat.pendingWrite == nil {
+		t.Fatal("expected pendingWrite after sql_write call")
+	}
+	if model.chat.chatMode != formModeInsert {
+		t.Fatal("test setup: expected insert mode while awaiting write confirmation")
+	}
+
+	// First Escape: exit insert mode, keep confirmation and agent run.
+	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if cmd != nil {
+		t.Fatal("first Escape should not produce a cmd")
+	}
+	if model.chat.chatMode != formModeNormal {
+		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
+	}
+	if model.chat.pendingWrite == nil {
+		t.Fatal("first Escape should keep the write confirmation up")
+	}
+	if model.chat.roundState == nil {
+		t.Fatal("first Escape should NOT interrupt the agent run")
+	}
+	if !model.chat.loading {
+		t.Fatal("first Escape should NOT stop loading")
+	}
+
+	// Second Escape: now in normal mode — declines the write, interrupts the run.
+	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if cmd == nil {
+		t.Fatal("second Escape should produce the declined write result")
+	}
+	msg := cmd()
+	updated, _ = model.Update(msg)
+	model = updated.(Model)
+
+	if model.chat.pendingWrite != nil {
+		t.Fatal("second Escape should clear the write confirmation")
+	}
+	if model.chat.roundState != nil {
+		t.Fatal("second Escape should interrupt the agent run")
+	}
+	if model.chat.loading {
+		t.Fatal("model should not be loading after second escape")
+	}
+
+	// The write must not have been executed.
+	res, err := service.ExecuteReadOnly(ctx, "SELECT count(*) as cnt FROM esc_test")
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if len(res.Rows) != 1 || *res.Rows[0][0] != "0" {
+		t.Fatalf("expected 0 rows, got %v", res.Rows)
+	}
+}
+
 func TestChat_assistantWrite_readOnly(t *testing.T) {
 	ctx := context.Background()
 	service, err := sqlite.Open(ctx, ":memory:")
