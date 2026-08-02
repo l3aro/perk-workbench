@@ -495,7 +495,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Insert mode
 		if keyPress.Key().Code == tea.KeyEscape {
-			m.chat.completion = completion{}
+			m.chat.completion.dismiss()
 			m.chat.chatMode = formModeNormal
 			m.chat.input.Blur()
 			return m, nil
@@ -503,10 +503,10 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.chat.completion.visible() {
 			key := keyPress.Key()
 			switch {
-			case key.Code == tea.KeyUp:
+			case key.Code == tea.KeyUp || (key.Code == 'k' && key.Mod == tea.ModCtrl):
 				m.chat.completion.move(-1)
 				return m, nil
-			case key.Code == tea.KeyDown:
+			case key.Code == tea.KeyDown || (key.Code == 'j' && key.Mod == tea.ModCtrl):
 				m.chat.completion.move(1)
 				return m, nil
 			case key.Code == tea.KeyTab:

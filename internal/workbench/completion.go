@@ -95,6 +95,13 @@ func (c *completion) move(delta int) {
 	c.selected = (c.selected + delta + len(c.matches)) % len(c.matches)
 }
 
+// dismiss closes the dropdown but remembers the prefix, so that events
+// carrying no text (key releases, ticks) do not immediately reopen it.
+func (c *completion) dismiss() {
+	c.matches = c.matches[:0]
+	c.selected = 0
+}
+
 func (c completion) visible() bool { return len(c.matches) > 0 }
 
 // completionItemForColumn creates a CompletionItem from a column name with type info.
