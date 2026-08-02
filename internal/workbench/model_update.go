@@ -599,7 +599,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
 	case chatResponseMsg, chatStreamMsg, chatPersistMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg,
-		assistantToolStartMsg, assistantToolContinueMsg, assistantWriteResultMsg:
+		assistantToolStartMsg, assistantToolContinueMsg, assistantWriteResultMsg, chatSpinnerTickMsg:
 		return m.updateChat(message)
 	}
 

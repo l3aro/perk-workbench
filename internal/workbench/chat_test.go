@@ -21,6 +21,49 @@ import (
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
+// TestChat_spinnerWhileLoading guards the assistant progress spinner: it must
+// render right-aligned in the chat mode line only while loading, advance on
+// each tick, re-arm while loading, and stop when loading ends.
+func TestChat_spinnerWhileLoading(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	if strings.Contains(model.chatModeBadge(), "⠋") {
+		t.Fatal("spinner shown while idle")
+	}
+
+	model.chat.loading = true
+	model.chat.spinnerFrame = 1
+	badge := model.chatModeBadge()
+	if !strings.Contains(badge, "⠙") {
+		t.Fatalf("badge = %q, want spinner frame while loading", badge)
+	}
+	if !strings.HasPrefix(ansi.Strip(badge), "NORMAL") {
+		t.Fatalf("badge = %q, want NORMAL badge on the left", badge)
+	}
+
+	updated, cmd := model.Update(chatSpinnerTickMsg{})
+	model = updated.(Model)
+	if cmd == nil {
+		t.Fatal("tick while loading should re-arm the spinner")
+	}
+	if model.chat.spinnerFrame != 2 {
+		t.Fatalf("spinnerFrame = %d, want 2", model.chat.spinnerFrame)
+	}
+
+	model.chat.loading = false
+	updated, cmd = model.Update(chatSpinnerTickMsg{})
+	model = updated.(Model)
+	if cmd != nil {
+		t.Fatal("tick after loading should not re-arm")
+	}
+	if got := model.chatModeBadge(); strings.Contains(got, "⠋") {
+		t.Fatalf("badge = %q, spinner shown after loading finished", got)
+	}
+}
+
 type fakeChatClient struct{}
 
 func (fakeChatClient) AgentForPrompt(string) string { return "assistant" }

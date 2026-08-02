@@ -47,6 +47,7 @@ type chatModel struct {
 	chatMode       formMode
 	glamour        *glamour.TermRenderer
 	streamBuffer   string // accumulated streaming content
+	spinnerFrame   int    // progress spinner frame while loading
 
 	// Tool round state for resumable multi-call turns.
 	gen      int64 // incremented on each startChat; checked on async completions
@@ -164,6 +165,12 @@ type chatHistoryDeletedMsg struct{ err error }
 
 // chatPersistMsg reports an error persisting an AI message to history.
 type chatPersistMsg struct{ err error }
+
+// chatSpinnerTickMsg advances the assistant progress spinner while loading.
+type chatSpinnerTickMsg struct{}
+
+// chatSpinnerFrames are the braille frames for the assistant progress spinner.
+var chatSpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func newChatModel() chatModel {
 	input := textarea.New()

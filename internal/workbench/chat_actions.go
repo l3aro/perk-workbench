@@ -17,7 +17,13 @@ const (
 	assistantFinalizationTimeout     = 20 * time.Second
 	assistantMaxToolCalls            = 64
 	assistantRepeatedToolResultLimit = 3
+	chatSpinnerInterval              = 80 * time.Millisecond
 )
+
+// chatSpinnerTick re-arms the assistant progress spinner tick.
+func (m Model) chatSpinnerTick() tea.Cmd {
+	return tea.Tick(chatSpinnerInterval, func(time.Time) tea.Msg { return chatSpinnerTickMsg{} })
+}
 
 func (m *Model) startChat() tea.Cmd {
 	prompt := strings.TrimSpace(m.chat.input.Value())
@@ -51,7 +57,7 @@ func (m *Model) startChat() tea.Cmd {
 
 	contextText := m.chatContext()
 
-	return func() tea.Msg {
+	send := func() tea.Msg {
 		if history != nil {
 			if conversationID == "" {
 				conversation, err := history.NewConversation(rootContext, truncateChatTitle(prompt))
@@ -132,6 +138,7 @@ func (m *Model) startChat() tea.Cmd {
 		toolState.toolCalls = turn.ToolCalls
 		return assistantToolStartMsg{gen: gen, state: toolState}
 	}
+	return tea.Batch(send, m.chatSpinnerTick())
 }
 
 // readStreamEvent reads one event from the stream channel and returns it as a chatStreamMsg.
@@ -196,6 +203,12 @@ func (m *Model) newChatConversation() {
 
 func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
+	case chatSpinnerTickMsg:
+		if !m.chat.loading {
+			return m, nil
+		}
+		m.chat.spinnerFrame++
+		return m, m.chatSpinnerTick()
 	case chatHistoryLoadedMsg:
 		if message.err != nil {
 			m.Status = safeText("AI history: " + message.err.Error())

@@ -635,8 +635,14 @@ func (m Model) chatModeBadge() string {
 	} else {
 		left = modeNormalStyle.Render("NORMAL")
 	}
-	if m.chat.yoloWrites {
-		return chrome.PaneStatus(left, statusFailedStyle.Render("YOLO"), m.chat.viewport.Width())
+	right := ""
+	if m.chat.loading {
+		right = chatSpinnerFrames[m.chat.spinnerFrame%len(chatSpinnerFrames)]
+	} else if m.chat.yoloWrites {
+		right = statusFailedStyle.Render("YOLO")
 	}
-	return left
+	if right == "" {
+		return left
+	}
+	return chrome.PaneStatus(left, right, m.chat.viewport.Width())
 }
