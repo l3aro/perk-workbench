@@ -50,6 +50,18 @@ func (m Model) databaseTools() []ai.ToolDefinition {
 		},
 	}
 
+	if m.chat.shareResults {
+		tools = append(tools, ai.ToolDefinition{
+			Name: "get_visible_results",
+			Description: "Return the rows currently displayed in the SQL results table, with column headers. " +
+				"Use this when the user asks about the current query result. No arguments needed.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		})
+	}
+
 	if !m.ReadOnly {
 		tools = append(tools, ai.ToolDefinition{
 			Name: "sql_write",
@@ -100,6 +112,22 @@ func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult 
 			return result
 		}
 		result.Content = content
+
+	case "get_visible_results":
+		columns := make([]string, len(m.results.Columns()))
+		for i, column := range m.results.Columns() {
+			columns[i] = column.Title
+		}
+		tableRows := m.results.Rows()
+		rows := make([][]*string, len(tableRows))
+		for i, row := range tableRows {
+			values := make([]*string, len(row))
+			for j, cell := range row {
+				values[j] = &cell
+			}
+			rows[i] = values
+		}
+		result.Content = formatResult(sharedsql.Result{Columns: columns, Rows: rows})
 
 	default:
 		result.Error = fmt.Sprintf("unknown tool: %s", call.Name)

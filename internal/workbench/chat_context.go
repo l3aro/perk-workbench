@@ -62,14 +62,22 @@ func (m Model) chatContext() string {
 		context.WriteString(query)
 		context.WriteString("\n")
 	}
-	if m.chat.shareResults && len(m.results.Rows()) > 0 {
-		context.WriteString("Visible results:\n")
-		for _, row := range m.results.Rows() {
-			context.WriteString(strings.Join(row, " | "))
-			context.WriteString("\n")
-		}
-	}
 	return truncateChatContext(context.String())
+}
+
+// chatResultsContext returns the visible results block for providers without
+// tool support; tool-capable providers get get_visible_results instead.
+func (m Model) chatResultsContext() string {
+	if !m.chat.shareResults || len(m.results.Rows()) == 0 {
+		return ""
+	}
+	var context strings.Builder
+	context.WriteString("Visible results:\n")
+	for _, row := range m.results.Rows() {
+		context.WriteString(strings.Join(row, " | "))
+		context.WriteString("\n")
+	}
+	return context.String()
 }
 
 func truncateChatTitle(prompt string) string {

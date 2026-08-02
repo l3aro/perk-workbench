@@ -573,24 +573,119 @@ func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
 	}
 }
 
-func TestChat_contextExcludesResultRowsByDefault(t *testing.T) {
-	model := New(":memory:", context.Background(), nil, false)
-	model.results.SetRows([]table.Row{{"secret"}})
+func TestChat_shareResultsTool(t *testing.T) {
+	model := readyModel(t)
+	model.State, model.Focus = stateReady, focusChat
+	model.results.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "alice"}}))
+	model.results.SetRows([]table.Row{{"1", "alice"}})
 
+	// Sharing is off by default: no tool, no results block in context.
+	if hasTool(model.databaseTools(), "get_visible_results") {
+		t.Fatal("get_visible_results present while sharing is off")
+	}
 	if context := model.chatContext(); strings.Contains(context, "Visible results:") {
-		t.Fatalf("chat context = %q, want no visible results", context)
+		t.Fatalf("chat context = %q, want no visible results block", context)
+	}
+
+	// Sharing on via the AI slash command: the tool appears and returns the rows.
+	model.chat.input.SetValue("/share-results")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("share command must not send a request")
+	}
+	if !model.chat.shareResults {
+		t.Fatal("shareResults should be true after command")
+	}
+	if !hasTool(model.databaseTools(), "get_visible_results") {
+		t.Fatal("get_visible_results missing while sharing is on")
+	}
+	result := model.executeTool(context.Background(), ai.ToolCall{ID: "call_1", Name: "get_visible_results"})
+	if result.Error != "" || !strings.Contains(result.Content, "id | name") || !strings.Contains(result.Content, "1 | alice") {
+		t.Fatalf("tool result = %#v", result)
+	}
+
+	// Sharing off again: the tool disappears.
+	model.chat.input.SetValue("/unshare-results")
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.chat.shareResults {
+		t.Fatal("shareResults should be false after stop command")
+	}
+	if hasTool(model.databaseTools(), "get_visible_results") {
+		t.Fatal("get_visible_results present while sharing is off")
 	}
 }
 
-func TestChat_contextIncludesResultRowsWhenEnabled(t *testing.T) {
-	model := New(":memory:", context.Background(), nil, false)
-	model.State, model.Focus = stateReady, focusChat
-	model.results.SetRows([]table.Row{{"secret"}})
-	updated, _ := model.handlePaletteCommand("chat.share_results")
-	model = updated.(Model)
+func hasTool(tools []ai.ToolDefinition, name string) bool {
+	for _, tool := range tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
 
-	if context := model.chatContext(); !strings.Contains(context, "Visible results:\nsecret") {
-		t.Fatalf("chat context = %q, want visible results", context)
+// recordingChatClient captures the request context so tests can assert what
+// tool-less providers receive.
+type recordingChatClient struct {
+	context string
+}
+
+func (client *recordingChatClient) AgentForPrompt(string) string { return "assistant" }
+
+func (client *recordingChatClient) Chat(context.Context, ai.Request) (ai.Response, error) {
+	return ai.Response{}, nil
+}
+
+func (client *recordingChatClient) Complete(context.Context, ai.Request) (ai.Response, error) {
+	return ai.Response{}, nil
+}
+
+func (client *recordingChatClient) SupportsTools(string) bool { return false }
+
+func (client *recordingChatClient) ChatStream(_ context.Context, request ai.Request) (<-chan ai.StreamEvent, error) {
+	client.context = request.Context
+	ch := make(chan ai.StreamEvent, 2)
+	ch <- ai.StreamEvent{Response: &ai.Response{Agent: "Assistant", Content: "ok"}}
+	close(ch)
+	return ch, nil
+}
+
+// TestChat_shareResultsToollessProvider guards the fallback for providers
+// without tool support: the results must ride along in the request context
+// since they cannot call get_visible_results.
+func TestChat_shareResultsToollessProvider(t *testing.T) {
+	client := &recordingChatClient{}
+	model := readyModel(t)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(client, nil)
+	model.layout(140, 32)
+	model.results.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "alice"}}))
+	model.results.SetRows([]table.Row{{"1", "alice"}})
+
+	// Enable sharing via the AI slash command.
+	model.chat.input.SetValue("/share-results")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("share command must not send a request")
+	}
+
+	model.chat.input.SetValue("what do the results say?")
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("sending chat did not return a command")
+	}
+	model = driveStreamToCompletion(t, model, command)
+
+	if !strings.Contains(client.context, "Visible results:\n1 | alice") {
+		t.Fatalf("request context = %q, want visible results", client.context)
 	}
 }
 

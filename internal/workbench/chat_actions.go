@@ -107,6 +107,8 @@ func (m *Model) startChat() tea.Cmd {
 		supportTools := len(toolsDefs) > 0 && client.SupportsTools(agentID)
 
 		if !supportTools {
+			contextText += m.chatResultsContext()
+			contextText = truncateChatContext(contextText)
 			eventCh, err := client.ChatStream(rootContext, ai.Request{
 				AgentID:  agentID,
 				Messages: baseMessages,
