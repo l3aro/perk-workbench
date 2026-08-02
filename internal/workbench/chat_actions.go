@@ -457,12 +457,6 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch {
-		case m.keybindings.Match(keyPress, "chat.new", []scope{scopeView}):
-			if m.chat.loading {
-				return m, nil
-			}
-			m.newChatConversation()
-			return m, nil
 		case m.keybindings.Match(keyPress, "chat.history", []scope{scopeView}):
 			if m.chat.loading {
 				return m, nil
@@ -480,9 +474,6 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.deleteChatHistory(true)
 		case m.keybindings.Match(keyPress, "chat.apply_sql", []scope{scopeView}):
 			m.applyChatSQL()
-			return m, nil
-		case m.keybindings.Match(keyPress, "chat.share_results", []scope{scopeView}):
-			m.toggleChatResultSharing()
 			return m, nil
 		case keyPress.Key().Code == tea.KeyPgUp:
 			m.chat.viewport.PageUp()
@@ -552,15 +543,6 @@ func (m *Model) applyChatSQL() {
 	m.editor.setValue(statement)
 	m.Focus, m.Tab = focusWorkspace, tabSQL
 	m.Status = "AI SQL added to editor"
-}
-
-func (m *Model) toggleChatResultSharing() {
-	m.chat.shareResults = !m.chat.shareResults
-	if m.chat.shareResults {
-		m.Status = "AI result sharing: on"
-		return
-	}
-	m.Status = "AI result sharing: off"
 }
 
 // processNextToolCall executes the next pending tool call in the current round.

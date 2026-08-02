@@ -96,19 +96,6 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "ai.toggle":
 		m.toggleAI()
 		return m, nil
-	case "ai.yolo_writes.toggle":
-		m.chat.yoloWrites = !m.chat.yoloWrites
-		if m.chat.yoloWrites {
-			m.Status = "AI writes: on"
-		} else {
-			m.Status = "AI writes: off"
-		}
-		return m, nil
-	case "chat.new":
-		if m.State == stateReady && m.Focus == focusChat {
-			m.newChatConversation()
-		}
-		return m, nil
 	case "chat.history":
 		if m.State == stateReady && m.Focus == focusChat {
 			return m, m.loadChatHistory()
@@ -127,11 +114,6 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "chat.apply_sql":
 		if m.State == stateReady && m.Focus == focusChat {
 			m.applyChatSQL()
-		}
-		return m, nil
-	case "chat.share_results":
-		if m.State == stateReady && m.Focus == focusChat {
-			m.toggleChatResultSharing()
 		}
 		return m, nil
 	case "focus.toggle_fullscreen":

@@ -426,15 +426,6 @@ func TestChat_assistantWrite_readOnly(t *testing.T) {
 			t.Fatal("read-only model should not expose sql_write")
 		}
 	}
-
-	if commandAvailable("ai.yolo_writes.toggle", commandDef{scope: scopeGlobal}, model) {
-		t.Error("ai.yolo_writes.toggle should be unavailable for read-only")
-	}
-
-	model.SetAI(&toolChatClient{}, nil)
-	if commandAvailable("ai.yolo_writes.toggle", commandDef{scope: scopeGlobal}, model) {
-		t.Error("ai.yolo_writes.toggle still unavailable for read-only with AI")
-	}
 }
 
 // TestChat_assistantWrite_confirmationRenders guards the View overlay gate:
@@ -541,15 +532,10 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 		t.Error("footer should not contain YOLO indicator")
 	}
 
-	// CommandAvailable should report it.
-	if !commandAvailable("ai.yolo_writes.toggle", commandDef{scope: scopeGlobal}, model) {
-		t.Error("ai.yolo_writes.toggle should be available for writable model")
-	}
-
 	model.chat.input.SetValue("yolo insert")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
-	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
 	model = driveToolRoundToCompletion(t, model, cmd)

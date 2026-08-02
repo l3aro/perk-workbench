@@ -702,8 +702,8 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	if !foundToggle {
 		t.Fatal("configured palette does not include AI toggle")
 	}
-	if !foundShareResults {
-		t.Fatal("chat palette does not include result-sharing toggle")
+	if foundShareResults {
+		t.Fatal("chat palette still includes result-sharing toggle")
 	}
 }
 
