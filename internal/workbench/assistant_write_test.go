@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
@@ -364,6 +365,66 @@ func TestChat_assistantWrite_readOnly(t *testing.T) {
 	model.SetAI(&toolChatClient{}, nil)
 	if commandAvailable("ai.yolo_writes.toggle", commandDef{scope: scopeGlobal}, model) {
 		t.Error("ai.yolo_writes.toggle still unavailable for read-only with AI")
+	}
+}
+
+// TestChat_assistantWrite_confirmationRenders guards the View overlay gate:
+// a pending sql_write confirmation must render as a dialog, otherwise the
+// chat pane shows an eternal "thinking..." while input is swallowed by the
+// invisible dialog.
+func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
+	ctx := context.Background()
+	service, err := sqlite.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatalf("opening test service: %v", err)
+	}
+	t.Cleanup(func() { _ = service.Close() })
+	_, err = service.Execute(ctx, "CREATE TABLE confirm_view_test (id INTEGER PRIMARY KEY, val TEXT)")
+	if err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+
+	model := New("", ctx, nil, false)
+	model.State = stateReady
+	model.Database = service
+	model.databaseInfo = service.Info()
+	model.Target = ":memory:"
+
+	const statement = "INSERT INTO confirm_view_test (val) VALUES ('hello')"
+	tc := &toolWriteClient{
+		firstCalls: []ai.ToolCall{
+			{ID: "call_v1", Name: "sql_write", Input: map[string]any{"query": statement}},
+		},
+	}
+	model.SetAI(tc, nil)
+	model.Focus = focusChat
+	model.layout(140, 32)
+
+	model.chat.input.SetValue("insert a row")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Drive the tool round until the write awaits confirmation.
+	for model.chat.pendingWrite == nil && cmd != nil {
+		msg := cmd()
+		updated, cmd = model.Update(msg)
+		model = updated.(Model)
+	}
+	if model.chat.pendingWrite == nil {
+		t.Fatal("expected pendingWrite after sql_write call")
+	}
+
+	view := ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "Run assistant SQL write?") {
+		t.Fatalf("confirmation dialog not rendered: %q", view)
+	}
+	if !strings.Contains(view, statement) {
+		t.Fatalf("confirmation dialog missing statement: %q", view)
+	}
+	if !strings.Contains(view, "Yes") || !strings.Contains(view, "No") {
+		t.Fatalf("confirmation dialog missing options: %q", view)
 	}
 }
 
