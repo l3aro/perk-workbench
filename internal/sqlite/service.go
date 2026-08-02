@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	_ "modernc.org/sqlite"
@@ -35,7 +36,14 @@ func displayRow(values []any) []*string { return sharedsql.DisplayRow(values) }
 func Open(ctx context.Context, target string) (*Service, error) {
 	dsn := target
 	if target != ":memory:" {
-		dsn = (&url.URL{Scheme: "file", Path: target, RawQuery: "mode=rw"}).String()
+		// Relative targets would build "file://<dir>/<name>" with the first
+		// path element as URI authority, which SQLite rejects. Resolve
+		// absolute so the file: URI carries no authority.
+		absolute, err := filepath.Abs(target)
+		if err != nil {
+			return nil, fmt.Errorf("opening sqlite database: resolving target: %w", err)
+		}
+		dsn = (&url.URL{Scheme: "file", Path: filepath.ToSlash(absolute), RawQuery: "mode=rw"}).String()
 	}
 
 	db, err := stdsql.Open("sqlite", dsn)

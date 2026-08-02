@@ -48,3 +48,28 @@ func TestOpenMissingFileDoesNotCreate(t *testing.T) {
 		t.Fatalf("missing database stat error = %v, want not exist", statErr)
 	}
 }
+
+func TestOpenRelativeTarget(t *testing.T) {
+	// Given — tests run with cwd = package directory
+	tmp, err := os.CreateTemp(".", "sqlite-relative-*.db")
+	if err != nil {
+		t.Fatalf("creating relative database file: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(tmp.Name()) })
+
+	// When — relative target must not become a file: URI authority
+	service, err := Open(context.Background(), tmp.Name())
+
+	// Then
+	if err != nil {
+		t.Fatalf("Open(%q) error = %v, want relative target to resolve against cwd", tmp.Name(), err)
+	}
+	t.Cleanup(func() {
+		if err := service.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+	if !filepath.IsAbs(service.dsn) && !strings.HasPrefix(service.dsn, "file:///") {
+		t.Fatalf("Open() dsn = %q, want absolute file: URI", service.dsn)
+	}
+}
