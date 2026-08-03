@@ -33,6 +33,9 @@ type commandPalette struct {
 	filtering    bool
 	visible      bool
 	contextTitle string
+	// swallowRelease eats the MouseReleaseMsg that trails a click-select, so
+	// the release does not click the pane underneath the closed palette.
+	swallowRelease bool
 }
 
 // newCommandPalette builds the palette items from the keybinding registry.
@@ -369,6 +372,107 @@ func (p *commandPalette) handleKey(msg tea.KeyPressMsg) (commandPaletteSelectMsg
 	}
 }
 
+// move shifts the selection cursor by step, clamped to the filtered items.
+func (p *commandPalette) move(step int) {
+	if len(p.filtered) == 0 {
+		p.cursor = 0
+		return
+	}
+	p.cursor = min(max(p.cursor+step, 0), len(p.filtered)-1)
+}
+
+// handleWheel moves the selection on mouse wheel events.
+func (p *commandPalette) handleWheel(wheel tea.MouseWheelMsg) {
+	switch wheel.Button {
+	case tea.MouseWheelUp:
+		p.move(-1)
+	case tea.MouseWheelDown:
+		p.move(1)
+	}
+}
+
+// layout returns the palette box geometry for the given screen size.
+func (p *commandPalette) layout(width, height int) (palW, palH, boxX, boxY int) {
+	palW = min(width*6/10, 80)
+	palH = min(height*6/10, len(p.filtered)+6)
+	palW = max(palW, 40)
+	palH = max(palH, 8)
+	palH = min(palH, height-4)
+	return palW, palH, (width - palW) / 2, (height - palH) / 2
+}
+
+// listContent builds the scrolled list lines and maps each visible line to
+// its filtered item index (-1 for scope headers and separators).
+func (p *commandPalette) listContent(palH int) (lines []string, itemAtLine []int) {
+	scopeNames := map[scope]string{
+		scopeGlobal: "Global",
+		scopeView:   "View",
+		scopeForm:   "Form",
+	}
+	lastScope := scope(-1)
+	selectedLine := 0
+	for i, item := range p.filtered {
+		if item.scope != lastScope {
+			if i > 0 {
+				lines = append(lines, "")
+				itemAtLine = append(itemAtLine, -1)
+			}
+			lines = append(lines, headerStyle.Render("  "+scopeNames[item.scope]+"  "))
+			itemAtLine = append(itemAtLine, -1)
+			lastScope = item.scope
+		}
+
+		prefix := "  "
+		label := item.label
+		if i == p.cursor {
+			selectedLine = len(lines)
+			prefix = "> "
+			label = selectedItemStyle.Render(label)
+		}
+		spacer := strings.Repeat(" ", max(1, 24-ansi.StringWidth(label)))
+		lines = append(lines, prefix+label+spacer+mutedStyle.Render(item.shortcut))
+		itemAtLine = append(itemAtLine, i)
+	}
+	if len(p.filtered) == 0 {
+		lines = append(lines, mutedStyle.Render("  no matching commands"))
+		itemAtLine = append(itemAtLine, -1)
+		return lines, itemAtLine
+	}
+	visibleLines := max(1, palH-6)
+	start := max(0, min(selectedLine-visibleLines/2, len(lines)-visibleLines))
+	end := min(start+visibleLines, len(lines))
+	return lines[start:end], itemAtLine[start:end]
+}
+
+// handleClick selects the command under a left click on the palette box.
+// Returns (selectMsg, consumed); consumed is false for clicks outside the box.
+func (p *commandPalette) handleClick(msg tea.MouseClickMsg, width, height int) (commandPaletteSelectMsg, bool) {
+	if !p.visible || msg.Button != tea.MouseLeft {
+		return commandPaletteSelectMsg{}, false
+	}
+	palW, palH, boxX, boxY := p.layout(width, height)
+	if msg.X < boxX || msg.X >= boxX+palW || msg.Y < boxY || msg.Y >= boxY+palH {
+		// Click outside the box dismisses the palette without dispatching.
+		p.visible = false
+		p.swallowRelease = true
+		return commandPaletteSelectMsg{}, true
+	}
+	lines, itemAtLine := p.listContent(palH)
+	// Inner area starts at boxY+1: title, blank, then list lines from boxY+3.
+	lineIdx := msg.Y - boxY - 3
+	if lineIdx < 0 || lineIdx >= len(lines) {
+		return commandPaletteSelectMsg{}, true
+	}
+	idx := itemAtLine[lineIdx]
+	if idx < 0 {
+		return commandPaletteSelectMsg{}, true
+	}
+	p.cursor = idx
+	p.visible = false
+	p.swallowRelease = true
+	return commandPaletteSelectMsg{id: p.filtered[idx].id}, true
+}
+
 // paletteDraw draws the palette overlay onto an existing screen buffer.
 func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) {
 	if !p.visible {
@@ -383,42 +487,7 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	palH = min(palH, height-4)
 
 	// Build the list content.
-	var listLines []string
-	scopeNames := map[scope]string{
-		scopeGlobal: "Global",
-		scopeView:   "View",
-		scopeForm:   "Form",
-	}
-	lastScope := scope(-1)
-	selectedLine := 0
-	for i, item := range p.filtered {
-		if item.scope != lastScope {
-			if i > 0 {
-				listLines = append(listLines, "")
-			}
-			listLines = append(listLines, headerStyle.Render("  "+scopeNames[item.scope]+"  "))
-			lastScope = item.scope
-		}
-
-		prefix := "  "
-		label := item.label
-		if i == p.cursor {
-			selectedLine = len(listLines)
-			prefix = "> "
-			label = selectedItemStyle.Render(label)
-		}
-		spacer := strings.Repeat(" ", max(1, 24-ansi.StringWidth(label)))
-		line := prefix + label + spacer + mutedStyle.Render(item.shortcut)
-		listLines = append(listLines, line)
-	}
-	if len(p.filtered) == 0 {
-		listLines = append(listLines, mutedStyle.Render("  no matching commands"))
-	} else {
-		visibleLines := max(1, palH-6)
-		start := max(0, min(selectedLine-visibleLines/2, len(listLines)-visibleLines))
-		end := min(start+visibleLines, len(listLines))
-		listLines = listLines[start:end]
-	}
+	listLines, _ := p.listContent(palH)
 
 	// Center the palette box.
 	boxX := (width - palW) / 2

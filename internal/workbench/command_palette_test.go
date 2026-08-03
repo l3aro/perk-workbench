@@ -48,6 +48,221 @@ func TestCommandPalette_navigationAndSelection(t *testing.T) {
 	}
 }
 
+func TestCommandPalette_wheelMovesCursor(t *testing.T) {
+	palette := &commandPalette{
+		filtered: []commandPaletteItem{{id: "first"}, {id: "second"}, {id: "third"}},
+	}
+
+	palette.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if palette.cursor != 1 {
+		t.Fatalf("wheel down cursor = %d, want 1", palette.cursor)
+	}
+	palette.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	palette.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if palette.cursor != 2 {
+		t.Fatalf("wheel down past bottom cursor = %d, want 2", palette.cursor)
+	}
+	palette.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if palette.cursor != 1 {
+		t.Fatalf("wheel up cursor = %d, want 1", palette.cursor)
+	}
+	palette.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	palette.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if palette.cursor != 0 {
+		t.Fatalf("wheel up past top cursor = %d, want 0", palette.cursor)
+	}
+
+	empty := &commandPalette{}
+	empty.handleWheel(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if empty.cursor != 0 {
+		t.Fatalf("wheel on empty palette cursor = %d, want 0", empty.cursor)
+	}
+}
+
+func TestCommandPalette_clickSelectsItem(t *testing.T) {
+	palette := &commandPalette{
+		visible:  true,
+		filtered: []commandPaletteItem{{id: "first", scope: scopeGlobal}, {id: "second", scope: scopeGlobal}, {id: "third", scope: scopeGlobal}},
+	}
+	// 100x24: palW=60, palH=min(14, 9)=9, boxX=20, boxY=7. Inner area starts
+	// at boxY+1: title, blank, then list from boxY+3: line 0 = scope header,
+	// line 1 = first item, line 2 = second item.
+	_, _, boxX, boxY := palette.layout(100, 24)
+
+	// Click outside the box — dismisses the palette, no dispatch.
+	selected, consumed := palette.handleClick(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft}, 100, 24)
+	if !consumed || selected.id != "" {
+		t.Fatalf("outside click: consumed=%t selected=%q", consumed, selected.id)
+	}
+	if palette.visible {
+		t.Fatal("outside click did not close the palette")
+	}
+	if !palette.swallowRelease {
+		t.Fatal("outside click did not arm the release swallow")
+	}
+	// Reopen for the in-box assertions.
+	palette.visible = true
+	palette.swallowRelease = false
+	// Click on the scope header — consumed, nothing selected.
+	selected, consumed = palette.handleClick(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 3, Button: tea.MouseLeft}, 100, 24)
+	if !consumed || selected.id != "" {
+		t.Fatalf("header click: consumed=%t selected=%q", consumed, selected.id)
+	}
+	if palette.swallowRelease {
+		t.Fatal("header click armed the release swallow")
+	}
+	// Click on the first item row — selects it and closes.
+	selected, consumed = palette.handleClick(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 4, Button: tea.MouseLeft}, 100, 24)
+	if !consumed || selected.id != "first" {
+		t.Fatalf("item click: consumed=%t selected=%q, want first", consumed, selected.id)
+	}
+	if palette.visible {
+		t.Fatal("palette remained visible after item click")
+	}
+	if !palette.swallowRelease {
+		t.Fatal("item click did not arm the release swallow")
+	}
+	// Click on the second item row — selects it.
+	palette.visible = true
+	selected, consumed = palette.handleClick(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 5, Button: tea.MouseLeft}, 100, 24)
+	if !consumed || selected.id != "second" {
+		t.Fatalf("second item click: consumed=%t selected=%q, want second", consumed, selected.id)
+	}
+}
+
+func TestModelCommandPalette_wheelNavigatesSelection(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.commandPalette.visible {
+		t.Fatal("palette did not open")
+	}
+
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	if model.commandPalette.cursor != 1 {
+		t.Fatalf("wheel down cursor = %d, want 1", model.commandPalette.cursor)
+	}
+	if !model.commandPalette.visible {
+		t.Fatal("wheel closed the palette")
+	}
+
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	model = updated.(Model)
+	if model.commandPalette.cursor != 0 {
+		t.Fatalf("wheel up cursor = %d, want 0", model.commandPalette.cursor)
+	}
+}
+
+func TestModelCommandPalette_outsideClickClosesWithoutLeakingRelease(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.commandPalette.visible {
+		t.Fatal("palette did not open")
+	}
+	want := model.Focus
+
+	// Click outside the palette box — closes it.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.commandPalette.visible {
+		t.Fatal("outside click did not close the palette")
+	}
+
+	// Trailing release must not click the pane underneath.
+	updated, _ = model.Update(tea.MouseReleaseMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.Focus != want {
+		t.Fatalf("release after outside click changed focus: %v, want %v", model.Focus, want)
+	}
+
+	// Swallow is one-shot: a later real release still clicks panes.
+	updated, _ = model.Update(tea.MouseReleaseMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.Focus != focusSchema {
+		t.Fatalf("second release focus = %v, want focusSchema", model.Focus)
+	}
+}
+
+func TestModelCommandPalette_clickSelectDoesNotLeakReleaseToPane(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+	p := model.commandPalette
+
+	// Locate the rendered row of the focus.query_log item.
+	logIdx := -1
+	for i, item := range p.filtered {
+		if item.id == "focus.query_log" {
+			logIdx = i
+			break
+		}
+	}
+	if logIdx < 0 {
+		t.Fatal("palette lacks focus.query_log")
+	}
+	_, palH, boxX, boxY := p.layout(100, 24)
+	_, itemAtLine := p.listContent(palH)
+	lineIdx := -1
+	for i, idx := range itemAtLine {
+		if idx == logIdx {
+			lineIdx = i
+			break
+		}
+	}
+	if lineIdx < 0 {
+		t.Fatal("focus.query_log not visible in list")
+	}
+
+	// Click the item row — focuses the query log and closes the palette.
+	updated, _ = model.Update(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 3 + lineIdx, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.Focus != focusQueryLog {
+		t.Fatalf("focus = %v, want focusQueryLog", model.Focus)
+	}
+	if model.commandPalette.visible {
+		t.Fatal("palette still visible after click")
+	}
+
+	// The trailing release must not click the pane underneath the palette.
+	updated, _ = model.Update(tea.MouseReleaseMsg{X: 2, Y: 10, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.Focus != focusQueryLog {
+		t.Fatalf("release re-focused the pane under the palette: focus = %v, want focusQueryLog", model.Focus)
+	}
+
+	// The swallow is one-shot: a later real release still clicks panes.
+	updated, _ = model.Update(tea.MouseReleaseMsg{X: 2, Y: 10, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.Focus != focusSchema {
+		t.Fatalf("second release focus = %v, want focusSchema", model.Focus)
+	}
+}
+
+func TestModelCommandPalette_clickSelectsRenderedItem(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.commandPalette.visible {
+		t.Fatal("palette did not open")
+	}
+
+	_, _, boxX, boxY := model.commandPalette.layout(100, 24)
+	// Header row click — consumed, palette stays open (off-by-one guard).
+	updated, _ = model.Update(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 3, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.commandPalette.visible {
+		t.Fatal("click on scope header closed the palette")
+	}
+	// First item sits at inner row 3 (title, blank, header, item).
+	updated, _ = model.Update(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 4, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.commandPalette.visible {
+		t.Fatal("click on first item did not select and close the palette")
+	}
+}
+
 func TestCommandPalette_filterRequiresSlashAndExitKeepsQuery(t *testing.T) {
 	palette := &commandPalette{
 		items:    []commandPaletteItem{{id: "first", label: "first"}, {id: "second", label: "second"}},
