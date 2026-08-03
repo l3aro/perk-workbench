@@ -325,5 +325,9 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) connectionPaneView(height int) string {
 	content := m.connection.View()
-	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + m.modeBadge()
+	footer := m.modeBadge()
+	if m.connection.focus == connectionFocusForm && m.connection.form != nil && m.connection.confirmation == nil {
+		footer = formButtonsBar() + " " + footer
+	}
+	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + footer
 }

@@ -147,6 +147,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if mouse, ok := message.(tea.MouseMsg); ok {
 		if dialog := m.activeConfirmation(); dialog != nil {
+			// A release consumed by an open dialog is not the trailing
+			// release of a form-button press; it must not count toward the
+			// one-shot swallow below.
+			m.formButtonHit = false
 			completed, _ := dialog.Update(mouse, m.width, m.height)
 			if !completed {
 				return m, nil
@@ -249,6 +253,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.executeCellUpdate()
 			m.cellEditor = nil
 			return m, cmd
+		}
+
+		// Save/Cancel buttons on the dialog's bottom row. The release that
+		// trails the press is swallowed via formButtonHit.
+		if mouse, ok := message.(tea.MouseClickMsg); ok && mouse.Button == tea.MouseLeft {
+			switch m.cellEditorButtonAt(mouse.X, mouse.Y) {
+			case "save":
+				m.formButtonHit = true
+				return m, m.cellEditor.beginConfirmation()
+			case "cancel":
+				m.formButtonHit = true
+				m.cellEditor = nil
+				return m, nil
+			}
 		}
 
 		// Only Ctrl+S (form.save) submits the cell editor; Enter neither
@@ -540,6 +558,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseReleaseMsg:
 		if m.commandPalette != nil && m.commandPalette.swallowRelease {
 			m.commandPalette.swallowRelease = false
+			return m, nil
+		}
+		if m.formButtonHit {
+			// The release trailing a form-button press must not also act on
+			// the pane underneath (field focus, table selection). One-shot:
+			// a later real release clicks normally.
+			m.formButtonHit = false
 			return m, nil
 		}
 		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {

@@ -108,6 +108,7 @@ type Model struct {
 	lastFormClickTime                                                                              time.Time
 	lastFormClickX, lastFormClickY                                                                 int
 	chatKeepInsert                                                                                 bool
+	formButtonHit                                                                                  bool
 	contextMenu                                                                                    *contextMenuModel
 	deleteConfirm                                                                                  *confirmationDialog
 	deletePending                                                                                  string

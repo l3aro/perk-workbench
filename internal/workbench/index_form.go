@@ -29,6 +29,7 @@ type indexForm struct {
 	values             *indexFormValues
 	previous           string
 	width, height      int
+	scrollOffset       int
 	saving             bool
 	confirmationSave   bool
 	confirmationDelete bool
@@ -115,20 +116,25 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 			return nil, indexFormNoAction
 		}
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
+		f.scrollToField(f.focusedField() + 1)
 		return f.form.NextField(), indexFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
+		f.scrollToField(f.focusedField() - 1)
 		return f.form.PrevField(), indexFormNoAction
 	}
 	return nil, indexFormNoAction
 }
 
 func (f *indexForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, indexFormAction) {
+	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if f.form.State == huh.StateCompleted {
 		f.rebuildForm()
+		f.scrollToField(focused)
 		return f.focus(), indexFormNoAction
 	}
+	f.scrollToField(f.focusedField())
 	return command, indexFormNoAction
 }
 
@@ -215,6 +221,7 @@ func (f *indexForm) focusField(field int) tea.Cmd {
 		}
 		_ = f.form.PrevField()
 	}
+	f.scrollToField(field)
 	return f.focus()
 }
 
@@ -229,6 +236,18 @@ func (f *indexForm) focus() tea.Cmd {
 		return nil
 	}
 	return f.form.GetFocusedField().Focus()
+}
+
+func (f indexForm) fieldTitles() []string {
+	return []string{"Name*", "Columns*", "Kind"}
+}
+
+// scrollToField keeps the rendered block of the field at index visible by
+// moving the viewport offset to its title line.
+func (f *indexForm) scrollToField(field int) {
+	if offset, ok := scrollToFieldTitle(f.form.View(), f.fieldTitles(), field); ok {
+		f.scrollOffset = offset
+	}
 }
 
 func (f indexForm) change() (sharedsql.IndexChange, error) {

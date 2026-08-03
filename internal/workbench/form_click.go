@@ -33,7 +33,10 @@ func formFieldIndexAt(view string, scrollOffset, viewLine int, titles []string) 
 			}
 		}
 		if titleLine < 0 {
-			return -1 // Layout changed; never guess.
+			// The view is height-truncated (huh WithHeight): the remaining
+			// titles render below the visible region, so the click maps to
+			// the last field whose title is visible.
+			return field
 		}
 		if target < titleLine {
 			return field
@@ -49,6 +52,31 @@ func formFieldIndexAt(view string, scrollOffset, viewLine int, titles []string) 
 func formLineIsTitle(line, title string) bool {
 	clean := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "┃"))
 	return strings.HasPrefix(clean, title)
+}
+
+// scrollToFieldTitle returns the view line of the rendered title of the
+// field at index (titles in render order), or (0, false) when the layout
+// cannot be determined.
+func scrollToFieldTitle(view string, titles []string, field int) (int, bool) {
+	if field < 0 || field >= len(titles) {
+		return 0, false
+	}
+	lines := strings.Split(ansi.Strip(view), "\n")
+	searchFrom := 0
+	for index := 0; index <= field; index++ {
+		titleLine := -1
+		for line := searchFrom; line < len(lines); line++ {
+			if formLineIsTitle(lines[line], titles[index]) {
+				titleLine = line
+				break
+			}
+		}
+		if titleLine < 0 {
+			return 0, false
+		}
+		searchFrom = titleLine + 1
+	}
+	return searchFrom - 1, true
 }
 
 // recordFormClick tracks form press positions for double-click detection.
@@ -104,6 +132,20 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		if x < m.schemaWidth || contentY < 3 || contentY >= m.workspaceHeight {
 			return m, nil
 		}
+		// The Save/Cancel button bar sits on the last workspace row; it is
+		// rendered only while a form owns the tab.
+		if m.formTabActive() && contentY == m.workspaceHeight-2 {
+			switch formButtonAt(x - m.schemaWidth - 1) {
+			case "save":
+				m.formButtonHit = true
+				var command tea.Cmd
+				m, command = m.formSaveCommand()
+				return m, command
+			case "cancel":
+				m.formButtonHit = true
+				return m, formEscapeKeyPress()
+			}
+		}
 		switch m.Tab {
 		case tabStructure:
 			if m.columnForm.active() && !m.columnForm.confirming() {
@@ -135,16 +177,30 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 		case tabIndexes:
 			if m.indexForm.active() && !m.indexForm.confirming() {
-				return m.clickFormField(x, y, m.indexForm.View(), 0, contentY-3, []string{"Name*", "Columns*", "Kind"}, m.indexForm.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.indexForm.focus()) })
+				return m.clickFormField(x, y, m.indexForm.View(), m.indexForm.scrollOffset, contentY-3, m.indexForm.fieldTitles(), m.indexForm.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.indexForm.focus()) })
 			}
 		case tabForeignKeys:
 			if m.foreignKeyForm.active() && !m.foreignKeyForm.confirming() && !m.relationshipDiagram {
-				return m.clickFormField(x, y, m.foreignKeyForm.View(), 0, contentY-3, []string{"Columns*", "Reference table*", "Reference columns*", "On delete", "On update"}, m.foreignKeyForm.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.foreignKeyForm.focus()) })
+				return m.clickFormField(x, y, m.foreignKeyForm.View(), m.foreignKeyForm.scrollOffset, contentY-3, m.foreignKeyForm.fieldTitles(), m.foreignKeyForm.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.foreignKeyForm.focus()) })
 			}
 		}
 	case stateConnection:
 		if x < m.schemaWidth || m.connection.focus != connectionFocusForm || m.connection.form == nil || m.connection.confirmation != nil {
 			return m, nil
+		}
+		if contentY == m.height-6 {
+			switch formButtonAt(x - m.schemaWidth - 1) {
+			case "save":
+				m.formButtonHit = true
+				var command tea.Cmd
+				m, command = m.formSaveCommand()
+				return m, command
+			case "cancel":
+				m.formButtonHit = true
+				var command tea.Cmd
+				m, command = m.connectionCancelCommand()
+				return m, command
+			}
 		}
 		return m.clickFormField(x, y, m.connection.View(), 0, contentY-1, m.connection.fieldTitles(), m.connection.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.connection.focusForm()) })
 	}

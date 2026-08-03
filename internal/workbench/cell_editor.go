@@ -219,9 +219,34 @@ func (e *cellEditor) confirmContent() string {
 			}
 			b.WriteString(trimmed)
 		}
+		buttons := formButtonsBar()
+		if w := ansi.StringWidth(buttons); w < e.width {
+			buttons += strings.Repeat(" ", e.width-w)
+		}
+		b.WriteByte('\n')
+		b.WriteString(buttons)
 		return b.String()
 	}
 	return ""
+}
+
+// cellEditorButtonAt maps a click on the cell-editor dialog to its bottom
+// button ("save"/"cancel"), replicating drawConfirmDialog's centered layout.
+// The buttons row is the last content line.
+func (m Model) cellEditorButtonAt(x, y int) string {
+	e := m.cellEditor
+	if e == nil || e.confirming {
+		return ""
+	}
+	contentLines := len(strings.Split(e.input.View(), "\n")) + 1 // + buttons row
+	dialogW := min(e.width, max(m.width-6, 1))
+	dialogH := min(contentLines, max(m.height-6, 1))
+	boxX := max(0, (m.width-dialogW-2)/2)
+	boxY := max(0, (m.height-dialogH-2)/2)
+	if y != boxY+dialogH {
+		return ""
+	}
+	return formButtonAt(x - boxX - 1)
 }
 
 func trimDialogContent(raw string) string {

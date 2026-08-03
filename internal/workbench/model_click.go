@@ -291,7 +291,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	// Determine which table tab we're on and which table to target.
 	switch m.Tab {
 	case tabBrowse:
-		if m.browseForm.active() || len(m.browse.Rows()) == 0 {
+		if m.browseForm.active() || m.browseFilterForm != nil || len(m.browse.Rows()) == 0 {
 			return m, nil
 		}
 	case tabSQL:

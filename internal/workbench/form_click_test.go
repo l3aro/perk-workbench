@@ -68,8 +68,9 @@ func TestBrowseForm_singleClickFocusesFieldInNormalMode(t *testing.T) {
 	model := openBrowseRow(t, 0)
 	model = resizeModel(model, 100, 24)
 	// Form starts at screen y=4 (header 1 + pane border 1 + tabs 1 + blank 1);
-	// the name field's value line is view line 4.
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	// the name field's title line is view line 3. The value line (view line 4)
+	// now belongs to the form button bar, so the title line stands in for it.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if got := model.browseForm.form.GetFocusedField().GetKey(); got != "value-1" {
 		t.Fatalf("focused field = %q, want value-1", got)
@@ -96,9 +97,9 @@ func TestBrowseForm_singleClickFirstFieldStaysFocused(t *testing.T) {
 func TestBrowseForm_doubleClickEntersInsertModeOnClickedField(t *testing.T) {
 	model := openBrowseRow(t, 0)
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeInsert {
 		t.Fatalf("mode = %d, want insert", model.formMode.mode)
@@ -111,9 +112,9 @@ func TestBrowseForm_doubleClickEntersInsertModeOnClickedField(t *testing.T) {
 func TestBrowseForm_releaseAfterClickDoesNotEnterInsert(t *testing.T) {
 	model := openBrowseRow(t, 0)
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseReleaseMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseReleaseMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeNormal {
 		t.Fatalf("mode = %d, want normal after release", model.formMode.mode)
@@ -123,11 +124,11 @@ func TestBrowseForm_releaseAfterClickDoesNotEnterInsert(t *testing.T) {
 func TestBrowseForm_doubleClickInInsertModeKeepsEditingField(t *testing.T) {
 	model := openBrowseRow(t, 0)
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeInsert {
 		t.Fatalf("mode = %d, want insert", model.formMode.mode)
@@ -336,13 +337,13 @@ func TestBrowseForm_singleClickKeepsNullFlagDoubleClickClearsIt(t *testing.T) {
 		t.Fatal("fixture: name should start as NULL")
 	}
 	// Single click on the name field only focuses it; the NULL flag survives.
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeNormal || !model.browseForm.values.nulls[1] {
 		t.Fatalf("single click mode/nulls = %d/%t, want normal/true", model.formMode.mode, model.browseForm.values.nulls[1])
 	}
 	// Double click enters insert mode and clears the NULL flag for typing.
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 8, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeInsert || model.browseForm.values.nulls[1] {
 		t.Fatalf("double click mode/nulls = %d/%t, want insert/false", model.formMode.mode, model.browseForm.values.nulls[1])

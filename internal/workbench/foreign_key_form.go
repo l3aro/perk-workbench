@@ -24,6 +24,7 @@ type foreignKeyForm struct {
 	values                               *foreignKeyFormValues
 	previous                             string
 	width, height                        int
+	scrollOffset                         int
 	saving                               bool
 	confirmationSave, confirmationDelete bool
 	keybindings                          Keybindings
@@ -108,20 +109,25 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 			return nil, foreignKeyFormNoAction
 		}
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
+		f.scrollToField(f.focusedField() + 1)
 		return f.form.NextField(), foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
+		f.scrollToField(f.focusedField() - 1)
 		return f.form.PrevField(), foreignKeyFormNoAction
 	}
 	return nil, foreignKeyFormNoAction
 }
 
 func (f *foreignKeyForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, foreignKeyFormAction) {
+	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if f.form.State == huh.StateCompleted {
 		f.rebuildForm()
+		f.scrollToField(focused)
 		return f.focus(), foreignKeyFormNoAction
 	}
+	f.scrollToField(f.focusedField())
 	return command, foreignKeyFormNoAction
 }
 
@@ -242,7 +248,20 @@ func (f *foreignKeyForm) focusField(field int) tea.Cmd {
 		}
 		_ = f.form.PrevField()
 	}
+	f.scrollToField(field)
 	return f.focus()
+}
+
+func (f foreignKeyForm) fieldTitles() []string {
+	return []string{"Columns*", "Reference table*", "Reference columns*", "On delete", "On update"}
+}
+
+// scrollToField keeps the rendered block of the field at index visible by
+// moving the viewport offset to its title line.
+func (f *foreignKeyForm) scrollToField(field int) {
+	if offset, ok := scrollToFieldTitle(f.form.View(), f.fieldTitles(), field); ok {
+		f.scrollOffset = offset
+	}
 }
 
 func (f *foreignKeyForm) blur() {

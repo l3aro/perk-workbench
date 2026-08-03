@@ -19,6 +19,7 @@ var (
 	focusStyle, panelStyle                                                            lipgloss.Style
 	connectionActionStyle                                                             lipgloss.Style
 	connectionActionSelectedStyle                                                     lipgloss.Style
+	formSaveButtonStyle, formCancelButtonStyle                                        lipgloss.Style
 	primaryIndexStyle, uniqueIndexStyle                                               lipgloss.Style
 	regularIndexStyle                                                                 lipgloss.Style
 	statusSuccessStyle, statusFailedStyle                                             lipgloss.Style
@@ -112,6 +113,15 @@ func resetStyles() {
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorPrimary)).
 		Bold(true).
+		Padding(0, spaceCompact)
+	formSaveButtonStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorCanvas)).
+		Background(lipgloss.Color(colorPrimary)).
+		Bold(true).
+		Padding(0, spaceCompact)
+	formCancelButtonStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorInk)).
+		Background(lipgloss.Color(colorStripe)).
 		Padding(0, spaceCompact)
 	userMessageStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorInk)).
