@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"database/sql"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -96,7 +97,7 @@ func openQueryLog(path string) (*sql.DB, error) {
 	if err := file.Close(); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(5000)"}).String())
 	if err != nil {
 		return nil, err
 	}

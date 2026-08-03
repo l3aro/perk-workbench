@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -69,6 +70,41 @@ func TestQueryLogRetentionDays_defaultsToThirty(t *testing.T) {
 	t.Setenv("PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS", "invalid")
 	if got := queryLogRetentionDays(); got != defaultQueryLogRetentionDays {
 		t.Fatalf("retention days = %d, want %d", got, defaultQueryLogRetentionDays)
+	}
+}
+
+func TestQueryLog_sharedDBWaitsForConcurrentWriter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	entry := queryLogEntry{startedAt: time.Now(), statement: "SELECT concurrent", duration: time.Millisecond, message: "completed"}
+	blocker, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Close()
+	conn, err := blocker.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), `BEGIN IMMEDIATE`); err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	saved := make(chan error, 1)
+	go func() {
+		close(started)
+		saved <- saveQueryLog(path, entry)
+	}()
+	<-started
+	time.Sleep(200 * time.Millisecond) // let the save block on the write lock
+	if _, err := conn.ExecContext(context.Background(), `COMMIT`); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-saved; err != nil {
+		t.Fatalf("saveQueryLog failed under concurrent writer: %v", err)
+	}
+	if got := loadQueryLog(path); len(got) != 1 || got[0].statement != entry.statement {
+		t.Fatalf("query log = %#v, want concurrent entry", got)
 	}
 }
 
