@@ -105,6 +105,20 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handlePaletteCommand(selectMsg.id)
 			}
 		}
+		if wheel, ok := message.(tea.MouseWheelMsg); ok {
+			m.commandPalette.handleWheel(wheel)
+			return m, nil
+		}
+		if click, ok := message.(tea.MouseClickMsg); ok {
+			selectMsg, consumed := m.commandPalette.handleClick(click, m.width, m.height)
+			if !consumed {
+				return m, nil
+			}
+			if selectMsg.id != "" {
+				return m.handlePaletteCommand(selectMsg.id)
+			}
+			return m, nil
+		}
 	}
 	if m.cellViewer != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
@@ -518,6 +532,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleMouseWheel(message)
 		}
 	case tea.MouseReleaseMsg:
+		if m.commandPalette != nil && m.commandPalette.swallowRelease {
+			m.commandPalette.swallowRelease = false
+			return m, nil
+		}
 		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
 			return m.handleLeftClick(message.X, message.Y)
 		}

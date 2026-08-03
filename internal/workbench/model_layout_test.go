@@ -185,13 +185,13 @@ func TestHeader_paletteButtonClickOpensPalette(t *testing.T) {
 		t.Fatal("header button click did not open the command palette")
 	}
 
-	// When — click just left of the button.
+	// When — click just left of the button (outside the palette box).
 	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - headerButtonWidth() - 1, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 
-	// Then — the already-open palette is untouched.
-	if !model.commandPalette.visible {
-		t.Fatal("header click left of the button closed the palette")
+	// Then — the outside click dismisses the palette.
+	if model.commandPalette.visible {
+		t.Fatal("header click left of the button did not close the palette")
 	}
 }
 
