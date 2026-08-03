@@ -15,7 +15,7 @@ var (
 	colorSecondary, colorDanger, colorFocused, colorSuccess                           string
 	colorBorder, colorModeNormal                                                      string
 	colorModeInsert                                                                   string
-	headerStyle, footerStyle, statusStyle, thinkingStyle                              lipgloss.Style
+	headerStyle, headerButtonStyle, footerStyle, statusStyle, thinkingStyle           lipgloss.Style
 	focusStyle, panelStyle                                                            lipgloss.Style
 	connectionActionStyle                                                             lipgloss.Style
 	connectionActionSelectedStyle                                                     lipgloss.Style
@@ -77,6 +77,11 @@ func resetStyles() {
 	headerStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorSecondary)).
+		Bold(true).
+		Padding(0, spaceCompact)
+	headerButtonStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorCanvas)).
+		Background(lipgloss.Color(colorPrimary)).
 		Bold(true).
 		Padding(0, spaceCompact)
 	footerStyle = lipgloss.NewStyle().

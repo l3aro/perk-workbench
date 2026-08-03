@@ -24,7 +24,7 @@ func (m Model) View() tea.View {
 		return view
 	}
 	content := m.contentView()
-	fullContent := lipgloss.JoinVertical(lipgloss.Left, headerStyle.Render("PERK WORKBENCH"), content, footerStyle.Render(m.footer()))
+	fullContent := lipgloss.JoinVertical(lipgloss.Left, m.headerView(), content, footerStyle.Render(m.footer()))
 	if m.commandPalette.visible || m.themePicker != nil {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)
@@ -64,6 +64,24 @@ func (m Model) View() tea.View {
 	}
 	view.SetContent(fullContent)
 	return view
+}
+
+// headerButtonLabel is the command-palette button pinned to the far right of
+// the header row.
+const headerButtonLabel = "Commands"
+
+// headerButtonWidth returns the rendered width of the header palette button.
+func headerButtonWidth() int {
+	return ansi.StringWidth(headerButtonStyle.Render(headerButtonLabel))
+}
+
+// headerView renders the header row: the logo on the left, the clickable
+// command-palette button at the very right.
+func (m Model) headerView() string {
+	logo := headerStyle.Render("PERK WORKBENCH")
+	button := headerButtonStyle.Render(headerButtonLabel)
+	gap := max(m.width-ansi.StringWidth(logo)-headerButtonWidth(), 0)
+	return logo + strings.Repeat(" ", gap) + button
 }
 
 func (m Model) hasConfirming() bool {
