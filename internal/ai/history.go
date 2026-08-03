@@ -42,22 +42,18 @@ type Message struct {
 type History struct{ db *stdsql.DB }
 
 func HistoryPath() (string, error) {
-	dir := os.Getenv("XDG_STATE_HOME")
-	if dir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("locating user home directory: %w", err)
-		}
-		dir = filepath.Join(home, ".local", "state")
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
 	}
-	return filepath.Join(dir, "perk-workbench", "conversations.db"), nil
+	return filepath.Join(dir, "perk-workbench", "data.db"), nil
 }
 
 func OpenHistory(path string) (*History, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("creating conversation directory: %w", err)
 	}
-	dsn := (&url.URL{Scheme: "file", Path: path, RawQuery: "mode=rwc"}).String()
+	dsn := (&url.URL{Scheme: "file", Path: path, RawQuery: "mode=rwc&_pragma=busy_timeout(5000)"}).String()
 	db, err := stdsql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening conversation history: %w", err)
@@ -78,6 +74,15 @@ func OpenHistory(path string) (*History, error) {
 }
 
 func (h *History) Close() error { return h.db.Close() }
+
+// RenameConversation updates the title of a conversation, leaving timestamps
+// untouched so renames never reorder the history list.
+func (h *History) RenameConversation(ctx context.Context, conversationID, title string) error {
+	if _, err := h.db.ExecContext(ctx, `UPDATE conversations SET title = ? WHERE id = ?`, title, conversationID); err != nil {
+		return fmt.Errorf("renaming conversation: %w", err)
+	}
+	return nil
+}
 
 func (h *History) NewConversation(ctx context.Context, title string) (Conversation, error) {
 	id, err := randomID()

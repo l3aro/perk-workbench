@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestHistoryPath_sharesDataDBWithQueryLog(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+	path, err := HistoryPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(configDir, "perk-workbench", "data.db"); path != want {
+		t.Fatalf("history path = %q, want %q", path, want)
+	}
+}
+
 func TestHistory_savesAndLoadsConversationMessages(t *testing.T) {
 	history, err := OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
 	if err != nil {
