@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,8 +35,8 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 		t.Fatal("spinner shown while idle")
 	}
 
-	model.chat.loading = true
-	model.chat.spinnerFrame = 1
+	model.chat.activeRun().loading = true
+	model.chat.activeRun().spinnerFrame = 1
 	badge := model.chatModeBadge()
 	if !strings.Contains(badge, "⠙") {
 		t.Fatalf("badge = %q, want spinner frame while loading", badge)
@@ -49,11 +50,11 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("tick while loading should re-arm the spinner")
 	}
-	if model.chat.spinnerFrame != 2 {
-		t.Fatalf("spinnerFrame = %d, want 2", model.chat.spinnerFrame)
+	if model.chat.activeRun().spinnerFrame != 2 {
+		t.Fatalf("spinnerFrame = %d, want 2", model.chat.activeRun().spinnerFrame)
 	}
 
-	model.chat.loading = false
+	model.chat.activeRun().loading = false
 	updated, cmd = model.Update(chatSpinnerTickMsg{})
 	model = updated.(Model)
 	if cmd != nil {
@@ -73,8 +74,8 @@ func TestChat_spinnerWithYOLO(t *testing.T) {
 	model.layout(140, 32)
 
 	model.chat.yoloWrites = true
-	model.chat.loading = true
-	model.chat.spinnerFrame = 2
+	model.chat.activeRun().loading = true
+	model.chat.activeRun().spinnerFrame = 2
 	badge := model.chatModeBadge()
 	if !strings.Contains(badge, "⠹") {
 		t.Fatalf("badge = %q, want spinner while loading with YOLO on", badge)
@@ -91,6 +92,10 @@ func TestChat_spinnerWithYOLO(t *testing.T) {
 type fakeChatClient struct{}
 
 func (fakeChatClient) AgentForPrompt(string) string { return "assistant" }
+
+func (fakeChatClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
 
 func (fakeChatClient) Chat(context.Context, ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Add an index."}, nil
@@ -126,6 +131,10 @@ type waitingChatClient struct {
 
 func (client waitingChatClient) AgentForPrompt(string) string { return "assistant" }
 
+func (client waitingChatClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
+
 func (client waitingChatClient) Chat(ctx context.Context, _ ai.Request) (ai.Response, error) {
 	client.started <- struct{}{}
 	<-ctx.Done()
@@ -145,6 +154,57 @@ func (client waitingChatClient) ChatStream(ctx context.Context, _ ai.Request) (<
 	<-ctx.Done()
 	ch := make(chan ai.StreamEvent)
 	close(ch)
+	return ch, nil
+}
+
+// blockingStreamClient blocks its first ChatStream until release is closed;
+// later streams complete immediately. Simulates a slow background agent run
+// next to a fast one. started is closed once the first stream is requested.
+type blockingStreamClient struct {
+	mu      sync.Mutex
+	calls   int
+	started chan struct{}
+	release chan struct{}
+}
+
+func (c *blockingStreamClient) AgentForPrompt(string) string { return "assistant" }
+
+func (c *blockingStreamClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
+
+func (c *blockingStreamClient) Chat(context.Context, ai.Request) (ai.Response, error) {
+	return ai.Response{Agent: "Assistant", Content: "x"}, nil
+}
+
+func (c *blockingStreamClient) Complete(context.Context, ai.Request) (ai.Response, error) {
+	return ai.Response{Agent: "Assistant", Content: "x"}, nil
+}
+
+func (c *blockingStreamClient) SupportsTools(string) bool { return false }
+
+func (c *blockingStreamClient) ChatStream(_ context.Context, _ ai.Request) (<-chan ai.StreamEvent, error) {
+	c.mu.Lock()
+	c.calls++
+	blocking := c.calls == 1
+	if blocking {
+		close(c.started)
+	}
+	c.mu.Unlock()
+	if !blocking {
+		ch := make(chan ai.StreamEvent, 2)
+		ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: "fast answer"}
+		ch <- ai.StreamEvent{Kind: ai.EventDone, Response: &ai.Response{Agent: "Assistant", Content: "fast answer"}}
+		close(ch)
+		return ch, nil
+	}
+	ch := make(chan ai.StreamEvent)
+	go func() {
+		<-c.release
+		ch <- ai.StreamEvent{Kind: ai.EventDelta, Delta: "slow answer"}
+		ch <- ai.StreamEvent{Kind: ai.EventDone, Response: &ai.Response{Agent: "Assistant", Content: "slow answer"}}
+		close(ch)
+	}()
 	return ch, nil
 }
 
@@ -174,11 +234,11 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	if !strings.Contains(stripped, "streaming") {
 		t.Fatalf("viewport = %q, want streaming label", stripped)
 	}
-	if model.chat.loading != true {
+	if model.chat.activeRun().loading != true {
 		t.Fatal("model should still be loading after first delta")
 	}
-	if model.chat.streamBuffer != "Add " {
-		t.Fatalf("streamBuffer = %q", model.chat.streamBuffer)
+	if model.chat.activeRun().streamBuffer != "Add " {
+		t.Fatalf("streamBuffer = %q", model.chat.activeRun().streamBuffer)
 	}
 
 	// Second delta
@@ -194,14 +254,14 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	// Completion
 	model, _ = resolveChatCommand(model, cmd)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading after completion")
 	}
-	if len(model.chat.messages) != 2 {
-		t.Fatalf("messages = %#v, want 2", model.chat.messages)
+	if len(model.chat.activeRun().messages) != 2 {
+		t.Fatalf("messages = %#v, want 2", model.chat.activeRun().messages)
 	}
-	if model.chat.messages[1].Content != "Add an index." {
-		t.Fatalf("response = %q", model.chat.messages[1].Content)
+	if model.chat.activeRun().messages[1].Content != "Add an index." {
+		t.Fatalf("response = %q", model.chat.activeRun().messages[1].Content)
 	}
 }
 
@@ -213,8 +273,8 @@ func TestChat_slashNewStartsNewConversation(t *testing.T) {
 	model.SetAI(fakeChatClient{}, nil)
 	model.layout(140, 32)
 
-	model.chat.conversationID = "existing"
-	model.chat.messages = []ai.Message{{Role: ai.RoleUser, Content: "old turn"}}
+	model.chat.activeID = "existing"
+	model.chat.activeRun().messages = []ai.Message{{Role: ai.RoleUser, Content: "old turn"}}
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
@@ -228,14 +288,190 @@ func TestChat_slashNewStartsNewConversation(t *testing.T) {
 	if command != nil {
 		t.Fatal("/new must not send a request")
 	}
-	if model.chat.conversationID != "" {
-		t.Fatalf("conversation ID = %q, want cleared", model.chat.conversationID)
+	if model.chat.activeID != "" {
+		t.Fatalf("conversation ID = %q, want cleared", model.chat.activeID)
 	}
-	if len(model.chat.messages) != 0 {
-		t.Fatalf("messages = %#v, want cleared", model.chat.messages)
+	if len(model.chat.activeRun().messages) != 0 {
+		t.Fatalf("messages = %#v, want cleared", model.chat.activeRun().messages)
 	}
 	if got := model.chat.input.Value(); got != "" {
 		t.Fatalf("input = %q, want cleared", got)
+	}
+}
+
+// TestChat_concurrentConversationsRunIndependently guards the core
+// concurrency contract: starting a second conversation (or switching to an
+// older one via the /history picker) must not interrupt a run that is still
+// streaming in the background, and both conversations must persist complete
+// histories.
+func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	client := &blockingStreamClient{started: make(chan struct{}), release: make(chan struct{})}
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(client, history)
+	model.layout(140, 32)
+
+	// Conversation A: send a prompt whose stream blocks until released.
+	model.chat.input.SetValue("slow question")
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, cmdA := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if cmdA == nil {
+		t.Fatal("sending chat A did not return a command")
+	}
+	idA := model.chat.activeID
+	if idA == "" {
+		t.Fatal("conversation A was not created")
+	}
+	streamA := make(chan tea.Msg, 1)
+	go runChatCommand(cmdA, streamA)
+	<-client.started // A's stream is blocked and waiting
+
+	// /new while A runs: fresh view, A keeps running in the background.
+	model.chat.input.SetValue("/new")
+	updated, cmdNew := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if cmdNew != nil {
+		t.Fatal("/new must not send a request")
+	}
+	if model.chat.activeID != "" {
+		t.Fatalf("active conversation = %q, want fresh view", model.chat.activeID)
+	}
+	if !model.chat.runs[idA].loading {
+		t.Fatal("switching to /new interrupted conversation A")
+	}
+
+	// Conversation B: send and complete while A is still running.
+	model.chat.input.SetValue("fast question")
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, cmdB := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	idB := model.chat.activeID
+	if idB == "" || idB == idA {
+		t.Fatalf("conversation B id = %q, want distinct from A %q", idB, idA)
+	}
+	model = driveStreamToCompletion(t, model, cmdB)
+
+	if !model.chat.runs[idA].loading {
+		t.Fatal("completing B interrupted conversation A")
+	}
+	if len(model.chat.runs[idB].messages) != 2 || model.chat.runs[idB].messages[1].Content != "fast answer" {
+		t.Fatalf("B messages = %#v", model.chat.runs[idB].messages)
+	}
+
+	// Switch back to A: open the /history picker, then drive the selection
+	// handoff its submit produces (huh's own key handling is library
+	// plumbing; the load command it emits is the product contract).
+	model.chat.input.SetValue("/history")
+	updated, cmdHistory := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if cmdHistory == nil {
+		t.Fatal("/history sent no command")
+	}
+	model, cmdHistory = resolveChatCommand(model, cmdHistory)
+	if model.chatHistoryPicker == nil {
+		t.Fatal("/history did not open the conversation picker")
+	}
+	model.chat.historyChoice = idA // what a selection in the form binds
+	model.chatHistoryPicker = nil  // what the submit handler does first
+	cmdLoad := model.loadChatMessages(idA)
+	updated, _ = model.Update(cmdLoad())
+	model = updated.(Model)
+	if model.chat.activeID != idA {
+		t.Fatalf("active conversation = %q, want A", model.chat.activeID)
+	}
+	if !model.chat.activeRun().loading {
+		t.Fatal("A should still be loading when switching back")
+	}
+	if model.chat.activeRun().messages[0].Content != "slow question" {
+		t.Fatalf("A view = %#v, want the slow question", model.chat.activeRun().messages)
+	}
+
+	// Release A's stream and drive it to completion.
+	close(client.release)
+	model, cmd := resolveChatMessage(model, <-streamA)
+	for cmd != nil {
+		model, cmd = resolveChatCommand(model, cmd)
+	}
+	if model.chat.activeRun().loading {
+		t.Fatal("A still loading after stream completion")
+	}
+	if len(model.chat.activeRun().messages) != 2 || model.chat.activeRun().messages[1].Content != "slow answer" {
+		t.Fatalf("A messages = %#v", model.chat.activeRun().messages)
+	}
+
+	// Both conversations persisted with full histories.
+	for _, cid := range []string{idA, idB} {
+		persisted, err := history.Messages(context.Background(), cid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(persisted) != 2 {
+			t.Fatalf("persisted messages for %s = %#v, want 2", cid, persisted)
+		}
+	}
+}
+
+// TestChat_staleConversationLoadIsDropped guards rapid /history selections:
+// a slow load for an earlier pick must not activate its conversation after a
+// newer pick already landed.
+func TestChat_staleConversationLoadIsDropped(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	a, err := history.NewConversation(context.Background(), "conv a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := history.NewConversation(context.Background(), "conv b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, history)
+	model.layout(140, 32)
+
+	loadA := model.loadChatMessages(a.ID) // seq 1
+	loadB := model.loadChatMessages(b.ID) // seq 2
+
+	// B's load lands first and activates B.
+	updated, _ := model.Update(loadB())
+	model = updated.(Model)
+	if model.chat.activeID != b.ID {
+		t.Fatalf("active conversation = %q, want B", model.chat.activeID)
+	}
+
+	// A's stale load lands late and must be dropped.
+	updated, _ = model.Update(loadA())
+	model = updated.(Model)
+	if model.chat.activeID != b.ID {
+		t.Fatalf("stale load switched active conversation to %q, want B", model.chat.activeID)
+	}
+}
+
+// TestChat_historyOptionLabelPrefixesRunningConversations guards the /history
+// picker labels: a conversation whose agent run is active gets a spinner
+// glyph prefix, idle ones do not.
+func TestChat_historyOptionLabelPrefixesRunningConversations(t *testing.T) {
+	if got := chatHistoryOptionLabel(nil, "old chat"); got != "old chat" {
+		t.Fatalf("idle label = %q", got)
+	}
+	if got := chatHistoryOptionLabel(&chatRun{}, "old chat"); got != "old chat" {
+		t.Fatalf("idle run label = %q", got)
+	}
+	run := &chatRun{loading: true, spinnerFrame: 1}
+	if got := chatHistoryOptionLabel(run, "old chat"); got != "⠙ old chat" {
+		t.Fatalf("running label = %q", got)
 	}
 }
 
@@ -290,8 +526,8 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	if command != nil {
 		t.Fatal("Enter after /new must not send a request")
 	}
-	if len(model.chat.messages) != 0 {
-		t.Fatalf("messages = %#v, want cleared", model.chat.messages)
+	if len(model.chat.activeRun().messages) != 0 {
+		t.Fatalf("messages = %#v, want cleared", model.chat.activeRun().messages)
 	}
 }
 
@@ -310,8 +546,8 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if got := len(model.chat.completion.matches); got != 3 {
-		t.Fatalf("matches = %d, want 3", got)
+	if got := len(model.chat.completion.matches); got != 4 {
+		t.Fatalf("matches = %d, want 4", got)
 	}
 
 	move := func(code rune, mod tea.KeyMod) {
@@ -332,6 +568,10 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	if got := model.chat.completion.selected; got != 2 {
 		t.Fatalf("selected after 2x Down = %d, want 2", got)
 	}
+	move(tea.KeyDown, 0)
+	if got := model.chat.completion.selected; got != 3 {
+		t.Fatalf("selected after 3x Down = %d, want 3", got)
+	}
 	// Wraps around the list.
 	move(tea.KeyDown, 0)
 	if got := model.chat.completion.selected; got != 0 {
@@ -339,8 +579,8 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	}
 	// Up arrow walks back.
 	move(tea.KeyUp, 0)
-	if got := model.chat.completion.selected; got != 2 {
-		t.Fatalf("selected after Up = %d, want 2", got)
+	if got := model.chat.completion.selected; got != 3 {
+		t.Fatalf("selected after Up = %d, want 3", got)
 	}
 	// Ctrl+J / Ctrl+K behave like Down/Up.
 	move('j', tea.ModCtrl)
@@ -348,8 +588,8 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 		t.Fatalf("selected after Ctrl+J = %d, want 0", got)
 	}
 	move('k', tea.ModCtrl)
-	if got := model.chat.completion.selected; got != 2 {
-		t.Fatalf("selected after Ctrl+K = %d, want 2", got)
+	if got := model.chat.completion.selected; got != 3 {
+		t.Fatalf("selected after Ctrl+K = %d, want 3", got)
 	}
 
 	// Tab accepts the selected item, not the first one.
@@ -358,6 +598,44 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	want := "/share-results"
 	if got := model.chat.input.Value(); got != want {
 		t.Fatalf("input = %q, want %q", got, want)
+	}
+}
+
+// TestChat_historySlashCommand guards the /history slash command: Enter on the
+// complete command loads conversations into the history picker instead of
+// sending an AI request.
+func TestChat_historySlashCommand(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	if _, err := history.NewConversation(context.Background(), "old chat"); err != nil {
+		t.Fatal(err)
+	}
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, history)
+	model.layout(140, 32)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
+	model = updated.(Model)
+	model.chat.input.SetValue("/history")
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("/history sent no command")
+	}
+	msg := command()
+	if _, ok := msg.(chatHistoryLoadedMsg); !ok {
+		t.Fatalf("command returned %T, want chatHistoryLoadedMsg", msg)
+	}
+	updated, _ = model.Update(msg)
+	model = updated.(Model)
+	if model.chatHistoryPicker == nil {
+		t.Fatal("/history did not open the conversation picker")
 	}
 }
 
@@ -457,10 +735,10 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	// Drive the streaming protocol through completion.
 	model = driveStreamToCompletion(t, model, command)
 
-	if len(model.chat.messages) != 2 {
-		t.Fatalf("messages = %#v, want user and assistant messages", model.chat.messages)
+	if len(model.chat.activeRun().messages) != 2 {
+		t.Fatalf("messages = %#v, want user and assistant messages", model.chat.activeRun().messages)
 	}
-	if got := model.chat.messages[1].Content; got != "Add an index." {
+	if got := model.chat.activeRun().messages[1].Content; got != "Add an index." {
 		t.Fatalf("assistant response = %q", got)
 	}
 	if strings.Contains(model.chat.viewport.GetContent(), "Assistant") {
@@ -573,16 +851,52 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	// Drive streaming through completion (including async persistence).
 	model = driveStreamToCompletion(t, model, command)
 
-	if len(model.chat.messages) != 2 || model.chat.messages[1].Content != "Use an index." {
-		t.Fatalf("messages = %#v", model.chat.messages)
+	if len(model.chat.activeRun().messages) != 2 || model.chat.activeRun().messages[1].Content != "Use an index." {
+		t.Fatalf("messages = %#v", model.chat.activeRun().messages)
 	}
 	// Check that the persisted conversation includes both messages.
-	persisted, err := history.Messages(context.Background(), model.chat.conversationID)
+	persisted, err := history.Messages(context.Background(), model.chat.activeID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(persisted) != 2 {
 		t.Fatalf("persisted messages = %#v", persisted)
+	}
+}
+
+func TestChat_generatesTitleForNewConversation(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, history)
+	model.layout(140, 32)
+	model.chat.input.SetValue("How do I add an index?")
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // ensure normal
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("sending chat did not return a command")
+	}
+	model = driveStreamToCompletion(t, model, command)
+
+	conversations, err := history.Conversations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(conversations) != 1 {
+		t.Fatalf("conversations = %#v, want one", conversations)
+	}
+	if conversations[0].Title != "Cheap title" {
+		t.Fatalf("conversation title = %q, want generated title", conversations[0].Title)
 	}
 }
 
@@ -643,7 +957,7 @@ func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
 	if got, want := model.chat.viewport.Width(), model.width-6; got != want {
 		t.Fatalf("chat viewport width = %d, want pane interior width %d", got, want)
 	}
-	model.chat.messages = []ai.Message{{Role: ai.RoleUser, Content: "full width"}}
+	model.chat.activeRun().messages = []ai.Message{{Role: ai.RoleUser, Content: "full width"}}
 	model.refreshChatView()
 
 	content := model.chat.viewport.GetContent()
@@ -726,6 +1040,10 @@ type recordingChatClient struct {
 
 func (client *recordingChatClient) AgentForPrompt(string) string { return "assistant" }
 
+func (client *recordingChatClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
+
 func (client *recordingChatClient) Chat(context.Context, ai.Request) (ai.Response, error) {
 	return ai.Response{}, nil
 }
@@ -805,14 +1123,14 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	if model.chat.chatMode != formModeNormal {
 		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
 	}
-	if !model.chat.loading {
+	if !model.chat.activeRun().loading {
 		t.Fatal("first escape canceled the chat request")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 	model, _ = resolveChatMessage(model, <-response)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("chat request remains loading after cancellation")
 	}
 	if model.Status != "AI request canceled" {
@@ -847,7 +1165,7 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	if model.chat.chatMode != formModeNormal {
 		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
 	}
-	if !model.chat.loading {
+	if !model.chat.activeRun().loading {
 		t.Fatal("first escape canceled the chat request")
 	}
 
@@ -856,7 +1174,7 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	model = updated.(Model)
 	model, _ = resolveChatMessage(model, <-response)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("chat request remains loading after cancellation")
 	}
 	if model.Status != "AI request canceled" {
@@ -875,13 +1193,15 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 
 	model.SetAI(fakeChatClient{}, nil)
 	model.Focus = focusChat
-	foundToggle, foundShareResults := false, false
+	foundToggle, foundShareResults, foundHistory := false, false, false
 	for _, item := range newCommandPalette(model).items {
 		switch item.id {
 		case "ai.toggle":
 			foundToggle = true
 		case "chat.share_results":
 			foundShareResults = true
+		case "chat.history":
+			foundHistory = true
 		}
 	}
 	if !foundToggle {
@@ -889,6 +1209,9 @@ func TestChat_paletteOnlyShowsAICommandsWhenConfigured(t *testing.T) {
 	}
 	if foundShareResults {
 		t.Fatal("chat palette still includes result-sharing toggle")
+	}
+	if foundHistory {
+		t.Fatal("chat palette still includes chat history command")
 	}
 }
 
@@ -900,6 +1223,9 @@ type exhaustClient struct {
 
 func (c *exhaustClient) AgentForPrompt(string) string { return "assistant" }
 func (c *exhaustClient) SupportsTools(string) bool    { return true }
+func (c *exhaustClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
 func (c *exhaustClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
 }
@@ -930,6 +1256,9 @@ type deadlineClient struct {
 
 func (c *deadlineClient) AgentForPrompt(string) string { return "assistant" }
 func (c *deadlineClient) SupportsTools(string) bool    { return true }
+func (c *deadlineClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
 func (c *deadlineClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
 }
@@ -957,6 +1286,9 @@ type toolChatClient struct {
 
 func (c *toolChatClient) AgentForPrompt(string) string { return "assistant" }
 func (c *toolChatClient) SupportsTools(string) bool    { return true }
+func (c *toolChatClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
 func (c *toolChatClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
 }
@@ -998,7 +1330,7 @@ func (c *toolChatClient) Complete(_ context.Context, req ai.Request) (ai.Respons
 // driveToolRoundToCompletion feeds tool-round messages until loading is cleared.
 func driveToolRoundToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
 	t.Helper()
-	for cmd != nil && model.chat.loading {
+	for cmd != nil && model.chat.activeRun().loading {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
 	return model
@@ -1037,7 +1369,7 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	model = driveToolRoundToCompletion(t, model, command)
 
 	// Verify the final answer is displayed.
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading after completion")
 	}
 	stripped := ansi.Strip(model.chat.viewport.GetContent())
@@ -1046,10 +1378,10 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	}
 
 	// Verify the assistant message was appended to chat history.
-	if len(model.chat.messages) < 2 {
-		t.Fatalf("chat has %d messages, want at least 2", len(model.chat.messages))
+	if len(model.chat.activeRun().messages) < 2 {
+		t.Fatalf("chat has %d messages, want at least 2", len(model.chat.activeRun().messages))
 	}
-	last := model.chat.messages[len(model.chat.messages)-1]
+	last := model.chat.activeRun().messages[len(model.chat.activeRun().messages)-1]
 	if last.Role != ai.RoleAssistant || last.Content != "There is 1 row." {
 		t.Fatalf("last message = %#v, want assistant with final content", last)
 	}
@@ -1078,7 +1410,7 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 			model.databaseInfo = service.Info()
 			model.layout(terminalWidth, 32)
 
-			model.chat.messages = []ai.Message{
+			model.chat.activeRun().messages = []ai.Message{
 				{Role: ai.RoleUser, Content: "which tables has most records?"},
 				{Role: ai.RoleAssistant, Content: tableMD},
 			}
@@ -1160,7 +1492,7 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 	// Drive the message-driven tool round to completion.
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model still loading after all rounds")
 	}
 	if !ec.finalToolsNil {
@@ -1251,11 +1583,11 @@ func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
 	model.layout(140, 32)
 
 	gen := int64(1)
-	model.chat.gen = gen
-	model.chat.loading = true
+	model.chat.activeRun().gen = gen
+	model.chat.activeRun().loading = true
 
 	toolCtx, toolCancel := context.WithCancel(ctx)
-	model.chat.roundState = &toolRoundState{
+	model.chat.activeRun().roundState = &toolRoundState{
 		gen:         gen,
 		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
 		client:      model.chat.client,
@@ -1274,10 +1606,10 @@ func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
 		t.Fatal("expected non-nil cmd for async tool execution")
 	}
 	model = modelI.(Model)
-	if !model.chat.loading {
+	if !model.chat.activeRun().loading {
 		t.Fatal("model should still be loading")
 	}
-	if model.chat.roundState == nil {
+	if model.chat.activeRun().roundState == nil {
 		t.Fatal("roundState should still be present")
 	}
 
@@ -1300,7 +1632,7 @@ func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
 	if escCmd != nil {
 		t.Fatal("Escape should not produce a cmd")
 	}
-	if model.chat.roundState != nil {
+	if model.chat.activeRun().roundState != nil {
 		t.Fatal("Escape should clear roundState")
 	}
 
@@ -1329,11 +1661,11 @@ func TestAssistant_fullScreenEscapeExitsInsertModeThenCancels(t *testing.T) {
 	model.layout(140, 32)
 
 	gen := int64(1)
-	model.chat.gen = gen
-	model.chat.loading = true
-	model.chat.cancel = rootCancel
+	model.chat.activeRun().gen = gen
+	model.chat.activeRun().loading = true
+	model.chat.activeRun().cancel = rootCancel
 	model.chat.chatMode = formModeInsert
-	model.chat.roundState = &toolRoundState{
+	model.chat.activeRun().roundState = &toolRoundState{
 		gen:         gen,
 		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
 		client:      model.chat.client,
@@ -1355,20 +1687,20 @@ func TestAssistant_fullScreenEscapeExitsInsertModeThenCancels(t *testing.T) {
 	if model.chat.chatMode != formModeNormal {
 		t.Fatal("first Escape should exit insert mode")
 	}
-	if !model.chat.loading {
+	if !model.chat.activeRun().loading {
 		t.Fatal("first Escape should NOT interrupt loading")
 	}
-	if model.chat.roundState == nil {
+	if model.chat.activeRun().roundState == nil {
 		t.Fatal("first Escape should NOT clear roundState")
 	}
 
 	// Second Escape: must cancel the agent call.
 	modelI, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
-	if model.chat.roundState != nil {
+	if model.chat.activeRun().roundState != nil {
 		t.Fatal("second Escape should clear roundState")
 	}
-	if !model.chat.canceled {
+	if !model.chat.activeRun().canceled {
 		t.Fatal("second Escape should mark canceled")
 	}
 }
@@ -1391,11 +1723,11 @@ func TestAssistant_fullscreenTransitionPreservesEscapeOrder(t *testing.T) {
 	rootCtx, rootCancel := context.WithCancel(ctx)
 	toolCtx, toolCancel := context.WithCancel(rootCtx)
 	gen := int64(1)
-	model.chat.gen = gen
-	model.chat.loading = true
-	model.chat.cancel = rootCancel
+	model.chat.activeRun().gen = gen
+	model.chat.activeRun().loading = true
+	model.chat.activeRun().cancel = rootCancel
 	model.chat.chatMode = formModeInsert
-	model.chat.roundState = &toolRoundState{
+	model.chat.activeRun().roundState = &toolRoundState{
 		gen:         gen,
 		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
 		client:      model.chat.client,
@@ -1414,20 +1746,20 @@ func TestAssistant_fullscreenTransitionPreservesEscapeOrder(t *testing.T) {
 	if model.chat.chatMode != formModeNormal {
 		t.Fatal("first Escape should exit insert mode after fullscreen transition")
 	}
-	if !model.chat.loading {
+	if !model.chat.activeRun().loading {
 		t.Fatal("first Escape should NOT interrupt loading after fullscreen transition")
 	}
-	if model.chat.roundState == nil {
+	if model.chat.activeRun().roundState == nil {
 		t.Fatal("first Escape should NOT clear roundState after fullscreen transition")
 	}
 
 	// Second Escape: cancel the agent call.
 	modelI, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
-	if model.chat.roundState != nil {
+	if model.chat.activeRun().roundState != nil {
 		t.Fatal("second Escape should clear roundState after fullscreen transition")
 	}
-	if !model.chat.canceled {
+	if !model.chat.activeRun().canceled {
 		t.Fatal("second Escape should mark canceled after fullscreen transition")
 	}
 }

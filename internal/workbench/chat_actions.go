@@ -27,7 +27,7 @@ func (m Model) chatSpinnerTick() tea.Cmd {
 
 func (m *Model) startChat() tea.Cmd {
 	prompt := strings.TrimSpace(m.chat.input.Value())
-	if prompt == "" || m.chat.loading {
+	if prompt == "" {
 		return nil
 	}
 	switch strings.ToLower(prompt) {
@@ -35,6 +35,8 @@ func (m *Model) startChat() tea.Cmd {
 		m.newChatConversation()
 		m.Status = "new conversation"
 		return nil
+	case "/history":
+		return m.loadChatHistory()
 	case "/yolo-on":
 		m.chat.yoloWrites = true
 		m.chat.input.Reset()
@@ -64,40 +66,54 @@ func (m *Model) startChat() tea.Cmd {
 		m.Status = "AI is not configured"
 		return nil
 	}
+	// A chat already running in the visible conversation swallows new input;
+	// other conversations keep running independently in the background.
+	if m.chat.activeRun().loading {
+		return nil
+	}
 
 	userMessage := ai.Message{Role: ai.RoleUser, Content: prompt}
-	m.chat.messages = append(m.chat.messages, userMessage)
+	conversationID := m.chat.activeID
+	fresh := conversationID == ""
+	if fresh && m.chat.history != nil {
+		conversation, err := m.chat.history.NewConversation(m.appContext, truncateChatTitle(prompt))
+		if err != nil {
+			m.Status = safeText("AI history: " + err.Error())
+			return nil
+		}
+		conversationID = conversation.ID
+		m.chat.activeID = conversationID
+	}
+	run := m.chat.runs[conversationID]
+	if run == nil {
+		run = &chatRun{conversationID: conversationID}
+		m.chat.runs[conversationID] = run
+	}
+	run.messages = append(run.messages, userMessage)
 	m.chat.input.Reset()
 	m.chat.completion = completion{}
-	m.chat.loading = true
-	m.chat.canceled = false
-	m.chat.streamBuffer = ""
-	m.chat.gen++
-	m.chat.pendingWrite = nil
-	m.chat.roundState = nil
+	run.loading = true
+	run.canceled = false
+	run.streamBuffer = ""
+	run.gen = m.chat.nextGen
+	m.chat.nextGen++
+	run.pendingWrite = nil
+	run.roundState = nil
 	m.refreshChatView()
 
-	gen := m.chat.gen
-	client, history, conversationID := m.chat.client, m.chat.history, m.chat.conversationID
+	gen := run.gen
+	client, history := m.chat.client, m.chat.history
 	agentID := client.AgentForPrompt(prompt)
 	toolsDefs := m.databaseTools()
-	baseMessages := append([]ai.Message(nil), m.chat.messages...)
+	baseMessages := append([]ai.Message(nil), run.messages...)
 
 	rootContext, cancel := context.WithCancel(m.appContext)
-	m.chat.cancel = cancel
+	run.cancel = cancel
 
 	contextText := m.chatContext()
 
 	send := func() tea.Msg {
 		if history != nil {
-			if conversationID == "" {
-				conversation, err := history.NewConversation(rootContext, truncateChatTitle(prompt))
-				if err != nil {
-					cancel()
-					return chatStreamMsg{conversationID: "", err: err}
-				}
-				conversationID = conversation.ID
-			}
 			if err := history.AppendMessage(rootContext, conversationID, userMessage); err != nil {
 				cancel()
 				return chatStreamMsg{conversationID: conversationID, err: err}
@@ -171,7 +187,26 @@ func (m *Model) startChat() tea.Cmd {
 		toolState.toolCalls = turn.ToolCalls
 		return assistantToolStartMsg{gen: gen, state: toolState}
 	}
-	return tea.Batch(send, m.chatSpinnerTick())
+	// Title generation runs in parallel with the chat request, only for a
+	// brand-new conversation, and never blocks the stream on the model call.
+	titleCmd := func() tea.Msg {
+		title, err := client.GenerateTitle(m.appContext, prompt)
+		if err != nil {
+			return chatTitleMsg{conversationID: conversationID, err: err}
+		}
+		if title == "" {
+			return chatTitleMsg{conversationID: conversationID}
+		}
+		if err := history.RenameConversation(m.appContext, conversationID, title); err != nil {
+			return chatTitleMsg{conversationID: conversationID, err: err}
+		}
+		return chatTitleMsg{conversationID: conversationID, title: title}
+	}
+	cmds := []tea.Cmd{send, m.chatSpinnerTick()}
+	if fresh && history != nil {
+		cmds = append(cmds, titleCmd)
+	}
+	return tea.Batch(cmds...)
 }
 
 // readStreamEvent reads one event from the stream channel and returns it as a chatStreamMsg.
@@ -205,9 +240,11 @@ func (m *Model) loadChatHistory() tea.Cmd {
 
 func (m *Model) loadChatMessages(conversationID string) tea.Cmd {
 	history := m.chat.history
+	m.chat.loadSeq++
+	seq := m.chat.loadSeq
 	return func() tea.Msg {
 		messages, err := history.Messages(m.appContext, conversationID)
-		return chatMessagesLoadedMsg{conversationID: conversationID, messages: messages, err: err}
+		return chatMessagesLoadedMsg{conversationID: conversationID, messages: messages, seq: seq, err: err}
 	}
 }
 
@@ -215,7 +252,7 @@ func (m *Model) deleteChatHistory(clear bool) tea.Cmd {
 	if m.chat.history == nil {
 		return nil
 	}
-	history, conversationID := m.chat.history, m.chat.conversationID
+	history, conversationID := m.chat.history, m.chat.activeID
 	return func() tea.Msg {
 		var err error
 		if clear {
@@ -223,13 +260,18 @@ func (m *Model) deleteChatHistory(clear bool) tea.Cmd {
 		} else if conversationID != "" {
 			err = history.DeleteConversation(m.appContext, conversationID)
 		}
-		return chatHistoryDeletedMsg{err: err}
+		return chatHistoryDeletedMsg{err: err, conversationID: conversationID, clear: clear}
 	}
 }
 
 func (m *Model) newChatConversation() {
-	m.chat.messages = nil
-	m.chat.conversationID = ""
+	if run := m.chat.runs[""]; run != nil {
+		if run.cancel != nil {
+			run.cancel()
+		}
+		delete(m.chat.runs, "")
+	}
+	m.chat.activeID = ""
 	m.chat.input.Reset()
 	m.chat.completion = completion{}
 	m.refreshChatView()
@@ -238,10 +280,11 @@ func (m *Model) newChatConversation() {
 func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case chatSpinnerTickMsg:
-		if !m.chat.loading {
+		run := m.chat.activeRun()
+		if !run.loading {
 			return m, nil
 		}
-		m.chat.spinnerFrame++
+		run.spinnerFrame++
 		return m, m.chatSpinnerTick()
 	case chatHistoryLoadedMsg:
 		if message.err != nil {
@@ -254,18 +297,25 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		choices := make([]huh.Option[string], len(message.conversations))
 		for index, conversation := range message.conversations {
-			choices[index] = huh.NewOption(truncateChatTitle(conversation.Title), conversation.ID)
+			choices[index] = huh.NewOption(chatHistoryOptionLabel(m.chat.runs[conversation.ID], conversation.Title), conversation.ID)
 		}
 		m.chat.historyChoice = message.conversations[0].ID
 		m.chatHistoryPicker = newForm(huh.NewGroup(huh.NewSelect[string]().Key("conversation").Title("AI conversations").Options(choices...).Value(&m.chat.historyChoice))).WithWidth(max(m.tableViewportWidth, 1))
 		return m, m.chatHistoryPicker.Init()
 	case chatMessagesLoadedMsg:
+		if message.seq != m.chat.loadSeq {
+			return m, nil // stale selection load
+		}
 		if message.err != nil {
 			m.Status = safeText("AI history: " + message.err.Error())
 			return m, nil
 		}
-		m.chat.conversationID = message.conversationID
-		m.chat.messages = message.messages
+		m.chat.activeID = message.conversationID
+		run := m.chat.runs[message.conversationID]
+		if run == nil {
+			run = &chatRun{conversationID: message.conversationID, messages: message.messages}
+			m.chat.runs[message.conversationID] = run
+		}
 		m.refreshChatView()
 		return m, nil
 	case chatHistoryDeletedMsg:
@@ -273,7 +323,28 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.Status = safeText("AI history: " + message.err.Error())
 			return m, nil
 		}
-		m.newChatConversation()
+		if message.clear {
+			for _, run := range m.chat.runs {
+				if run.roundState != nil {
+					run.roundState.releaseContexts()
+				}
+				if run.cancel != nil {
+					run.cancel()
+				}
+			}
+			m.chat.runs = map[string]*chatRun{}
+		} else if run := m.chat.runs[message.conversationID]; run != nil {
+			if run.roundState != nil {
+				run.roundState.releaseContexts()
+			}
+			if run.cancel != nil {
+				run.cancel()
+			}
+			delete(m.chat.runs, message.conversationID)
+		}
+		if message.clear || m.chat.activeID == message.conversationID {
+			m.newChatConversation()
+		}
 		m.Status = "AI conversation history cleared"
 		return m, nil
 	case chatPersistMsg:
@@ -281,81 +352,102 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.Status = safeText("AI history: " + message.err.Error())
 		}
 		return m, nil
+	case chatTitleMsg:
+		if message.err != nil {
+			if run := m.chat.runs[message.conversationID]; run != nil && m.chat.isActive(run) {
+				m.Status = safeText("AI title: " + message.err.Error())
+			}
+		}
+		return m, nil
 	case chatStreamMsg:
-		if message.conversationID != "" {
-			m.chat.conversationID = message.conversationID
+		run := m.chat.runs[message.conversationID]
+		if run == nil {
+			return m, nil // conversation deleted or never registered
 		}
 		if message.err != nil {
-			if m.chat.roundState != nil {
-				m.chat.roundState.releaseContexts()
-				m.chat.roundState = nil
+			if run.roundState != nil {
+				run.roundState.releaseContexts()
+				run.roundState = nil
 			}
-			if m.chat.cancel != nil {
-				m.chat.cancel()
+			if run.cancel != nil {
+				run.cancel()
+				run.cancel = nil
 			}
-			canceled := m.chat.canceled
-			m.chat.loading = false
-			m.chat.cancel = nil
-			m.chat.canceled = false
-			m.chat.streamBuffer = ""
-			m.refreshChatView()
+			canceled := run.canceled
+			run.loading = false
+			run.canceled = false
+			run.streamBuffer = ""
+			if m.chat.isActive(run) {
+				m.refreshChatView()
+			}
 			if canceled {
-				m.Status = "AI request canceled"
+				if m.chat.isActive(run) {
+					m.Status = "AI request canceled"
+				}
 				return m, nil
 			}
-			m.Status = safeText("AI: " + message.err.Error())
+			if m.chat.isActive(run) {
+				m.Status = safeText("AI: " + message.err.Error())
+			}
 			return m, nil
 		}
 		if message.done {
 			// If canceled, discard partial content.
-			if m.chat.canceled {
-				if m.chat.roundState != nil {
-					m.chat.roundState.releaseContexts()
-					m.chat.roundState = nil
+			if run.canceled {
+				if run.roundState != nil {
+					run.roundState.releaseContexts()
+					run.roundState = nil
 				}
-				if m.chat.cancel != nil {
-					m.chat.cancel()
+				if run.cancel != nil {
+					run.cancel()
+					run.cancel = nil
 				}
-				m.chat.loading = false
-				m.chat.cancel = nil
-				m.chat.canceled = false
-				m.chat.streamBuffer = ""
-				m.refreshChatView()
-				m.Status = "AI request canceled"
+				run.loading = false
+				run.canceled = false
+				run.streamBuffer = ""
+				if m.chat.isActive(run) {
+					m.refreshChatView()
+					m.Status = "AI request canceled"
+				}
 				return m, nil
 			}
-			wasFinalizing := m.chat.roundState != nil && m.chat.roundState.finalizing
-			if m.chat.roundState != nil {
-				m.chat.roundState.releaseContexts()
+			wasFinalizing := run.roundState != nil && run.roundState.finalizing
+			if run.roundState != nil {
+				run.roundState.releaseContexts()
 			}
 			// Stream completed successfully — cancel the context.
-			if m.chat.cancel != nil {
-				m.chat.cancel()
+			if run.cancel != nil {
+				run.cancel()
+				run.cancel = nil
 			}
-			m.chat.loading = false
-			m.chat.cancel = nil
-			m.chat.canceled = false
-			content := m.chat.streamBuffer
-			m.chat.streamBuffer = ""
-			m.chat.roundState = nil
+			run.loading = false
+			run.canceled = false
+			content := run.streamBuffer
+			run.streamBuffer = ""
+			run.roundState = nil
 			if content == "" {
-				m.refreshChatView()
-				m.Status = "AI returned empty response"
+				if m.chat.isActive(run) {
+					m.refreshChatView()
+					m.Status = "AI returned empty response"
+				}
 				return m, nil
 			}
 			response := message.response
-			m.chat.messages = append(m.chat.messages, ai.Message{
+			run.messages = append(run.messages, ai.Message{
 				Role:    ai.RoleAssistant,
 				Agent:   response.Agent,
 				Content: content,
 			})
-			m.refreshChatView()
-			if wasFinalizing {
+			if m.chat.isActive(run) {
+				m.refreshChatView()
+			}
+			if wasFinalizing && m.chat.isActive(run) {
 				m.Status = "Assistant response complete"
 			}
-			// Persist to history asynchronously. Always report result.
-			if m.chat.history != nil && m.chat.conversationID != "" {
-				history, cid := m.chat.history, m.chat.conversationID
+			// Persist to history asynchronously; report errors regardless of
+			// which conversation is visible.
+			if m.chat.history != nil && run.conversationID != "" {
+				history, cid := m.chat.history, run.conversationID
 				appCtx := m.appContext
 				historyMsg := ai.Message{
 					Role:    ai.RoleAssistant,
@@ -370,109 +462,111 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Delta: accumulate and render, then await the next event.
-		m.chat.streamBuffer += message.delta
-		m.refreshChatView()
+		run.streamBuffer += message.delta
+		if m.chat.isActive(run) {
+			m.refreshChatView()
+		}
 		ch := message.ch
-		cid := m.chat.conversationID
+		cid := run.conversationID
 		return m, func() tea.Msg {
 			return readStreamEvent(ch, cid)
 		}
 	case chatResponseMsg:
-		canceled := m.chat.canceled
-		m.chat.loading = false
-		m.chat.cancel = nil
-		m.chat.canceled = false
-		m.chat.streamBuffer = ""
-		if message.conversationID != "" {
-			m.chat.conversationID = message.conversationID
-		}
-		if message.err != nil {
-			if canceled {
-				m.Status = "AI request canceled"
-				return m, nil
-			}
-			m.Status = safeText("AI: " + message.err.Error())
+		run := m.chat.runs[message.conversationID]
+		if run == nil {
 			return m, nil
 		}
-		m.chat.messages = append(m.chat.messages, ai.Message{Role: ai.RoleAssistant, Agent: message.response.Agent, Content: message.response.Content})
-		m.refreshChatView()
+		canceled := run.canceled
+		run.loading = false
+		run.cancel = nil
+		run.canceled = false
+		run.streamBuffer = ""
+		if message.err != nil {
+			if m.chat.isActive(run) {
+				if canceled {
+					m.Status = "AI request canceled"
+				} else {
+					m.Status = safeText("AI: " + message.err.Error())
+				}
+			}
+			return m, nil
+		}
+		run.messages = append(run.messages, ai.Message{Role: ai.RoleAssistant, Agent: message.response.Agent, Content: message.response.Content})
+		if m.chat.isActive(run) {
+			m.refreshChatView()
+		}
 		return m, nil
 
 	case assistantToolStartMsg:
-		if message.gen != m.chat.gen {
-			return m, nil // stale
+		run := m.chat.runs[message.state.conversationID]
+		if run == nil || message.gen != run.gen {
+			return m, nil // stale or deleted
 		}
-		m.chat.roundState = &message.state
-		m.chat.messages = message.state.messages
-		m.chat.conversationID = message.state.conversationID
-		m.chat.cancel = message.state.cancel
-		m.refreshChatView()
+		run.roundState = &message.state
+		run.messages = message.state.messages
+		run.cancel = message.state.cancel
+		if m.chat.isActive(run) {
+			m.refreshChatView()
+		}
 		return m, func() tea.Msg {
 			return assistantToolContinueMsg{gen: message.gen}
 		}
 
 	case assistantToolPhaseExpiredMsg:
-		if message.gen != m.chat.gen {
+		run := m.chat.runByGen(message.gen)
+		if run == nil {
 			return m, nil // stale
 		}
 		if message.state != nil {
-			m.chat.roundState = message.state
-			m.chat.messages = message.state.messages
-			m.chat.conversationID = message.state.conversationID
-			m.chat.cancel = message.state.cancel
+			run.roundState = message.state
+			run.messages = message.state.messages
+			run.cancel = message.state.cancel
 		}
-		if m.chat.roundState == nil {
+		if run.roundState == nil {
 			return m, nil
 		}
-		return m.startToolFinalization("tool time budget reached")
+		return m.startToolFinalization(run, "tool time budget reached")
 
 	case assistantToolContinueMsg:
-		if message.gen != m.chat.gen || m.chat.roundState == nil {
+		run := m.chat.runByGen(message.gen)
+		if run == nil || run.roundState == nil {
 			return m, nil
 		}
-		return m.processNextToolCall()
+		return m.processNextToolCall(run)
 
 	case assistantWriteResultMsg:
-		if message.gen != m.chat.gen {
+		run := m.chat.runByGen(message.gen)
+		if run == nil {
 			return m, nil // stale
 		}
-		return m.handleWriteResult(message)
+		return m.handleWriteResult(run, message)
 
 	case assistantToolResultMsg:
-		if message.gen != m.chat.gen {
+		run := m.chat.runByGen(message.gen)
+		if run == nil {
 			return m, nil // stale
 		}
-		return m.handleToolResult(message)
+		return m.handleToolResult(run, message)
 	}
 	if keyPress, ok := message.(tea.KeyPressMsg); ok {
-		if m.chat.loading && m.chat.chatMode != formModeInsert && keyPress.Key().Code == tea.KeyEscape {
-			if m.chat.roundState != nil {
-				m.chat.roundState.releaseContexts()
+		run := m.chat.activeRun()
+		if run.loading && m.chat.chatMode != formModeInsert && keyPress.Key().Code == tea.KeyEscape {
+			if run.roundState != nil {
+				run.roundState.releaseContexts()
 			}
-			if m.chat.cancel != nil {
-				m.chat.cancel()
-				m.chat.cancel = nil
+			if run.cancel != nil {
+				run.cancel()
+				run.cancel = nil
 			}
-			m.chat.canceled = true
-			m.chat.roundState = nil
-			m.chat.pendingWrite = nil
+			run.canceled = true
+			run.roundState = nil
+			run.pendingWrite = nil
 			return m, nil
 		}
 		switch {
-		case m.keybindings.Match(keyPress, "chat.history", []scope{scopeView}):
-			if m.chat.loading {
-				return m, nil
-			}
-			return m, m.loadChatHistory()
 		case m.keybindings.Match(keyPress, "chat.delete", []scope{scopeView}):
-			if m.chat.loading {
-				return m, nil
-			}
 			return m, m.deleteChatHistory(false)
 		case m.keybindings.Match(keyPress, "chat.clear", []scope{scopeView}):
-			if m.chat.loading {
-				return m, nil
-			}
 			return m, m.deleteChatHistory(true)
 		case m.keybindings.Match(keyPress, "chat.apply_sql", []scope{scopeView}):
 			m.applyChatSQL()
@@ -538,7 +632,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) applyChatSQL() {
-	statement := chatSQL(m.chat.messages)
+	statement := chatSQL(m.chat.activeRun().messages)
 	if statement == "" {
 		return
 	}
@@ -549,21 +643,21 @@ func (m *Model) applyChatSQL() {
 
 // processNextToolCall executes the next pending tool call in the current round.
 // sql_write with YOLO off creates a pendingWrite modal instead of executing.
-func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
-	rs := m.chat.roundState
+func (m Model) processNextToolCall(run *chatRun) (tea.Model, tea.Cmd) {
+	rs := run.roundState
 	if rs == nil {
 		return m, nil
 	}
 
 	if rs.nextCall >= len(rs.toolCalls) {
-		return m.startNextToolRound()
+		return m.startNextToolRound(run)
 	}
 
 	if !rs.finalizing && time.Now().After(rs.toolDeadline) {
-		return m.startToolFinalization("tool time budget reached")
+		return m.startToolFinalization(run, "tool time budget reached")
 	}
 	if !rs.finalizing && rs.toolCallCount >= assistantMaxToolCalls {
-		return m.startToolFinalization("tool-call budget reached")
+		return m.startToolFinalization(run, "tool-call budget reached")
 	}
 	rs.toolCallCount++
 
@@ -579,9 +673,9 @@ func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
 			rs.messages = append(rs.messages, ai.Message{
 				Role: ai.RoleTool, ToolID: call.ID, ToolName: call.Name, Content: content,
 			})
-			m.chat.messages = rs.messages
+			run.messages = rs.messages
 			if rs.recordToolResult(call, content) {
-				return m.startToolFinalization("repeated tool result")
+				return m.startToolFinalization(run, "repeated tool result")
 			}
 			return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
 		}
@@ -608,7 +702,7 @@ func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
 			}
 		}
 		// Show confirmation modal.
-		m.chat.pendingWrite = &pendingWrite{
+		run.pendingWrite = &pendingWrite{
 			generation: rs.gen,
 			call:       call,
 			statement:  query,
@@ -637,13 +731,13 @@ func (m Model) processNextToolCall() (tea.Model, tea.Cmd) {
 }
 
 // handleWriteResult processes the outcome of an async sql_write execution.
-func (m Model) handleWriteResult(msg assistantWriteResultMsg) (tea.Model, tea.Cmd) {
-	rs := m.chat.roundState
+func (m Model) handleWriteResult(run *chatRun, msg assistantWriteResultMsg) (tea.Model, tea.Cmd) {
+	rs := run.roundState
 	if rs == nil || msg.gen != rs.gen {
 		return m, nil
 	}
 
-	m.chat.pendingWrite = nil
+	run.pendingWrite = nil
 
 	if msg.declined {
 		// User declined — append the result and end this run explicitly.
@@ -651,8 +745,8 @@ func (m Model) handleWriteResult(msg assistantWriteResultMsg) (tea.Model, tea.Cm
 			Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName,
 			Content: "Error: " + msg.err,
 		})
-		m.chat.messages = rs.messages
-		return m.stopToolRound("Assistant write canceled")
+		run.messages = rs.messages
+		return m.stopToolRound(run, "Assistant write canceled")
 	}
 
 	content := msg.content
@@ -664,20 +758,20 @@ func (m Model) handleWriteResult(msg assistantWriteResultMsg) (tea.Model, tea.Cm
 		Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName, Content: content,
 	})
 	rs.nextCall++
-	m.chat.messages = rs.messages
+	run.messages = rs.messages
 	if rs.recordToolResult(call, content) {
-		return m.startToolFinalization("repeated tool result")
+		return m.startToolFinalization(run, "repeated tool result")
 	}
 
 	if rs.nextCall < len(rs.toolCalls) {
 		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
 	}
-	return m.startNextToolRound()
+	return m.startNextToolRound(run)
 }
 
 // handleToolResult processes the outcome of an async read-only tool execution.
-func (m Model) handleToolResult(msg assistantToolResultMsg) (tea.Model, tea.Cmd) {
-	rs := m.chat.roundState
+func (m Model) handleToolResult(run *chatRun, msg assistantToolResultMsg) (tea.Model, tea.Cmd) {
+	rs := run.roundState
 	if rs == nil || msg.gen != rs.gen {
 		return m, nil
 	}
@@ -692,28 +786,28 @@ func (m Model) handleToolResult(msg assistantToolResultMsg) (tea.Model, tea.Cmd)
 		Role: ai.RoleTool, ToolID: msg.callID, ToolName: msg.callName, Content: content,
 	})
 	rs.nextCall++
-	m.chat.messages = rs.messages
+	run.messages = rs.messages
 	if rs.recordToolResult(call, content) {
-		return m.startToolFinalization("repeated tool result")
+		return m.startToolFinalization(run, "repeated tool result")
 	}
 
 	if rs.nextCall < len(rs.toolCalls) {
 		return m, func() tea.Msg { return assistantToolContinueMsg{gen: rs.gen} }
 	}
-	return m.startNextToolRound()
+	return m.startNextToolRound(run)
 }
 
 // startNextToolRound issues the next Complete call from a command closure.
-func (m Model) startNextToolRound() (tea.Model, tea.Cmd) {
-	rs := m.chat.roundState
+func (m Model) startNextToolRound(run *chatRun) (tea.Model, tea.Cmd) {
+	rs := run.roundState
 	if rs == nil {
 		return m, nil
 	}
 	if !rs.finalizing && time.Now().After(rs.toolDeadline) {
-		return m.startToolFinalization("tool time budget reached")
+		return m.startToolFinalization(run, "tool time budget reached")
 	}
 	if !rs.finalizing && rs.toolCallCount >= assistantMaxToolCalls {
-		return m.startToolFinalization("tool-call budget reached")
+		return m.startToolFinalization(run, "tool-call budget reached")
 	}
 
 	rs.nextCall = 0
@@ -791,8 +885,8 @@ func (m Model) startNextToolRound() (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m Model) startToolFinalization(reason string) (tea.Model, tea.Cmd) {
-	rs := m.chat.roundState
+func (m Model) startToolFinalization(run *chatRun, reason string) (tea.Model, tea.Cmd) {
+	rs := run.roundState
 	if rs == nil || rs.finalizing {
 		return m, nil
 	}
@@ -803,9 +897,11 @@ func (m Model) startToolFinalization(reason string) (tea.Model, tea.Cmd) {
 	}
 	rs.finalizing = true
 	rs.chatContext, rs.finalizationCancel = context.WithTimeout(rs.rootContext, assistantFinalizationTimeout)
-	m.chat.messages = rs.messages
-	m.Status = "Assistant finalizing: " + reason
-	return m.startNextToolRound()
+	run.messages = rs.messages
+	if m.chat.isActive(run) {
+		m.Status = "Assistant finalizing: " + reason
+	}
+	return m.startNextToolRound(run)
 }
 
 func (rs *toolRoundState) recordToolResult(call ai.ToolCall, content string) bool {
@@ -845,8 +941,8 @@ func (rs *toolRoundState) skipRemainingToolCalls(reason string) {
 }
 
 // stopToolRound cleans up a deliberately stopped tool run.
-func (m Model) stopToolRound(status string) (tea.Model, tea.Cmd) {
-	rs := m.chat.roundState
+func (m Model) stopToolRound(run *chatRun, status string) (tea.Model, tea.Cmd) {
+	rs := run.roundState
 	if rs == nil {
 		return m, nil
 	}
@@ -854,11 +950,13 @@ func (m Model) stopToolRound(status string) (tea.Model, tea.Cmd) {
 	if rs.cancel != nil {
 		rs.cancel()
 	}
-	m.chat.loading = false
-	m.chat.cancel = nil
-	m.chat.roundState = nil
-	m.chat.pendingWrite = nil
-	m.refreshChatView()
-	m.Status = status
+	run.loading = false
+	run.cancel = nil
+	run.roundState = nil
+	run.pendingWrite = nil
+	if m.chat.isActive(run) {
+		m.refreshChatView()
+		m.Status = status
+	}
 	return m, nil
 }

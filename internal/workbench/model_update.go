@@ -152,7 +152,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.startQueryStatement(statement)
 	}
-	if m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil {
+	if run := m.chat.activeRun(); run.pendingWrite != nil && run.pendingWrite.dialog != nil {
 		// While in chat insert mode, Escape exits insert mode first so the
 		// write confirmation cannot interrupt the agent on the first press;
 		// a second Escape (now in normal mode) declines the write.
@@ -161,17 +161,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.input.Blur()
 			return m, nil
 		}
-		completed, action := m.chat.pendingWrite.dialog.Update(message, m.width, m.height)
+		completed, action := run.pendingWrite.dialog.Update(message, m.width, m.height)
 		if !completed {
 			return m, nil
 		}
-		call := m.chat.pendingWrite.call
-		statement := m.chat.pendingWrite.statement
-		gen := m.chat.pendingWrite.generation
+		call := run.pendingWrite.call
+		statement := run.pendingWrite.statement
+		gen := run.pendingWrite.generation
 
 		if action != "run" {
 			// Decline — send error result and stop round.
-			m.chat.pendingWrite = nil
+			run.pendingWrite = nil
 			return m, func() tea.Msg {
 				return assistantWriteResultMsg{
 					gen: gen, callID: call.ID, callName: call.Name,
@@ -181,8 +181,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Approved — execute write asynchronously.
-		m.chat.pendingWrite = nil
-		rs := m.chat.roundState
+		run.pendingWrite = nil
+		rs := run.roundState
 		if rs == nil || gen != rs.gen {
 			return m, nil
 		}

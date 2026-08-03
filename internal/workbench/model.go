@@ -252,8 +252,16 @@ func (m *Model) disconnect() {
 	m.recentConnections = loadRecentConnections(m.recentPath)
 	_ = m.recent.SetItems(recentListItems(m.recentConnections))
 	m.chat.yoloWrites = false
-	m.chat.pendingWrite = nil
-	m.chat.roundState = nil
+	for _, run := range m.chat.runs {
+		if run.roundState != nil {
+			run.roundState.releaseContexts()
+		}
+		if run.cancel != nil {
+			run.cancel()
+		}
+	}
+	m.chat.runs = map[string]*chatRun{}
+	m.chat.activeID = ""
 }
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {

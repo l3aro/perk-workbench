@@ -70,7 +70,7 @@ func (m Model) hasConfirming() bool {
 	return m.explainPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil ||
 		(m.cellEditor != nil && m.cellEditor.confirming) ||
-		(m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil)
+		(m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil)
 }
 
 func (m Model) activeConfirmation() *confirmationDialog {
@@ -93,8 +93,8 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.deleteConfirm
 	case m.cellEditor != nil && m.cellEditor.confirming:
 		return m.cellEditor.confirm
-	case m.chat.pendingWrite != nil && m.chat.pendingWrite.dialog != nil:
-		return m.chat.pendingWrite.dialog
+	case m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil:
+		return m.chat.activeRun().pendingWrite.dialog
 	default:
 		return nil
 	}
@@ -129,8 +129,8 @@ func (m Model) confirmContent() string {
 		raw = m.connection.confirmation.content(m.width)
 	case m.deleteConfirm != nil:
 		raw = m.deleteConfirm.content(m.width)
-	case m.chat.pendingWrite != nil:
-		return m.chat.pendingWrite.dialog.content(m.width)
+	case m.chat.activeRun().pendingWrite != nil:
+		return m.chat.activeRun().pendingWrite.dialog.content(m.width)
 	}
 	if raw == "" {
 		return ""
@@ -648,8 +648,9 @@ func (m Model) chatModeBadge() string {
 		left = modeNormalStyle.Render("NORMAL")
 	}
 	right := ""
-	if m.chat.loading {
-		right = chatSpinnerFrames[m.chat.spinnerFrame%len(chatSpinnerFrames)]
+	run := m.chat.activeRun()
+	if run.loading {
+		right = chatSpinnerFrames[run.spinnerFrame%len(chatSpinnerFrames)]
 	}
 	if m.chat.yoloWrites {
 		if right != "" {

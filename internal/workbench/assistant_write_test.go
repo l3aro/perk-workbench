@@ -22,6 +22,9 @@ type toolWriteClient struct {
 
 func (c *toolWriteClient) AgentForPrompt(string) string { return "assistant" }
 func (c *toolWriteClient) SupportsTools(string) bool    { return true }
+func (c *toolWriteClient) GenerateTitle(context.Context, string) (string, error) {
+	return "Cheap title", nil
+}
 func (c *toolWriteClient) Chat(_ context.Context, _ ai.Request) (ai.Response, error) {
 	return ai.Response{Agent: "Assistant", Content: "Chat response"}, nil
 }
@@ -91,7 +94,7 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 
 	// sql_write → pendingWrite
 	model, cmd = resolveChatCommand(model, cmd)
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("expected pendingWrite after sql_write call")
 	}
 
@@ -108,7 +111,7 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	// get_connection_info + next round → final answer
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading after completion")
 	}
 
@@ -179,24 +182,24 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 	model, cmd = resolveChatCommand(model, cmd)
 
 	model, cmd = resolveChatCommand(model, cmd)
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("expected pendingWrite")
 	}
 
 	// Decline via direct message.
 	declineMsg := assistantWriteResultMsg{
-		gen: model.chat.gen, callID: "call_w2", callName: "sql_write",
+		gen: model.chat.activeRun().gen, callID: "call_w2", callName: "sql_write",
 		err: "execution canceled by user", declined: true,
 	}
 	updated, _ = model.Update(declineMsg)
 	model = updated.(Model)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading after decline")
 	}
 
 	// Verify cancel message in history.
-	last := model.chat.messages[len(model.chat.messages)-1]
+	last := model.chat.activeRun().messages[len(model.chat.activeRun().messages)-1]
 	if !strings.Contains(last.Content, "execution canceled by user") {
 		t.Fatalf("last tool result = %q, want cancel message", last.Content)
 	}
@@ -261,7 +264,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	model, cmd = resolveChatCommand(model, cmd)
 
 	model, cmd = resolveChatCommand(model, cmd)
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("expected pendingWrite for first write")
 	}
 
@@ -280,7 +283,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 
 	model, cmd = resolveChatCommand(model, cmd)
 
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("expected pendingWrite for corrected write")
 	}
 
@@ -296,7 +299,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	// Final answer.
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading")
 	}
 
@@ -348,10 +351,10 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	model = updated.(Model)
 
 	// Drive the tool round until the write awaits confirmation.
-	for model.chat.pendingWrite == nil && cmd != nil {
+	for model.chat.activeRun().pendingWrite == nil && cmd != nil {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("expected pendingWrite after sql_write call")
 	}
 	if model.chat.chatMode != formModeInsert {
@@ -367,13 +370,13 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	if model.chat.chatMode != formModeNormal {
 		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
 	}
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("first Escape should keep the write confirmation up")
 	}
-	if model.chat.roundState == nil {
+	if model.chat.activeRun().roundState == nil {
 		t.Fatal("first Escape should NOT interrupt the agent run")
 	}
-	if !model.chat.loading {
+	if !model.chat.activeRun().loading {
 		t.Fatal("first Escape should NOT stop loading")
 	}
 
@@ -385,13 +388,13 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	}
 	model, _ = resolveChatCommand(model, cmd)
 
-	if model.chat.pendingWrite != nil {
+	if model.chat.activeRun().pendingWrite != nil {
 		t.Fatal("second Escape should clear the write confirmation")
 	}
-	if model.chat.roundState != nil {
+	if model.chat.activeRun().roundState != nil {
 		t.Fatal("second Escape should interrupt the agent run")
 	}
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading after second escape")
 	}
 
@@ -467,10 +470,10 @@ func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 	model = updated.(Model)
 
 	// Drive the tool round until the write awaits confirmation.
-	for model.chat.pendingWrite == nil && cmd != nil {
+	for model.chat.activeRun().pendingWrite == nil && cmd != nil {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
-	if model.chat.pendingWrite == nil {
+	if model.chat.activeRun().pendingWrite == nil {
 		t.Fatal("expected pendingWrite after sql_write call")
 	}
 
@@ -540,7 +543,7 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.loading {
+	if model.chat.activeRun().loading {
 		t.Fatal("model should not be loading")
 	}
 

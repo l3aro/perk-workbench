@@ -19,6 +19,7 @@ type chatClient interface {
 	Complete(context.Context, ai.Request) (ai.Response, error)
 	ChatStream(context.Context, ai.Request) (<-chan ai.StreamEvent, error)
 	SupportsTools(string) bool
+	GenerateTitle(context.Context, string) (string, error)
 }
 
 type chatHistory interface {
@@ -28,40 +29,71 @@ type chatHistory interface {
 	Messages(context.Context, string) ([]ai.Message, error)
 	DeleteConversation(context.Context, string) error
 	Clear(context.Context) error
+	RenameConversation(context.Context, string, string) error
 }
 
 type chatModel struct {
-	input          textarea.Model
-	viewport       viewport.Model
-	messages       []ai.Message
-	client         chatClient
-	history        chatHistory
-	conversationID string
-	cancel         context.CancelFunc
-	loading        bool
-	canceled       bool
-	enabled        bool
-	visible        bool
-	shareResults   bool
-	historyChoice  string
-	chatMode       formMode
-	glamour        *glamour.TermRenderer
-	streamBuffer   string     // accumulated streaming content
-	spinnerFrame   int        // progress spinner frame while loading
-	completion     completion // slash-command suggestions while typing
+	input    textarea.Model
+	viewport viewport.Model
+	client   chatClient
+	history  chatHistory
+	activeID string // conversation shown; "" is the fresh unsent view
+	runs     map[string]*chatRun
+	nextGen  int64 // globally unique turn ids across concurrent runs
+	loadSeq  int64 // bumps on each /history selection; drops stale loads
+	enabled  bool
+	visible  bool
 
-	// Tool round state for resumable multi-call turns.
-	gen      int64 // incremented on each startChat; checked on async completions
-	roundGen int64 // the gen value when the current tool round started
-
-	// Pending assistant write awaiting confirmation.
-	pendingWrite *pendingWrite
+	shareResults  bool
+	historyChoice string
+	chatMode      formMode
+	glamour       *glamour.TermRenderer
+	completion    completion // slash-command suggestions while typing
 
 	// YOLO writes: when true, sql_write executes without per-statement modal.
 	yoloWrites bool
+}
 
-	// Resumable tool-round state. Non-nil during an active multi-call turn.
-	roundState *toolRoundState
+// chatRun is the full state of one conversation — the active one or any
+// conversation still executing in the background. Runs are independent:
+// switching the visible conversation never interrupts another run.
+type chatRun struct {
+	conversationID string
+	messages       []ai.Message
+	streamBuffer   string // accumulated streaming content
+	loading        bool
+	canceled       bool
+	cancel         context.CancelFunc
+	gen            int64 // turn id; checked on async completions
+	spinnerFrame   int   // progress spinner frame while loading
+	roundState     *toolRoundState
+	pendingWrite   *pendingWrite
+}
+
+// activeRun returns the run backing the visible conversation, creating an
+// empty run for the fresh (unsent) view when needed.
+func (cm *chatModel) activeRun() *chatRun {
+	run := cm.runs[cm.activeID]
+	if run == nil {
+		run = &chatRun{conversationID: cm.activeID}
+		cm.runs[cm.activeID] = run
+	}
+	return run
+}
+
+// runByGen finds the run that owns the given turn id.
+func (cm *chatModel) runByGen(gen int64) *chatRun {
+	for _, run := range cm.runs {
+		if run.gen == gen {
+			return run
+		}
+	}
+	return nil
+}
+
+// isActive reports whether run backs the visible conversation.
+func (cm *chatModel) isActive(run *chatRun) bool {
+	return cm.activeID == run.conversationID
 }
 
 type chatResponseMsg struct {
@@ -159,13 +191,36 @@ type chatHistoryLoadedMsg struct {
 type chatMessagesLoadedMsg struct {
 	conversationID string
 	messages       []ai.Message
+	seq            int64
 	err            error
 }
 
-type chatHistoryDeletedMsg struct{ err error }
+type chatHistoryDeletedMsg struct {
+	err            error
+	conversationID string // conversation the delete targeted ("" for clear-all)
+	clear          bool
+}
+
+// chatHistoryOptionLabel renders a conversation title for the /history
+// picker, prefixing a spinner glyph while that conversation's agent run is
+// active. The glyph is static while the picker is open: the picker is not
+// rebuilt on every tick.
+func chatHistoryOptionLabel(run *chatRun, title string) string {
+	if run != nil && run.loading {
+		return chatSpinnerFrames[run.spinnerFrame%len(chatSpinnerFrames)] + " " + truncateChatTitle(title)
+	}
+	return truncateChatTitle(title)
+}
 
 // chatPersistMsg reports an error persisting an AI message to history.
 type chatPersistMsg struct{ err error }
+
+// chatTitleMsg reports completion of asynchronous conversation title generation.
+type chatTitleMsg struct {
+	conversationID string
+	title          string
+	err            error
+}
 
 // chatSpinnerTickMsg advances the assistant progress spinner while loading.
 type chatSpinnerTickMsg struct{}
@@ -191,7 +246,7 @@ func newChatModel() chatModel {
 	viewport.SoftWrap = true
 	viewport.FillHeight = true
 	viewport.MouseWheelEnabled = true
-	return chatModel{input: input, viewport: viewport, chatMode: formModeNormal}
+	return chatModel{input: input, viewport: viewport, runs: map[string]*chatRun{}, nextGen: 1, chatMode: formModeNormal}
 }
 
 func (m *Model) SetAI(client chatClient, history chatHistory) {
@@ -232,8 +287,9 @@ func (m *Model) resizeChat() {
 }
 
 func (m *Model) refreshChatView() {
-	blocks := make([]string, 0, len(m.chat.messages)+1)
-	for _, message := range m.chat.messages {
+	run := m.chat.activeRun()
+	blocks := make([]string, 0, len(run.messages)+1)
+	for _, message := range run.messages {
 		var block string
 		var content string
 		if message.Role == ai.RoleAssistant {
@@ -259,16 +315,16 @@ func (m *Model) refreshChatView() {
 	}
 
 	// Append streaming content as the last assistant message.
-	if m.chat.loading {
+	if run.loading {
 		// Adaptive label: "thinking..." before content, "streaming..." during.
 		label := "\u2022 thinking..."
-		if m.chat.streamBuffer != "" {
+		if run.streamBuffer != "" {
 			label = "\u2022 streaming..."
 		}
 		blocks = append(blocks, thinkingStyle.Render(label))
 
-		if m.chat.streamBuffer != "" {
-			content := safeMarkdown(m.chat.streamBuffer)
+		if run.streamBuffer != "" {
+			content := safeMarkdown(run.streamBuffer)
 			if m.chat.glamour != nil {
 				content = m.renderChatContent(content)
 			}
