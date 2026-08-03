@@ -20,6 +20,12 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 				{label: "Yes, delete", action: "delete"},
 				{label: "Cancel", action: "cancel"},
 			})
+		case "rename_table":
+			return m, m.openTableForm(menu.database, menu.table)
+		case "add_table":
+			return m, m.openTableForm(menu.database, "")
+		case "delete_table":
+			m.confirmTableDelete(menu.database, menu.table)
 		case "query_log_yank":
 			entry, ok := m.queryLogSelectedEntry()
 			if !ok {
@@ -83,6 +89,17 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextMenu = nil
 	}
 	return m, nil
+}
+
+// confirmTableDelete opens the Delete table? confirmation for the given
+// target, shared by the schema.delete_table binding and the context menu.
+// Acceptance drops the table and refreshes the sidebar; decline clears the
+// retained target.
+func (m *Model) confirmTableDelete(database, table string) {
+	m.deletePending = "table"
+	m.deletePendingDatabase = database
+	m.deletePendingName = table
+	m.deleteConfirm = yesNoConfirmation("Delete table?", "DROP TABLE "+m.actionIdentifier(m.qualifiedTableName(database, table)), "delete_table")
 }
 
 func (m *Model) copyBrowseCell() tea.Cmd {

@@ -122,7 +122,9 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
+// schemaItemAt maps a schema-pane Y coordinate to its item, using the same
+// visible/filter/pagination mapping as the rendered sidebar, and selects it.
+func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
 	// contentY = terminal Y - 1 (after header). Filtering adds one status
 	// line above the visible list items.
 	itemOffset := 4
@@ -131,26 +133,74 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 	}
 	itemY := contentY - itemOffset
 	if itemY < 0 {
-		return m, nil
+		return schemaItem{}, false
 	}
 	items := m.schema.VisibleItems()
 	if len(items) == 0 {
-		return m, nil
+		return schemaItem{}, false
 	}
 	start, end := m.schema.Paginator.GetSliceBounds(len(items))
-	visible := end - start
-	if itemY >= visible {
-		return m, nil
+	if itemY >= end-start {
+		return schemaItem{}, false
 	}
 	m.schema.Select(start + itemY)
-	if item, ok := m.schema.SelectedItem().(schemaItem); ok {
-		if item.root {
-			m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
-			return m, m.rebuildSchemaTree()
-		}
-		return m, m.selectSchemaTable(item)
+	item, ok := m.schema.SelectedItem().(schemaItem)
+	return item, ok
+}
+
+// schemaRowY returns the screen Y of the schema list item at the given
+// index, clamped to the visible window.
+func (m Model) schemaRowY(index int) int {
+	itemOffset := 4
+	if m.schema.IsFiltered() || m.schema.SettingFilter() {
+		itemOffset = 5
 	}
-	return m, nil
+	items := m.schema.VisibleItems()
+	start, _ := m.schema.Paginator.GetSliceBounds(len(items))
+	row := itemOffset + (index - start)
+	return max(row, itemOffset)
+}
+
+// openSchemaItemMenu opens the schema context menu for the given item:
+// Add table on a database root, Rename/Delete on a table row, nothing for
+// views.
+func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
+	switch {
+	case item.root:
+		m.contextMenu = &contextMenuModel{
+			options:  []menuOption{{label: "Add table", action: "add_table", keys: "a"}},
+			selected: 0,
+			visible:  true,
+			x:        x,
+			y:        y,
+			database: item.database,
+		}
+	case item.kind == "table":
+		m.contextMenu = &contextMenuModel{
+			options: []menuOption{
+				{label: "Rename table", action: "rename_table", keys: "r"},
+				{label: "Delete table", action: "delete_table", keys: "d"},
+			},
+			selected: 0,
+			visible:  true,
+			x:        x,
+			y:        y,
+			database: item.database,
+			table:    item.table,
+		}
+	}
+}
+
+func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
+	item, ok := m.schemaItemAt(contentY)
+	if !ok {
+		return m, nil
+	}
+	if item.root {
+		m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
+		return m, m.rebuildSchemaTree()
+	}
+	return m, m.selectSchemaTable(item)
 }
 
 func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
@@ -427,6 +477,21 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 	contentY := absY - 1
 	if contentY < 0 || m.compact {
+		return m, nil
+	}
+
+	if absX < m.schemaWidth {
+		item, ok := m.schemaItemAt(contentY)
+		if !ok {
+			// Blank sidebar space: offer Add table in the current
+			// selection's database; without a selection, no menu.
+			item, ok = m.schema.SelectedItem().(schemaItem)
+			if !ok || item.database == "" {
+				return m, nil
+			}
+			item = schemaItem{database: item.database, root: true}
+		}
+		m.openSchemaItemMenu(item, absX, absY+1)
 		return m, nil
 	}
 

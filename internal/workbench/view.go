@@ -84,9 +84,13 @@ func (m Model) headerView() string {
 	return logo + strings.Repeat(" ", gap) + button
 }
 
+// tableFormOpen reports whether the table popup is visible: open and not
+// mid-execution (the retained form hides while its DDL query runs).
+func (m Model) tableFormOpen() bool { return m.tableForm.active() && !m.tableFormRunning }
+
 func (m Model) hasConfirming() bool {
 	return m.explainPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
-		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil ||
+		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil || m.tableFormOpen() ||
 		(m.cellEditor != nil && m.cellEditor.confirming) ||
 		(m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil)
 }
@@ -107,6 +111,8 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.foreignKeyForm.confirmation
 	case m.connection.confirmation != nil:
 		return m.connection.confirmation
+	case m.tableFormOpen() && m.tableForm.confirming():
+		return m.tableForm.confirmation
 	case m.deleteConfirm != nil:
 		return m.deleteConfirm
 	case m.cellEditor != nil && m.cellEditor.confirming:
@@ -131,6 +137,8 @@ func (m Model) confirmContent() string {
 		raw = m.queryConfirmation.dialog.content(m.width)
 	case m.explainPicker != nil:
 		raw = m.explainPicker.form.View()
+	case m.tableFormOpen():
+		raw = m.tableForm.View()
 	case m.chatHistoryPicker != nil:
 		raw = m.chatHistoryPicker.View()
 	case m.quitDialog != nil:

@@ -57,6 +57,8 @@ func (m *Model) layout(width, height int) {
 	}
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
+	m.tableForm.setWidth(m.tableViewportWidth)
+	m.tableForm.setHeight(m.formViewportHeight())
 	m.browseForm.setWidth(m.tableViewportWidth)
 	if m.browseFilterForm != nil {
 		m.browseFilterForm.setSize(m.tableViewportWidth, m.formViewportHeight())

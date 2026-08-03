@@ -50,13 +50,36 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.results, command = m.results.Update(message)
 				return m, command
 			}
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.schema.SettingFilter() && m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}) {
-				if item, ok := m.schema.SelectedItem().(schemaItem); ok {
-					if item.root {
-						m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
-						return m, m.rebuildSchemaTree()
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.schema.SettingFilter() {
+				switch {
+				case m.keybindings.Match(keyPress, "schema.context_menu", []scope{scopeView, scopeGlobal}):
+					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+						m.openSchemaItemMenu(item, m.schemaWidth/2, m.schemaRowY(m.schema.Index())+1)
 					}
-					return m, m.selectSchemaTable(item)
+					return m, nil
+				case m.keybindings.Match(keyPress, "schema.add_table", []scope{scopeView, scopeGlobal}):
+					if item, ok := m.schema.SelectedItem().(schemaItem); ok && (item.root || item.kind == "table") {
+						return m, m.openTableForm(item.database, "")
+					}
+					return m, nil
+				case m.keybindings.Match(keyPress, "schema.rename_table", []scope{scopeView, scopeGlobal}):
+					if item, ok := m.schema.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
+						return m, m.openTableForm(item.database, item.table)
+					}
+					return m, nil
+				case m.keybindings.Match(keyPress, "schema.delete_table", []scope{scopeView, scopeGlobal}):
+					if item, ok := m.schema.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
+						m.confirmTableDelete(item.database, item.table)
+					}
+					return m, nil
+				case m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}):
+					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+						if item.root {
+							m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
+							return m, m.rebuildSchemaTree()
+						}
+						return m, m.selectSchemaTable(item)
+					}
 				}
 			}
 			m.schema, command = m.schema.Update(message)
@@ -460,5 +483,5 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) formActive() bool {
-	return m.tableFiltering || m.columnForm.active() || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
+	return m.tableFiltering || m.columnForm.active() || m.tableFormOpen() || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
 }

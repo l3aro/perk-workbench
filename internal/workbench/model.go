@@ -75,6 +75,8 @@ type Model struct {
 	chatHistoryPicker                                                                              *huh.Form
 	formMode                                                                                       *formModeController
 	columnForm                                                                                     columnForm
+	tableForm                                                                                      tableForm
+	tableFormRunning                                                                               bool
 	browseForm                                                                                     browseForm
 	browseFilterForm                                                                               *browseFilterForm
 	browseSettings                                                                                 browseSettings
@@ -115,6 +117,7 @@ type Model struct {
 	deleteConfirm                                                                                  *confirmationDialog
 	deletePending                                                                                  string
 	deletePendingName                                                                              string
+	deletePendingDatabase                                                                          string
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -133,12 +136,15 @@ type contextMenuModel struct {
 	options  []menuOption
 	selected int
 	x, y     int // screen position (top-left of border)
+	database string
+	table    string
 	visible  bool
 }
 
 type schemaItem struct {
 	title, description string
 	database, table    string
+	kind               string
 	root               bool
 }
 
@@ -336,7 +342,7 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			continue
 		}
 		if m.expandedDatabases[object.Database] {
-			items = append(items, schemaItem{title: object.Name, description: object.Type, database: object.Database, table: object.Name})
+			items = append(items, schemaItem{title: object.Name, description: object.Type, database: object.Database, table: object.Name, kind: object.Type})
 		}
 	}
 	return m.schema.SetItems(items)
