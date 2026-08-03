@@ -28,7 +28,7 @@ func clickFormButton(model Model, x, y int) Model {
 
 // workspaceButtonRowY returns the screen y of the workspace button bar.
 func workspaceButtonRowY(model Model) int {
-	return model.workspaceHeight - 1 // contentY = workspaceHeight-2, plus header
+	return model.workspaceHeight - 3 // contentY = workspaceHeight-4, plus header
 }
 
 // connectionButtonRowY returns the screen y of the connection button bar.
@@ -56,6 +56,15 @@ func TestFormButtonAt_hitTest(t *testing.T) {
 	}
 }
 
+func TestFormButtonsBar_focusedHighlightsChoice(t *testing.T) {
+	if view := formButtonsBar(true, 1); !strings.Contains(view, formButtonFocusedStyle.Render("Cancel")) || strings.Contains(view, formButtonFocusedStyle.Render("Save")) {
+		t.Fatalf("focused bar = %q, want Cancel highlighted only", view)
+	}
+	if view := formButtonsBar(false, 0); strings.Contains(view, formButtonFocusedStyle.Render("Save")) || strings.Contains(view, formButtonFocusedStyle.Render("Cancel")) {
+		t.Fatalf("unfocused bar = %q, want no highlight", view)
+	}
+}
+
 func TestFormButtonsBar_rendersOnlyWhileFormActive(t *testing.T) {
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabStructure
@@ -73,8 +82,9 @@ func TestFormButtonsBar_rendersOnlyWhileFormActive(t *testing.T) {
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter}) // open the column form
 	_ = model.columnForm.form.Init()
 	view := ansi.Strip(model.workspaceView())
-	if !strings.Contains(view, "Save") || !strings.Contains(view, "Cancel") || !strings.Contains(view, "NORMAL") {
-		t.Fatalf("workspace view with form = %q, want Save/Cancel buttons and mode badge", view)
+	lines := strings.Split(view, "\n")
+	if actions, gap, footer := strings.TrimSpace(lines[len(lines)-3]), strings.TrimSpace(lines[len(lines)-2]), strings.TrimSpace(lines[len(lines)-1]); !strings.Contains(actions, "Save") || !strings.Contains(actions, "Cancel") || gap != "" || !strings.HasPrefix(footer, "NORMAL") {
+		t.Fatalf("workspace form footer = %q / %q / %q, want Save/Cancel, gap, bottom-left NORMAL", actions, gap, footer)
 	}
 }
 
@@ -150,7 +160,7 @@ func TestIndexForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 func TestBrowseFilterForm_mouseSaveCommitsEditAndApplies(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 
 	// Mouse-enter edit on the Rows limit row (view line 3, screen y=7).
 	updated, _ := model.Update(tea.MouseClickMsg{X: 60, Y: 7, Button: tea.MouseLeft})
@@ -336,16 +346,13 @@ func TestForeignKeyForm_mouseSaveAndCancelConfirmations(t *testing.T) {
 	}
 }
 
-// workspacePaneLastContentRow returns the last non-border row of the rendered
-// workspace pane (the button bar when a form is active).
-func workspacePaneLastContentRow(model Model) string {
-	lines := strings.Split(ansi.Strip(model.rightView()), "\n")
-	for i := len(lines) - 2; i >= 0; i-- {
-		if trimmed := strings.TrimSpace(lines[i]); trimmed != "" && !strings.HasPrefix(trimmed, "└") {
-			return trimmed
-		}
+// workspacePaneFormButtonsRow returns the row two lines above the mode footer.
+func workspacePaneFormButtonsRow(model Model) string {
+	lines := strings.Split(ansi.Strip(model.workspaceView()), "\n")
+	if len(lines) < 3 {
+		return ""
 	}
-	return ""
+	return strings.TrimSpace(lines[len(lines)-3])
 }
 
 func TestIndexForm_viewportKeepsButtonsVisible(t *testing.T) {
@@ -353,8 +360,8 @@ func TestIndexForm_viewportKeepsButtonsVisible(t *testing.T) {
 	model = openIndexEditor(t, model, nil)
 	model = resizeModel(model, 100, 24)
 
-	if row := workspacePaneLastContentRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
-		t.Fatalf("index form pane bottom row = %q, want Save/Cancel visible", row)
+	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
+		t.Fatalf("index form action row = %q, want Save/Cancel visible", row)
 	}
 
 	// Navigating to the Kind select must scroll the viewport, not push the
@@ -364,8 +371,8 @@ func TestIndexForm_viewportKeepsButtonsVisible(t *testing.T) {
 	if model.indexForm.scrollOffset != 6 {
 		t.Fatalf("index form scroll offset = %d, want 6 (Kind title)", model.indexForm.scrollOffset)
 	}
-	if row := workspacePaneLastContentRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
-		t.Fatalf("scrolled index form pane bottom row = %q, want Save/Cancel visible", row)
+	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
+		t.Fatalf("scrolled index form action row = %q, want Save/Cancel visible", row)
 	}
 }
 
@@ -376,8 +383,8 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 	_ = model.foreignKeyForm.form.Init()
 	model = resizeModel(model, 100, 24)
 
-	if row := workspacePaneLastContentRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
-		t.Fatalf("FK form pane bottom row = %q, want Save/Cancel visible", row)
+	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
+		t.Fatalf("FK form action row = %q, want Save/Cancel visible", row)
 	}
 
 	// Navigating to the On update select must scroll the viewport.
@@ -387,8 +394,8 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 	if model.foreignKeyForm.scrollOffset != 16 {
 		t.Fatalf("FK form scroll offset = %d, want 16 (On update title)", model.foreignKeyForm.scrollOffset)
 	}
-	if row := workspacePaneLastContentRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
-		t.Fatalf("scrolled FK form pane bottom row = %q, want Save/Cancel visible", row)
+	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
+		t.Fatalf("scrolled FK form action row = %q, want Save/Cancel visible", row)
 	}
 }
 

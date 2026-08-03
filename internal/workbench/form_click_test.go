@@ -66,10 +66,9 @@ func TestFormLineIsTitle(t *testing.T) {
 
 func TestBrowseForm_singleClickFocusesFieldInNormalMode(t *testing.T) {
 	model := openBrowseRow(t, 0)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 	// Form starts at screen y=4 (header 1 + pane border 1 + tabs 1 + blank 1);
-	// the name field's title line is view line 3. The value line (view line 4)
-	// now belongs to the form button bar, so the title line stands in for it.
+	// the name field's title line is view line 3.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if got := model.browseForm.form.GetFocusedField().GetKey(); got != "value-1" {
@@ -96,7 +95,7 @@ func TestBrowseForm_singleClickFirstFieldStaysFocused(t *testing.T) {
 
 func TestBrowseForm_doubleClickEntersInsertModeOnClickedField(t *testing.T) {
 	model := openBrowseRow(t, 0)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
@@ -123,7 +122,7 @@ func TestBrowseForm_releaseAfterClickDoesNotEnterInsert(t *testing.T) {
 
 func TestBrowseForm_doubleClickInInsertModeKeepsEditingField(t *testing.T) {
 	model := openBrowseRow(t, 0)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
@@ -139,7 +138,7 @@ func TestBrowseFilterForm_clickSelectsRowAndDoubleClickEdits(t *testing.T) {
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabBrowse
 	model.structureColumns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT"}}
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 	_ = model.openBrowseFilterForm()
 	// View: line 0 header, line 1 id row, line 2 name row, line 3 Rows row.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 6, Button: tea.MouseLeft})
@@ -189,7 +188,7 @@ func TestColumnForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 func TestIndexForm_clickFocusesClickedField(t *testing.T) {
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabIndexes
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 	_ = model.openIndexForm(nil)
 	_ = model.indexForm.form.Init()
 	// Columns* title is at view line 3 (name block 0-2).
@@ -332,7 +331,7 @@ func TestBrowseForm_singleClickKeepsNullFlagDoubleClickClearsIt(t *testing.T) {
 	model.browse.SetCursor(0)
 	model.browseResult.Rows[0][1] = nil // name is NULL
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 100, 26)
 	if !model.browseForm.values.nulls[1] {
 		t.Fatal("fixture: name should start as NULL")
 	}

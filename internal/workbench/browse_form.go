@@ -50,6 +50,7 @@ func (m *Model) openBrowseForm() tea.Cmd {
 		return nil
 	}
 	m.browseForm = form
+	m.formMode.buttonsFocused = false
 	m.browseForm.keybindings = m.keybindings
 	m.browseForm.table = m.SelectedTable
 	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
@@ -126,6 +127,13 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 	if !ok {
 		return nil, browseFormNoAction
 	}
+	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, f.lastField); route != formButtonContinue {
+		if route == formButtonReplay {
+			keyPress = replay
+		} else {
+			return cmd, browseFormNoAction
+		}
+	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		col := f.focusedColumn()
@@ -152,6 +160,11 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 		return nil, browseFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.pendingG = false
+		if f.focusedColumn() >= len(f.columns)-1 {
+			controller.focusButtons()
+			f.blur()
+			return nil, browseFormNoAction
+		}
 		return f.nextField(), browseFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
 		f.pendingG = false

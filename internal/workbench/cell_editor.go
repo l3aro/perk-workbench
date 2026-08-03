@@ -219,7 +219,7 @@ func (e *cellEditor) confirmContent() string {
 			}
 			b.WriteString(trimmed)
 		}
-		buttons := formButtonsBar()
+		buttons := formButtonsBar(false, 0)
 		if w := ansi.StringWidth(buttons); w < e.width {
 			buttons += strings.Repeat(" ", e.width-w)
 		}
