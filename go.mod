@@ -13,6 +13,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-sql-driver/mysql v1.10.0
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	golang.design/x/clipboard v0.8.0
 	modernc.org/sqlite v1.54.0
@@ -34,7 +35,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/dlclark/regexp2/v2 v2.2.1 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
