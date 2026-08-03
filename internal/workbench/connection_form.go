@@ -48,6 +48,7 @@ type connectionForm struct {
 }
 
 type connectionFormValues struct {
+	id           string // opaque profile scope; never displayed or user-edited
 	driver       connectionDriver
 	name, target string
 	host, port   string

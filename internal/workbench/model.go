@@ -81,6 +81,7 @@ type Model struct {
 	cellEditor                                                                                     *cellEditor
 	cellViewer                                                                                     *cellViewer
 	connection                                                                                     connectionForm
+	connectionID                                                                                   string
 	recentConnections                                                                              []recentConnection
 	schemaObjects                                                                                  []sharedsql.SchemaObject
 	expandedDatabases                                                                              map[string]bool
@@ -191,10 +192,15 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	model.queryLog.Blur()
 	model.focusActiveTable()
 	model.queryLogPath, _ = queryLogPath()
-	model.queryLogEntries = loadQueryLog(model.queryLogPath)
+	model.queryLogEntries = loadQueryLog(model.queryLogPath, "")
 	model.renderQueryLog()
 	model.recentPath, _ = recentConnectionsPath()
-	model.recentConnections = loadRecentConnections(model.recentPath)
+	var migrated bool
+	model.recentConnections, migrated = loadRecentConnections(model.recentPath)
+	if migrated {
+		// Best-effort: persist the assigned legacy profile IDs immediately.
+		_ = saveRecentConnections(model.recentPath, model.recentConnections)
+	}
 	_ = model.recent.SetItems(recentListItems(model.recentConnections))
 	return model
 }
@@ -232,6 +238,7 @@ func (m *Model) disconnect() {
 	m.BrowsePage = 0
 	m.Status = ""
 	m.queryLogEntries = nil
+	m.queryLogPage = 0
 	m.queryHistory = nil
 	m.historyIndex = -1
 	m.queryLog.SetRows(nil)
@@ -240,6 +247,8 @@ func (m *Model) disconnect() {
 	m.completionTable = ""
 	m.schemaObjects = nil
 	m.expandedDatabases = map[string]bool{}
+	m.databaseInfo = sharedsql.DatabaseInfo{}
+	m.connectionID = ""
 	m.schema.SetItems(nil)
 	m.structure.SetRows(nil)
 	m.browse.SetRows(nil)
@@ -249,7 +258,7 @@ func (m *Model) disconnect() {
 	m.indexes.SetRows(nil)
 	m.foreignKeys.SetRows(nil)
 	m.recentPath, _ = recentConnectionsPath()
-	m.recentConnections = loadRecentConnections(m.recentPath)
+	m.recentConnections, _ = loadRecentConnections(m.recentPath)
 	_ = m.recent.SetItems(recentListItems(m.recentConnections))
 	m.chat.yoloWrites = false
 	for _, run := range m.chat.runs {

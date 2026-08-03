@@ -194,3 +194,216 @@ func readyModel(t *testing.T) Model {
 }
 
 func stringPointer(value string) *string { return &value }
+
+func assertOneUUIDv7Profile(t *testing.T, loaded []recentConnection) {
+	t.Helper()
+	if len(loaded) != 1 {
+		t.Fatalf("saved profiles = %#v, want exactly one", loaded)
+	}
+	if !validConnectionID(loaded[0].ID) {
+		t.Fatalf("profile ID = %q, want a UUIDv7", loaded[0].ID)
+	}
+}
+
+// TestConnectionProfiles_successfulOpenPathsRecordOneProfile guards every
+// successful-open entry path (startup target, database picker, connection
+// form): each must leave exactly one saved profile with a nonempty UUIDv7 ID,
+// while a failed open records nothing.
+func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "open.db")
+	file, err := os.Create(target)
+	if err != nil {
+		t.Fatalf("creating fixture database: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("closing fixture database file: %v", err)
+	}
+	service, err := sqlite.Open(context.Background(), target)
+	if err != nil {
+		t.Fatalf("opening fixture database: %v", err)
+	}
+	if _, err := service.Execute(context.Background(), "CREATE TABLE projects (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatalf("creating fixture schema: %v", err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatalf("closing fixture database: %v", err)
+	}
+	closeOpened := func(model Model) {
+		t.Helper()
+		if model.Database != nil {
+			if err := model.Database.Close(); err != nil {
+				t.Errorf("closing workbench service: %v", err)
+			}
+		}
+	}
+
+	t.Run("startup target", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		model := New(target, context.Background(), testOpen, false)
+		updated, _ := model.Update(model.Init()())
+		model = updated.(Model)
+		if model.State != stateReady {
+			t.Fatalf("state = %v, want ready", model.State)
+		}
+		loaded, _ := loadRecentConnections(model.recentPath)
+		assertOneUUIDv7Profile(t, loaded)
+		closeOpened(model)
+	})
+
+	t.Run("database picker", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		model := New("", context.Background(), testOpen, false)
+		updated, command := model.Update(pickerSelectionMsg{target: target})
+		model = updated.(Model)
+		if command == nil {
+			t.Fatal("picker selection sent no open command")
+		}
+		updated, _ = model.Update(command())
+		model = updated.(Model)
+		if model.State != stateReady {
+			t.Fatalf("state = %v, want ready", model.State)
+		}
+		loaded, _ := loadRecentConnections(model.recentPath)
+		assertOneUUIDv7Profile(t, loaded)
+		closeOpened(model)
+	})
+
+	t.Run("connection form", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		model := New("", context.Background(), testOpen, false)
+		model.connection.values.name, model.connection.values.target = "Form", target
+		updated, command := model.openConnection()
+		model = updated.(Model)
+		if command == nil {
+			t.Fatal("connection form sent no open command")
+		}
+		updated, _ = model.Update(command())
+		model = updated.(Model)
+		if model.State != stateReady {
+			t.Fatalf("state = %v, want ready", model.State)
+		}
+		loaded, _ := loadRecentConnections(model.recentPath)
+		assertOneUUIDv7Profile(t, loaded)
+		closeOpened(model)
+	})
+
+	t.Run("failed open records nothing", func(t *testing.T) {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+		missing := filepath.Join(t.TempDir(), "missing.db")
+		model := New(missing, context.Background(), testOpen, false)
+		updated, _ := model.Update(model.Init()())
+		model = updated.(Model)
+		if model.State != stateFailure {
+			t.Fatalf("state = %v, want failure", model.State)
+		}
+		if model.connectionID != "" {
+			t.Fatalf("failed open set connection ID %q", model.connectionID)
+		}
+		loaded, _ := loadRecentConnections(model.recentPath)
+		if len(loaded) != 0 {
+			t.Fatalf("failed open saved profiles = %#v, want none", loaded)
+		}
+	})
+}
+
+// TestChatContext_doesNotLeakPreviousConnection guards the disconnect reset:
+// after opening A, logging a failed query, and disconnecting, opening B must
+// not carry A's SQL, error, product, or schema into B's chat context.
+func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	aPath := filepath.Join(t.TempDir(), "a.db")
+	file, err := os.Create(aPath)
+	if err != nil {
+		t.Fatalf("creating A: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("closing A file: %v", err)
+	}
+	service, err := sqlite.Open(context.Background(), aPath)
+	if err != nil {
+		t.Fatalf("opening A: %v", err)
+	}
+	if _, err := service.Execute(context.Background(), "CREATE TABLE a_table (id INTEGER)"); err != nil {
+		t.Fatalf("creating A schema: %v", err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatalf("closing A: %v", err)
+	}
+
+	model := New("", context.Background(), testOpen, false)
+	model.connection.values.name, model.connection.values.target = "A", aPath
+	updated, command := model.openConnection()
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if model.State != stateReady {
+		t.Fatalf("A open state = %v, want ready", model.State)
+	}
+	if model.connectionID == "" {
+		t.Fatal("A open did not set a connection ID")
+	}
+	model.appendQueryLog(queryLogEntry{statement: "SELECT broken FROM nope", status: "failed", message: "no such table: nope"})
+	if ctx := model.chatContext(); !strings.Contains(ctx, "Last failed query") || !strings.Contains(ctx, "no such table: nope") {
+		t.Fatalf("A chat context = %q, want the failed query", ctx)
+	}
+	t.Cleanup(func() {
+		if model.Database != nil {
+			_ = model.Database.Close()
+		}
+	})
+
+	// Disconnect clears the connection scope, database info, and query log.
+	model.disconnect()
+	if model.connectionID != "" {
+		t.Fatalf("disconnect kept connection ID %q", model.connectionID)
+	}
+	if model.databaseInfo != (sharedsql.DatabaseInfo{}) {
+		t.Fatalf("disconnect kept database info %#v", model.databaseInfo)
+	}
+	if len(model.queryLogEntries) != 0 {
+		t.Fatalf("disconnect kept query log entries %#v", model.queryLogEntries)
+	}
+
+	// Open B through a stub backend with a distinct product identity.
+	var openedB bool
+	bTarget := filepath.Join(t.TempDir(), "b.db")
+	model = New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+		if target != bTarget {
+			t.Fatalf("open target = %q, want %q", target, bTarget)
+		}
+		openedB = true
+		return sharedsql.Opened{
+			Service: &stubService{},
+			Info:    sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"},
+			Objects: []sharedsql.SchemaObject{{Database: "b_db", Type: "database", Name: "b_db"}},
+		}, nil
+	}, false)
+	model.connection.values.name, model.connection.values.target = "B", bTarget
+	updated, command = model.openConnection()
+	model = updated.(Model)
+	updated, _ = model.Update(command())
+	model = updated.(Model)
+	if !openedB || model.State != stateReady {
+		t.Fatalf("B open = opened %v, state %v, want ready", openedB, model.State)
+	}
+
+	ctx := model.chatContext()
+	if strings.Contains(ctx, "SELECT broken") || strings.Contains(ctx, "no such table: nope") {
+		t.Fatalf("B chat context leaked A's failed query: %q", ctx)
+	}
+	if strings.Contains(ctx, "a_table") {
+		t.Fatalf("B chat context leaked A's schema: %q", ctx)
+	}
+	if strings.Contains(ctx, "SQLite") || !strings.Contains(ctx, "PostgreSQL 16") {
+		t.Fatalf("B chat context = %q, want B's product only", ctx)
+	}
+	if !strings.Contains(ctx, "b_db") {
+		t.Fatalf("B chat context = %q, want B's schema", ctx)
+	}
+}
+
+type stubService struct {
+	sharedsql.Service
+}
+
+func (s *stubService) Close() error { return nil }

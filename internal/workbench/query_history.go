@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"database/sql"
+	"errors"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,16 +40,21 @@ func queryLogPageSize() int {
 	return min(size, queryLogLimit)
 }
 
-func loadQueryLog(path string) []queryLogEntry {
+func loadQueryLog(path, connectionID string) []queryLogEntry {
+	// Without a profile scope there is nothing safe to read: an empty scope
+	// must never surface unscoped rows.
+	if connectionID == "" {
+		return nil
+	}
 	db, err := openQueryLog(path)
 	if err != nil {
 		return nil
 	}
 	defer db.Close()
-	if pruneQueryLog(db, time.Now()) != nil {
+	if pruneQueryLog(db, time.Now(), connectionID) != nil {
 		return nil
 	}
-	rows, err := db.Query(`SELECT started_at, statement, duration, message, status FROM query_log ORDER BY started_at DESC, id DESC LIMIT ?`, queryLogLimit)
+	rows, err := db.Query(`SELECT started_at, statement, duration, message, status FROM query_log WHERE connection_id = ? ORDER BY started_at DESC, id DESC LIMIT ?`, connectionID, queryLogLimit)
 	if err != nil {
 		return nil
 	}
@@ -67,22 +73,27 @@ func loadQueryLog(path string) []queryLogEntry {
 	return entries
 }
 
-func saveQueryLog(path string, entry queryLogEntry) error {
+func saveQueryLog(path, connectionID string, entry queryLogEntry) error {
+	// Never persist query history without a profile scope; the caller keeps
+	// the entry in memory only.
+	if connectionID == "" {
+		return errors.New("query log requires a connection scope")
+	}
 	db, err := openQueryLog(path)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if err := pruneQueryLog(db, time.Now()); err != nil {
+	if err := pruneQueryLog(db, time.Now(), connectionID); err != nil {
 		return err
 	}
-	if _, err := db.Exec(`INSERT INTO query_log(started_at, statement, duration, message, status) VALUES (?, ?, ?, ?, ?)`,
-		entry.startedAt.UnixNano(), entry.statement, int64(entry.duration), entry.message, entry.status); err != nil {
+	if _, err := db.Exec(`INSERT INTO query_log(connection_id, started_at, statement, duration, message, status) VALUES (?, ?, ?, ?, ?, ?)`,
+		connectionID, entry.startedAt.UnixNano(), entry.statement, int64(entry.duration), entry.message, entry.status); err != nil {
 		return err
 	}
 	_, err = db.Exec(`DELETE FROM query_log WHERE id IN (
-		SELECT id FROM query_log ORDER BY started_at DESC, id DESC LIMIT -1 OFFSET ?
-	)`, queryLogLimit)
+		SELECT id FROM query_log WHERE connection_id = ? ORDER BY started_at DESC, id DESC LIMIT -1 OFFSET ?
+	)`, connectionID, queryLogLimit)
 	return err
 }
 
@@ -103,6 +114,7 @@ func openQueryLog(path string) (*sql.DB, error) {
 	}
 	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS query_log (
 		id INTEGER PRIMARY KEY,
+		connection_id TEXT NOT NULL DEFAULT '',
 		started_at INTEGER NOT NULL,
 		statement TEXT NOT NULL,
 		duration INTEGER NOT NULL,
@@ -112,9 +124,24 @@ func openQueryLog(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	if _, err = db.Exec(`INSERT INTO query_log(started_at, statement, duration, message, status)
-		SELECT saved_at * 1000000000, statement, 0, 'saved query', 'success' FROM saved_queries`); err != nil {
-		if _, tableErr := db.Exec(`SELECT 1 FROM saved_queries LIMIT 1`); tableErr == nil {
+	legacyScope, err := migrateQueryLog(db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	if _, err := db.Exec(`SELECT 1 FROM saved_queries LIMIT 1`); err == nil {
+		// The one-time saved_queries import lands in the legacy quarantine
+		// scope, never in a connection's view.
+		scope := legacyScope
+		if scope == "" {
+			scope, err = newConnectionID()
+			if err != nil {
+				db.Close()
+				return nil, err
+			}
+		}
+		if _, err = db.Exec(`INSERT INTO query_log(connection_id, started_at, statement, duration, message, status)
+			SELECT ?, saved_at * 1000000000, statement, 0, 'saved query', 'success' FROM saved_queries`, scope); err != nil {
 			db.Close()
 			return nil, err
 		}
@@ -123,12 +150,63 @@ func openQueryLog(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-func pruneQueryLog(db *sql.DB, now time.Time) error {
+// migrateQueryLog adds the connection_id scope column to legacy tables and
+// quarantines every pre-scope row behind one generated scope. It returns that
+// scope so the saved_queries import can share it.
+func migrateQueryLog(db *sql.DB) (string, error) {
+	hasColumn, err := queryLogHasColumn(db)
+	if err != nil {
+		return "", err
+	}
+	if !hasColumn {
+		if _, err := db.Exec(`ALTER TABLE query_log ADD COLUMN connection_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return "", err
+		}
+	}
+	var legacy int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM query_log WHERE connection_id = ''`).Scan(&legacy); err != nil {
+		return "", err
+	}
+	legacyScope := ""
+	if legacy > 0 {
+		legacyScope, err = newConnectionID()
+		if err != nil {
+			return "", err
+		}
+		if _, err := db.Exec(`UPDATE query_log SET connection_id = ? WHERE connection_id = ''`, legacyScope); err != nil {
+			return "", err
+		}
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS query_log_connection_started ON query_log (connection_id, started_at DESC, id DESC)`)
+	return legacyScope, err
+}
+
+func queryLogHasColumn(db *sql.DB) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(query_log)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if name == "connection_id" {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+func pruneQueryLog(db *sql.DB, now time.Time, connectionID string) error {
 	days := queryLogRetentionDays()
 	if days == 0 {
-		_, err := db.Exec(`DELETE FROM query_log`)
+		_, err := db.Exec(`DELETE FROM query_log WHERE connection_id = ?`, connectionID)
 		return err
 	}
-	_, err := db.Exec(`DELETE FROM query_log WHERE started_at < ?`, now.AddDate(0, 0, -days).UnixNano())
+	_, err := db.Exec(`DELETE FROM query_log WHERE started_at < ? AND connection_id = ?`, now.AddDate(0, 0, -days).UnixNano(), connectionID)
 	return err
 }

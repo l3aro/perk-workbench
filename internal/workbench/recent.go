@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/list"
+	"github.com/google/uuid"
 )
 
 const (
@@ -20,6 +21,7 @@ const (
 )
 
 type recentConnection struct {
+	ID            string           `json:"id"`
 	Driver        connectionDriver `json:"driver"`
 	Name          string           `json:"name"`
 	Target        string           `json:"target"`
@@ -58,6 +60,22 @@ func (c recentConnection) driverName() string {
 	}
 }
 
+// newConnectionID returns a fresh UUIDv7 scope for a connection profile.
+func newConnectionID() (string, error) {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
+}
+
+// validConnectionID reports whether id is a parseable UUIDv7, the only scope
+// form this application generates for profiles.
+func validConnectionID(id string) bool {
+	parsed, err := uuid.Parse(id)
+	return err == nil && parsed.Version() == 7
+}
+
 func recentConnectionsPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -66,17 +84,23 @@ func recentConnectionsPath() (string, error) {
 	return filepath.Join(dir, "perk-workbench", "connections.json"), nil
 }
 
-func loadRecentConnections(path string) []recentConnection {
+// loadRecentConnections reads persisted profiles, assigning a fresh UUIDv7
+// scope to every legacy profile whose ID is empty, invalid, or duplicated by
+// an earlier profile. migrated reports whether any profile was reassigned, so
+// callers can persist the corrected file immediately.
+func loadRecentConnections(path string) ([]recentConnection, bool) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	var connections []recentConnection
 	if json.Unmarshal(contents, &connections) != nil {
-		return nil
+		return nil, false
 	}
 	key, _ := loadKey()
 	result := make([]recentConnection, 0, min(len(connections), maxRecentConnections))
+	seen := make(map[string]bool, len(connections))
+	migrated := false
 	for _, connection := range connections {
 		if !connection.valid() {
 			continue
@@ -91,12 +115,27 @@ func loadRecentConnections(path string) []recentConnection {
 				}
 			}
 		}
+		if !validConnectionID(connection.ID) || seen[connection.ID] {
+			id, err := newConnectionID()
+			if err != nil {
+				// Persistence failure: keep the profile as-is and report no
+				// migration so nothing unscoped is written to disk.
+				result = append(result, connection)
+				if len(result) == maxRecentConnections {
+					break
+				}
+				continue
+			}
+			connection.ID = id
+			migrated = true
+		}
+		seen[connection.ID] = true
 		result = append(result, connection)
 		if len(result) == maxRecentConnections {
 			break
 		}
 	}
-	return result
+	return result, migrated
 }
 
 func saveRecentConnections(path string, connections []recentConnection) error {

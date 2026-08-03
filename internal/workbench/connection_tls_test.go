@@ -110,7 +110,7 @@ func TestRecentConnections_persistMySQLTLSMode(t *testing.T) {
 	if err := saveRecentConnections(path, connections); err != nil {
 		t.Fatalf("saving recent connections: %v", err)
 	}
-	loaded := loadRecentConnections(path)
+	loaded, _ := loadRecentConnections(path)
 
 	// Then
 	if len(loaded) != 1 || loaded[0].MySQLTLS != mysqlTLSSkipVerify {
@@ -131,7 +131,7 @@ func TestRecentConnections_persistPostgreSQLTLSMode(t *testing.T) {
 	if err := saveRecentConnections(path, connections); err != nil {
 		t.Fatalf("saving recent connections: %v", err)
 	}
-	loaded := loadRecentConnections(path)
+	loaded, _ := loadRecentConnections(path)
 
 	if len(loaded) != 1 || loaded[0].PostgreSQLTLS != postgresTLSEncrypt {
 		t.Fatalf("loaded connections = %#v, want persisted PostgreSQL TLS mode", loaded)

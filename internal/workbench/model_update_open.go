@@ -27,7 +27,13 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	m.Focus = focusSchema
 	m.editor.text.Blur()
 	m.blurTables()
-	m.recordConnection()
+	if err := m.recordConnection(); err != nil {
+		m.connectionID = ""
+		m.Status = safeText("saving connection profile: " + err.Error())
+	}
+	m.queryLogEntries = loadQueryLog(m.queryLogPath, m.connectionID)
+	m.queryLogPage = 0
+	m.renderQueryLog()
 	name := filepath.Base(message.target)
 	if configured := strings.TrimSpace(m.connection.values.name); configured != "" {
 		name = configured

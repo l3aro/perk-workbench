@@ -26,7 +26,7 @@ func (m *Model) setRecentConnections(connections []recentConnection) {
 	}
 }
 
-func (m *Model) recordConnection() {
+func (m *Model) recordConnection() error {
 	driver := m.connection.values.driver
 	if driver == "" {
 		driver = driverSQLite
@@ -61,6 +61,27 @@ func (m *Model) recordConnection() {
 			connection.PostgreSQLTLS = m.connection.values.postgresTLS
 		}
 	}
+	// Reuse or generate the opaque profile identity. Editing a profile keeps
+	// its ID; a new profile that matches an existing one reuses that ID so its
+	// scoped chat/query history survives; otherwise mint a UUIDv7. Never
+	// write a profile without a valid scope.
+	id := strings.TrimSpace(m.connection.values.id)
+	if !validConnectionID(id) {
+		for _, existing := range m.recentConnections {
+			if sameRecentConnection(existing, connection) && validConnectionID(existing.ID) {
+				id = existing.ID
+				break
+			}
+		}
+	}
+	if !validConnectionID(id) {
+		generated, err := newConnectionID()
+		if err != nil {
+			return err
+		}
+		id = generated
+	}
+	connection.ID = id
 	connections := make([]recentConnection, 0, min(len(m.recentConnections)+1, maxRecentConnections))
 	connections = append(connections, connection)
 	for _, existing := range m.recentConnections {
@@ -73,6 +94,8 @@ func (m *Model) recordConnection() {
 		connections = append(connections, existing)
 	}
 	m.setRecentConnections(connections)
+	m.connectionID = connection.ID
+	return nil
 }
 
 func sameRecentConnection(left, right recentConnection) bool {
@@ -97,6 +120,7 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 		return nil
 	}
 	m.connection.values.driver, m.connection.values.name, m.connection.values.target = connection.Driver, connection.Name, connection.Target
+	m.connection.values.id = connection.ID
 	m.connection.values.host, m.connection.values.port, m.connection.values.user = connection.Host, connection.Port, connection.User
 	m.connection.values.mysqlTLS = connection.MySQLTLS
 	if m.connection.values.mysqlTLS == "" {
