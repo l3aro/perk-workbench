@@ -121,6 +121,19 @@ func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (result
 	return result, nil
 }
 
+// Validate prepares the statement against the open database without executing
+// it, so syntax and schema errors surface without any side effects.
+func (s *Service) Validate(ctx context.Context, statement string) error {
+	if err := sharedsql.ValidateStatement(statement); err != nil {
+		return err
+	}
+	prepared, err := s.db.PrepareContext(ctx, statement)
+	if err != nil {
+		return fmt.Errorf("validating statement: %w", err)
+	}
+	return prepared.Close()
+}
+
 func totalChanges(ctx context.Context, conn *stdsql.Conn) (int64, error) {
 	var changes int64
 	if err := conn.QueryRowContext(ctx, "SELECT total_changes()").Scan(&changes); err != nil {

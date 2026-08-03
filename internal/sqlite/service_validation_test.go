@@ -62,3 +62,39 @@ func TestServiceRejects(t *testing.T) {
 		t.Fatalf("rejected script inserted %s rows, want 0", got)
 	}
 }
+
+func TestServiceValidate(t *testing.T) {
+	// Given
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
+		t.Fatalf("creating fixture table: %v", err)
+	}
+
+	// Then — prepared against the real schema, never executed.
+	for _, statement := range []string{
+		"SELECT 1",
+		"SELECT name FROM items",
+		"INSERT INTO items (name) VALUES ('x')",
+		"CREATE TABLE other (id INTEGER)",
+	} {
+		if err := service.Validate(ctx, statement); err != nil {
+			t.Errorf("Validate(%q) error = %v, want nil", statement, err)
+		}
+	}
+	if count, err := service.Execute(ctx, "SELECT count(*) FROM items"); err != nil || *count.Rows[0][0] != "0" {
+		t.Fatalf("Validate mutated data: rows = %v, err = %v", count, err)
+	}
+
+	for _, statement := range []string{
+		"SELECT * FROM missing_table",
+		"SELECT missing_column FROM items",
+		"SELEC 1",
+		"CREATE TRIGGER items_insert AFTER INSERT ON items BEGIN SELECT 1; END",
+		" ",
+	} {
+		if err := service.Validate(ctx, statement); err == nil {
+			t.Errorf("Validate(%q) error = nil, want error", statement)
+		}
+	}
+}

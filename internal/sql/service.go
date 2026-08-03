@@ -15,6 +15,7 @@ type Service interface {
 	Info() DatabaseInfo
 	Execute(context.Context, string) (Result, error)
 	ExecuteReadOnly(context.Context, string) (Result, error)
+	Validate(context.Context, string) error
 	ListSchema(context.Context) ([]SchemaObject, error)
 	TableInfo(context.Context, string) ([]ColumnInfo, error)
 	ListIndexes(context.Context, string) ([]IndexInfo, error)
