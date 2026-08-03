@@ -598,8 +598,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		case m.keybindings.Match(keyPress, "chat.clear", []scope{scopeView}):
 			return m, m.deleteChatHistory(true)
 		case m.keybindings.Match(keyPress, "chat.apply_sql", []scope{scopeView}):
-			m.applyChatSQL()
-			return m, nil
+			return m, m.applyChatSQL()
 		case keyPress.Key().Code == tea.KeyPgUp:
 			m.chat.viewport.PageUp()
 			return m, nil
@@ -676,14 +675,16 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) applyChatSQL() {
+func (m *Model) applyChatSQL() tea.Cmd {
 	statement := chatSQL(m.chat.activeRun().messages)
 	if statement == "" {
-		return
+		return nil
 	}
 	m.editor.setValue(statement)
 	m.Focus, m.Tab = focusWorkspace, tabSQL
 	m.Status = "AI SQL added to editor"
+	m.editorValidity = sqlValidityPending
+	return m.scheduleSQLValidation()
 }
 
 // processNextToolCall executes the next pending tool call in the current round.

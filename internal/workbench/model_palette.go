@@ -108,7 +108,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "chat.apply_sql":
 		if m.State == stateReady && m.Focus == focusChat {
-			m.applyChatSQL()
+			return m, m.applyChatSQL()
 		}
 		return m, nil
 	case "focus.toggle_fullscreen":
