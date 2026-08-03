@@ -68,6 +68,47 @@ func complexPrompt(prompt string) bool {
 	return len([]rune(prompt)) > 350 || strings.Contains(prompt, "migration") || strings.Contains(prompt, "multi-step") || strings.Contains(prompt, "reason") || strings.Contains(prompt, "analyze")
 }
 
+// TitleAgentID returns the cheap agent used for auxiliary calls such as
+// conversation titles: spark when configured, otherwise assistant.
+func (c *Client) TitleAgentID() string {
+	if _, ok := c.config.Agents["spark"]; ok {
+		return "spark"
+	}
+	return "assistant"
+}
+
+// GenerateTitle asks the cheap agent to summarize a first user message into a
+// short conversation title.
+func (c *Client) GenerateTitle(ctx context.Context, message string) (string, error) {
+	resp, err := c.Chat(ctx, Request{
+		AgentID:  c.TitleAgentID(),
+		Messages: []Message{{Role: RoleUser, Content: "Generate a title for this conversation:\n" + message}},
+	})
+	if err != nil {
+		return "", err
+	}
+	return cleanChatTitle(resp.Content), nil
+}
+
+// cleanChatTitle extracts a title from a model response: first non-empty
+// line, surrounding quotes trimmed, capped at 100 runes. Returns "" when the
+// response contains no usable line.
+func cleanChatTitle(content string) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		line = strings.Trim(line, `"“”'`)
+		runes := []rune(line)
+		if len(runes) > 100 {
+			return string(runes[:97]) + "..."
+		}
+		return line
+	}
+	return ""
+}
+
 // SupportsTools reports whether the given agent's provider supports function calling.
 func (c *Client) SupportsTools(agentID string) bool {
 	agent, ok := c.config.Agents[agentID]

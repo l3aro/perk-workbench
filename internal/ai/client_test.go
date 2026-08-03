@@ -2,12 +2,77 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestClient_GenerateTitlePrefersSparkFallsBackToAssistant(t *testing.T) {
+	var models []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var payload struct{ Model string }
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		models = append(models, payload.Model)
+		_, _ = io.WriteString(writer, `{"choices":[{"message":{"content":"\"Cheap title\"\n"}}]}`)
+	}))
+	t.Cleanup(server.Close)
+	config := Config{
+		Providers: map[string]Provider{"cloud": {
+			Name: "Cloud", API: APIOpenAICompatible, BaseURL: server.URL + "/v1", APIKey: "test-key", Models: []string{"small", "flash"},
+		}},
+		Agents: map[string]Agent{
+			"assistant": {Name: "Assistant", Provider: "cloud", Model: "small", SystemPrompt: "Help."},
+			"spark":     {Name: "Spark", Provider: "cloud", Model: "flash", SystemPrompt: "Help."},
+		},
+	}
+	client, err := NewClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	title, err := client.GenerateTitle(context.Background(), "how do I speed this up?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title != "Cheap title" {
+		t.Fatalf("title = %q, want trimmed first line without quotes", title)
+	}
+	if len(models) != 1 || models[0] != "flash" {
+		t.Fatalf("models = %v, want spark's flash model", models)
+	}
+
+	config.Agents = map[string]Agent{"assistant": {Name: "Assistant", Provider: "cloud", Model: "small", SystemPrompt: "Help."}}
+	client, err = NewClient(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.GenerateTitle(context.Background(), "how do I speed this up?"); err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 2 || models[1] != "small" {
+		t.Fatalf("models = %v, want assistant's small model as fallback", models)
+	}
+}
+
+func TestCleanChatTitle_firstLineQuotesAndCap(t *testing.T) {
+	if got := cleanChatTitle("\n   \n  first\nsecond"); got != "first" {
+		t.Fatalf("first line = %q", got)
+	}
+	if got := cleanChatTitle("  \u201cquoted\u201d  "); got != "quoted" {
+		t.Fatalf("quotes = %q", got)
+	}
+	long := strings.Repeat("字", 120)
+	if got := cleanChatTitle(long); got != strings.Repeat("字", 97)+"..." {
+		t.Fatalf("capped = %q", got)
+	}
+	if got := cleanChatTitle(" \n \n "); got != "" {
+		t.Fatalf("empty = %q", got)
+	}
+}
 
 func TestClient_chatOpenAICompatibleReturnsAssistantResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
