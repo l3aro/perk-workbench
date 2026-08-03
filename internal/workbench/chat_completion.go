@@ -12,6 +12,7 @@ import (
 func (m Model) chatCommands() []CompletionItem {
 	commands := []CompletionItem{
 		{Label: "/new", InsertText: "/new", Kind: KindCommand},
+		{Label: "/history", InsertText: "/history", Kind: KindCommand},
 	}
 	yolo := "/yolo-off"
 	if !m.chat.yoloWrites {

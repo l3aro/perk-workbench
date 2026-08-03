@@ -96,11 +96,6 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "ai.toggle":
 		m.toggleAI()
 		return m, nil
-	case "chat.history":
-		if m.State == stateReady && m.Focus == focusChat {
-			return m, m.loadChatHistory()
-		}
-		return m, nil
 	case "chat.delete":
 		if m.State == stateReady && m.Focus == focusChat {
 			return m, m.deleteChatHistory(false)

@@ -40,6 +40,9 @@ func LoadKeybindings(path string) (Keybindings, error) {
 	delete(flat, "query.save")
 	delete(flat, "query.saved")
 
+	// Removed: AI chat commands moved to chat slash commands.
+	delete(flat, "chat.history")
+
 	// Renamed: merged into cell.yank.
 	delete(flat, "browse.yank_cell")
 

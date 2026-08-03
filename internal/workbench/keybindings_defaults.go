@@ -79,7 +79,6 @@ var defaultDefs = []commandDef{
 	{id: "query_log.top_last", scope: scopeView, keys: []string{"G"}, label: "bottom"},
 	{id: "query_log.next_page", scope: scopeView, keys: []string{"n"}, label: "next page"},
 	{id: "query_log.prev_page", scope: scopeView, keys: []string{"p"}, label: "prev page"},
-	{id: "chat.history", scope: scopeView, keys: []string{"ctrl+h"}, label: "chat history"},
 	{id: "chat.delete", scope: scopeView, keys: []string{"ctrl+d"}, label: "delete chat"},
 	{id: "chat.clear", scope: scopeView, keys: []string{"ctrl+l"}, label: "clear chats"},
 	{id: "chat.apply_sql", scope: scopeView, keys: []string{"ctrl+a"}, label: "apply SQL"},
