@@ -154,5 +154,9 @@ func (m Model) updateExternalEditor(message sqlEditorFinishedMsg) (tea.Model, te
 		return m, nil
 	}
 	target.setExternalEditorValue(message.value)
+	if target == m.editor && m.editor.value != message.value {
+		m.editorValidity = sqlValidityPending
+		return m, tea.Batch(target.Focus(), m.scheduleSQLValidation())
+	}
 	return m, target.Focus()
 }
