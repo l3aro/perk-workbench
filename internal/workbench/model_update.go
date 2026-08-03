@@ -266,7 +266,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.explainPicker = nil
 		m.Focus, m.Tab = focusWorkspace, tabSQL
 		m.blurTables()
-		return m, m.formMode.beginInsert(m.editor)
+		m.editorValidity = sqlValidityPending
+		return m, tea.Batch(m.formMode.beginInsert(m.editor), m.scheduleSQLValidation())
 	}
 	if m.chatHistoryPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
@@ -436,7 +437,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 					if m.recallQueryHistory(direction) {
 						// setValue replaces the textarea, dropping focus; re-focus so
 						// subsequent typing in insert mode still lands.
-						return m, m.editor.Focus()
+						m.editorValidity = sqlValidityPending
+						return m, tea.Batch(m.editor.Focus(), m.scheduleSQLValidation())
 					}
 				}
 			}
@@ -448,6 +450,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				command := m.editor.update(message)
 				if m.editor.value != previous {
 					m.historyIndex = -1
+					m.editorValidity = sqlValidityPending
+					command = tea.Batch(command, m.scheduleSQLValidation())
 				}
 				if message.Text == "." {
 					m.editor.completion = completion{}
@@ -583,6 +587,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateQueryFailure(message)
 	case queryCanceledMsg:
 		return m.updateQueryCanceled(message)
+	case sqlValidationTickMsg:
+		return m.updateSQLValidationTick(message)
+	case sqlValidationMsg:
+		return m.updateSQLValidation(message)
 	case tableInfoMsg:
 		return m.updateTableInfo(message)
 	case completionColumnsMsg:
@@ -623,7 +631,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.sqlEditorActive() && m.formMode.editing() {
-		return m, m.editor.update(message)
+		previous := m.editor.value
+		command := m.editor.update(message)
+		if m.editor.value != previous {
+			m.editorValidity = sqlValidityPending
+			command = tea.Batch(command, m.scheduleSQLValidation())
+		}
+		return m, command
 	}
 
 	return m.updateActive(message)

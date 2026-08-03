@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -115,7 +116,9 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 	if quit {
 		return m, tea.Quit
 	}
-	return m, nil
+	// Schema may have changed (DDL); recheck the editor value against it.
+	m.editorValidity = sqlValidityPending
+	return m, m.scheduleSQLValidation()
 }
 
 func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
@@ -138,6 +141,67 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: "canceled", status: "canceled"})
 	if quit {
 		return m, tea.Quit
+	}
+	return m, nil
+}
+
+const sqlValidationDebounce = 250 * time.Millisecond
+
+type sqlValidity uint8
+
+const (
+	sqlValidityPending sqlValidity = iota
+	sqlValidityValid
+	sqlValidityInvalid
+)
+
+// sqlValidationTickMsg fires after a quiet period following an editor change;
+// the tag drops superseded ticks so only the latest edit is validated.
+type sqlValidationTickMsg struct{ tag uint64 }
+
+type sqlValidationMsg struct {
+	statement string
+	err       error
+}
+
+// scheduleSQLValidation debounces validation after the editor value changes.
+func (m *Model) scheduleSQLValidation() tea.Cmd {
+	m.sqlValidationTag++
+	tag := m.sqlValidationTag
+	return tea.Tick(sqlValidationDebounce, func(time.Time) tea.Msg {
+		return sqlValidationTickMsg{tag: tag}
+	})
+}
+
+// validateSQL prepares the current editor value against the open database.
+func (m Model) validateSQL(statement string) tea.Cmd {
+	ctx, cancel := context.WithTimeout(m.appContext, 2*time.Second)
+	return func() tea.Msg {
+		defer cancel()
+		return sqlValidationMsg{statement: statement, err: m.Database.Validate(ctx, statement)}
+	}
+}
+
+func (m Model) updateSQLValidationTick(message sqlValidationTickMsg) (tea.Model, tea.Cmd) {
+	if message.tag != m.sqlValidationTag || m.Database == nil {
+		return m, nil
+	}
+	statement := strings.TrimSpace(m.editor.value)
+	if statement == "" {
+		m.editorValidity = sqlValidityPending
+		return m, nil
+	}
+	return m, m.validateSQL(m.editor.value)
+}
+
+func (m Model) updateSQLValidation(message sqlValidationMsg) (tea.Model, tea.Cmd) {
+	if m.editor.value != message.statement {
+		return m, nil // stale result for an older revision
+	}
+	if message.err != nil {
+		m.editorValidity = sqlValidityInvalid
+	} else {
+		m.editorValidity = sqlValidityValid
 	}
 	return m, nil
 }

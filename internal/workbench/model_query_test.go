@@ -39,7 +39,10 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if command != nil {
+	if command == nil {
+		t.Fatal("success message did not schedule SQL revalidation")
+	}
+	if _, ok := command().(sqlValidationTickMsg); !ok {
 		t.Fatal("success message returned an unexpected command")
 	}
 	if model.Running() {
@@ -238,7 +241,10 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if command != nil {
+	if command == nil {
+		t.Fatal("canceled request success did not schedule SQL revalidation")
+	}
+	if _, ok := command().(sqlValidationTickMsg); !ok {
 		t.Fatal("canceled request success returned an unexpected command")
 	}
 	if model.Running() {

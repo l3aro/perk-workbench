@@ -47,6 +47,8 @@ type Model struct {
 	openDatabase                                                                                   OpenDatabase
 	browseLoading, browsePending                                                                   bool
 	browsePageTag, editorEditTag, completionRequestTag                                             uint64
+	editorValidity                                                                                 sqlValidity
+	sqlValidationTag                                                                               uint64
 	schema, picker, recent                                                                         list.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
 	structureRows, indexRows, foreignKeyRows                                                       []table.Row
@@ -243,6 +245,8 @@ func (m *Model) disconnect() {
 	m.historyIndex = -1
 	m.queryLog.SetRows(nil)
 	m.editor.setValue("")
+	m.editorValidity = sqlValidityPending
+	m.sqlValidationTag++
 	m.completionColumns = map[string][]string{}
 	m.completionTable = ""
 	m.schemaObjects = nil
