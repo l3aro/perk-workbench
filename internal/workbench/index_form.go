@@ -94,6 +94,13 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 	if !ok {
 		return nil, indexFormNoAction
 	}
+	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(2) }); route != formButtonContinue {
+		if route == formButtonReplay {
+			keyPress = replay
+		} else {
+			return cmd, indexFormNoAction
+		}
+	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), indexFormNoAction
@@ -116,6 +123,11 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 			return nil, indexFormNoAction
 		}
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
+		if f.focusedField() >= 2 {
+			controller.focusButtons()
+			f.blur()
+			return nil, indexFormNoAction
+		}
 		f.scrollToField(f.focusedField() + 1)
 		return f.form.NextField(), indexFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):

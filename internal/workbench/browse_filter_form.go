@@ -99,6 +99,7 @@ func (m *Model) openBrowseFilterForm() tea.Cmd {
 	}
 	m.browseFilterForm = newBrowseFilterForm(m.structureColumns, m.browseSettings, m.browsePageSize, m.tableViewportWidth, m.formViewportHeight())
 	m.formMode.mode = formModeNormal
+	m.formMode.buttonsFocused = false
 	return nil
 }
 
