@@ -89,6 +89,9 @@ func (m *Model) startChat() tea.Cmd {
 		run = &chatRun{conversationID: conversationID}
 		m.chat.runs[conversationID] = run
 	}
+	// Record only once the prompt is accepted: a failed conversation creation
+	// must not pollute recall history.
+	m.chat.recordPromptHistory(prompt)
 	run.messages = append(run.messages, userMessage)
 	m.chat.input.Reset()
 	m.chat.completion = completion{}
@@ -617,14 +620,30 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		key := keyPress.Key()
+		if (key.Code == tea.KeyUp && (m.chat.input.Value() == "" || m.chat.historyIndex >= 0)) ||
+			(key.Code == tea.KeyDown && m.chat.historyIndex >= 0) {
+			direction := 1
+			if key.Code == tea.KeyDown {
+				direction = -1
+			}
+			if value, ok := m.chat.recallPromptHistory(direction); ok {
+				m.chat.input.SetValue(value)
+				return m, nil
+			}
+		}
 		if keyPress.Key().Code == tea.KeyEnter {
 			return m, m.startChat()
 		}
 	}
 
 	if m.chat.chatMode == formModeInsert {
+		previous := m.chat.input.Value()
 		input, command := m.chat.input.Update(message)
 		m.chat.input = input
+		if m.chat.input.Value() != previous {
+			m.chat.historyIndex = -1
+		}
 		m.updateChatCompletion()
 		return m, command
 	}

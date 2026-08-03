@@ -50,6 +50,11 @@ type chatModel struct {
 	glamour       *glamour.TermRenderer
 	completion    completion // slash-command suggestions while typing
 
+	// promptHistory is the newest-first list of accepted user prompts for
+	// this process; historyIndex == -1 means not browsing recall.
+	promptHistory []string
+	historyIndex  int
+
 	// YOLO writes: when true, sql_write executes without per-statement modal.
 	yoloWrites bool
 }
@@ -246,7 +251,49 @@ func newChatModel() chatModel {
 	viewport.SoftWrap = true
 	viewport.FillHeight = true
 	viewport.MouseWheelEnabled = true
-	return chatModel{input: input, viewport: viewport, runs: map[string]*chatRun{}, nextGen: 1, chatMode: formModeNormal}
+	return chatModel{input: input, viewport: viewport, runs: map[string]*chatRun{}, nextGen: 1, chatMode: formModeNormal, historyIndex: -1}
+}
+
+// recordPromptHistory stores an accepted user prompt, newest first, capped at
+// queryLogLimit, and exits any active recall.
+func (cm *chatModel) recordPromptHistory(prompt string) {
+	cm.promptHistory = append([]string{prompt}, cm.promptHistory...)
+	if len(cm.promptHistory) > queryLogLimit {
+		cm.promptHistory = cm.promptHistory[:queryLogLimit]
+	}
+	cm.historyIndex = -1
+}
+
+// recallPromptHistory moves up (direction > 0) or down (direction < 0)
+// through promptHistory, mirroring recallQueryHistory: recall starts only at
+// an index of -1 (caller decides when the input is blank), never wraps, and
+// returning to the newest entry clears the recalled value.
+func (cm *chatModel) recallPromptHistory(direction int) (string, bool) {
+	if len(cm.promptHistory) == 0 {
+		return "", false
+	}
+	if direction > 0 {
+		if cm.historyIndex == -1 {
+			cm.historyIndex = 0
+		} else if cm.historyIndex < len(cm.promptHistory)-1 {
+			cm.historyIndex++
+		} else {
+			return "", false // already at the oldest entry; never wrap
+		}
+	} else {
+		if cm.historyIndex <= 0 {
+			if cm.historyIndex == -1 {
+				return "", false // Down outside recall mode
+			}
+			cm.historyIndex = -1
+		} else {
+			cm.historyIndex--
+		}
+	}
+	if cm.historyIndex == -1 {
+		return "", true
+	}
+	return cm.promptHistory[cm.historyIndex], true
 }
 
 func (m *Model) SetAI(client chatClient, history chatHistory) {

@@ -1827,3 +1827,111 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 		t.Fatal("context includes failed query when all succeeded")
 	}
 }
+
+// TestChat_promptHistoryArrowRecall guards Up/Down recall of accepted user
+// prompts: newest-to-oldest on Up with a blank input, no wrap at the oldest
+// entry, newer on Down, a cleared input when Down leaves the newest entry,
+// slash commands never entering recall, visible completion keeping arrows,
+// and a changed draft exiting recall so Down cannot overwrite it.
+func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
+	model := New(":memory:", context.Background(), nil, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.layout(140, 32)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
+	model = updated.(Model)
+
+	submit := func(prompt string) {
+		t.Helper()
+		model.chat.input.SetValue(prompt)
+		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+		model = updated.(Model)
+		if command == nil {
+			t.Fatalf("sending %q did not return a command", prompt)
+		}
+		model = driveStreamToCompletion(t, model, command)
+	}
+	submit("first question")
+	submit("second question")
+
+	// A slash command is accepted but must never enter recall history.
+	model.chat.input.SetValue("/new")
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command != nil {
+		t.Fatal("/new must not send a request")
+	}
+
+	press := func(code rune, text string) {
+		t.Helper()
+		updated, _ := model.Update(tea.KeyPressMsg{Code: code, Text: text})
+		model = updated.(Model)
+	}
+
+	// When — Up recalls newest, then older, then stops at the oldest.
+	press(tea.KeyUp, "")
+	if got, want := model.chat.input.Value(), "second question"; got != want {
+		t.Fatalf("Up from blank = %q, want %q", got, want)
+	}
+	press(tea.KeyUp, "")
+	if got, want := model.chat.input.Value(), "first question"; got != want {
+		t.Fatalf("second Up = %q, want %q", got, want)
+	}
+	press(tea.KeyUp, "")
+	if got, want := model.chat.input.Value(), "first question"; got != want {
+		t.Fatalf("third Up = %q, want %q (oldest boundary, no wrap)", got, want)
+	}
+
+	// When — Down recalls newer, then clears.
+	press(tea.KeyDown, "")
+	if got, want := model.chat.input.Value(), "second question"; got != want {
+		t.Fatalf("first Down = %q, want %q", got, want)
+	}
+	press(tea.KeyDown, "")
+	if got, want := model.chat.input.Value(), ""; got != want {
+		t.Fatalf("second Down = %q, want cleared input", got)
+	}
+
+	// When — a value-changing edit after recall exits recall mode.
+	press(tea.KeyUp, "")
+	if got, want := model.chat.input.Value(), "second question"; got != want {
+		t.Fatalf("recalled prompt = %q, want %q", got, want)
+	}
+	press('?', "?")
+	if got, want := model.chat.input.Value(), "second question?"; got != want {
+		t.Fatalf("edited draft = %q, want %q", got, want)
+	}
+	press(tea.KeyDown, "")
+	if got, want := model.chat.input.Value(), "second question?"; got != want {
+		t.Fatalf("Down after edit = %q, want %q (recall exited)", got, want)
+	}
+
+	// When — a visible slash completion keeps Up/Down for its selection.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // exit insert
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // re-enter insert
+	model = updated.(Model)
+	model.chat.input.SetValue("")
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	if !model.chat.completion.visible() {
+		t.Fatal("completion should be visible for \"/\"")
+	}
+	press(tea.KeyDown, "")
+	if got := model.chat.completion.selected; got != 1 {
+		t.Fatalf("completion selected after Down = %d, want 1", got)
+	}
+	if got, want := model.chat.input.Value(), "/"; got != want {
+		t.Fatalf("input after completion Down = %q, want %q", got, want)
+	}
+	press(tea.KeyUp, "")
+	if got := model.chat.completion.selected; got != 0 {
+		t.Fatalf("completion selected after Up = %d, want 0", got)
+	}
+	if got, want := model.chat.input.Value(), "/"; got != want {
+		t.Fatalf("input after completion Up = %q, want %q", got, want)
+	}
+}
