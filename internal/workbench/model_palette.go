@@ -16,28 +16,22 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		m.themePicker = newThemePicker()
 		return m, nil
 	case "theme.ocean":
-		m.applyTheme(themeOcean)
-		m.Status = "theme: ocean"
+		m.commitTheme(themeOcean)
 		return m, nil
 	case "theme.dracula":
-		m.applyTheme(themeDracula)
-		m.Status = "theme: dracula"
+		m.commitTheme(themeDracula)
 		return m, nil
 	case "theme.catppuccin":
-		m.applyTheme(themeCatppuccin)
-		m.Status = "theme: catppuccin"
+		m.commitTheme(themeCatppuccin)
 		return m, nil
 	case "theme.nord":
-		m.applyTheme(themeNord)
-		m.Status = "theme: nord"
+		m.commitTheme(themeNord)
 		return m, nil
 	case "theme.monokai":
-		m.applyTheme(themeMonokai)
-		m.Status = "theme: monokai"
+		m.commitTheme(themeMonokai)
 		return m, nil
 	case "theme.solarized":
-		m.applyTheme(themeSolarized)
-		m.Status = "theme: solarized"
+		m.commitTheme(themeSolarized)
 		return m, nil
 	case "app.quit":
 		return m, tea.Quit
@@ -277,6 +271,41 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "connection.switch_to_list":
 		if m.State == stateConnection && m.connection.focus == connectionFocusForm {
 			m.connection.setFocus(connectionFocusRecent)
+		}
+		return m, nil
+	case "connection.execute":
+		if m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil {
+			if err := m.connection.validate(); err != nil {
+				m.Status = safeText(err.Error())
+				return m, m.connection.showValidationError()
+			}
+			m.formMode.beginConfirm()
+			return m, m.connection.beginConfirmation()
+		}
+		return m, nil
+	case "connection.action_enter":
+		if m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil && m.connectionActionFocused() {
+			m.formMode.mode = formModeNormal
+			m.connection.blur()
+			if m.connection.values.action == connectionActionTest {
+				return m, m.testConnection()
+			}
+			return m.openConnection()
+		}
+		return m, nil
+	case "connection.edit_field":
+		if m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil && !m.connectionActionFocused() {
+			return m, m.formMode.beginHuh(m.connection.focusForm())
+		}
+		return m, nil
+	case "connection.field_next":
+		if m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil {
+			return m, m.connection.form.NextField()
+		}
+		return m, nil
+	case "connection.field_prev":
+		if m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil {
+			return m, m.connection.form.PrevField()
 		}
 		return m, nil
 	case "connection.add":

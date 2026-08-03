@@ -72,7 +72,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.themePicker = nil
 			return m, nil
 		case tea.KeyEnter:
-			m.Status = "theme: " + string(m.themePicker.theme())
+			m.commitTheme(m.themePicker.theme())
 			m.themePicker = nil
 			return m, nil
 		case tea.KeyUp:

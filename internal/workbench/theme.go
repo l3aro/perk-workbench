@@ -216,6 +216,22 @@ func indexIcons(indexes []sharedsql.IndexKind) string {
 	return strings.Join(icons, " ")
 }
 
+// commitTheme applies a theme and persists the choice to config.json so it
+// survives the next launch. Persistence is best-effort: a failure is shown
+// in the status line without reverting the applied theme.
+func (m *Model) commitTheme(name appTheme) {
+	m.applyTheme(name)
+	if m.configPath == "" {
+		m.Status = "theme: " + string(name)
+		return
+	}
+	if err := SaveTheme(m.configPath, string(name)); err != nil {
+		m.Status = "theme: " + string(name) + " (not saved: " + err.Error() + ")"
+		return
+	}
+	m.Status = "theme: " + string(name)
+}
+
 func (m *Model) applyTheme(name appTheme) {
 	setTheme(name)
 

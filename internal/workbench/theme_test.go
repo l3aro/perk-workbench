@@ -12,6 +12,7 @@ import (
 func TestPaletteThemeCommandsApplySharedPalette(t *testing.T) {
 	original := activeTheme
 	t.Cleanup(func() { setTheme(original) })
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // keep theme commits off the real config dir
 
 	model := New("", context.Background(), testOpen, false)
 	for _, test := range []struct {

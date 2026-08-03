@@ -48,6 +48,31 @@ func TestCommandPalette_navigationAndSelection(t *testing.T) {
 	}
 }
 
+func TestCommandPalette_connectionShowsExecutableCommands(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "theme.select")
+
+	model.connection.focus = connectionFocusForm
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "theme.select")
+}
+
+func assertCommandIDs(t *testing.T, palette *commandPalette, want ...CommandID) {
+	t.Helper()
+	if len(palette.items) != len(want) {
+		t.Fatalf("palette command count = %d, want %d", len(palette.items), len(want))
+	}
+	available := make(map[CommandID]bool, len(palette.items))
+	for _, item := range palette.items {
+		available[item.id] = true
+	}
+	for _, id := range want {
+		if !available[id] {
+			t.Fatalf("palette lacks %q", id)
+		}
+	}
+}
+
 func TestCommandPalette_wheelMovesCursor(t *testing.T) {
 	palette := &commandPalette{
 		filtered: []commandPaletteItem{{id: "first"}, {id: "second"}, {id: "third"}},
@@ -338,6 +363,7 @@ func TestCommandPalette_filterNoDuplicates(t *testing.T) {
 func TestModelCommandPalette_opensThemePicker(t *testing.T) {
 	original := activeTheme
 	t.Cleanup(func() { setTheme(original) })
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // keep theme commit off the real config dir
 
 	model := New("", context.Background(), testOpen, false)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl, Text: "p"})
@@ -405,6 +431,7 @@ func TestThemePicker_previewsAndCancelsTheme(t *testing.T) {
 func TestThemePicker_commitsPreviewedTheme(t *testing.T) {
 	original := activeTheme
 	t.Cleanup(func() { setTheme(original) })
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // keep the commit off the real config dir
 
 	model := New("", context.Background(), testOpen, false)
 	model.themePicker = newThemePicker()
@@ -417,5 +444,12 @@ func TestThemePicker_commitsPreviewedTheme(t *testing.T) {
 	}
 	if activeTheme != themeNord {
 		t.Fatalf("committed theme = %q, want %q", activeTheme, themeNord)
+	}
+	config, err := LoadConfig(model.configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v", err)
+	}
+	if config.Theme != "nord" {
+		t.Fatalf("persisted theme = %q, want %q", config.Theme, "nord")
 	}
 }
