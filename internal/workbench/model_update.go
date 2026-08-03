@@ -434,7 +434,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.blurTables()
 			return m, m.formMode.beginInsert(m.editor)
 		}
-		if m.sqlEditorActive() {
+		if m.sqlEditorActive() && !m.tableFormOpen() {
 			if m.editor.completionVisible() {
 				key := message.Key()
 				completionHandled := true
@@ -687,16 +687,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateChat(message)
 	}
 
-	if m.sqlEditorActive() && m.formMode.editing() {
-		previous := m.editor.value
-		command := m.editor.update(message)
-		if m.editor.value != previous {
-			m.editorValidity = sqlValidityPending
-			command = tea.Batch(command, m.scheduleSQLValidation())
-		}
-		return m, command
-	}
-
 	// Route the table popup before ordinary active dispatch; like the other
 	// forms it receives every unconsumed message (huh init, mouse, keys).
 	// On execute the form is retained (but hidden) until the query resolves:
@@ -713,6 +703,15 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			statement := m.tableForm.statement(m)
 			m.tableFormRunning = true
 			return m.startQueryStatement(statement, true)
+		}
+		return m, command
+	}
+	if m.sqlEditorActive() && m.formMode.editing() {
+		previous := m.editor.value
+		command := m.editor.update(message)
+		if m.editor.value != previous {
+			m.editorValidity = sqlValidityPending
+			command = tea.Batch(command, m.scheduleSQLValidation())
 		}
 		return m, command
 	}

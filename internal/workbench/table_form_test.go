@@ -164,13 +164,19 @@ func TestSchemaAddTable_viaA_createsAndRefreshesSidebar(t *testing.T) {
 			if !model.tableForm.active() || model.tableForm.name != "" || model.tableForm.table != "" || model.tableForm.database != "main" {
 				t.Fatalf("create popup = %+v, want empty in main", model.tableForm)
 			}
-
-			// When: name it, save, and accept; the confirmation carries the
-			// exact zero-column DDL and runs it.
-			model.tableForm.name = "created"
-			updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+			model.Focus = focusWorkspace
+			model.Tab = tabSQL
+			model.formMode.mode = formModeInsert
+			for _, key := range "created" {
+				updated, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
+				model = updated.(Model)
+			}
+			if model.tableForm.name != "created" {
+				t.Fatalf("typed table name = %q", model.tableForm.name)
+			}
+			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			model = updated.(Model)
-			if got, want := model.tableForm.confirmation.description, `CREATE TABLE "created" ()`; got != want {
+			if got, want := model.tableForm.confirmation.description, `CREATE TABLE "created" (id INTEGER PRIMARY KEY)`; got != want {
 				t.Fatalf("confirmation description = %q, want %q", got, want)
 			}
 			updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -179,18 +185,32 @@ func TestSchemaAddTable_viaA_createsAndRefreshesSidebar(t *testing.T) {
 			if model.tableFormRunning || model.Running() {
 				t.Fatal("create query still running")
 			}
-			// SQLite rejects zero-column CREATE TABLE: the popup must stay
-			// open with the typed name and the driver error reported.
-			if !model.tableForm.active() || model.tableForm.name != "created" {
-				t.Fatalf("rejected create closed the popup: %+v", model.tableForm)
+			if model.tableForm.active() {
+				t.Fatalf("successful create left popup open: %+v", model.tableForm)
 			}
-			if !strings.Contains(model.Status, "table action failed") {
-				t.Fatalf("rejected create did not report the driver error: %q", model.Status)
-			}
-			if names := schemaTableNames(t, model); len(names) != 1 || names[0] != "accounts" {
-				t.Fatalf("rejected create mutated the database: %v", names)
+			if names := schemaTableNames(t, model); len(names) != 2 || names[0] != "accounts" || names[1] != "created" {
+				t.Fatalf("database tables = %v, want accounts and created", names)
 			}
 		})
+	}
+}
+
+func TestSchemaTableForm_enterSavesFromNormalMode(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "accounts")
+	model.schema.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	model.tableForm.name = "created"
+	model.formMode.mode = formModeNormal
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	if !model.tableForm.confirming() {
+		t.Fatal("Enter in normal mode did not open confirmation")
 	}
 }
 
@@ -198,6 +218,7 @@ func TestSchemaTableForm_blankNameShowsValidationError(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusSchema
 	model = createTableInSchema(t, model, "accounts")
+
 	model.schema.Select(1)
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
@@ -218,6 +239,16 @@ func TestSchemaTableForm_blankNameShowsValidationError(t *testing.T) {
 	}
 	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "table name is required") {
 		t.Fatalf("validation error not rendered: %q", view)
+	}
+}
+
+func TestTableForm_isCompact(t *testing.T) {
+	form := newTableForm("main", "")
+	form.setWidth(100)
+	form.setHeight(18)
+
+	if lines := len(strings.Split(ansi.Strip(form.View()), "\n")); lines >= form.height {
+		t.Fatalf("table form rendered %d lines at height %d", lines, form.height)
 	}
 }
 
@@ -469,11 +500,11 @@ func TestTableFormStatement_quoting(t *testing.T) {
 		form     tableForm
 		expected string
 	}{
-		{name: "sqlite create", product: "SQLite", form: tableForm{name: "new", database: "main"}, expected: `CREATE TABLE "new" ()`},
+		{name: "sqlite create", product: "SQLite", form: tableForm{name: "new", database: "main"}, expected: `CREATE TABLE "new" (id INTEGER PRIMARY KEY)`},
 		{name: "sqlite rename", product: "SQLite", form: tableForm{name: "new", originalName: "old", database: "main", table: "old"}, expected: `ALTER TABLE "old" RENAME TO "new"`},
-		{name: "mysql create", product: "MySQL", form: tableForm{name: "new", database: "app"}, expected: "CREATE TABLE `app`.`new` ()"},
+		{name: "mysql create", product: "MySQL", form: tableForm{name: "new", database: "app"}, expected: "CREATE TABLE `app`.`new` (id INTEGER PRIMARY KEY)"},
 		{name: "mysql rename", product: "MySQL", form: tableForm{name: "new", originalName: "old", database: "app", table: "old"}, expected: "ALTER TABLE `app`.`old` RENAME TO `app`.`new`"},
-		{name: "postgres create", product: "PostgreSQL", form: tableForm{name: "new", database: "public"}, expected: `CREATE TABLE "public"."new" ()`},
+		{name: "postgres create", product: "PostgreSQL", form: tableForm{name: "new", database: "public"}, expected: `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`},
 		{name: "postgres rename", product: "PostgreSQL", form: tableForm{name: "new", originalName: "old", database: "public", table: "old"}, expected: `ALTER TABLE "public"."old" RENAME TO "new"`},
 	}
 	for _, test := range tests {

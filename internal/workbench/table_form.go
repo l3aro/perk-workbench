@@ -25,6 +25,7 @@ type tableForm struct {
 	form          *huh.Form
 	confirmation  *confirmationDialog
 	name          string
+	nameValue     *string
 	originalName  string
 	database      string
 	table         string
@@ -33,11 +34,13 @@ type tableForm struct {
 }
 
 func newTableForm(database, table string) tableForm {
+	name := table
 	form := tableForm{
 		originalName: table,
 		database:     database,
 		table:        table,
 		name:         table,
+		nameValue:    &name,
 		keybindings:  DefaultKeybindings(),
 	}
 	form.rebuildForm()
@@ -46,15 +49,13 @@ func newTableForm(database, table string) tableForm {
 
 func (f tableForm) active() bool     { return f.form != nil }
 func (f tableForm) confirming() bool { return f.confirmation != nil }
-
-// openTableForm opens the popup for the given schema item: a nonempty table
-// renames it, an empty table creates one in the database's schema.
 func (m *Model) openTableForm(database, table string) tea.Cmd {
 	m.tableForm = newTableForm(database, table)
 	m.tableForm.keybindings = m.keybindings
 	m.tableForm.setWidth(m.tableViewportWidth)
 	m.tableForm.setHeight(m.formViewportHeight())
-	return tea.Batch(m.formMode.beginHuh(m.tableForm.focus()), m.tableForm.form.Init())
+	m.tableForm.form.Init()
+	return m.formMode.beginHuh(m.tableForm.focus())
 }
 
 func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea.Cmd, tableFormAction) {
@@ -69,6 +70,11 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 			return nil, tableFormNoAction
 		}
 		return nil, tableFormExecute
+	}
+	if keyPress, ok := message.(tea.KeyPressMsg); ok &&
+		(keyPress.Key().Code == tea.KeyEnter || f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal})) &&
+		!controller.buttonsFocused {
+		return f.save(controller)
 	}
 	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
 		if route == formRouteHuh {
@@ -100,14 +106,12 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 }
 
 func (f *tableForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, tableFormAction) {
-	if keyPress, ok := message.(tea.KeyPressMsg); ok && f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-		return f.save(controller)
-	}
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
+	if input, ok := f.form.GetFocusedField().(*editableInput); ok {
+		f.name = *input.value
+	}
 	if f.form.State == huh.StateCompleted {
-		// A single-field form completes on Enter; rebuild so the popup stays
-		// editable. Only ctrl+s submits.
 		f.rebuildForm()
 		return f.focus(), tableFormNoAction
 	}
@@ -116,8 +120,12 @@ func (f *tableForm) updateHuh(message tea.Msg, controller *formModeController) (
 
 func (f *tableForm) save(controller *formModeController) (tea.Cmd, tableFormAction) {
 	if err := requiredTableName(f.name); err != nil {
-		// Replay Enter so Huh validates the field and renders the error inline.
-		return f.updateHuh(tea.KeyPressMsg{Code: tea.KeyEnter, Text: "enter"}, controller)
+		if f.nameValue != nil {
+			*f.nameValue = f.name
+		}
+		model, command := f.form.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Text: "enter"})
+		f.form = model.(*huh.Form)
+		return command, tableFormNoAction
 	}
 	if f.table != "" && f.name == f.originalName {
 		f.close()
@@ -149,7 +157,7 @@ func (f tableForm) statement(m Model) string {
 		}
 		return "ALTER TABLE " + m.actionIdentifier(oldName) + " RENAME TO " + m.actionIdentifier(newName)
 	}
-	return "CREATE TABLE " + m.actionIdentifier(m.qualifiedTableName(f.database, f.name)) + " ()"
+	return "CREATE TABLE " + m.actionIdentifier(m.qualifiedTableName(f.database, f.name)) + " (id INTEGER PRIMARY KEY)"
 }
 
 // qualifiedTableName returns name for SQLite and database.name for
@@ -192,15 +200,18 @@ func (f *tableForm) setWidth(width int) {
 
 func (f *tableForm) setHeight(height int) {
 	f.height = max(height, 1)
-	if f.form != nil {
-		f.form.WithHeight(f.height)
-	}
 }
 
 func (f *tableForm) rebuildForm() {
+	if f.nameValue == nil {
+		name := f.name
+		f.nameValue = &name
+	} else {
+		*f.nameValue = f.name
+	}
 	f.form = newForm(huh.NewGroup(
-		newEditableInput(huh.NewInput().Key("name").Title("Table name").Value(&f.name).Validate(requiredTableName), &f.name),
-	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
+		newEditableInput(huh.NewInput().Key("name").Title("Table name").Value(f.nameValue).Validate(requiredTableName), f.nameValue),
+	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 }
 
 func requiredTableName(value string) error {
