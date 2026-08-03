@@ -185,6 +185,39 @@ func (f *indexForm) showValidationError() {
 	_ = f.form.GetFocusedField().Blur()
 }
 
+func (f indexForm) focusedField() int {
+	if f.form == nil {
+		return 0
+	}
+	switch f.form.GetFocusedField().GetKey() {
+	case "name":
+		return 0
+	case "columns":
+		return 1
+	default:
+		return 2
+	}
+}
+
+// focusField moves the field cursor to the field at index. The loop bounds
+// guard against Huh navigation skipping fields.
+func (f *indexForm) focusField(field int) tea.Cmd {
+	field = min(max(field, 0), 2)
+	for range 3 {
+		if f.focusedField() >= field {
+			break
+		}
+		_ = f.form.NextField()
+	}
+	for range 3 {
+		if f.focusedField() <= field {
+			break
+		}
+		_ = f.form.PrevField()
+	}
+	return f.focus()
+}
+
 func (f *indexForm) blur() {
 	if f.form != nil {
 		_ = f.form.GetFocusedField().Blur()

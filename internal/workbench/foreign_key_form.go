@@ -208,6 +208,43 @@ func (f *foreignKeyForm) showValidationError() {
 	_ = f.form.GetFocusedField().Blur()
 }
 
+func (f foreignKeyForm) focusedField() int {
+	if f.form == nil {
+		return 0
+	}
+	switch f.form.GetFocusedField().GetKey() {
+	case "columns":
+		return 0
+	case "reference-table":
+		return 1
+	case "reference-columns":
+		return 2
+	case "on-delete":
+		return 3
+	default:
+		return 4
+	}
+}
+
+// focusField moves the field cursor to the field at index. The loop bounds
+// guard against Huh navigation skipping fields.
+func (f *foreignKeyForm) focusField(field int) tea.Cmd {
+	field = min(max(field, 0), 4)
+	for range 5 {
+		if f.focusedField() >= field {
+			break
+		}
+		_ = f.form.NextField()
+	}
+	for range 5 {
+		if f.focusedField() <= field {
+			break
+		}
+		_ = f.form.PrevField()
+	}
+	return f.focus()
+}
+
 func (f *foreignKeyForm) blur() {
 	if f.form != nil {
 		_ = f.form.GetFocusedField().Blur()

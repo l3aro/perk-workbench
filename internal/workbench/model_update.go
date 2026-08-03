@@ -517,6 +517,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if maybeCmd != nil {
 				cmds = append(cmds, maybeCmd)
 			}
+			var m4 tea.Model
+			m4, maybeCmd = m.handleFormClick(message.X, message.Y)
+			m = m4.(Model)
+			if maybeCmd != nil {
+				cmds = append(cmds, maybeCmd)
+			}
 			if len(cmds) > 0 || m.contextMenu != nil {
 				return m, tea.Batch(cmds...)
 			}

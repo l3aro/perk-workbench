@@ -44,10 +44,15 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		if m.chat.visible && x >= m.schemaWidth+m.editorWidth {
 			m.Focus = focusChat
-			m.chat.chatMode = formModeNormal
 			m.queryLogPendingG = false
 			m.editor.text.Blur()
 			m.blurTables()
+			// A double-click press just entered insert mode; the trailing
+			// release must not reset it to normal.
+			if !m.chatKeepInsert {
+				m.chat.chatMode = formModeNormal
+			}
+			m.chatKeepInsert = false
 			return m, nil
 		}
 		if contentY < m.workspaceHeight {

@@ -38,6 +38,7 @@ func (t sqlTextarea) Value() string          { return t.input.Value() }
 func (t *sqlTextarea) SetWidth(width int)    { t.input.SetWidth(width) }
 func (t *sqlTextarea) SetHeight(height int)  { t.input.SetHeight(height) }
 func (t *sqlTextarea) Focus() tea.Cmd        { return t.input.Focus() }
+func (t *sqlTextarea) Focused() bool         { return t.input.Focused() }
 func (t *sqlTextarea) Blur()                 { t.input.Blur() }
 
 func (t *sqlTextarea) Update(message tea.Msg) tea.Cmd {

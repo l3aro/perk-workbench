@@ -266,13 +266,29 @@ func (f columnForm) focusedField() int {
 
 func (f *columnForm) focusField(field int) tea.Cmd {
 	field = min(max(field, 0), f.fieldCount()-1)
-	for f.focusedField() < field {
+	for range f.fieldCount() {
+		if f.focusedField() >= field {
+			break
+		}
 		_ = f.form.NextField()
 	}
-	for f.focusedField() > field {
+	for range f.fieldCount() {
+		if f.focusedField() <= field {
+			break
+		}
 		_ = f.form.PrevField()
 	}
 	return f.focus()
+}
+
+// fieldTitles lists the rendered titles of every column form field in render
+// order; parameter titles come from the selected type.
+func (f columnForm) fieldTitles() []string {
+	titles := []string{"Name*", "Type*"}
+	for _, parameter := range f.typeOptions[f.typeIndex()].Parameters {
+		titles = append(titles, parameter.Name)
+	}
+	return append(titles, "Nullable", "Default", "Attributes")
 }
 
 func (f *columnForm) scrollToField(field int) {

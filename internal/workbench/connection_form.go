@@ -75,6 +75,46 @@ func (f *connectionForm) setFocus(index int) tea.Cmd {
 	return nil
 }
 
+// fieldTitles lists the rendered titles of every connection form field in
+// render order; the layout depends on the selected driver.
+func (f connectionForm) fieldTitles() []string {
+	if f.values.driver == driverSQLite {
+		return []string{"Driver", "Name", "Target*", "Read-Only", "Action"}
+	}
+	return []string{"Driver", "Name", "Host*", "Port*", "Username*", "Password", "Database", "TLS", "Privacy", "Read-Only", "Action"}
+}
+
+func (f connectionForm) fieldKeys() []string {
+	if f.values.driver == driverSQLite {
+		return []string{"driver", "name", "target", "readOnly", "action"}
+	}
+	return []string{"driver", "name", "host", "port", "username", "password", "database", "tls", "privacy", "readOnly", "action"}
+}
+
+// focusField moves the field cursor to the field at index. The Privacy note
+// is skipped by Huh navigation, so clicks on it leave focus unchanged. The
+// loop bounds guard against navigation skipping fields.
+func (f *connectionForm) focusField(field int) tea.Cmd {
+	keys := f.fieldKeys()
+	if field < 0 || field >= len(keys) || keys[field] == "privacy" {
+		return nil
+	}
+	target := keys[field]
+	for range len(keys) {
+		if f.form.GetFocusedField().GetKey() == target {
+			return f.focusForm()
+		}
+		_ = f.form.NextField()
+	}
+	for range len(keys) {
+		if f.form.GetFocusedField().GetKey() == target {
+			return f.focusForm()
+		}
+		_ = f.form.PrevField()
+	}
+	return nil
+}
+
 func (f *connectionForm) rebuildForm() tea.Cmd {
 	fields := []huh.Field{
 		huh.NewSelect[connectionDriver]().Key("driver").Title("Driver").Options(

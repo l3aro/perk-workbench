@@ -105,6 +105,9 @@ type Model struct {
 	structureFilter, indexesFilter, foreignKeysFilter                                              string
 	lastClickTime                                                                                  time.Time
 	lastClickX, lastClickY                                                                         int
+	lastFormClickTime                                                                              time.Time
+	lastFormClickX, lastFormClickY                                                                 int
+	chatKeepInsert                                                                                 bool
 	contextMenu                                                                                    *contextMenuModel
 	deleteConfirm                                                                                  *confirmationDialog
 	deletePending                                                                                  string

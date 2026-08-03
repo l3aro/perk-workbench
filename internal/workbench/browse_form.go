@@ -237,6 +237,26 @@ func (f *browseForm) previousField() tea.Cmd {
 	return f.form.PrevField()
 }
 
+// focusColumn moves the field cursor to the column at index and scrolls it
+// into view. The loop bounds guard against Huh navigation skipping fields.
+func (f *browseForm) focusColumn(col int) tea.Cmd {
+	col = min(max(col, 0), len(f.columns)-1)
+	for range len(f.columns) {
+		if f.focusedColumn() >= col {
+			break
+		}
+		_ = f.form.NextField()
+	}
+	for range len(f.columns) {
+		if f.focusedColumn() <= col {
+			break
+		}
+		_ = f.form.PrevField()
+	}
+	f.scrollToColumn(col)
+	return f.focus()
+}
+
 func (f *browseForm) firstField() tea.Cmd {
 	for f.focusedColumn() > 0 {
 		_ = f.form.PrevField()
