@@ -7,10 +7,19 @@ import (
 )
 
 // formButtonsBar renders the Save/Cancel button row shown under editable
-// forms. The row is hit-tested with formButtonAt.
-func formButtonsBar() string {
+// forms. When focused, the chosen button is highlighted. The row is
+// hit-tested with formButtonAt.
+func formButtonsBar(focused bool, choice int) string {
+	save, cancel := formSaveButtonStyle, formCancelButtonStyle
+	if focused {
+		if choice == 0 {
+			save = formButtonFocusedStyle
+		} else {
+			cancel = formButtonFocusedStyle
+		}
+	}
 	return lipgloss.JoinHorizontal(lipgloss.Left,
-		formSaveButtonStyle.Render("Save"), " ", formCancelButtonStyle.Render("Cancel"))
+		save.Render("Save"), " ", cancel.Render("Cancel"))
 }
 
 // formButtonAt returns the button under a click at relX within the buttons

@@ -327,7 +327,7 @@ func (m Model) connectionPaneView(height int) string {
 	content := m.connection.View()
 	footer := m.modeBadge()
 	if m.connection.focus == connectionFocusForm && m.connection.form != nil && m.connection.confirmation == nil {
-		footer = formButtonsBar() + " " + footer
+		footer = formButtonsBar(false, 0) + " " + footer
 	}
 	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + footer
 }

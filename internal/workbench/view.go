@@ -545,13 +545,14 @@ func (m Model) workspaceView() string {
 		content = m.foreignKeysView()
 	}
 	modeLine := m.modeBadge()
-	if m.formTabActive() {
-		modeLine = formButtonsBar() + " " + modeLine
-	}
 	if m.compact && m.SelectedTable != "" {
 		modeLine += "  " + statusStyle.Render(m.SelectedTable)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, modeLine+" "+statusStyle.Render("L/H tabs"))
+	footer := modeLine + " " + statusStyle.Render("L/H tabs")
+	if m.formTabActive() {
+		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.formMode.buttonsFocused, m.formMode.buttonChoice), "", footer)
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, footer)
 }
 
 func (m Model) sqlPaneView() string {

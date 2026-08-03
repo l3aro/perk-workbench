@@ -3,11 +3,12 @@ package workbench
 import "charm.land/bubbles/v2/table"
 
 // formViewportHeight computes the viewport height for forms in the workspace.
+// Editable forms reserve rows for actions, their separating gap, and the mode hint.
 func (m Model) formViewportHeight() int {
 	if m.compact {
-		return max(m.height-9, 1)
+		return max(m.height-11, 1)
 	}
-	return max(m.workspaceHeight-5, 1)
+	return max(m.workspaceHeight-7, 1)
 }
 
 func (m *Model) layout(width, height int) {

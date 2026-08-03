@@ -19,7 +19,7 @@ var (
 	focusStyle, panelStyle                                                            lipgloss.Style
 	connectionActionStyle                                                             lipgloss.Style
 	connectionActionSelectedStyle                                                     lipgloss.Style
-	formSaveButtonStyle, formCancelButtonStyle                                        lipgloss.Style
+	formSaveButtonStyle, formCancelButtonStyle, formButtonFocusedStyle                lipgloss.Style
 	primaryIndexStyle, uniqueIndexStyle                                               lipgloss.Style
 	regularIndexStyle                                                                 lipgloss.Style
 	statusSuccessStyle, statusFailedStyle                                             lipgloss.Style
@@ -123,6 +123,12 @@ func resetStyles() {
 		Foreground(lipgloss.Color(colorInk)).
 		Background(lipgloss.Color(colorStripe)).
 		Padding(0, spaceCompact)
+	formButtonFocusedStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorCanvas)).
+		Background(lipgloss.Color(colorPrimary)).
+		Bold(true).
+		Underline(true).
+		Padding(0, spaceCompact)
 	userMessageStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorInk)).
 		Background(lipgloss.Color(colorPanel))
@@ -135,21 +141,17 @@ func resetStyles() {
 	statusSuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess))
 	statusFailedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorDanger))
 	statusCanceledStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#d29922"))
+	// Badges are foreground-only text so they never read as buttons, which
+	// are the only solid pills in the UI.
 	modeNormalStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#000000")).
-		Background(lipgloss.Color(colorModeNormal)).
-		Bold(true).
-		Padding(0, spaceCompact)
+		Foreground(lipgloss.Color(colorModeNormal)).
+		Bold(true)
 	modeInsertStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#000000")).
-		Background(lipgloss.Color(colorModeInsert)).
-		Bold(true).
-		Padding(0, spaceCompact)
+		Foreground(lipgloss.Color(colorModeInsert)).
+		Bold(true)
 	readOnlyStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#ffffff")).
-		Background(lipgloss.Color("#d29922")).
-		Bold(true).
-		Padding(0, spaceCompact)
+		Foreground(lipgloss.Color("#d29922")).
+		Bold(true)
 	selectedCellStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorPrimary)).

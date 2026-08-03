@@ -132,20 +132,26 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		if x < m.schemaWidth || contentY < 3 || contentY >= m.workspaceHeight {
 			return m, nil
 		}
-		// The Save/Cancel button bar sits on the last workspace row; it is
-		// rendered only while a form owns the tab.
-		if m.formTabActive() && contentY == m.workspaceHeight-2 {
+		// The Save/Cancel button bar sits two rows above the workspace footer;
+		// it is rendered only while a form owns the tab.
+		if m.formTabActive() && contentY == m.workspaceHeight-4 {
 			switch formButtonAt(x - m.schemaWidth - 1) {
 			case "save":
+				m.formMode.focusButtons()
 				m.formButtonHit = true
 				var command tea.Cmd
 				m, command = m.formSaveCommand()
 				return m, command
 			case "cancel":
+				m.formMode.focusButtons()
+				m.formMode.buttonChoice = 1
 				m.formButtonHit = true
 				return m, formEscapeKeyPress()
 			}
+			return m, nil
 		}
+		// Any other click lands on a form field: leave the button bar.
+		m.formMode.buttonsFocused = false
 		switch m.Tab {
 		case tabStructure:
 			if m.columnForm.active() && !m.columnForm.confirming() {
