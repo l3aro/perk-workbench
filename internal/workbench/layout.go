@@ -46,7 +46,7 @@ func (m *Model) layout(width, height int) {
 	}
 	m.connection.setWidth(max(connectionWidth-4, 1))
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
-	m.editor.setSize(max(m.editorWidth-4, 1), max(m.editorHeight-2, 1))
+	m.editor.setSize(max(m.editorWidth-8, 1), max(m.editorHeight-4, 1))
 	m.resizeChat()
 	m.tableViewportWidth = max(m.editorWidth-4, 1)
 	if m.compact {

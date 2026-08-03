@@ -535,14 +535,15 @@ func (m Model) workspaceView() string {
 
 func (m Model) sqlPaneView() string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		m.editor.View(),
+		sqlEditorBox(m.editor.View(), m.editorBorderColor()),
 		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth, m.resultsColumn),
 	)
 
 	if dropdown := m.completionOverlay(); dropdown != "" {
 		lines := strings.Split(content, "\n")
 		overlayLines := strings.Split(dropdown, "\n")
-		startLine := max(m.completionCursorOffset()+1, 1)
+		// +2: dropdown sits below the cursor line, plus the editor's own border row.
+		startLine := max(m.completionCursorOffset()+2, 1)
 		for i, ol := range overlayLines {
 			if startLine+i < len(lines) {
 				lines[startLine+i] = ol
@@ -552,6 +553,23 @@ func (m Model) sqlPaneView() string {
 	}
 
 	return content + "\n" + chrome.PaneStatus("", m.resultsStatus, m.tableViewportWidth)
+}
+
+// sqlEditorBox frames the SQL input; its border color mirrors the live
+// validity of the current statement.
+func sqlEditorBox(view, borderColor string) string {
+	return lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(borderColor)).Render(view)
+}
+
+func (m Model) editorBorderColor() string {
+	switch m.editorValidity {
+	case sqlValidityValid:
+		return colorSuccess
+	case sqlValidityInvalid:
+		return colorDanger
+	default:
+		return colorBorder
+	}
 }
 
 func (m Model) structureView() string {

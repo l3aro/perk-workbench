@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -433,6 +434,46 @@ func TestWorkspaceView_separatesTabsAndContent(t *testing.T) {
 	lines := strings.Split(ansi.Strip(model.workspaceView()), "\n")
 	if len(lines) < 2 || strings.TrimSpace(lines[1]) != "" {
 		t.Errorf("workspace lines = %#v, want a blank line after tabs", lines)
+	}
+}
+
+func TestSQLPane_borderRightCornersStayAligned(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model = resizeModel(model, 100, 24)
+	model.Tab = tabSQL
+	model.editor.setValue("SELECT 1")
+	border := lipgloss.NormalBorder()
+	lines := strings.Split(ansi.Strip(model.rightView()), "\n")
+
+	// The SQL text identifies the nested frame independently of the outer pane.
+	contentLine, sqlColumn := -1, -1
+	for index, line := range lines {
+		if column := strings.Index(line, "SELECT 1"); column >= 0 {
+			contentLine, sqlColumn = index, utf8.RuneCountInString(line[:column])
+			break
+		}
+	}
+	if contentLine < 1 || sqlColumn < 1 {
+		t.Fatalf("SQL editor not rendered in pane: %q", strings.Join(lines, "\n"))
+	}
+
+	// Then — both right corners share their rows with the SQL frame's left
+	// corners, rather than being wrapped into the next line.
+	left := sqlColumn - 1
+	width := lipgloss.Width(sqlEditorBox(model.editor.View(), colorSuccess))
+	for _, corner := range []struct {
+		line  int
+		left  string
+		right string
+	}{
+		{contentLine - 1, border.TopLeft, border.TopRight},
+		{contentLine + model.editor.height, border.BottomLeft, border.BottomRight},
+	} {
+		runes := []rune(lines[corner.line])
+		if len(runes) <= left+width-1 || string(runes[left]) != corner.left || string(runes[left+width-1]) != corner.right {
+			t.Fatalf("nested border line = %q, want %q at column %d and %q at column %d", lines[corner.line], corner.left, left, corner.right, left+width-1)
+		}
 	}
 }
 
