@@ -119,9 +119,6 @@ func contextLabel(m Model) string {
 	return ""
 }
 
-// commandAvailable returns true if the given command can be executed in the
-// current model context. Global commands are always shown. View/form commands
-// are shown only when their pane matches the current state.
 // commandLabel returns a disambiguated display label for the palette.
 // Commands sharing the same raw label get a pane prefix.
 func commandLabel(id CommandID, raw string) string {
@@ -236,13 +233,28 @@ func commandLabel(id CommandID, raw string) string {
 }
 func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
+	case "app.quit":
+		return !m.formActive() && !m.schema.SettingFilter() &&
+			!(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
+			!(m.sqlEditorActive() && m.formMode.editing())
+	case "editor.external":
+		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil
+	case "query.cancel":
+		return m.Running()
 	case "ai.toggle":
-		return m.chat.enabled
+		return m.State == stateReady && m.chat.enabled
 	case "focus.chat":
-		return m.chat.visible
+		return m.State == stateReady && m.chat.visible
+	case "focus.schema", "focus.workspace", "focus.query_log",
+		"focus.toggle_fullscreen", "focus.cycle_forward", "focus.cycle_backward":
+		return m.State == stateReady && !m.formActive() && !m.schema.SettingFilter()
+	case "query.execute":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
+	case "query.history", "app.quit_dialog":
+		return false
 	}
 	if def.scope == scopeGlobal {
-		return true
+		return false
 	}
 	switch id {
 	case "workspace.escape_to_schema", "workspace.tab_next", "workspace.tab_prev":
@@ -274,11 +286,14 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == statePicking
 	case "failure.return_to_picker":
 		return m.State == stateFailure
-	case "connection.switch_to_form", "connection.switch_to_list",
-		"connection.add", "connection.edit", "connection.delete",
-		"connection.action_enter", "connection.execute",
-		"connection.edit_field", "connection.field_next", "connection.field_prev":
-		return m.State == stateConnection
+	case "connection.switch_to_form", "connection.add", "connection.edit", "connection.delete":
+		return m.State == stateConnection && m.connection.focus == connectionFocusRecent
+	case "connection.switch_to_list", "connection.execute", "connection.field_next", "connection.field_prev":
+		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil
+	case "connection.action_enter":
+		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil && m.connectionActionFocused()
+	case "connection.edit_field":
+		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil && !m.connectionActionFocused()
 	case "form.edit":
 		return m.formActive()
 	case "form.save", "form.discard", "form.field_next", "form.field_prev":
