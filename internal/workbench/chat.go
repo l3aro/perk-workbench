@@ -23,13 +23,13 @@ type chatClient interface {
 }
 
 type chatHistory interface {
-	NewConversation(context.Context, string) (ai.Conversation, error)
-	AppendMessage(context.Context, string, ai.Message) error
-	Conversations(context.Context) ([]ai.Conversation, error)
-	Messages(context.Context, string) ([]ai.Message, error)
-	DeleteConversation(context.Context, string) error
-	Clear(context.Context) error
-	RenameConversation(context.Context, string, string) error
+	NewConversation(context.Context, string, string) (ai.Conversation, error)
+	AppendMessage(context.Context, string, string, ai.Message) error
+	Conversations(context.Context, string) ([]ai.Conversation, error)
+	Messages(context.Context, string, string) ([]ai.Message, error)
+	DeleteConversation(context.Context, string, string) error
+	Clear(context.Context, string) error
+	RenameConversation(context.Context, string, string, string) error
 }
 
 type chatModel struct {
@@ -61,9 +61,12 @@ type chatModel struct {
 
 // chatRun is the full state of one conversation — the active one or any
 // conversation still executing in the background. Runs are independent:
-// switching the visible conversation never interrupts another run.
+// switching the visible conversation never interrupts another run. connectionID
+// is the profile scope captured when the turn began; a run keeps persisting to
+// it even if the model later disconnects.
 type chatRun struct {
 	conversationID string
+	connectionID   string
 	messages       []ai.Message
 	streamBuffer   string // accumulated streaming content
 	loading        bool
@@ -189,11 +192,13 @@ type chatStreamMsg struct {
 }
 
 type chatHistoryLoadedMsg struct {
+	connectionID  string
 	conversations []ai.Conversation
 	err           error
 }
 
 type chatMessagesLoadedMsg struct {
+	connectionID   string
 	conversationID string
 	messages       []ai.Message
 	seq            int64
@@ -202,6 +207,7 @@ type chatMessagesLoadedMsg struct {
 
 type chatHistoryDeletedMsg struct {
 	err            error
+	connectionID   string
 	conversationID string // conversation the delete targeted ("" for clear-all)
 	clear          bool
 }
@@ -222,6 +228,7 @@ type chatPersistMsg struct{ err error }
 
 // chatTitleMsg reports completion of asynchronous conversation title generation.
 type chatTitleMsg struct {
+	connectionID   string
 	conversationID string
 	title          string
 	err            error

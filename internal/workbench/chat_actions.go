@@ -75,8 +75,17 @@ func (m *Model) startChat() tea.Cmd {
 	userMessage := ai.Message{Role: ai.RoleUser, Content: prompt}
 	conversationID := m.chat.activeID
 	fresh := conversationID == ""
-	if fresh && m.chat.history != nil {
-		conversation, err := m.chat.history.NewConversation(m.appContext, truncateChatTitle(prompt))
+	// Capture the connection scope for the whole turn: a background run keeps
+	// persisting to the connection it started on after a disconnect.
+	connectionID := m.connectionID
+	// History persistence is connection-scoped: without a profile scope there
+	// is nothing safe to write, so the chat stays usable in memory only.
+	historyAvailable := m.chat.history != nil && connectionID != ""
+	if m.chat.history != nil && !historyAvailable {
+		m.Status = "AI conversation history is unavailable"
+	}
+	if fresh && historyAvailable {
+		conversation, err := m.chat.history.NewConversation(m.appContext, connectionID, truncateChatTitle(prompt))
 		if err != nil {
 			m.Status = safeText("AI history: " + err.Error())
 			return nil
@@ -89,6 +98,7 @@ func (m *Model) startChat() tea.Cmd {
 		run = &chatRun{conversationID: conversationID}
 		m.chat.runs[conversationID] = run
 	}
+	run.connectionID = connectionID
 	// Record only once the prompt is accepted: a failed conversation creation
 	// must not pollute recall history.
 	m.chat.recordPromptHistory(prompt)
@@ -116,8 +126,8 @@ func (m *Model) startChat() tea.Cmd {
 	contextText := m.chatContext()
 
 	send := func() tea.Msg {
-		if history != nil {
-			if err := history.AppendMessage(rootContext, conversationID, userMessage); err != nil {
+		if historyAvailable {
+			if err := history.AppendMessage(rootContext, connectionID, conversationID, userMessage); err != nil {
 				cancel()
 				return chatStreamMsg{conversationID: conversationID, err: err}
 			}
@@ -195,18 +205,18 @@ func (m *Model) startChat() tea.Cmd {
 	titleCmd := func() tea.Msg {
 		title, err := client.GenerateTitle(m.appContext, prompt)
 		if err != nil {
-			return chatTitleMsg{conversationID: conversationID, err: err}
+			return chatTitleMsg{connectionID: connectionID, conversationID: conversationID, err: err}
 		}
 		if title == "" {
-			return chatTitleMsg{conversationID: conversationID}
+			return chatTitleMsg{connectionID: connectionID, conversationID: conversationID}
 		}
-		if err := history.RenameConversation(m.appContext, conversationID, title); err != nil {
-			return chatTitleMsg{conversationID: conversationID, err: err}
+		if err := history.RenameConversation(m.appContext, connectionID, conversationID, title); err != nil {
+			return chatTitleMsg{connectionID: connectionID, conversationID: conversationID, err: err}
 		}
-		return chatTitleMsg{conversationID: conversationID, title: title}
+		return chatTitleMsg{connectionID: connectionID, conversationID: conversationID, title: title}
 	}
 	cmds := []tea.Cmd{send, m.chatSpinnerTick()}
-	if fresh && history != nil {
+	if fresh && historyAvailable {
 		cmds = append(cmds, titleCmd)
 	}
 	return tea.Batch(cmds...)
@@ -235,19 +245,21 @@ func (m *Model) loadChatHistory() tea.Cmd {
 		return nil
 	}
 	history := m.chat.history
+	connectionID := m.connectionID
 	return func() tea.Msg {
-		conversations, err := history.Conversations(m.appContext)
-		return chatHistoryLoadedMsg{conversations: conversations, err: err}
+		conversations, err := history.Conversations(m.appContext, connectionID)
+		return chatHistoryLoadedMsg{connectionID: connectionID, conversations: conversations, err: err}
 	}
 }
 
 func (m *Model) loadChatMessages(conversationID string) tea.Cmd {
 	history := m.chat.history
+	connectionID := m.connectionID
 	m.chat.loadSeq++
 	seq := m.chat.loadSeq
 	return func() tea.Msg {
-		messages, err := history.Messages(m.appContext, conversationID)
-		return chatMessagesLoadedMsg{conversationID: conversationID, messages: messages, seq: seq, err: err}
+		messages, err := history.Messages(m.appContext, connectionID, conversationID)
+		return chatMessagesLoadedMsg{connectionID: connectionID, conversationID: conversationID, messages: messages, seq: seq, err: err}
 	}
 }
 
@@ -256,14 +268,15 @@ func (m *Model) deleteChatHistory(clear bool) tea.Cmd {
 		return nil
 	}
 	history, conversationID := m.chat.history, m.chat.activeID
+	connectionID := m.connectionID
 	return func() tea.Msg {
 		var err error
 		if clear {
-			err = history.Clear(m.appContext)
+			err = history.Clear(m.appContext, connectionID)
 		} else if conversationID != "" {
-			err = history.DeleteConversation(m.appContext, conversationID)
+			err = history.DeleteConversation(m.appContext, connectionID, conversationID)
 		}
-		return chatHistoryDeletedMsg{err: err, conversationID: conversationID, clear: clear}
+		return chatHistoryDeletedMsg{err: err, connectionID: connectionID, conversationID: conversationID, clear: clear}
 	}
 }
 
@@ -290,6 +303,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		run.spinnerFrame++
 		return m, m.chatSpinnerTick()
 	case chatHistoryLoadedMsg:
+		if message.connectionID != m.connectionID {
+			return m, nil // stale: started before a disconnect/reconnect
+		}
 		if message.err != nil {
 			m.Status = safeText("AI history: " + message.err.Error())
 			return m, nil
@@ -306,6 +322,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatHistoryPicker = newForm(huh.NewGroup(huh.NewSelect[string]().Key("conversation").Title("AI conversations").Options(choices...).Value(&m.chat.historyChoice))).WithWidth(max(m.tableViewportWidth, 1))
 		return m, m.chatHistoryPicker.Init()
 	case chatMessagesLoadedMsg:
+		if message.connectionID != m.connectionID {
+			return m, nil // stale: started before a disconnect/reconnect
+		}
 		if message.seq != m.chat.loadSeq {
 			return m, nil // stale selection load
 		}
@@ -322,6 +341,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshChatView()
 		return m, nil
 	case chatHistoryDeletedMsg:
+		if message.connectionID != m.connectionID {
+			return m, nil // stale: started before a disconnect/reconnect
+		}
 		if message.err != nil {
 			m.Status = safeText("AI history: " + message.err.Error())
 			return m, nil
@@ -356,6 +378,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case chatTitleMsg:
+		if message.connectionID != m.connectionID {
+			return m, nil // stale: started before a disconnect/reconnect
+		}
 		if message.err != nil {
 			if run := m.chat.runs[message.conversationID]; run != nil && m.chat.isActive(run) {
 				m.Status = safeText("AI title: " + message.err.Error())
@@ -448,9 +473,10 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.Status = "Assistant response complete"
 			}
 			// Persist to history asynchronously; report errors regardless of
-			// which conversation is visible.
-			if m.chat.history != nil && run.conversationID != "" {
-				history, cid := m.chat.history, run.conversationID
+			// which conversation is visible. The run keeps its captured scope
+			// even if the model has since disconnected.
+			if m.chat.history != nil && run.connectionID != "" && run.conversationID != "" {
+				history, cid, scope := m.chat.history, run.conversationID, run.connectionID
 				appCtx := m.appContext
 				historyMsg := ai.Message{
 					Role:    ai.RoleAssistant,
@@ -458,7 +484,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 					Content: content,
 				}
 				return m, func() tea.Msg {
-					err := history.AppendMessage(appCtx, cid, historyMsg)
+					err := history.AppendMessage(appCtx, scope, cid, historyMsg)
 					return chatPersistMsg{err: err}
 				}
 			}

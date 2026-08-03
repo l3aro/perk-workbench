@@ -314,6 +314,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(client, history)
+	model.connectionID = "test-connection"
 	model.layout(140, 32)
 
 	// Conversation A: send a prompt whose stream blocks until released.
@@ -409,7 +410,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 
 	// Both conversations persisted with full histories.
 	for _, cid := range []string{idA, idB} {
-		persisted, err := history.Messages(context.Background(), cid)
+		persisted, err := history.Messages(context.Background(), "test-connection", cid)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -428,17 +429,18 @@ func TestChat_staleConversationLoadIsDropped(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	a, err := history.NewConversation(context.Background(), "conv a")
+	a, err := history.NewConversation(context.Background(), "test-connection", "conv a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := history.NewConversation(context.Background(), "conv b")
+	b, err := history.NewConversation(context.Background(), "test-connection", "conv b")
 	if err != nil {
 		t.Fatal(err)
 	}
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history)
+	model.connectionID = "test-connection"
 	model.layout(140, 32)
 
 	loadA := model.loadChatMessages(a.ID) // seq 1
@@ -610,12 +612,13 @@ func TestChat_historySlashCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = history.Close() })
-	if _, err := history.NewConversation(context.Background(), "old chat"); err != nil {
+	if _, err := history.NewConversation(context.Background(), "test-connection", "old chat"); err != nil {
 		t.Fatal(err)
 	}
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, history)
+	model.connectionID = "test-connection"
 	model.layout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
@@ -834,6 +837,7 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(client, history)
+	model.connectionID = "test-connection"
 	model.layout(140, 32)
 	model.chat.input.SetValue("How should I speed this up?")
 
@@ -855,7 +859,7 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 		t.Fatalf("messages = %#v", model.chat.activeRun().messages)
 	}
 	// Check that the persisted conversation includes both messages.
-	persisted, err := history.Messages(context.Background(), model.chat.activeID)
+	persisted, err := history.Messages(context.Background(), "test-connection", model.chat.activeID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -873,6 +877,7 @@ func TestChat_generatesTitleForNewConversation(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history)
+	model.connectionID = "test-connection"
 	model.layout(140, 32)
 	model.chat.input.SetValue("How do I add an index?")
 
@@ -888,7 +893,7 @@ func TestChat_generatesTitleForNewConversation(t *testing.T) {
 	}
 	model = driveStreamToCompletion(t, model, command)
 
-	conversations, err := history.Conversations(context.Background())
+	conversations, err := history.Conversations(context.Background(), "test-connection")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1933,5 +1938,123 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 	}
 	if got, want := model.chat.input.Value(), "/"; got != want {
 		t.Fatalf("input after completion Up = %q, want %q", got, want)
+	}
+}
+
+// TestChat_historyPersistenceIsConnectionScoped guards the end-to-end scope:
+// a chat turn on one connection persists only under that connection's scope.
+func TestChat_historyPersistenceIsConnectionScoped(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, history)
+	model.connectionID = "conn-a"
+	model.layout(140, 32)
+	model.chat.input.SetValue("How do I add an index?")
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("sending chat did not return a command")
+	}
+	model = driveStreamToCompletion(t, model, command)
+
+	if conversations, err := history.Conversations(context.Background(), "conn-a"); err != nil || len(conversations) != 1 {
+		t.Fatalf("conn-a conversations = %#v, err %v, want one", conversations, err)
+	}
+	if conversations, err := history.Conversations(context.Background(), "conn-b"); err != nil || len(conversations) != 0 {
+		t.Fatalf("conn-b conversations = %#v, err %v, want none", conversations, err)
+	}
+	if messages, err := history.Messages(context.Background(), "conn-b", model.chat.activeID); err != nil || len(messages) != 0 {
+		t.Fatalf("conn-b messages for conn-a conversation = %#v, err %v, want none", messages, err)
+	}
+}
+
+// TestChat_persistenceRequiresConnectionScope guards the no-scope path: chat
+// stays usable in memory, but nothing is persisted and the user is told
+// history is unavailable.
+func TestChat_persistenceRequiresConnectionScope(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, history) // history present, but no connection scope
+	model.layout(140, 32)
+	model.chat.input.SetValue("How do I add an index?")
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("chat without a connection scope must still send the request")
+	}
+	if model.Status != "AI conversation history is unavailable" {
+		t.Fatalf("status = %q, want history-unavailable notice", model.Status)
+	}
+	model = driveStreamToCompletion(t, model, command)
+
+	if len(model.chat.activeRun().messages) != 2 {
+		t.Fatalf("messages = %#v, want user and assistant in memory", model.chat.activeRun().messages)
+	}
+	if model.chat.activeID != "" {
+		t.Fatalf("active conversation = %q, want fresh unsent view without a scope", model.chat.activeID)
+	}
+	if conversations, err := history.Conversations(context.Background(), "any-scope"); err != nil || len(conversations) != 0 {
+		t.Fatalf("persisted conversations = %#v, err %v, want none", conversations, err)
+	}
+}
+
+// TestChat_connectionSwitchDropsStaleHistoryResults guards the async scope
+// check: list, title, and delete results started on a previous connection must
+// not touch the current connection's UI.
+func TestChat_connectionSwitchDropsStaleHistoryResults(t *testing.T) {
+	history, err := ai.OpenHistory(filepath.Join(t.TempDir(), "conversations.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = history.Close() })
+	model := New(":memory:", context.Background(), nil, false)
+	model.State, model.Focus = stateReady, focusChat
+	model.SetAI(fakeChatClient{}, history)
+	model.connectionID = "conn-a"
+	model.layout(140, 32)
+
+	// A history load started on conn-a must not open the picker after conn-b
+	// became active.
+	cmd := model.loadChatHistory()
+	model.connectionID = "conn-b"
+	updated, _ := model.Update(cmd())
+	model = updated.(Model)
+	if model.chatHistoryPicker != nil {
+		t.Fatal("stale history load opened the picker on the new connection")
+	}
+
+	// A title failure from the old scope must not surface a status.
+	updated, _ = model.Update(chatTitleMsg{connectionID: "conn-a", conversationID: "c1", err: errors.New("boom")})
+	model = updated.(Model)
+	if model.Status != "" {
+		t.Fatalf("stale title error surfaced: %q", model.Status)
+	}
+
+	// A delete result from the old scope must not clear, cancel runs, or
+	// report anything.
+	model.chat.runs["c1"] = &chatRun{conversationID: "c1"}
+	updated, _ = model.Update(chatHistoryDeletedMsg{connectionID: "conn-a", clear: true})
+	model = updated.(Model)
+	if model.Status != "" {
+		t.Fatalf("stale delete result surfaced: %q", model.Status)
+	}
+	if model.chat.runs["c1"] == nil {
+		t.Fatal("stale clear wiped a live background run")
 	}
 }
