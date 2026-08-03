@@ -168,7 +168,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if action != "run" {
 			return m, nil
 		}
-		return m.startQueryStatement(statement)
+		return m.startQueryStatement(statement, false)
 	}
 	if run := m.chat.activeRun(); run.pendingWrite != nil && run.pendingWrite.dialog != nil {
 		// While in chat insert mode, Escape exits insert mode first so the
@@ -365,6 +365,24 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				{label: "Cancel", action: "cancel"},
 			})
 			return m, nil
+		}
+
+		// Route the table popup before ordinary key dispatch. On execute the
+		// form is retained (but hidden) until the query resolves: a rejected
+		// DDL restores it, a success closes it and refreshes the sidebar.
+		if m.tableFormOpen() {
+			command, action := m.tableForm.Update(message, m.formMode)
+			switch action {
+			case tableFormClose:
+				m.tableForm = tableForm{}
+			case tableFormSave:
+				m.tableForm.confirmation.description = m.tableForm.statement(m)
+			case tableFormExecute:
+				statement := m.tableForm.statement(m)
+				m.tableFormRunning = true
+				return m.startQueryStatement(statement, true)
+			}
+			return m, command
 		}
 
 		// Route chat Escape before global keybindings so chat's
@@ -580,8 +598,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.deleteConfirm = nil
 		pending := m.deletePending
 		m.deletePending = ""
-		if action != "delete" {
+		if action != "delete" && action != "delete_table" {
 			m.deletePendingName = ""
+			m.deletePendingDatabase = ""
 			return m, nil
 		}
 		switch pending {
@@ -597,6 +616,11 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.deleteForeignKey()
 			m.deletePendingName = ""
 			return m, cmd
+		case "table":
+			database, table := m.deletePendingDatabase, m.deletePendingName
+			m.deletePendingDatabase, m.deletePendingName = "", ""
+			statement := "DROP TABLE " + m.actionIdentifier(m.qualifiedTableName(database, table))
+			return m, m.startQueryStatement(statement, true)
 		default:
 			m.deletePendingName = ""
 			return m, m.deleteRow()
@@ -634,6 +658,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateQuerySuccess(message)
 	case queryFailedMsg:
 		return m.updateQueryFailure(message)
+	case schemaLoadedMsg:
+		return m.updateSchemaLoaded(message)
 	case queryCanceledMsg:
 		return m.updateQueryCanceled(message)
 	case sqlValidationTickMsg:

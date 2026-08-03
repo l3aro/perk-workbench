@@ -19,6 +19,7 @@ const (
 	externalEditorTargetBrowse
 	externalEditorTargetIndex
 	externalEditorTargetForeignKey
+	externalEditorTargetTable
 )
 
 type externalEditorLocation struct {
@@ -78,6 +79,8 @@ func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLoc
 		form, location.kind = m.indexForm.form, externalEditorTargetIndex
 	case m.foreignKeyForm.active() && !m.foreignKeyForm.confirming():
 		form, location.kind = m.foreignKeyForm.form, externalEditorTargetForeignKey
+	case m.tableFormOpen():
+		form, location.kind = m.tableForm.form, externalEditorTargetTable
 	default:
 		return nil, externalEditorLocation{}, false
 	}

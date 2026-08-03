@@ -143,6 +143,27 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case "schema.add_table":
+		if m.State == stateReady && m.Focus == focusSchema {
+			if item, ok := m.schema.SelectedItem().(schemaItem); ok && (item.root || item.kind == "table") {
+				return m, m.openTableForm(item.database, "")
+			}
+		}
+		return m, nil
+	case "schema.rename_table":
+		if m.State == stateReady && m.Focus == focusSchema {
+			if item, ok := m.schema.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
+				return m, m.openTableForm(item.database, item.table)
+			}
+		}
+		return m, nil
+	case "schema.delete_table":
+		if m.State == stateReady && m.Focus == focusSchema {
+			if item, ok := m.schema.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
+				m.confirmTableDelete(item.database, item.table)
+			}
+		}
+		return m, nil
 	case "picker.reload":
 		if m.State == statePicking {
 			m.Status = "reloading picker"

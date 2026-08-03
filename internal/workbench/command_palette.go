@@ -259,7 +259,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "workspace.escape_to_schema", "workspace.tab_next", "workspace.tab_prev":
 		return m.State == stateReady && m.Focus == focusWorkspace && !m.formActive()
-	case "schema.select_table":
+	case "schema.select_table", "schema.add_table", "schema.rename_table", "schema.delete_table":
 		return m.State == stateReady && m.Focus == focusSchema
 	case "structure.filter", "structure.reset", "structure.edit", "structure.add", "structure.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
