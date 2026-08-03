@@ -42,10 +42,6 @@ func paneStyle(focused bool) lipgloss.Style {
 	return panelStyle
 }
 
-func compactPane(content string, width, height int) string {
-	return paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height).Render(content)
-}
-
 func newList(title string, filtering bool) list.Model {
 	delegate := newListDelegate()
 	model := list.New([]list.Item{}, delegate, 0, 0)

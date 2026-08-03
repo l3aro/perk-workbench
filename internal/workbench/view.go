@@ -445,14 +445,14 @@ func (m Model) contentView() string {
 	switch m.State {
 	case stateConnection:
 		if m.compact {
-			content := m.connectionPaneView(max(m.height-6, 0))
+			title, content := "Connection <2>", m.connectionPaneView(max(m.height-6, 0))
 			if m.connection.focus == connectionFocusRecent {
-				content = m.recent.View()
+				title, content = "Profiles <1>", m.recent.View()
 			}
-			return compactPane(content, max(m.width-2, 0), max(m.height-4, 0))
+			return titledPane(title, content, paneStyle(true).Width(max(m.width-2, 0)).MaxWidth(max(m.width-2, 0)).Height(max(m.height-4, 0)).MaxHeight(max(m.height-4, 0)))
 		}
-		left := paneStyle(m.connection.focus == connectionFocusRecent).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.recent.View())
-		right := paneStyle(m.connection.focus != connectionFocusRecent).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)).Render(m.connectionPaneView(max(m.height-6, 0)))
+		left := titledPane("Profiles <1>", m.recent.View(), paneStyle(m.connection.focus == connectionFocusRecent).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)))
+		right := titledPane("Connection <2>", m.connectionPaneView(max(m.height-6, 0)), paneStyle(m.connection.focus != connectionFocusRecent).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	case statePicking:
 		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(m.picker.View())

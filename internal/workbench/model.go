@@ -178,7 +178,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		openDatabase:      openDatabase,
 		schema:            newSchemaList(),
 		picker:            newList("Choose database", true),
-		recent:            newList("Connection profiles", true),
+		recent:            newList("", true),
 		expandedDatabases: map[string]bool{},
 		structure:         newResultsTable(),
 		browse:            newResultsTable(),
@@ -203,6 +203,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		model.connection.values.readOnly = true
 	}
 	model.commandPalette = newCommandPalette(model)
+	model.recent.SetShowTitle(false)
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()

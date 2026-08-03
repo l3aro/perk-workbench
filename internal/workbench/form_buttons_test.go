@@ -473,6 +473,35 @@ func TestConnectionForm_buttonsRenderInPaneFooter(t *testing.T) {
 	}
 }
 
+// TestConnectionScreen_titledPanesKeepFormFooterVisible guards the pane
+// geometry at the smallest non-compact height: titledPane swaps the top
+// border for the title row, so the form view's padded height must still
+// leave the footer (buttons + mode badge) inside the pane body.
+func TestConnectionScreen_titledPanesKeepFormFooterVisible(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+	model.connection.focus = connectionFocusForm
+	model = resizeModel(model, 100, 24)
+
+	view := ansi.Strip(model.contentView())
+	if !strings.Contains(view, "Profiles <1>") || !strings.Contains(view, "Connection <2>") {
+		t.Fatalf("connection screen = %q, want titled pane overlays", view)
+	}
+
+	footer := ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "Save") && strings.Contains(line, "Cancel") {
+			footer = line
+			break
+		}
+	}
+	if footer == "" {
+		t.Fatalf("connection screen = %q, want Save/Cancel footer row", view)
+	}
+	if !strings.Contains(footer, "NORMAL") {
+		t.Fatalf("footer row = %q, want mode badge", footer)
+	}
+}
+
 func TestCellEditor_mouseSaveStartsConfirmation(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.browseColumn = 1
