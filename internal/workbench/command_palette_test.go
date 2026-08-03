@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/charmbracelet/ultraviolet/screen"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestCommandPalette_navigationAndSelection(t *testing.T) {
@@ -45,6 +48,59 @@ func TestCommandPalette_navigationAndSelection(t *testing.T) {
 	}
 	if palette.visible {
 		t.Fatal("palette remained visible after selection")
+	}
+}
+
+// TestCommandPalette_drawsTitleInTopBorder guards the border overlay: the
+// " Command Palette " badge is gone from the body and the title sits in the
+// top border, with the context/filter prompt as the first inner line.
+func TestCommandPalette_drawsTitleInTopBorder(t *testing.T) {
+	palette := &commandPalette{
+		visible:      true,
+		filtered:     []commandPaletteItem{{id: "first", scope: scopeGlobal}},
+		contextTitle: "Connection",
+	}
+	canvas := uv.NewScreenBuffer(100, 24)
+	screen.Clear(canvas)
+	palette.paletteDraw(canvas, 100, 24)
+
+	lines := strings.Split(ansi.Strip(canvas.Render()), "\n")
+	rawLines := strings.Split(canvas.Render(), "\n")
+	palW, palH, boxX, boxY := palette.layout(100, 24)
+	// Render rows keep the full canvas width; the box starts at column boxX
+	// and byte-slicing at boxX+palW would cut multi-byte border glyphs.
+	top := lines[boxY][boxX:]
+	if !strings.HasPrefix(top, "┌ Command Palette ") {
+		t.Fatalf("palette top border = %q, want title overlay", top)
+	}
+	if !strings.HasSuffix(top, "┐") {
+		t.Fatalf("palette top border = %q, want closing corner", top)
+	}
+	if got := ansi.StringWidth(strings.TrimRight(top, " ")); got != palW {
+		t.Fatalf("palette top border width = %d, want %d", got, palW)
+	}
+	// The title uses the pane title color: no background (SGR 48), but bold
+	// like the other pane overlays (SGR \x1b[…;1m).
+	if rawTop := rawLines[boxY]; strings.Contains(rawTop, "48") || !strings.Contains(rawTop, ";1m") {
+		t.Fatalf("palette title row lacks pane title styling: %q", rawTop)
+	}
+	bottom := lines[boxY+palH-1][boxX:]
+	if !strings.HasPrefix(bottom, "└") || !strings.HasSuffix(bottom, "┘") {
+		t.Fatalf("palette bottom border = %q, want corners", bottom)
+	}
+	// The old badge must not render inside the box; the title row is the
+	// border itself, so the first inner line carries context + filter.
+	if first := lines[boxY+1][boxX:]; !strings.Contains(first, "[Connection]") {
+		t.Fatalf("first inner line = %q, want context", first)
+	}
+	// Scope group headers are plain text, not headerStyle badges: the row
+	// must carry no background (SGR 48) styling.
+	scopeHeader := lines[boxY+3][boxX:]
+	if !strings.Contains(scopeHeader, "Global") {
+		t.Fatalf("scope header row = %q, want Global", scopeHeader)
+	}
+	if strings.Contains(rawLines[boxY+3], "48") {
+		t.Fatalf("scope header row carries a background badge: %q", rawLines[boxY+3])
 	}
 }
 

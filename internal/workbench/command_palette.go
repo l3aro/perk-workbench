@@ -432,7 +432,7 @@ func (p *commandPalette) listContent(palH int) (lines []string, itemAtLine []int
 				lines = append(lines, "")
 				itemAtLine = append(itemAtLine, -1)
 			}
-			lines = append(lines, headerStyle.Render("  "+scopeNames[item.scope]+"  "))
+			lines = append(lines, mutedStyle.Render("  "+scopeNames[item.scope]+"  "))
 			itemAtLine = append(itemAtLine, -1)
 			lastScope = item.scope
 		}
@@ -518,11 +518,11 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 		canvas.SetCell(cx, boxY, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 		canvas.SetCell(cx, boxY+palH-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 	}
-	// Title line with context + filter.
-	title := headerStyle.Render(" Commands ")
+	// First inner line: context + filter prompt; the title lives in the top border.
+	title := " "
 	ctx := p.contextTitle
 	if ctx != "" {
-		title += mutedStyle.Render(" [" + ctx + "]")
+		title += mutedStyle.Render("[" + ctx + "]")
 	}
 	if len(p.query) > 0 {
 		title += " " + mutedStyle.Render("/"+string(p.query)+" ")
@@ -543,6 +543,14 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 	canvas.SetCell(boxX+palW-1, boxY, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
 	canvas.SetCell(boxX, boxY+palH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
 	canvas.SetCell(boxX+palW-1, boxY+palH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+
+	// Title overlay in the top border, replacing the ─ run drawn above.
+	// Title color like the pane overlays, but no background badge.
+	titleCells := " Command Palette "
+	titleStyle := uv.Style{Fg: chrome.ParseHex(colorSecondary), Attrs: uv.AttrBold}
+	for offset, r := range titleCells {
+		canvas.SetCell(boxX+1+offset, boxY, &uv.Cell{Content: string(r), Width: 1, Style: titleStyle})
+	}
 
 	// Build full text.
 	innerW := palW - 2
