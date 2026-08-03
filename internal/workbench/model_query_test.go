@@ -186,7 +186,7 @@ func TestBrowse_status_shows_current_batch_without_total(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.BrowsePage = "projects", 1
-	rows := make([][]*string, browsePageSize)
+	rows := make([][]*string, defaultBrowsePageSize)
 
 	// When
 	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, HasMore: true}})

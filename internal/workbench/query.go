@@ -122,7 +122,7 @@ func (m Model) loadBrowse() tea.Cmd {
 		filters := slices.Clone(settings.filters)
 		result, err := service.BrowseTable(m.appContext, tableName, sharedsql.BrowseOptions{
 			Columns: columns, Filters: filters, Sorts: sorts,
-			Offset: page * settings.pageSize(), Limit: settings.pageSize(),
+			Offset: page * settings.pageSize(m.browsePageSize), Limit: settings.pageSize(m.browsePageSize),
 		})
 		return browseTableMsg{table: tableName, page: page, tag: tag, startedAt: startedAt, result: result, err: err}
 	}
@@ -368,7 +368,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		}
 		statement += " ORDER BY " + strings.Join(orders, ", ")
 	}
-	pageSize := m.browseSettings.pageSize()
+	pageSize := m.browseSettings.pageSize(m.browsePageSize)
 	statement += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, message.page*pageSize)
 
 	m.browseLoading = false

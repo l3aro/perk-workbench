@@ -15,7 +15,7 @@ import (
 )
 
 const compactWidth = 90
-const browsePageSize = core.BrowsePageSize
+const defaultBrowsePageSize = core.BrowsePageSize
 
 type modelState = core.State
 type focus = core.Focus

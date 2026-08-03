@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -146,7 +147,7 @@ func TestBrowseFilterGrid_widthAndSelection(t *testing.T) {
 	}
 	for _, width := range []int{24, 72} {
 		t.Run("width", func(t *testing.T) {
-			form := newBrowseFilterForm(columns, browseSettings{}, width, 3)
+			form := newBrowseFilterForm(columns, browseSettings{}, core.BrowsePageSize, width, 3)
 			for range len(columns) {
 				form.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}, DefaultKeybindings())
 			}

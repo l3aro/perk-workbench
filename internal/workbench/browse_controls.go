@@ -58,9 +58,9 @@ func validateBrowseLimit(value string) error {
 	return nil
 }
 
-func (s browseSettings) pageSize() int {
+func (s browseSettings) pageSize(fallback int) int {
 	if s.limit < 1 {
-		return browsePageSize
+		return fallback
 	}
 	return s.limit
 }

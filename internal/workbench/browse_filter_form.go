@@ -37,6 +37,7 @@ const (
 type browseFilterForm struct {
 	fields           []browseFilterField
 	settings         browseSettings
+	defaultPageSize  int
 	limit            string
 	row              int
 	cell             browseFilterCell
@@ -48,17 +49,18 @@ type browseFilterForm struct {
 	horizontalOffset int
 }
 
-func newBrowseFilterForm(columns []sharedsql.ColumnInfo, settings browseSettings, width, height int) *browseFilterForm {
+func newBrowseFilterForm(columns []sharedsql.ColumnInfo, settings browseSettings, defaultPageSize, width, height int) *browseFilterForm {
 	saved := make(map[string]sharedsql.BrowseFilter, len(settings.filters))
 	for _, filter := range settings.filters {
 		saved[filter.Column] = filter
 	}
 	form := &browseFilterForm{
-		fields:   make([]browseFilterField, len(columns)),
-		settings: settings,
-		limit:    strconv.Itoa(settings.pageSize()),
-		width:    max(width, 1),
-		height:   max(height, 1),
+		fields:          make([]browseFilterField, len(columns)),
+		settings:        settings,
+		defaultPageSize: defaultPageSize,
+		limit:           strconv.Itoa(settings.pageSize(defaultPageSize)),
+		width:           max(width, 1),
+		height:          max(height, 1),
 	}
 	for index, column := range columns {
 		form.fields[index].column = column
@@ -83,7 +85,7 @@ func (f *browseFilterForm) reset() {
 			f.fields[index].operator, f.fields[index].value = filter.Operator, filter.Value
 		}
 	}
-	f.limit = strconv.Itoa(f.settings.pageSize())
+	f.limit = strconv.Itoa(f.settings.pageSize(f.defaultPageSize))
 	f.row, f.cell, f.scrollOffset, f.horizontalOffset = 0, browseFilterOperatorCell, 0, 0
 	f.editing = false
 	f.input.Blur()
@@ -95,7 +97,7 @@ func (m *Model) openBrowseFilterForm() tea.Cmd {
 		m.Status = "table columns are loading"
 		return nil
 	}
-	m.browseFilterForm = newBrowseFilterForm(m.structureColumns, m.browseSettings, m.tableViewportWidth, m.formViewportHeight())
+	m.browseFilterForm = newBrowseFilterForm(m.structureColumns, m.browseSettings, m.browsePageSize, m.tableViewportWidth, m.formViewportHeight())
 	m.formMode.mode = formModeNormal
 	return nil
 }
