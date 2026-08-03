@@ -147,6 +147,54 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	}
 }
 
+func TestHeader_paletteButtonPinnedToFarRight(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+
+	// When
+	headerLine := strings.Split(ansi.Strip(model.View().Content), "\n")[0]
+
+	// Then — header spans the full width and the button sits at the very right.
+	if got := ansi.StringWidth(headerLine); got != model.width {
+		t.Fatalf("header row width = %d, want %d", got, model.width)
+	}
+	if got, want := headerLine[len(headerLine)-headerButtonWidth():], headerButtonLabel; !strings.Contains(got, want) {
+		t.Fatalf("header right edge = %q, want it to contain %q", got, want)
+	}
+}
+
+func TestHeader_paletteButtonClickOpensPalette(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+
+	// When — click on the logo area of the header.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 5, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — nothing opens.
+	if model.commandPalette.visible {
+		t.Fatal("logo-area click opened the palette")
+	}
+
+	// When — click on the header button at the very right.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — the command palette opens.
+	if !model.commandPalette.visible {
+		t.Fatal("header button click did not open the command palette")
+	}
+
+	// When — click just left of the button.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - headerButtonWidth() - 1, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — the already-open palette is untouched.
+	if !model.commandPalette.visible {
+		t.Fatal("header click left of the button closed the palette")
+	}
+}
+
 func TestResize_compact_query_log_fills_single_pane(t *testing.T) {
 	// Given
 	model := readyModel(t)

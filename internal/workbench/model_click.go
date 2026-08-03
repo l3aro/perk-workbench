@@ -10,7 +10,17 @@ import (
 const doubleClickTimeout = 500 * time.Millisecond
 
 func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
-	if y == 0 || m.hasOverlay() {
+	if y == 0 {
+		// Header row: the button pinned to the far right opens the command
+		// palette. Callers only route here when no overlay is open, so this
+		// matches the app.palette keybinding's guard.
+		if x >= m.width-headerButtonWidth() {
+			m.commandPalette = newCommandPalette(m)
+			m.commandPalette.visible = true
+		}
+		return m, nil
+	}
+	if m.hasOverlay() {
 		return m, nil
 	}
 	switch m.State {
