@@ -105,6 +105,8 @@ type Model struct {
 	structureFilter, indexesFilter, foreignKeysFilter                                              string
 	lastClickTime                                                                                  time.Time
 	lastClickX, lastClickY                                                                         int
+	lastClickTab                                                                                   workspaceTab
+	lastClickRow                                                                                   int
 	lastFormClickTime                                                                              time.Time
 	lastFormClickX, lastFormClickY                                                                 int
 	chatKeepInsert                                                                                 bool

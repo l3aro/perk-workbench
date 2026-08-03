@@ -222,7 +222,7 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 }
 
 // handleSchemaTableClick handles left-click on structure, indexes, or foreignKeys tables.
-// Row-level selection only — no cell tracking, no double-click.
+// Row-level selection; double-click opens the edit form for the row.
 func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil || m.compact {
 		return m, nil
@@ -279,6 +279,35 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 
 	targetTable.SetCursor(dataRow)
+
+	// Check for double-click at the same position on the same tab and row:
+	// open the row's edit form, matching the enter/i keybinding behavior.
+	now := time.Now()
+	if !m.lastClickTime.IsZero() && now.Sub(m.lastClickTime) < doubleClickTimeout &&
+		m.lastClickX == absX && m.lastClickY == absY &&
+		m.lastClickTab == m.Tab && m.lastClickRow == dataRow {
+		m.lastClickTime = time.Time{}
+		switch m.Tab {
+		case tabStructure:
+			return m, m.openColumnForm()
+		case tabIndexes:
+			if index := m.selectedIndex(); index != nil {
+				return m, m.openIndexForm(index)
+			}
+		case tabForeignKeys:
+			if foreignKey := m.selectedForeignKey(); foreignKey != nil {
+				return m, m.openForeignKeyForm(foreignKey)
+			}
+		}
+		return m, nil
+	}
+
+	// Single click: select the row.
+	m.lastClickTime = now
+	m.lastClickX = absX
+	m.lastClickY = absY
+	m.lastClickTab = m.Tab
+	m.lastClickRow = dataRow
 	return m, nil
 }
 

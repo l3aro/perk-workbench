@@ -679,3 +679,170 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		}
 	})
 }
+
+func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
+	t.Run("indexes double click opens index edit form", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+			{Name: "idx_category", Columns: []string{"category"}},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 6 // second data row
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if !model.indexForm.active() {
+			t.Fatal("double click did not open index edit form")
+		}
+		if got := model.indexForm.values.name; got != "idx_category" {
+			t.Fatalf("index form name = %q, want idx_category", got)
+		}
+	})
+
+	t.Run("structure double click opens column edit form", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+			{Name: "id", Type: "INTEGER", PrimaryKey: 1},
+			{Name: "name", Type: "TEXT", Nullable: true},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 6 // second data row
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if !model.columnForm.active() {
+			t.Fatal("double click did not open column edit form")
+		}
+		if got := model.columnForm.values.name; got != "name" {
+			t.Fatalf("column form name = %q, want name", got)
+		}
+	})
+
+	t.Run("foreign keys double click opens foreign key edit form", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "children", tabForeignKeys, focusWorkspace
+		updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: []sharedsql.ForeignKeyInfo{
+			{ID: "fk1", Columns: []string{"parent_id"}, ReferenceTable: "parents", ReferenceColumns: []string{"id"}, OnDelete: "CASCADE", OnUpdate: "NO ACTION"},
+			{ID: "fk2", Columns: []string{"code"}, ReferenceTable: "parents", ReferenceColumns: []string{"code"}},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 6 // second data row
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if !model.foreignKeyForm.active() {
+			t.Fatal("double click did not open foreign key edit form")
+		}
+		if got := model.foreignKeyForm.values.referenceTable; got != "parents" {
+			t.Fatalf("foreign key form reference table = %q, want parents", got)
+		}
+	})
+
+	t.Run("single click does not open edit form", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 5
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		if model.indexForm.active() {
+			t.Fatal("single click opened index edit form")
+		}
+	})
+
+	t.Run("first click on another tab at same position stays selection-only", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+			{Name: "id", Type: "INTEGER", PrimaryKey: 1},
+			{Name: "name", Type: "TEXT", Nullable: true},
+		}})
+		model = updated.(Model)
+		updated, _ = model.Update(indexesLoadedMsg{table: "items", indexes: []sharedsql.IndexInfo{
+			{Name: "idx_name", Columns: []string{"name"}},
+			{Name: "idx_category", Columns: []string{"category"}},
+		}})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 6 // second data row
+
+		// Single click a Columns row, then switch to the Indexes tab while the
+		// click state is still within the double-click window.
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if model.columnForm.active() {
+			t.Fatal("setup: single click opened column form")
+		}
+		model.Tab = tabIndexes
+
+		// First click on Indexes at the same position must only select.
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if model.indexForm.active() {
+			t.Fatal("first click after tab switch opened index edit form")
+		}
+		if got := model.indexes.Cursor(); got != 1 {
+			t.Fatalf("cross-tab click selected cursor %d, want 1", got)
+		}
+
+		// Second click on the same row is a genuine double-click.
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if !model.indexForm.active() {
+			t.Fatal("second click after tab switch did not open index edit form")
+		}
+	})
+
+	t.Run("click on shifted row at same position stays selection-only", func(t *testing.T) {
+		model := resizeModel(readyModel(t), 100, 24)
+		model.SelectedTable, model.Tab, model.Focus = "items", tabIndexes, focusWorkspace
+		rows := make([]sharedsql.IndexInfo, 15)
+		for i := range rows {
+			rows[i] = sharedsql.IndexInfo{Name: fmt.Sprintf("i%02d", i), Columns: []string{"c"}}
+		}
+		updated, _ := model.Update(indexesLoadedMsg{table: "items", indexes: rows})
+		model = updated.(Model)
+		clickX := model.schemaWidth + 10
+		clickY := 6 // second visible data row
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+
+		// Scroll so the same Y now maps to a different row.
+		model.indexes.SetCursor(len(rows) - 1)
+		start := min(max(model.indexes.Cursor()-model.indexes.Height()+1, 0), max(len(rows)-model.indexes.Height(), 0))
+		if start == 0 {
+			t.Fatal("test setup: expected scrolled start > 0")
+		}
+
+		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if model.indexForm.active() {
+			t.Fatal("click on different row opened index edit form")
+		}
+		if got := model.indexes.Cursor(); got != start+1 {
+			t.Fatalf("shifted click selected cursor %d, want %d", got, start+1)
+		}
+	})
+}
