@@ -22,14 +22,14 @@ const (
 // so an unchanged save closes without any SQL. The typed name is kept
 // verbatim for quoted SQL; it is only trimmed to test emptiness and equality.
 type tableForm struct {
-	form         *huh.Form
-	confirmation *confirmationDialog
-	name         string
-	originalName string
-	database     string
-	table        string
+	form          *huh.Form
+	confirmation  *confirmationDialog
+	name          string
+	originalName  string
+	database      string
+	table         string
 	width, height int
-	keybindings  Keybindings
+	keybindings   Keybindings
 }
 
 func newTableForm(database, table string) tableForm {

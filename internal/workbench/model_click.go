@@ -156,7 +156,7 @@ func (m Model) schemaRowY(index int) int {
 		itemOffset = 5
 	}
 	items := m.schema.VisibleItems()
-	start, end := m.schema.Paginator.GetSliceBounds(len(items))
+	start, _ := m.schema.Paginator.GetSliceBounds(len(items))
 	row := itemOffset + (index - start)
 	return max(row, itemOffset)
 }

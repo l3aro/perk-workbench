@@ -367,24 +367,6 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Route the table popup before ordinary key dispatch. On execute the
-		// form is retained (but hidden) until the query resolves: a rejected
-		// DDL restores it, a success closes it and refreshes the sidebar.
-		if m.tableFormOpen() {
-			command, action := m.tableForm.Update(message, m.formMode)
-			switch action {
-			case tableFormClose:
-				m.tableForm = tableForm{}
-			case tableFormSave:
-				m.tableForm.confirmation.description = m.tableForm.statement(m)
-			case tableFormExecute:
-				statement := m.tableForm.statement(m)
-				m.tableFormRunning = true
-				return m.startQueryStatement(statement, true)
-			}
-			return m, command
-		}
-
 		// Route chat Escape before global keybindings so chat's
 		// insert→normal→cancel precedence wins over query.cancel etc.
 		if m.Focus == focusChat && message.Key().Code == tea.KeyEscape {
@@ -620,7 +602,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			database, table := m.deletePendingDatabase, m.deletePendingName
 			m.deletePendingDatabase, m.deletePendingName = "", ""
 			statement := "DROP TABLE " + m.actionIdentifier(m.qualifiedTableName(database, table))
-			return m, m.startQueryStatement(statement, true)
+			return m.startQueryStatement(statement, true)
 		default:
 			m.deletePendingName = ""
 			return m, m.deleteRow()
@@ -711,6 +693,26 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.editor.value != previous {
 			m.editorValidity = sqlValidityPending
 			command = tea.Batch(command, m.scheduleSQLValidation())
+		}
+		return m, command
+	}
+
+	// Route the table popup before ordinary active dispatch; like the other
+	// forms it receives every unconsumed message (huh init, mouse, keys).
+	// On execute the form is retained (but hidden) until the query resolves:
+	// a rejected DDL restores it, a success closes it and refreshes the
+	// sidebar.
+	if m.tableFormOpen() {
+		command, action := m.tableForm.Update(message, m.formMode)
+		switch action {
+		case tableFormClose:
+			m.tableForm = tableForm{}
+		case tableFormSave:
+			m.tableForm.confirmation.description = m.tableForm.statement(m)
+		case tableFormExecute:
+			statement := m.tableForm.statement(m)
+			m.tableFormRunning = true
+			return m.startQueryStatement(statement, true)
 		}
 		return m, command
 	}
