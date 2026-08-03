@@ -9,6 +9,90 @@ import (
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
+func TestStructureForm_buttonsNavigableFromLastField(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+
+	// j to the last field (attributes), then j again onto the button bar.
+	for range 4 {
+		model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+	if got := model.columnForm.form.GetFocusedField().GetKey(); got != "attributes" {
+		t.Fatalf("focused field = %q, want attributes", got)
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if !model.formMode.buttonsFocused || model.formMode.buttonChoice != 0 {
+		t.Fatalf("bar = focused:%t choice:%d, want focused on Save", model.formMode.buttonsFocused, model.formMode.buttonChoice)
+	}
+
+	// h/l switch the choice between Save and Cancel.
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if model.formMode.buttonChoice != 1 {
+		t.Fatalf("button choice = %d, want 1 (Cancel)", model.formMode.buttonChoice)
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	if model.formMode.buttonChoice != 0 {
+		t.Fatalf("button choice = %d, want 0 (Save)", model.formMode.buttonChoice)
+	}
+
+	// k returns to the last field.
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if model.formMode.buttonsFocused {
+		t.Fatal("k on the button bar did not return to the fields")
+	}
+	if got := model.columnForm.form.GetFocusedField().GetKey(); got != "attributes" {
+		t.Fatalf("focused field = %q, want attributes", got)
+	}
+
+	// Enter on the focused Save button opens the save confirmation.
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.columnForm.confirming() || !model.columnForm.confirmationSave {
+		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.columnForm.confirming(), model.columnForm.confirmationSave)
+	}
+	if model.formMode.mode != formModeConfirm {
+		t.Fatalf("mode = %d, want confirm", model.formMode.mode)
+	}
+}
+
+func TestStructureForm_barConfirmationDismissKeepsBarFocus(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+
+	// Navigate onto the Save button and activate it.
+	for range 5 {
+		model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+	if !model.formMode.buttonsFocused {
+		t.Fatal("fixture: expected the button bar focused")
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.columnForm.confirming() || !model.columnForm.confirmationSave {
+		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.columnForm.confirming(), model.columnForm.confirmationSave)
+	}
+
+	// Dismiss the dialog (move to No, then Enter): the bar must keep focus,
+	// with the field underneath blurred.
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyRight})
+	if !model.columnForm.confirming() {
+		t.Fatal("right arrow dismissed the confirmation")
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.columnForm.confirming() {
+		t.Fatal("Enter on No did not dismiss the confirmation")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal after dismissal", model.formMode.mode)
+	}
+	if !model.formMode.buttonsFocused {
+		t.Fatal("dismissing a bar-initiated confirmation lost the bar focus")
+	}
+
+	// Enter on the still-focused bar activates again.
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.columnForm.confirming() {
+		t.Fatal("Enter on the retained bar focus did not re-open the confirmation")
+	}
+}
+
 func TestStructureForm_usesHuhControlsForColumnEditing(t *testing.T) {
 	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if form.form == nil {

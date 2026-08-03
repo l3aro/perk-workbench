@@ -86,6 +86,7 @@ func (m *Model) openColumnForm() tea.Cmd {
 		return nil
 	}
 	m.columnForm = newColumnForm(*column, sharedsql.ColumnTypes(m.databaseInfo))
+	m.formMode.buttonsFocused = false
 	m.columnForm.keybindings = m.keybindings
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
@@ -94,6 +95,7 @@ func (m *Model) openColumnForm() tea.Cmd {
 
 func (m *Model) openNewColumnForm() tea.Cmd {
 	m.columnForm = newEmptyColumnForm(sharedsql.ColumnTypes(m.databaseInfo))
+	m.formMode.buttonsFocused = false
 	m.columnForm.keybindings = m.keybindings
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
@@ -136,6 +138,13 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	if !ok {
 		return nil, columnFormNoAction
 	}
+	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(f.fieldCount() - 1) }); route != formButtonContinue {
+		if route == formButtonReplay {
+			keyPress = replay
+		} else {
+			return cmd, columnFormNoAction
+		}
+	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
 		return controller.beginHuh(f.focus()), columnFormNoAction
@@ -163,6 +172,11 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		}
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
+		if f.focusedField() >= f.fieldCount()-1 {
+			controller.focusButtons()
+			f.blur()
+			return nil, columnFormNoAction
+		}
 		return f.nextField(), columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_prev", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.previousField(), columnFormNoAction
