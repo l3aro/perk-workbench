@@ -68,7 +68,7 @@ func (m Model) View() tea.View {
 
 // headerButtonLabel is the command-palette button pinned to the far right of
 // the header row.
-const headerButtonLabel = "Commands"
+const headerButtonLabel = "☰"
 
 // headerButtonWidth returns the rendered width of the header palette button.
 func headerButtonWidth() int {
@@ -545,6 +545,9 @@ func (m Model) workspaceView() string {
 		content = m.foreignKeysView()
 	}
 	modeLine := m.modeBadge()
+	if m.formTabActive() {
+		modeLine = formButtonsBar() + " " + modeLine
+	}
 	if m.compact && m.SelectedTable != "" {
 		modeLine += "  " + statusStyle.Render(m.SelectedTable)
 	}
@@ -619,14 +622,14 @@ func (m Model) formViewport(view string, offset int) string {
 
 func (m Model) indexesView() string {
 	if m.indexForm.active() {
-		return m.indexForm.View()
+		return m.formViewport(m.indexForm.View(), m.indexForm.scrollOffset)
 	}
 	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabIndexes), "", m.tableViewportWidth)
 }
 
 func (m Model) foreignKeysView() string {
 	if m.foreignKeyForm.active() {
-		return m.foreignKeyForm.View()
+		return m.formViewport(m.foreignKeyForm.View(), m.foreignKeyForm.scrollOffset)
 	}
 	if m.relationshipDiagram {
 		return m.relationshipView()
