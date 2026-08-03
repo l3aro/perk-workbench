@@ -25,7 +25,7 @@ func titledPane(title, content string, style lipgloss.Style) string {
 		label = " " + ansi.Truncate(title, labelWidth-2, "") + " "
 	}
 	top := borderStyle.Render(border.TopLeft) +
-		lipgloss.NewStyle().Foreground(lipgloss.Color(colorTitle)).Bold(true).Render(label) +
+		lipgloss.NewStyle().Foreground(lipgloss.Color(colorSecondary)).Bold(true).Render(label) +
 		borderStyle.Render(strings.Repeat(border.Top, max(width-lipgloss.Width(border.TopLeft)-lipgloss.Width(label)-lipgloss.Width(border.TopRight), 0))) +
 		borderStyle.Render(border.TopRight)
 	bodyStyle := style.Copy().BorderTop(false)
@@ -62,8 +62,8 @@ func newListDelegate() list.DefaultDelegate {
 	delegate := list.NewDefaultDelegate()
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Foreground(lipgloss.Color(colorInk))
 	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(lipgloss.Color(colorMuted))
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color(colorAccent))
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color(colorAccent))
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color(colorPrimary))
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color(colorPrimary))
 	return delegate
 }
 
@@ -94,7 +94,7 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 	}
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
 	if index == model.Index() {
-		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent))
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary))
 	}
 	fmt.Fprint(writer, style.Render(label))
 }
@@ -120,7 +120,7 @@ func newResultsTable() table.Model {
 		table.WithStyles(table.Styles{
 			Header:   headerStyle,
 			Cell:     lipgloss.NewStyle().Padding(0, spaceCompact),
-			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)),
+			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe)),
 		}),
 	)
 }
@@ -134,7 +134,7 @@ func resizeResultsTable(resultTable *table.Model, width, height int) {
 		Cell:   lipgloss.NewStyle().Padding(0, spaceCompact),
 		Selected: lipgloss.NewStyle().
 			Width(tableWidth).
-			Foreground(lipgloss.Color(colorAccent)).
+			Foreground(lipgloss.Color(colorPrimary)).
 			Background(lipgloss.Color(colorStripe)),
 	})
 }
@@ -253,7 +253,7 @@ func highlightedTableRow(line string, selectedStart, selectedWidth int) string {
 	lineWidth := ansi.StringWidth(line)
 	selectedEnd := min(max(selectedStart+selectedWidth, 0), lineWidth)
 	selectedStart = min(max(selectedStart, 0), lineWidth)
-	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe))
+	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe))
 	if selectedStart == selectedEnd {
 		return rowStyle.Render(line)
 	}

@@ -283,7 +283,7 @@ func TestResultsTable_selected_cell_keeps_trailing_row_highlight(t *testing.T) {
 	model.SetRows([]table.Row{{"1", "Ada", "active"}})
 
 	body := strings.Split(tableViewportViewWithAlignment(model, nil, 0, 18, 1), "\n")[1]
-	want := strings.TrimSuffix(lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(" act"), "\x1b[m")
+	want := strings.TrimSuffix(lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe)).Render(" act"), "\x1b[m")
 	if !strings.Contains(body, want) {
 		t.Fatalf("trailing cell lost selected-row highlight: %q", body)
 	}
@@ -296,7 +296,7 @@ func TestResultsTable_selected_row_styles_viewport_padding(t *testing.T) {
 	model.SetRows([]table.Row{{""}})
 
 	body := strings.Split(tableViewportView(model, 0, 10), "\n")[1]
-	want := lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Background(lipgloss.Color(colorStripe)).Render(strings.Repeat(" ", 10))
+	want := lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe)).Render(strings.Repeat(" ", 10))
 	if body != want {
 		t.Fatalf("viewport padding lost selected-row highlight: %q", body)
 	}

@@ -89,7 +89,7 @@ func sqlStyledLines(value string, width int) []sqlVisualLine {
 	lines := [][]styledRune{{}}
 	for token := iterator(); token != chroma.EOF; token = iterator() {
 		style := chrome.SQLTokenStyle(token.Type, chrome.SQLStylePalette{
-			Ink: colorInk, Accent: colorAccent, Insert: colorModeInsert, Number: "#e3b341", Muted: colorMuted, Normal: colorModeNormal,
+			Ink: colorInk, Accent: colorPrimary, Insert: colorModeInsert, Number: "#e3b341", Muted: colorMuted, Normal: colorModeNormal,
 		})
 		for _, character := range token.Value {
 			if character == '\n' {

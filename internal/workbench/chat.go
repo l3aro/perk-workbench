@@ -488,7 +488,7 @@ func renderTableLines(lines []string, width int) string {
 		BorderRight(false).
 		StyleFunc(func(row, _ int) lipgloss.Style {
 			if row == table.HeaderRow {
-				return lipgloss.NewStyle().Foreground(lipgloss.Color(colorTitle)).Bold(true)
+				return lipgloss.NewStyle().Foreground(lipgloss.Color(colorSecondary)).Bold(true)
 			}
 			return lipgloss.NewStyle()
 		})

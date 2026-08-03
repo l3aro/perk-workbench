@@ -151,10 +151,10 @@ func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 	bounds := canvas.Bounds()
 	layout := d.layout(bounds.Dx(), bounds.Dy())
 	panelStyle := uv.Style{Bg: chrome.ParseHex(colorPanel)}
-	title := uv.Style{Fg: chrome.ParseHex(colorTitle), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
-	border := uv.Style{Fg: chrome.ParseHex(colorAccent), Bg: chrome.ParseHex(colorPanel)}
+	title := uv.Style{Fg: chrome.ParseHex(colorSecondary), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
+	border := uv.Style{Fg: chrome.ParseHex(colorPrimary), Bg: chrome.ParseHex(colorPanel)}
 	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
-	selected := uv.Style{Fg: chrome.ParseHex(colorCanvas), Bg: chrome.ParseHex(colorConfirm)}
+	selected := uv.Style{Fg: chrome.ParseHex(colorCanvas), Bg: chrome.ParseHex(colorDanger)}
 	unselected := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorStripe)}
 
 	lastButtonY := layout.y

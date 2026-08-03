@@ -17,7 +17,7 @@ import (
 // theme's selection accent, so assertions track palette changes.
 func accentBgRGB() string {
 	var red, green, blue uint8
-	fmt.Sscanf(colorAccent, "#%02x%02x%02x", &red, &green, &blue)
+	fmt.Sscanf(colorPrimary, "#%02x%02x%02x", &red, &green, &blue)
 	return fmt.Sprintf("48;2;%d;%d;%d", red, green, blue)
 }
 

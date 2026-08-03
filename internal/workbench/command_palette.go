@@ -481,7 +481,7 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 
 // Selected/focused item style.
 var selectedItemStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(colorAccent)).
+	Foreground(lipgloss.Color(colorPrimary)).
 	Background(lipgloss.Color(colorStripe)).
 	Bold(true).
 	Padding(0, 0)

@@ -197,7 +197,7 @@ func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
 	}
 
 	// Styles matching confirmation dialog
-	titleStyle := uv.Style{Fg: chrome.ParseHex(colorTitle), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
+	titleStyle := uv.Style{Fg: chrome.ParseHex(colorSecondary), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
 	ink := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorPanel)}
 	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
 
@@ -304,8 +304,8 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 	menuY = max(0, menuY)
 
 	bg := uv.Style{Bg: chrome.ParseHex(colorPanel)}
-	selectedBg := uv.Style{Bg: chrome.ParseHex(colorAccent), Fg: chrome.ParseHex(colorCanvas)}
-	titleFg := uv.Style{Fg: chrome.ParseHex(colorTitle)}
+	selectedBg := uv.Style{Bg: chrome.ParseHex(colorPrimary), Fg: chrome.ParseHex(colorCanvas)}
+	titleFg := uv.Style{Fg: chrome.ParseHex(colorSecondary)}
 	inkFg := uv.Style{Fg: chrome.ParseHex(colorInk)}
 	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
 
