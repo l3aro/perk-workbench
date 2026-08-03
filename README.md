@@ -69,7 +69,7 @@ Accepted `DB_CONNECTION` values are `sqlite`, `mysql`, and `pgsql`. SQLite requi
 | **Run queries** | Write, execute, and cancel SQL queries |
 | **AI assist** | Natural language to SQL (OpenAI, Claude, Gemini) |
 | **3 backends** | SQLite, MySQL, PostgreSQL via a shared query interface |
-| **Configurable** | TLS support for MySQL/Postgres, custom keybindings |
+| **Configurable** | TLS support for MySQL/Postgres, custom keybindings, `config.json` defaults |
 
 ## Architecture
 

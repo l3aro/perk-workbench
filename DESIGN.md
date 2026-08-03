@@ -65,6 +65,16 @@ The primary view has a schema pane and a workspace. Workspace tabs cover query e
 
 Keybindings load from the XDG config path. If no file exists, defaults are written there. Both flat and nested JSON keybinding maps are accepted.
 
+App defaults load from `$XDG_CONFIG_HOME/perk-workbench/config.json` (also written on first run). Supported fields, all optional (0/omitted = built-in default):
+
+- `browse_page_size` — default row limit for table browsing, within `[1, 500]`
+- `query_log_page_size` — query-log pane page size, within `[1, 100]`
+- `query_log_retention_days` — days of query-log history kept (default 30; set `PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS=0` to keep none)
+- `read_only` — open every connection read-only by default; the per-connection form toggle still opts out
+- `theme` — startup theme: `ocean`, `nord`, `monokai`, `dracula`, `catppuccin`, `solarized`; choosing a theme in-app (palette or picker) writes it back to config.json
+
+The `PERK_WORKBENCH_QUERY_LOG_*` env vars still override their config values.
+
 ## AI integration
 
 AI is optional. Startup loads and merges:
