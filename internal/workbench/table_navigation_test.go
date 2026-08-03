@@ -13,6 +13,20 @@ import (
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
 
+// renderedRowY returns the screen Y of the first rendered line containing
+// needle, or fails the test.
+func renderedRowY(t *testing.T, model Model, needle string) int {
+	t.Helper()
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	for y, line := range lines {
+		if strings.Contains(line, needle) {
+			return y
+		}
+	}
+	t.Fatalf("rendered view does not contain %q", needle)
+	return -1
+}
+
 // accentBgRGB returns the ANSI truecolor background sequence for the current
 // theme's selection accent, so assertions track palette changes.
 func accentBgRGB() string {
@@ -295,7 +309,7 @@ func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
 	for _, column := range columns[:2] {
 		clickX += column.Width + 2*spaceCompact
 	}
-	clickY := model.workspaceHeight + 5
+	clickY := renderedRowY(t, model, "SELECT second")
 
 	// When
 	updated, _ := model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
@@ -305,7 +319,7 @@ func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
 	if got, want := model.Focus, focusQueryLog; got != want {
 		t.Fatalf("focus = %v, want %v", got, want)
 	}
-	if got, want := model.queryLog.Cursor(), 1; got != want {
+	if got, want := model.queryLog.Cursor(), 0; got != want {
 		t.Fatalf("query log cursor = %d, want %d", got, want)
 	}
 	if got, want := model.queryLogColumn, 2; got != want {
@@ -323,7 +337,7 @@ func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	for _, column := range columns[:2] {
 		clickX += column.Width + 2*spaceCompact
 	}
-	clickY := model.workspaceHeight + 5
+	clickY := renderedRowY(t, model, "SELECT second")
 
 	// When
 	updated, _ := model.Update(tea.MouseReleaseMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
@@ -333,7 +347,7 @@ func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	if got, want := model.Focus, focusQueryLog; got != want {
 		t.Fatalf("focus = %v, want %v", got, want)
 	}
-	if got, want := model.queryLog.Cursor(), 1; got != want {
+	if got, want := model.queryLog.Cursor(), 0; got != want {
 		t.Fatalf("query log cursor = %d, want %d", got, want)
 	}
 	if got, want := model.queryLogColumn, 2; got != want {

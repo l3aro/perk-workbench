@@ -105,20 +105,30 @@ func (m Model) clickFormField(x, y int, view string, scrollOffset, viewLine int,
 	return m, focus(field)
 }
 
+// workspaceLeft returns the screen X where the workspace pane's left border
+// starts: 0 in the compact single-pane layout, after the schema pane in wide.
+func (m Model) workspaceLeft() int {
+	if m.compact {
+		return 0
+	}
+	return m.schemaWidth
+}
+
 // handleFormClick handles left-click presses on active forms: a single click
 // focuses the clicked field, a double-click enters insert mode on it.
 // Presses only: model_update routes mouse releases through handleLeftClick.
 func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
-	if m.contextMenu != nil || m.hasOverlay() || m.compact {
+	if m.contextMenu != nil || m.hasOverlay() {
 		return m, nil
 	}
 	contentY := y - 1
 	if contentY < 0 {
 		return m, nil
 	}
+	workspaceLeft := m.workspaceLeft()
 	switch m.State {
 	case stateReady:
-		if m.chat.visible && x >= m.schemaWidth+m.editorWidth {
+		if m.chat.visible && (!m.compact && x >= m.schemaWidth+m.editorWidth || m.compact && m.Focus == focusChat) {
 			// handleLeftClick focuses the chat pane on any click; a
 			// double-click enters insert mode on the input. The keep-insert
 			// flag stops the trailing release from resetting the mode.
@@ -129,13 +139,16 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if x < m.schemaWidth || contentY < 3 || contentY >= m.workspaceHeight {
+		if m.compact && m.Focus != focusWorkspace {
+			return m, nil
+		}
+		if x < workspaceLeft || contentY < 3 || contentY >= m.workspaceHeight {
 			return m, nil
 		}
 		// The Save/Cancel button bar sits two rows above the workspace footer;
 		// it is rendered only while a form owns the tab.
 		if m.formTabActive() && contentY == m.workspaceHeight-4 {
-			switch formButtonAt(x - m.schemaWidth - 1) {
+			switch formButtonAt(x - workspaceLeft - 1) {
 			case "save":
 				m.formMode.focusButtons()
 				m.formButtonHit = true
@@ -162,7 +175,7 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 		case tabBrowse:
 			if m.browseFilterForm != nil {
-				return m.handleFilterFormClick(x, y, contentY-3)
+				return m.handleFilterFormClick(x, y, contentY-3, workspaceLeft)
 			}
 			if m.browseForm.active() && !m.browseForm.confirming() {
 				return m.clickFormField(x, y, m.browseForm.View(), m.browseForm.scrollOffset, contentY-3, m.browseForm.columns, m.browseForm.focusColumn, func(field int) tea.Cmd {
@@ -216,13 +229,13 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 // handleFilterFormClick focuses the clicked filter row and starts editing it
 // on a double-click. The rendered view is: header line, one line per filter
 // row, then the Rows limit row.
-func (m Model) handleFilterFormClick(x, y, viewLine int) (tea.Model, tea.Cmd) {
+func (m Model) handleFilterFormClick(x, y, viewLine, workspaceLeft int) (tea.Model, tea.Cmd) {
 	f := m.browseFilterForm
 	row := viewLine + f.scrollOffset - 1
 	if row < 0 || row > len(f.fields) {
 		return m, nil
 	}
-	relX := x - m.schemaWidth - 1 + f.horizontalOffset
+	relX := x - workspaceLeft - 1 + f.horizontalOffset
 	if m.recordFormClick(x, y) {
 		f.row = row
 		if row < len(f.fields) {

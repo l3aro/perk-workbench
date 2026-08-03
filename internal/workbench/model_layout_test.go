@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -619,5 +620,131 @@ func TestTableLine_aligns_numeric_cells_right(t *testing.T) {
 	// Then
 	if got, want := ansi.Strip(line), "    12  oak   "; got != want {
 		t.Fatalf("table line = %q, want %q", got, want)
+	}
+}
+
+func schemaModel(t *testing.T, fullscreen bool, width, height int) Model {
+	t.Helper()
+	model := New("", context.Background(), testOpen, false)
+	model.State, model.Focus = stateReady, focusSchema
+	model.fullscreen = fullscreen
+	model.layout(width, height)
+	model.schema.SetItems([]list.Item{
+		schemaItem{title: "accounts", description: "table", database: "main", table: "accounts", kind: "table"},
+		schemaItem{title: "queue_1", description: "table", database: "main", table: "queue_1", kind: "table"},
+	})
+	model.schema.Select(0)
+	return model
+}
+
+func TestCompactClick_schemaRowSelectsRenderedTable(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		width      int
+		height     int
+		fullscreen bool
+	}{
+		{name: "narrow window", width: 80, height: 24},
+		{name: "fullscreen toggle", width: 140, height: 40, fullscreen: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			model := schemaModel(t, tc.fullscreen, tc.width, tc.height)
+			if !model.compact {
+				t.Fatal("test setup did not produce the compact layout")
+			}
+			clickY := renderedRowY(t, model, "queue_1")
+			updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: clickY, Button: tea.MouseLeft})
+			model = updated.(Model)
+			if got := model.SelectedTable; got != "queue_1" {
+				t.Fatalf("compact click selected %q, want queue_1", got)
+			}
+		})
+	}
+}
+
+func TestCompactClick_workspaceTabSwitchesOnRenderedRow(t *testing.T) {
+	model := readyModel(t)
+	model.Focus = focusWorkspace
+	model = resizeModel(model, 80, 24)
+	if !model.compact {
+		t.Fatal("test setup did not produce the compact layout")
+	}
+	tabY := renderedRowY(t, model, "Foreign Keys")
+	updated, _ := model.Update(tea.MouseClickMsg{X: 11, Y: tabY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if got, want := model.Tab, tabBrowse; got != want {
+		t.Fatalf("compact tab click = %v, want %v", got, want)
+	}
+}
+
+func TestCompactClick_browseRowSelectsClickedCell(t *testing.T) {
+	model := resizeModel(readyBrowseModel(t), 80, 24)
+	if !model.compact {
+		t.Fatal("test setup did not produce the compact layout")
+	}
+	for _, tc := range []struct {
+		needle  string
+		wantRow int
+	}{
+		{needle: "first", wantRow: 0},
+		{needle: "second", wantRow: 1},
+	} {
+		clickY := renderedRowY(t, model, tc.needle)
+		updated, _ := model.Update(tea.MouseClickMsg{X: 3, Y: clickY, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if got, want := model.browse.Cursor(), tc.wantRow; got != want {
+			t.Fatalf("compact click on %q selected row %d, want %d", tc.needle, got, want)
+		}
+	}
+}
+
+func TestCompactClick_queryLogSelectsRenderedRow(t *testing.T) {
+	model := resizeModel(readyModel(t), 80, 24)
+	model.Focus = focusQueryLog
+	model.appendQueryLog(queryLogEntry{statement: "SELECT first"})
+	model.appendQueryLog(queryLogEntry{statement: "SELECT second"})
+	// The query log renders newest first, so the newest entry is row 0.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
+	model = updated.(Model)
+	if got, want := model.queryLog.Cursor(), 0; got != want {
+		t.Fatalf("compact click on newest row = cursor %d, want %d", got, want)
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT first"), Button: tea.MouseLeft})
+	model = updated.(Model)
+	if got, want := model.queryLog.Cursor(), 1; got != want {
+		t.Fatalf("compact click on oldest row = cursor %d, want %d", got, want)
+	}
+	// A click at the start of the Statement column (third column) must
+	// select that column, not fall back to column 0.
+	clickX := 1 // pane left border
+	for _, column := range model.queryLog.Columns()[:2] {
+		clickX += column.Width + 2*spaceCompact
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
+	model = updated.(Model)
+	if got, want := model.queryLogColumn, 2; got != want {
+		t.Fatalf("compact click on Statement column = column %d, want %d", got, want)
+	}
+}
+
+func TestCompactRightClick_schemaOpensContextMenu(t *testing.T) {
+	model := schemaModel(t, true, 140, 40)
+	clickY := renderedRowY(t, model, "queue_1")
+	updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: clickY, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.contextMenu == nil {
+		t.Fatal("compact right-click did not open a context menu")
+	}
+	if len(model.contextMenu.options) != 2 {
+		t.Fatalf("context menu options = %d, want 2", len(model.contextMenu.options))
+	}
+}
+
+func TestCompactClick_formFieldFocusesOnClick(t *testing.T) {
+	model := resizeModel(openColumn(t, "name", "TEXT"), 80, 24)
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if got := model.columnForm.form.GetFocusedField().GetKey(); got != "type" {
+		t.Fatalf("compact form click focused %q, want type", got)
 	}
 }

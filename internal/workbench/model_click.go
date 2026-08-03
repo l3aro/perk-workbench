@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const doubleClickTimeout = 500 * time.Millisecond
@@ -26,6 +27,26 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	switch m.State {
 	case stateReady:
 		if m.compact {
+			// Single-pane layout: route by the focused pane, which renders
+			// full-width with its title row at y=1 (contentY=0).
+			contentY := y - 1
+			if contentY < 1 {
+				return m, nil
+			}
+			switch m.Focus {
+			case focusSchema:
+				return m.schemaClick(contentY)
+			case focusWorkspace:
+				return m.handleWorkspaceClick(x, contentY)
+			case focusQueryLog:
+				return m.focusQueryLogClick(x, contentY)
+			case focusChat:
+				if !m.chatKeepInsert {
+					m.chat.chatMode = formModeNormal
+				}
+				m.chatKeepInsert = false
+				return m, nil
+			}
 			return m, nil
 		}
 		// Content starts at y=1 (after header). Schema on left, workspace+query log on right.
@@ -59,7 +80,9 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			workspaceX := max(x-m.schemaWidth, 0)
 			return m.handleWorkspaceClick(workspaceX, contentY)
 		}
-		return m.focusQueryLogClick(x, contentY-m.workspaceHeight)
+		// contentY is relative to the pane title row: the title sits at
+		// queryLogTop, so subtract queryLogTop-1 to make it relative to 0.
+		return m.focusQueryLogClick(x, contentY-m.queryLogTop()+1)
 	case stateConnection:
 		if m.compact {
 			return m, nil
@@ -203,7 +226,20 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 	return m, m.selectSchemaTable(item)
 }
 
+// queryLogTop returns the screen Y of the query log pane's title row:
+// y=1 in the compact single-pane layout; below the rendered workspace pane
+// (title + body + border) in the wide layout.
+func (m Model) queryLogTop() int {
+	if m.compact {
+		return 1
+	}
+	workspaceViewHeight := lipgloss.Height(m.workspaceView())
+	return 3 + max(m.workspaceHeight-1, workspaceViewHeight)
+}
+
 func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
+	// contentY is relative to the pane title row: title at 0, the table
+	// header line at 1, and data rows from 2.
 	if m.Focus != focusQueryLog {
 		m.Focus = focusQueryLog
 		m.queryLogPendingG = false
@@ -214,7 +250,7 @@ func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
 			m.queryLog.SetCursor(0)
 		}
 	}
-	rowY := contentY - 3
+	rowY := contentY - 2
 	if rowY < 0 || rowY >= m.queryLog.Height() {
 		return m, nil
 	}
@@ -222,7 +258,7 @@ func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
 	start := min(max(m.queryLog.Cursor()-m.queryLog.Height()+1, 0), max(len(rows)-m.queryLog.Height(), 0))
 	if row := start + rowY; row < len(rows) {
 		m.queryLog.SetCursor(row)
-		cellX := x - m.schemaWidth - 1 + m.queryLogOffset
+		cellX := x - m.workspaceLeft() - 1 + m.queryLogOffset
 		for index, column := range m.queryLog.Columns() {
 			cellWidth := column.Width + 2*spaceCompact
 			if cellX < cellWidth {
@@ -274,7 +310,7 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 // handleSchemaTableClick handles left-click on structure, indexes, or foreignKeys tables.
 // Row-level selection; double-click opens the edit form for the row.
 func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
-	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil || m.compact {
+	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil {
 		return m, nil
 	}
 
@@ -305,7 +341,10 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 
 	// Workspace X: skip schema pane (left) and pane left border (1).
-	workspaceX := max(absX-m.schemaWidth, 0) - 1
+	workspaceX := absX - 1 // Skip pane left border.
+	if !m.compact {
+		workspaceX = max(absX-m.schemaWidth, 0) - 1
+	}
 	if workspaceX < 0 || workspaceX >= m.tableViewportWidth {
 		return m, nil
 	}
@@ -417,12 +456,10 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	workspaceX := max(absX-m.schemaWidth, 0)
-	if m.compact {
-		return m, nil
+	browseX := absX - 1 // Skip pane left border.
+	if !m.compact {
+		browseX = max(absX-m.schemaWidth, 0) - 1
 	}
-
-	browseX := workspaceX - 1 // Skip pane left border.
 	if browseX < 0 {
 		return m, nil
 	}
@@ -476,11 +513,15 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	contentY := absY - 1
-	if contentY < 0 || m.compact {
+	if contentY < 0 {
 		return m, nil
 	}
 
-	if absX < m.schemaWidth {
+	inSchema := !m.compact && absX < m.schemaWidth
+	if m.compact {
+		inSchema = m.Focus == focusSchema
+	}
+	if inSchema {
 		item, ok := m.schemaItemAt(contentY)
 		if !ok {
 			// Blank sidebar space: offer Add table in the current
@@ -492,6 +533,9 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 			item = schemaItem{database: item.database, root: true}
 		}
 		m.openSchemaItemMenu(item, absX, absY+1)
+		return m, nil
+	}
+	if m.compact && m.Focus != focusWorkspace {
 		return m, nil
 	}
 
