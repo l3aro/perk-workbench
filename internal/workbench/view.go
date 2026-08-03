@@ -568,7 +568,7 @@ func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + chrome.PaneStatus("/ filter/rows | r reset | s sort column | n/p page", m.browseStatus, m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + chrome.PaneStatus("/ filter | r reset | s sort column | n/p page", m.browseStatus, m.tableViewportWidth)
 }
 
 func (m Model) formViewport(view string, offset int) string {
