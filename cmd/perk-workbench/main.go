@@ -166,6 +166,14 @@ func loadKeybindings() (workbench.Keybindings, error) {
 	return workbench.LoadKeybindings(path)
 }
 
+func loadConfig() (workbench.Config, error) {
+	path := workbench.ConfigPath()
+	if path == "" {
+		return workbench.Config{}, nil
+	}
+	return workbench.LoadConfig(path)
+}
+
 func loadAI() (*ai.Client, *ai.History, error) {
 	config, err := ai.Load()
 	if err != nil {
@@ -229,6 +237,11 @@ func run(target string, readOnly bool) error {
 	if err != nil {
 		return err
 	}
+	config, err := loadConfig()
+	if err != nil {
+		return err
+	}
+	workbench.SetAppConfig(config)
 	client, history, err := loadAI()
 	if err != nil {
 		return err

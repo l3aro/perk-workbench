@@ -78,6 +78,7 @@ type Model struct {
 	browseForm                                                                                     browseForm
 	browseFilterForm                                                                               *browseFilterForm
 	browseSettings                                                                                 browseSettings
+	browsePageSize                                                                                 int
 	indexForm                                                                                      indexForm
 	foreignKeyForm                                                                                 foreignKeyForm
 	cellEditor                                                                                     *cellEditor
@@ -91,7 +92,7 @@ type Model struct {
 	themePicker                                                                                    *themePicker
 	quitDialog                                                                                     *confirmationDialog
 	queryConfirmation                                                                              *queryConfirmation
-	recentPath, queryLogPath                                                                       string
+	recentPath, queryLogPath, configPath                                                           string
 	keybindings                                                                                    Keybindings
 	tableFilterInput                                                                               textinput.Model
 	width, height, schemaWidth, editorWidth, chatWidth                                             int
@@ -185,10 +186,16 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		connection:        newConnectionForm(),
 		completionColumns: map[string][]string{},
 		keybindings:       DefaultKeybindings(),
+		browsePageSize:    browsePageSizeDefault(),
 		historyIndex:      -1,
 		queryLogPageSize:  queryLogPageSize(),
 	}
-	model.ReadOnly = readOnly
+	model.ReadOnly = readOnly || appConfig.ReadOnly
+	if appConfig.ReadOnly {
+		// Pre-check the per-connection toggle so fresh forms keep the
+		// configured default; the user can still opt a connection back.
+		model.connection.values.readOnly = true
+	}
 	model.commandPalette = newCommandPalette(model)
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
@@ -197,6 +204,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	model.queryLogEntries = loadQueryLog(model.queryLogPath, "")
 	model.renderQueryLog()
 	model.recentPath, _ = recentConnectionsPath()
+	model.configPath = ConfigPath()
 	var migrated bool
 	model.recentConnections, migrated = loadRecentConnections(model.recentPath)
 	if migrated {
@@ -227,6 +235,15 @@ func (m *Model) Service() sharedsql.Service { return m.Database }
 func (m *Model) SetKeybindings(b Keybindings) {
 	m.keybindings = b
 	m.commandPalette = newCommandPalette(*m)
+}
+
+// browsePageSizeDefault returns the configured default browse page size,
+// falling back to the built-in value when unset.
+func browsePageSizeDefault() int {
+	if appConfig.BrowsePageSize > 0 {
+		return appConfig.BrowsePageSize
+	}
+	return core.BrowsePageSize
 }
 
 func (m *Model) disconnect() {

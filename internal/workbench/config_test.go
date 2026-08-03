@@ -1,0 +1,180 @@
+package workbench
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/l3aro/perk-workbench/internal/core"
+)
+
+func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	if config != (Config{}) {
+		t.Fatalf("LoadConfig = %#v, want zero config (built-in defaults)", config)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("default config file not written: %v", err)
+	}
+	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"theme": "ocean"`} {
+		if !strings.Contains(string(contents), want) {
+			t.Fatalf("default config = %q, want it to contain %q", contents, want)
+		}
+	}
+}
+
+func TestLoadConfig_reads_values(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	contents := `{"browse_page_size": 100, "query_log_page_size": 7, "query_log_retention_days": 90, "read_only": true, "theme": "nord"}`
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, ReadOnly: true, Theme: "nord"}
+	if config != want {
+		t.Fatalf("LoadConfig = %#v, want %#v", config, want)
+	}
+}
+
+func TestLoadConfig_rejects_invalid(t *testing.T) {
+	for _, contents := range []string{
+		`{"browse_page_size": -1}`,
+		`{"browse_page_size": 501}`,
+		`{"query_log_page_size": 101}`,
+		`{"query_log_retention_days": -1}`,
+		`{"theme": "vaporwave"}`,
+		`not json`,
+	} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadConfig(path); err == nil {
+			t.Fatalf("LoadConfig(%q) = nil error, want error", contents)
+		}
+	}
+}
+
+func TestSetAppConfig_applies_defaults_to_new_models(t *testing.T) {
+	previous := appConfig
+	originalTheme := activeTheme
+	t.Cleanup(func() {
+		appConfig = previous
+		setTheme(originalTheme)
+	})
+
+	SetAppConfig(Config{BrowsePageSize: 50, QueryLogPageSize: 7, QueryLogRetentionDays: 90, ReadOnly: true, Theme: "nord"})
+	model := New("", context.Background(), testOpen, false)
+
+	if model.browsePageSize != 50 {
+		t.Fatalf("browsePageSize = %d, want 50", model.browsePageSize)
+	}
+	if model.queryLogPageSize != 7 {
+		t.Fatalf("queryLogPageSize = %d, want 7", model.queryLogPageSize)
+	}
+	if !model.ReadOnly {
+		t.Fatal("ReadOnly = false, want true from config")
+	}
+	if !model.connection.values.readOnly {
+		t.Fatal("connection form readOnly = false, want pre-checked from config")
+	}
+	if activeTheme != themeNord {
+		t.Fatalf("activeTheme = %q, want %q", activeTheme, themeNord)
+	}
+}
+
+func TestSetAppConfig_zero_keeps_builtin_defaults(t *testing.T) {
+	previous := appConfig
+	originalTheme := activeTheme
+	t.Cleanup(func() {
+		appConfig = previous
+		setTheme(originalTheme)
+	})
+
+	SetAppConfig(Config{})
+	model := New("", context.Background(), testOpen, false)
+
+	if model.browsePageSize != core.BrowsePageSize {
+		t.Fatalf("browsePageSize = %d, want built-in %d", model.browsePageSize, core.BrowsePageSize)
+	}
+	if model.queryLogPageSize != defaultQueryLogPageSize {
+		t.Fatalf("queryLogPageSize = %d, want built-in %d", model.queryLogPageSize, defaultQueryLogPageSize)
+	}
+	if model.ReadOnly {
+		t.Fatal("ReadOnly = true, want false with zero config")
+	}
+	if activeTheme != themeOcean {
+		t.Fatalf("activeTheme = %q, want built-in %q", activeTheme, themeOcean)
+	}
+}
+
+func TestSaveTheme_preservesUnknownKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	original := `{"browse_page_size": 50, "future_key": {"nested": [1, 2]}}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SaveTheme(path, "nord"); err != nil {
+		t.Fatalf("SaveTheme = %v", err)
+	}
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &raw); err != nil {
+		t.Fatalf("saved config = %q, not valid JSON: %v", contents, err)
+	}
+	if got := string(raw["theme"]); got != `"nord"` {
+		t.Fatalf("theme = %s, want %q", got, "nord")
+	}
+	if got := string(raw["browse_page_size"]); got != "50" {
+		t.Fatalf("browse_page_size = %s, want 50 (dropped on rewrite)", got)
+	}
+	var future struct {
+		Nested []int
+	}
+	if err := json.Unmarshal(raw["future_key"], &future); err != nil || len(future.Nested) != 2 || future.Nested[0] != 1 || future.Nested[1] != 2 {
+		t.Fatalf("future_key = %s, want preserved nested value (err %v)", raw["future_key"], err)
+	}
+}
+
+func TestQueryLogConfig_uses_config_then_env_wins(t *testing.T) {
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{QueryLogPageSize: 7, QueryLogRetentionDays: 90})
+
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_PAGE_SIZE", "")
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS", "")
+	if got, want := queryLogPageSize(), 7; got != want {
+		t.Fatalf("queryLogPageSize = %d, want config %d", got, want)
+	}
+	if got, want := queryLogRetentionDays(), 90; got != want {
+		t.Fatalf("queryLogRetentionDays = %d, want config %d", got, want)
+	}
+
+	// Env vars still win over config values.
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_PAGE_SIZE", "3")
+	t.Setenv("PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS", "0")
+	if got, want := queryLogPageSize(), 3; got != want {
+		t.Fatalf("queryLogPageSize = %d, want env %d", got, want)
+	}
+	if got, want := queryLogRetentionDays(), 0; got != want {
+		t.Fatalf("queryLogRetentionDays = %d, want env %d", got, want)
+	}
+}
