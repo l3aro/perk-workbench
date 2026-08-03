@@ -64,12 +64,33 @@ func (m *Model) recordQueryHistory(statement string) {
 	m.historyIndex = -1
 }
 
-func (m *Model) recallQueryHistory() bool {
+func (m *Model) recallQueryHistory(direction int) bool {
 	if len(m.queryHistory) == 0 {
 		return false
 	}
-	m.historyIndex = (m.historyIndex + 1) % len(m.queryHistory)
-	m.editor.setValue(m.queryHistory[m.historyIndex])
+	if direction > 0 {
+		if m.historyIndex == -1 {
+			m.historyIndex = 0
+		} else if m.historyIndex < len(m.queryHistory)-1 {
+			m.historyIndex++
+		} else {
+			return false // already at the oldest entry; never wrap
+		}
+	} else {
+		if m.historyIndex <= 0 {
+			if m.historyIndex == -1 {
+				return false // Down outside recall mode
+			}
+			m.historyIndex = -1
+		} else {
+			m.historyIndex--
+		}
+	}
+	if m.historyIndex == -1 {
+		m.editor.setValue("")
+	} else {
+		m.editor.setValue(m.queryHistory[m.historyIndex])
+	}
 	return true
 }
 

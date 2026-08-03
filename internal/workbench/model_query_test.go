@@ -345,6 +345,87 @@ func TestExecute_history_recall_cycles_executed_statements(t *testing.T) {
 	if got, want := model.editor.value, "SELECT 1"; got != want {
 		t.Fatalf("second recalled statement = %q, want %q", got, want)
 	}
+
+	// When — past the oldest entry recall must not wrap.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.editor.value, "SELECT 1"; got != want {
+		t.Fatalf("third recalled statement = %q, want %q (no wrap)", got, want)
+	}
+}
+
+func TestExecute_history_arrow_recall_and_edit_exit(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	for _, statement := range []string{"SELECT 1", "SELECT 2"} {
+		model.editor.setValue(statement)
+		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+		model = updated.(Model)
+		updated, _ = model.Update(command())
+		model = updated.(Model)
+	}
+	model.editor.setValue("")
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"}) // enter insert
+	model = updated.(Model)
+	press := func(code rune) {
+		t.Helper()
+		text := ""
+		if code > 0 && code < 128 {
+			text = string(rune(code))
+		}
+		updated, _ := model.Update(tea.KeyPressMsg{Code: code, Text: text})
+		model = updated.(Model)
+	}
+
+	// When — Up recalls newest, then older, then stops at the oldest.
+	press(tea.KeyUp)
+	if got, want := model.editor.value, "SELECT 2"; got != want {
+		t.Fatalf("Up from blank = %q, want %q", got, want)
+	}
+	press(tea.KeyUp)
+	if got, want := model.editor.value, "SELECT 1"; got != want {
+		t.Fatalf("second Up = %q, want %q", got, want)
+	}
+	press(tea.KeyUp)
+	if got, want := model.editor.value, "SELECT 1"; got != want {
+		t.Fatalf("third Up = %q, want %q (oldest boundary, no wrap)", got, want)
+	}
+
+	// When — Down recalls newer, then clears.
+	press(tea.KeyDown)
+	if got, want := model.editor.value, "SELECT 2"; got != want {
+		t.Fatalf("first Down = %q, want %q", got, want)
+	}
+	press(tea.KeyDown)
+	if got, want := model.editor.value, ""; got != want {
+		t.Fatalf("second Down = %q, want cleared editor", got)
+	}
+
+	// When — Up on a non-empty editor must not replace it.
+	model.editor.setValue("my query")
+	model.formMode.beginInsert(model.editor)
+	press(tea.KeyUp)
+	if got, want := model.editor.value, "my query"; got != want {
+		t.Fatalf("Up on non-empty editor = %q, want %q", got, want)
+	}
+
+	// When — a value-changing edit after recall exits recall mode.
+	model.editor.setValue("")
+	press(tea.KeyUp) // recall SELECT 2
+	if got, want := model.editor.value, "SELECT 2"; got != want {
+		t.Fatalf("recalled statement = %q, want %q", got, want)
+	}
+	press('x') // edit the recalled text
+	if got, want := model.editor.value, "SELECT 2x"; got != want {
+		t.Fatalf("edited value = %q, want %q", got, want)
+	}
+	press(tea.KeyDown) // must not overwrite the edited text
+	if got, want := model.editor.value, "SELECT 2x"; got != want {
+		t.Fatalf("Down after edit = %q, want %q (recall exited)", got, want)
+	}
 }
 
 func TestExecute_destructive_statement_requires_confirmation(t *testing.T) {

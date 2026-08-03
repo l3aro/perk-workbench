@@ -396,7 +396,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelQuery()
 			return m, nil
 		}
-		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory() {
+		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory(1) {
 			m.Focus, m.Tab = focusWorkspace, tabSQL
 			m.blurTables()
 			return m, m.formMode.beginInsert(m.editor)
@@ -425,11 +425,30 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.formMode.editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
 				return m, m.startCompletion()
 			}
+			if m.formMode.editing() {
+				key := message.Key()
+				if (key.Code == tea.KeyUp && (m.editor.value == "" || m.historyIndex >= 0)) ||
+					(key.Code == tea.KeyDown && m.historyIndex >= 0) {
+					direction := 1
+					if key.Code == tea.KeyDown {
+						direction = -1
+					}
+					if m.recallQueryHistory(direction) {
+						// setValue replaces the textarea, dropping focus; re-focus so
+						// subsequent typing in insert mode still lands.
+						return m, m.editor.Focus()
+					}
+				}
+			}
 			switch m.formMode.route(message, m.editor) {
 			case formRouteConsumed:
 				return m, nil
 			case formRouteHuh:
+				previous := m.editor.value
 				command := m.editor.update(message)
+				if m.editor.value != previous {
+					m.historyIndex = -1
+				}
 				if message.Text == "." {
 					m.editor.completion = completion{}
 					return m, tea.Batch(command, m.startCompletion())
