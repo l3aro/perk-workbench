@@ -492,7 +492,7 @@ func TestSQLPane_borderRightCornersStayAligned(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 	model.Tab = tabSQL
 	model.editor.setValue("SELECT 1")
-	border := lipgloss.NormalBorder()
+	border := lipgloss.RoundedBorder()
 	lines := strings.Split(ansi.Strip(model.rightView()), "\n")
 
 	// The SQL text identifies the nested frame independently of the outer pane.

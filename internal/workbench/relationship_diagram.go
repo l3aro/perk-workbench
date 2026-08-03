@@ -63,10 +63,10 @@ func relationshipCard(name string) string {
 		width = max(width, ansi.StringWidth(line))
 	}
 	box := make([]string, len(lines)+2)
-	box[0] = "┌" + strings.Repeat("─", width+2) + "┐"
+	box[0] = "╭" + strings.Repeat("─", width+2) + "╮"
 	for index, line := range lines {
 		box[index+1] = "│ " + line + strings.Repeat(" ", width-ansi.StringWidth(line)) + " │"
 	}
-	box[len(box)-1] = "└" + strings.Repeat("─", width+2) + "┘"
+	box[len(box)-1] = "╰" + strings.Repeat("─", width+2) + "╯"
 	return strings.Join(box, "\n")
 }

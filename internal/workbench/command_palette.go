@@ -539,10 +539,10 @@ func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) 
 		canvas.SetCell(boxX, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 		canvas.SetCell(boxX+palW-1, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 	}
-	canvas.SetCell(boxX, boxY, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
-	canvas.SetCell(boxX+palW-1, boxY, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
-	canvas.SetCell(boxX, boxY+palH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
-	canvas.SetCell(boxX+palW-1, boxY+palH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+	canvas.SetCell(boxX, boxY, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
+	canvas.SetCell(boxX+palW-1, boxY, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
+	canvas.SetCell(boxX, boxY+palH-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
+	canvas.SetCell(boxX+palW-1, boxY+palH-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
 
 	// Title overlay in the top border, replacing the ─ run drawn above.
 	// Title color like the pane overlays, but no background badge.

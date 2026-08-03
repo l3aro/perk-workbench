@@ -481,7 +481,7 @@ func renderTableLines(lines []string, width int) string {
 	headCells := parseTableRow(lines[0])
 	tbl := table.New().
 		Width(width).
-		Border(lipgloss.NormalBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderTop(false).
 		BorderBottom(false).
 		BorderLeft(false).

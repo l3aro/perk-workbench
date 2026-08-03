@@ -124,7 +124,7 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 		m.queryLogPendingG = false
 		m.focusActiveTable()
 	}
-	// The workspace pane has a NormalBorder (top border at contentY=0).
+	// The workspace pane has a RoundedBorder (top border at contentY=0).
 	// Tab row is inside the border at contentY=1.
 	if y == 1 {
 		tabNames := []workspaceTab{tabSQL, tabBrowse, tabStructure, tabIndexes, tabForeignKeys}

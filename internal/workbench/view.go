@@ -209,10 +209,10 @@ func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
 
 	// Border
 	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
-	canvas.SetCell(x, y, &uv.Cell{Content: "\u250c", Width: 1, Style: borderStyle})
-	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "\u2510", Width: 1, Style: borderStyle})
-	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "\u2514", Width: 1, Style: borderStyle})
-	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "\u2518", Width: 1, Style: borderStyle})
+	canvas.SetCell(x, y, &uv.Cell{Content: "\u256d", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "\u256e", Width: 1, Style: borderStyle})
+	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "\u2570", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "\u256f", Width: 1, Style: borderStyle})
 	for cx := x + 1; cx < x+borderW-1; cx++ {
 		canvas.SetCell(cx, y, &uv.Cell{Content: "\u2500", Width: 1, Style: borderStyle})
 		canvas.SetCell(cx, y+borderH-1, &uv.Cell{Content: "\u2500", Width: 1, Style: borderStyle})
@@ -276,10 +276,10 @@ func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
 	canvas.FillArea(&dialogBg, image.Rect(x, y, x+borderW, y+borderH))
 
 	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
-	canvas.SetCell(x, y, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
-	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
-	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
-	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+	canvas.SetCell(x, y, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
+	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
+	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
 	for cx := x + 1; cx < x+borderW-1; cx++ {
 		canvas.SetCell(cx, y, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 		canvas.SetCell(cx, y+borderH-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
@@ -338,10 +338,10 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 	bgCell := uv.Cell{Content: " ", Width: 1, Style: bg}
 	canvas.FillArea(&bgCell, image.Rect(menuX, menuY, menuX+borderW, menuY+totalH))
 
-	canvas.SetCell(menuX, menuY, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
-	canvas.SetCell(menuX+borderW-1, menuY, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
-	canvas.SetCell(menuX, menuY+totalH-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
-	canvas.SetCell(menuX+borderW-1, menuY+totalH-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX, menuY, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX+borderW-1, menuY, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX, menuY+totalH-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
+	canvas.SetCell(menuX+borderW-1, menuY+totalH-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
 	for cx := menuX + 1; cx < menuX+borderW-1; cx++ {
 		canvas.SetCell(cx, menuY, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 		canvas.SetCell(cx, menuY+totalH-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
@@ -441,10 +441,10 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 		canvas.SetCell(0, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 		canvas.SetCell(m.width-1, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 	}
-	canvas.SetCell(0, 0, &uv.Cell{Content: "┌", Width: 1, Style: borderStyle})
-	canvas.SetCell(m.width-1, 0, &uv.Cell{Content: "┐", Width: 1, Style: borderStyle})
-	canvas.SetCell(0, m.height-1, &uv.Cell{Content: "└", Width: 1, Style: borderStyle})
-	canvas.SetCell(m.width-1, m.height-1, &uv.Cell{Content: "┘", Width: 1, Style: borderStyle})
+	canvas.SetCell(0, 0, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
+	canvas.SetCell(m.width-1, 0, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
+	canvas.SetCell(0, m.height-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
+	canvas.SetCell(m.width-1, m.height-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
 
 	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, m.width-1, m.height-1))
 }
@@ -588,7 +588,7 @@ func (m Model) sqlPaneView() string {
 // sqlEditorBox frames the SQL input; its border color mirrors the live
 // validity of the current statement.
 func sqlEditorBox(view, borderColor string) string {
-	return lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(borderColor)).Render(view)
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(borderColor)).Render(view)
 }
 
 func (m Model) editorBorderColor() string {

@@ -70,10 +70,10 @@ func TestCommandPalette_drawsTitleInTopBorder(t *testing.T) {
 	// Render rows keep the full canvas width; the box starts at column boxX
 	// and byte-slicing at boxX+palW would cut multi-byte border glyphs.
 	top := lines[boxY][boxX:]
-	if !strings.HasPrefix(top, "┌ Command Palette ") {
+	if !strings.HasPrefix(top, "╭ Command Palette ") {
 		t.Fatalf("palette top border = %q, want title overlay", top)
 	}
-	if !strings.HasSuffix(top, "┐") {
+	if !strings.HasSuffix(top, "╮") {
 		t.Fatalf("palette top border = %q, want closing corner", top)
 	}
 	if got := ansi.StringWidth(strings.TrimRight(top, " ")); got != palW {
@@ -85,7 +85,7 @@ func TestCommandPalette_drawsTitleInTopBorder(t *testing.T) {
 		t.Fatalf("palette title row lacks pane title styling: %q", rawTop)
 	}
 	bottom := lines[boxY+palH-1][boxX:]
-	if !strings.HasPrefix(bottom, "└") || !strings.HasSuffix(bottom, "┘") {
+	if !strings.HasPrefix(bottom, "╰") || !strings.HasSuffix(bottom, "╯") {
 		t.Fatalf("palette bottom border = %q, want corners", bottom)
 	}
 	// The old badge must not render inside the box; the title row is the

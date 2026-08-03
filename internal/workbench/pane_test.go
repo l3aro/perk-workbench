@@ -18,7 +18,7 @@ func TestTitledPane_replacesTopBorderWithPlainTitle(t *testing.T) {
 	firstLine, _, _ := strings.Cut(plain, "\n")
 
 	// Then
-	if !strings.HasPrefix(firstLine, "┌ Databases ") {
+	if !strings.HasPrefix(firstLine, "╭ Databases ") {
 		t.Fatalf("top border = %q, want a plain Databases title", firstLine)
 	}
 	if got, want := lipgloss.Width(pane), lipgloss.Width(style.Render("items")); got != want {

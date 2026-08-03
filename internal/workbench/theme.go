@@ -96,12 +96,12 @@ func resetStyles() {
 		Italic(true).
 		Padding(0, spaceCompact)
 	focusStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorPrimary)).
 		Foreground(lipgloss.Color(colorInk)).
 		Padding(0, spaceCompact)
 	panelStyle = lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder()).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorBorder)).
 		Foreground(lipgloss.Color(colorInk)).
 		Padding(0, spaceCompact)

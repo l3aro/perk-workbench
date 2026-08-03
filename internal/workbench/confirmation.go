@@ -181,10 +181,10 @@ func (d confirmationDialog) draw(canvas uv.ScreenBuffer) {
 		canvas.SetCell(cardX, y, &uv.Cell{Content: "│", Width: 1, Style: border})
 		canvas.SetCell(cardRight-1, y, &uv.Cell{Content: "│", Width: 1, Style: border})
 	}
-	canvas.SetCell(cardX, cardY, &uv.Cell{Content: "┌", Width: 1, Style: border})
-	canvas.SetCell(cardRight-1, cardY, &uv.Cell{Content: "┐", Width: 1, Style: border})
-	canvas.SetCell(cardX, cardBottom-1, &uv.Cell{Content: "└", Width: 1, Style: border})
-	canvas.SetCell(cardRight-1, cardBottom-1, &uv.Cell{Content: "┘", Width: 1, Style: border})
+	canvas.SetCell(cardX, cardY, &uv.Cell{Content: "╭", Width: 1, Style: border})
+	canvas.SetCell(cardRight-1, cardY, &uv.Cell{Content: "╮", Width: 1, Style: border})
+	canvas.SetCell(cardX, cardBottom-1, &uv.Cell{Content: "╰", Width: 1, Style: border})
+	canvas.SetCell(cardRight-1, cardBottom-1, &uv.Cell{Content: "╯", Width: 1, Style: border})
 	for row := layout.y; row <= lastButtonY; row++ {
 		canvas.SetCell(layout.x, row, &uv.Cell{Content: "┃", Width: 1, Style: border})
 	}
