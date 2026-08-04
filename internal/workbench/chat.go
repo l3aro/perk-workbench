@@ -68,14 +68,28 @@ type chatRun struct {
 	conversationID string
 	connectionID   string
 	messages       []ai.Message
-	streamBuffer   string // accumulated streaming content
-	loading        bool
-	canceled       bool
-	cancel         context.CancelFunc
-	gen            int64 // turn id; checked on async completions
-	spinnerFrame   int   // progress spinner frame while loading
-	roundState     *toolRoundState
-	pendingWrite   *pendingWrite
+	// blockCache holds rendered viewport blocks per message so
+	// refreshChatView re-renders only appended/replaced messages instead of
+	// the whole conversation on every stream delta. streamBlock caches the
+	// streaming tail so unchanged buffers are not re-rendered.
+	blockCache   []chatBlock
+	cachedWidth  int
+	streamBlock  string
+	streamSource string
+	streamBuffer string // accumulated streaming content
+	loading      bool
+	canceled     bool
+	cancel       context.CancelFunc
+	gen          int64 // turn id; checked on async completions
+	spinnerFrame int   // progress spinner frame while loading
+	roundState   *toolRoundState
+	pendingWrite *pendingWrite
+}
+
+// chatBlock is one cached rendered viewport block for a chat message.
+type chatBlock struct {
+	content string // source message content the block was rendered from
+	block   string
 }
 
 // activeRun returns the run backing the visible conversation, creating an
@@ -342,30 +356,29 @@ func (m *Model) resizeChat() {
 
 func (m *Model) refreshChatView() {
 	run := m.chat.activeRun()
-	blocks := make([]string, 0, len(run.messages)+1)
-	for _, message := range run.messages {
-		var block string
-		var content string
-		if message.Role == ai.RoleAssistant {
-			content = safeMarkdown(message.Content)
-		} else {
-			content = safeText(message.Content)
-		}
-		if message.Role == ai.RoleAssistant && m.chat.glamour != nil {
-			content = m.renderChatContent(content)
-		}
-		if message.Role == ai.RoleUser {
-			contentWidth := max(m.chat.viewport.Width()-2, 1)
-			lines := strings.Split(lipgloss.Wrap(content, contentWidth, ""), "\n")
-			for i, line := range lines {
-				line = " " + line + strings.Repeat("\u00a0", max(contentWidth-lipgloss.Width(line), 0))
-				lines[i] = userMessageAccentStyle.Render("\u258c") + userMessageStyle.Render(line)
-			}
-			block += strings.Join(lines, "\n")
-		} else {
-			block += content
-		}
-		blocks = append(blocks, block)
+	width := m.chat.viewport.Width()
+	if width != run.cachedWidth {
+		run.cachedWidth = width
+		run.blockCache = nil
+		run.streamBlock = ""
+		run.streamSource = ""
+	}
+	// Keep the cached prefix whose content still matches its message;
+	// tool-round boundaries replace the tail of run.messages wholesale.
+	keep := min(len(run.blockCache), len(run.messages))
+	for keep > 0 && run.blockCache[keep-1].content != run.messages[keep-1].Content {
+		keep--
+	}
+	run.blockCache = run.blockCache[:keep]
+
+	blocks := make([]string, 0, len(run.messages)+2)
+	for index := keep; index < len(run.messages); index++ {
+		message := run.messages[index]
+		block := m.chatMessageBlock(message)
+		run.blockCache = append(run.blockCache, chatBlock{content: message.Content, block: block})
+	}
+	for _, cached := range run.blockCache {
+		blocks = append(blocks, cached.block)
 	}
 
 	// Append streaming content as the last assistant message.
@@ -378,11 +391,14 @@ func (m *Model) refreshChatView() {
 		blocks = append(blocks, thinkingStyle.Render(label))
 
 		if run.streamBuffer != "" {
-			content := safeMarkdown(run.streamBuffer)
-			if m.chat.glamour != nil {
-				content = m.renderChatContent(content)
+			// Re-render only when the buffer changed; unchanged buffers
+			// (spinner ticks, tool phases) reuse the cached block.
+			block := run.streamBlock
+			if run.streamSource != run.streamBuffer {
+				block = m.chatStreamBlock(run.streamBuffer)
+				run.streamBlock, run.streamSource = block, run.streamBuffer
 			}
-			blocks = append(blocks, content)
+			blocks = append(blocks, block)
 		}
 	}
 
@@ -391,6 +407,38 @@ func (m *Model) refreshChatView() {
 	}
 	m.chat.viewport.SetContent(strings.Join(blocks, "\n\n"))
 	m.chat.viewport.GotoBottom()
+}
+
+// chatMessageBlock renders one message into its viewport block.
+func (m *Model) chatMessageBlock(message ai.Message) string {
+	var content string
+	if message.Role == ai.RoleAssistant {
+		content = safeMarkdown(message.Content)
+	} else {
+		content = safeText(message.Content)
+	}
+	if message.Role == ai.RoleAssistant && m.chat.glamour != nil {
+		content = m.renderChatContent(content)
+	}
+	if message.Role == ai.RoleUser {
+		contentWidth := max(m.chat.viewport.Width()-2, 1)
+		lines := strings.Split(lipgloss.Wrap(content, contentWidth, ""), "\n")
+		for i, line := range lines {
+			line = " " + line + strings.Repeat("\u00a0", max(contentWidth-lipgloss.Width(line), 0))
+			lines[i] = userMessageAccentStyle.Render("\u258c") + userMessageStyle.Render(line)
+		}
+		return strings.Join(lines, "\n")
+	}
+	return content
+}
+
+// chatStreamBlock renders the streaming tail of the active assistant turn.
+func (m *Model) chatStreamBlock(content string) string {
+	content = safeMarkdown(content)
+	if m.chat.glamour != nil {
+		content = m.renderChatContent(content)
+	}
+	return content
 }
 
 func (cm *chatModel) initGlamour(width int) {
