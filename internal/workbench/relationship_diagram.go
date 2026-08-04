@@ -17,9 +17,11 @@ func (m Model) relationshipView() string {
 }
 
 func (m Model) relationshipDiagramView() string {
+	// The selected table's card is identical for every FK edge; render once.
+	selectedCard := relationshipCard(m.SelectedTable)
 	lines := []string{}
 	for _, foreignKey := range m.foreignKeyInfo {
-		lines = append(lines, relationshipCard(m.SelectedTable))
+		lines = append(lines, selectedCard)
 		if strings.EqualFold(foreignKey.ReferenceTable, m.SelectedTable) {
 			lines = append(lines, statusStyle.Render("↺"))
 			continue
@@ -30,10 +32,10 @@ func (m Model) relationshipDiagramView() string {
 		if strings.EqualFold(foreignKey.Table, m.SelectedTable) {
 			continue
 		}
-		lines = append(lines, relationshipCard(foreignKey.Table), statusStyle.Render("│"), statusStyle.Render("▼"), relationshipCard(m.SelectedTable))
+		lines = append(lines, relationshipCard(foreignKey.Table), statusStyle.Render("│"), statusStyle.Render("▼"), selectedCard)
 	}
 	if len(lines) == 0 {
-		return relationshipCard(m.SelectedTable)
+		return selectedCard
 	}
 	return strings.Join(lines, "\n")
 }
