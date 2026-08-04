@@ -6,25 +6,28 @@ import (
 	"fmt"
 )
 
-// rawRow converts scanned database values to strings without truncation
-// or display sanitization. Newlines and the full value are preserved for
-// the cell viewer.
-func rawRow(values []any) []*string {
-	row := make([]*string, len(values))
+// collectRow converts scanned database values into a display row (sanitized
+// and capped at MaxRunes) and a raw row (full value, preserved for the cell
+// viewer). The cell is converted to a string exactly once and both rows share
+// the derived display string.
+func collectRow(values []any) (display, raw []*string) {
+	display = make([]*string, len(values))
+	raw = make([]*string, len(values))
 	for index, value := range values {
 		if value == nil {
 			continue
 		}
-		switch v := value.(type) {
-		case []byte:
-			s := string(v)
-			row[index] = &s
-		default:
-			s := fmt.Sprint(value)
-			row[index] = &s
+		var text string
+		if bytes, ok := value.([]byte); ok {
+			text = string(bytes)
+		} else {
+			text = fmt.Sprint(value)
 		}
+		raw[index] = &text
+		sanitized := SanitizeDisplay(text, MaxRunes)
+		display[index] = &sanitized
 	}
-	return row
+	return display, raw
 }
 
 func CollectRows(rows *sql.Rows) (Result, error) {
@@ -44,21 +47,24 @@ func CollectRows(rows *sql.Rows) (Result, error) {
 		result.ColumnTypes[index] = columnType.DatabaseTypeName()
 	}
 
+	// Scan destinations are reused across rows: database/sql copies values
+	// into them and collectRow converts to strings immediately.
+	values := make([]any, len(columns))
+	pointers := make([]any, len(columns))
+	for index := range values {
+		pointers[index] = &values[index]
+	}
 	for rows.Next() {
-		values := make([]any, len(columns))
-		pointers := make([]any, len(columns))
-		for index := range values {
-			pointers[index] = &values[index]
+		if len(result.Rows) == MaxRows {
+			result.Truncated = true
+			break
 		}
 		if err := rows.Scan(pointers...); err != nil {
 			return Result{}, CloseRows(rows, "scanning result row", err)
 		}
-		if len(result.Rows) < MaxRows {
-			result.Rows = append(result.Rows, DisplayRow(values))
-			result.UntruncatedRows = append(result.UntruncatedRows, rawRow(values))
-		} else {
-			result.Truncated = true
-		}
+		display, raw := collectRow(values)
+		result.Rows = append(result.Rows, display)
+		result.UntruncatedRows = append(result.UntruncatedRows, raw)
 	}
 	if err := rows.Err(); err != nil {
 		return Result{}, CloseRows(rows, "iterating result rows", err)
