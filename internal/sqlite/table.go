@@ -71,21 +71,21 @@ func tableInfo(ctx context.Context, queryer tableInfoQuerier, name string) ([]sh
 	return columns, nil
 }
 
-type tableIndex struct {
-	name string
-	kind sharedsql.IndexKind
-}
-
 func tableIndexKinds(ctx context.Context, queryer tableInfoQuerier, table string) (map[string][]sharedsql.IndexKind, error) {
-	rows, err := queryer.QueryContext(ctx, "PRAGMA index_list("+quoteIdentifier(table)+")")
+	// One query instead of 1+N: pragma_index_list and pragma_index_info are
+	// table-valued functions, and the latter can reference the former's
+	// name column in the same statement.
+	rows, err := queryer.QueryContext(ctx,
+		"SELECT il.name, il.\"unique\", il.origin, ii.name FROM pragma_index_list("+sqlLiteral(table)+") il JOIN pragma_index_info(il.name) ii")
 	if err != nil {
 		return nil, fmt.Errorf("reading table indexes: %w", err)
 	}
-	indexes := []tableIndex{}
+	columnIndexes := map[string][]sharedsql.IndexKind{}
 	for rows.Next() {
-		var sequence, unique, partial int
-		var name, origin string
-		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
+		var unique int
+		var indexName, origin string
+		var columnName stdsql.NullString
+		if err := rows.Scan(&indexName, &unique, &origin, &columnName); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning table indexes", err)
 		}
 		kind := sharedsql.IndexRegular
@@ -94,40 +94,18 @@ func tableIndexKinds(ctx context.Context, queryer tableInfoQuerier, table string
 		} else if unique != 0 {
 			kind = sharedsql.IndexUnique
 		}
-		indexes = append(indexes, tableIndex{name: name, kind: kind})
+		if columnName.Valid {
+			name := sharedsql.SanitizeDisplay(columnName.String)
+			if !slices.Contains(columnIndexes[name], kind) {
+				columnIndexes[name] = append(columnIndexes[name], kind)
+			}
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, sharedsql.CloseRows(rows, "iterating table indexes", err)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("closing table index rows: %w", err)
-	}
-
-	columnIndexes := map[string][]sharedsql.IndexKind{}
-	for _, index := range indexes {
-		rows, err := queryer.QueryContext(ctx, "PRAGMA index_info("+quoteIdentifier(index.name)+")")
-		if err != nil {
-			return nil, fmt.Errorf("reading index %q columns: %w", index.name, err)
-		}
-		for rows.Next() {
-			var sequence, columnID int
-			var columnName stdsql.NullString
-			if err := rows.Scan(&sequence, &columnID, &columnName); err != nil {
-				return nil, sharedsql.CloseRows(rows, "scanning index columns", err)
-			}
-			if columnName.Valid {
-				name := sharedsql.SanitizeDisplay(columnName.String)
-				if !slices.Contains(columnIndexes[name], index.kind) {
-					columnIndexes[name] = append(columnIndexes[name], index.kind)
-				}
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return nil, sharedsql.CloseRows(rows, "iterating index columns", err)
-		}
-		if err := rows.Close(); err != nil {
-			return nil, fmt.Errorf("closing index %q columns: %w", index.name, err)
-		}
 	}
 	return columnIndexes, nil
 }
@@ -199,4 +177,10 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options sharedsq
 
 func quoteIdentifier(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
+}
+
+// sqlLiteral quotes a value as a SQL string literal (for pragma table-valued
+// function arguments, which take strings rather than identifiers).
+func sqlLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }

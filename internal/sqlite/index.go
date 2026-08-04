@@ -11,7 +11,10 @@ import (
 )
 
 func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.IndexInfo, error) {
-	rows, err := s.db.QueryContext(ctx, "PRAGMA index_list("+quoteIdentifier(table)+")")
+	// One query instead of 1+N: join pragma_index_list with
+	// pragma_index_info via the table-valued pragma functions.
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT il.name, il.\"unique\", il.origin, ii.name FROM pragma_index_list("+sqlLiteral(table)+") il JOIN pragma_index_info(il.name) ii ORDER BY il.seq, ii.seqno")
 	if err != nil {
 		return nil, fmt.Errorf("reading indexes: %w", err)
 	}
@@ -20,36 +23,18 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 		unique     bool
 		primaryKey bool
 	}
-	listed := []listedIndex{}
-	for rows.Next() {
-		var sequence, unique, partial int
-		var name, origin string
-		if err := rows.Scan(&sequence, &name, &unique, &origin, &partial); err != nil {
-			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
-		}
-		if origin != "c" && origin != "pk" {
-			continue
-		}
-		listed = append(listed, listedIndex{name: name, unique: unique != 0, primaryKey: origin == "pk"})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, sharedsql.CloseRows(rows, "iterating indexes", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("closing indexes: %w", err)
-	}
-
-	indexes := make([]sharedsql.IndexInfo, 0, len(listed))
+	indexes := make([]sharedsql.IndexInfo, 0, 8)
 	var primary sharedsql.IndexInfo
-	for _, index := range listed {
-		columns, err := sqliteIndexColumns(ctx, s.db, index.name)
-		if err != nil {
-			return nil, err
+	var current *listedIndex
+	columns := []string{}
+	flush := func() {
+		if current == nil {
+			return
 		}
 		info := sharedsql.IndexInfo{
-			Name:       sharedsql.SanitizeDisplay(index.name),
-			Unique:     index.unique,
-			PrimaryKey: index.primaryKey,
+			Name:       sharedsql.SanitizeDisplay(current.name),
+			Unique:     current.unique,
+			PrimaryKey: current.primaryKey,
 			Columns:    columns,
 		}
 		if info.PrimaryKey {
@@ -59,6 +44,33 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 			indexes = append(indexes, info)
 		}
 	}
+	for rows.Next() {
+		var unique int
+		var indexName, origin string
+		var column stdsql.NullString
+		if err := rows.Scan(&indexName, &unique, &origin, &column); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
+		}
+		if origin != "c" && origin != "pk" {
+			continue
+		}
+		if current == nil || current.name != indexName {
+			flush()
+			current = &listedIndex{name: indexName, unique: unique != 0, primaryKey: origin == "pk"}
+			columns = []string{}
+		}
+		if column.Valid {
+			columns = append(columns, sharedsql.SanitizeDisplay(column.String))
+		}
+	}
+	flush()
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating indexes", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing indexes: %w", err)
+	}
+
 	if len(primary.Columns) == 0 {
 		pk, err := tablePKColumns(ctx, s.db, table)
 		if err != nil {
