@@ -207,7 +207,7 @@ func (m Model) expressionContextItems(analysis sharedsql.SQLAnalysis) []Completi
 	}
 
 	// 3. Buffer words (identifiers already in the query).
-	for _, word := range sharedsql.ExtractBufferWords(m.editor.value) {
+	for _, word := range sharedsql.ExtractBufferWordsTokens(analysis.Words) {
 		items = append(items, bufferWordItem(word))
 	}
 

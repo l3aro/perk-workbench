@@ -38,6 +38,7 @@ type SQLAnalysis struct {
 	Qualifier        string            // for CtxQualified: schema or table name before the dot
 	Aliases          map[string]string // alias → table name (lowercase)
 	ReferencedTables []string          // table names mentioned in the query
+	Words            []string          // uppercased tokens of the whole value, shared with callers
 }
 
 // tableContextWords are keywords after which we expect a table/object name.
@@ -87,23 +88,27 @@ func AnalyzeSQL(value string, row, col int) SQLAnalysis {
 	}
 
 	if qualifier != "" {
-		referenced, aliases := extractTableReferences(value)
+		words := tokenizeUpper(value)
+		referenced, aliases := extractTableReferencesTokens(words)
 		return SQLAnalysis{
 			Context:          CtxQualified,
 			Prefix:           prefix,
 			Qualifier:        qualifier,
 			Aliases:          aliases,
 			ReferencedTables: referenced,
+			Words:            words,
 		}
 	}
 
 	context := classifyContext(beforeCursor)
-	referenced, aliases := extractTableReferences(value)
+	words := tokenizeUpper(value)
+	referenced, aliases := extractTableReferencesTokens(words)
 	return SQLAnalysis{
 		Context:          context,
 		Prefix:           prefix,
 		Aliases:          aliases,
 		ReferencedTables: referenced,
+		Words:            words,
 	}
 }
 
@@ -202,9 +207,15 @@ func isIdentChar(r rune) bool {
 
 // ExtractBufferWords extracts identifiers (>=2 chars) from text that aren't SQL keywords.
 func ExtractBufferWords(text string) []string {
+	return ExtractBufferWordsTokens(tokenizeUpper(text))
+}
+
+// ExtractBufferWordsTokens is ExtractBufferWords over pre-tokenized text, so
+// callers that already tokenized the buffer (AnalyzeSQL) avoid a second pass.
+func ExtractBufferWordsTokens(words []string) []string {
 	seen := make(map[string]bool)
-	var words []string
-	for _, w := range tokenizeUpper(text) {
+	var result []string
+	for _, w := range words {
 		if len(w) < 2 {
 			continue
 		}
@@ -214,10 +225,10 @@ func ExtractBufferWords(text string) []string {
 		lower := strings.ToLower(w)
 		if !seen[lower] {
 			seen[lower] = true
-			words = append(words, lower)
+			result = append(result, lower)
 		}
 	}
-	return words
+	return result
 }
 
 func isKeyword(word string) bool {
@@ -229,14 +240,13 @@ func isKeyword(word string) bool {
 	return false
 }
 
-// extractTableReferences finds table names and aliases in the SQL text.
-// Uses a simple heuristic: words that are NOT keywords and appear after
-// FROM/JOIN context words are potential table references.
-func extractTableReferences(value string) (tables []string, aliases map[string]string) {
+// extractTableReferencesTokens finds table names and aliases in pre-tokenized
+// SQL text. Uses a simple heuristic: words that are NOT keywords and appear
+// after FROM/JOIN context words are potential table references.
+func extractTableReferencesTokens(words []string) (tables []string, aliases map[string]string) {
 	aliases = make(map[string]string)
 	seen := make(map[string]bool)
 
-	words := tokenizeUpper(value)
 	for i, word := range words {
 		if !isTableContextWord(word) {
 			continue
