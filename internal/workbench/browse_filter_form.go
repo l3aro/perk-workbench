@@ -339,7 +339,13 @@ func (f *browseFilterForm) revealSelection() {
 func (f browseFilterForm) View() string {
 	columns := f.columns()
 	lines := []string{headerStyle.Padding(0, 0).Render(tableLineWithSelection(columns, nil, nil, f.horizontalOffset, f.width, -1, false))}
-	for index, field := range f.fields {
+	// Render only the visible field window; revealSelection keeps the
+	// selected/edited row inside it, so up to 500-column tables render
+	// at most one screenful per frame.
+	rowHeight := max(f.height, 1)
+	lastLine := min(len(f.fields), f.scrollOffset+rowHeight-1)
+	for index := f.scrollOffset; index < lastLine; index++ {
+		field := f.fields[index]
 		operator, value := browseFilterOperatorLabel(field.operator), field.value
 		if f.editing && f.row == index {
 			if f.cell == browseFilterOperatorCell {
@@ -350,11 +356,15 @@ func (f browseFilterForm) View() string {
 		}
 		lines = append(lines, tableLineWithSelection(columns, table.Row{field.column.Name, field.column.Type, operator, value}, nil, f.horizontalOffset, f.width, int(f.cell)+2, f.row == index))
 	}
-	limit := f.limit
-	if f.editing && f.row == len(f.fields) {
-		limit = f.input.View()
+	// The Rows/limit line sits at index len(f.fields)+1; render it only
+	// when it falls inside the visible window.
+	if f.scrollOffset <= len(f.fields)+1 && len(f.fields)+1 < f.scrollOffset+rowHeight {
+		limit := f.limit
+		if f.editing && f.row == len(f.fields) {
+			limit = f.input.View()
+		}
+		lines = append(lines, tableLineWithSelection(columns, table.Row{"Rows", "", "", limit}, nil, f.horizontalOffset, f.width, 3, f.row == len(f.fields)))
 	}
-	lines = append(lines, tableLineWithSelection(columns, table.Row{"Rows", "", "", limit}, nil, f.horizontalOffset, f.width, 3, f.row == len(f.fields)))
 	mode := "NORMAL"
 	if f.editing {
 		mode = "INSERT"
