@@ -12,20 +12,20 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 	schema, name := postgresTableParts(table)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT constraints.constraint_name, key_columns.column_name, referenced_columns.table_schema, referenced_columns.table_name,
-			referenced_columns.column_name, references.delete_rule, references.update_rule
+			referenced_columns.column_name, refs.delete_rule, refs.update_rule
 		FROM information_schema.table_constraints AS constraints
 		JOIN information_schema.key_column_usage AS key_columns
 			ON key_columns.constraint_catalog = constraints.constraint_catalog
 			AND key_columns.constraint_schema = constraints.constraint_schema
 			AND key_columns.constraint_name = constraints.constraint_name
-		JOIN information_schema.referential_constraints AS references
-			ON references.constraint_catalog = constraints.constraint_catalog
-			AND references.constraint_schema = constraints.constraint_schema
-			AND references.constraint_name = constraints.constraint_name
+		JOIN information_schema.referential_constraints AS refs
+			ON refs.constraint_catalog = constraints.constraint_catalog
+			AND refs.constraint_schema = constraints.constraint_schema
+			AND refs.constraint_name = constraints.constraint_name
 		JOIN information_schema.key_column_usage AS referenced_columns
-			ON referenced_columns.constraint_catalog = references.unique_constraint_catalog
-			AND referenced_columns.constraint_schema = references.unique_constraint_schema
-			AND referenced_columns.constraint_name = references.unique_constraint_name
+			ON referenced_columns.constraint_catalog = refs.unique_constraint_catalog
+			AND referenced_columns.constraint_schema = refs.unique_constraint_schema
+			AND referenced_columns.constraint_name = refs.unique_constraint_name
 			AND referenced_columns.ordinal_position = key_columns.position_in_unique_constraint
 		WHERE constraints.constraint_type = 'FOREIGN KEY' AND constraints.table_schema = $1 AND constraints.table_name = $2
 		ORDER BY constraints.constraint_name, key_columns.ordinal_position`, schema, name)
@@ -57,20 +57,20 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 	schema, name := postgresTableParts(table)
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT constraints.table_schema, constraints.table_name, constraints.constraint_name, key_columns.column_name,
-			referenced_columns.column_name, references.delete_rule, references.update_rule
+			referenced_columns.column_name, refs.delete_rule, refs.update_rule
 		FROM information_schema.table_constraints AS constraints
 		JOIN information_schema.key_column_usage AS key_columns
 			ON key_columns.constraint_catalog = constraints.constraint_catalog
 			AND key_columns.constraint_schema = constraints.constraint_schema
 			AND key_columns.constraint_name = constraints.constraint_name
-		JOIN information_schema.referential_constraints AS references
-			ON references.constraint_catalog = constraints.constraint_catalog
-			AND references.constraint_schema = constraints.constraint_schema
-			AND references.constraint_name = constraints.constraint_name
+		JOIN information_schema.referential_constraints AS refs
+			ON refs.constraint_catalog = constraints.constraint_catalog
+			AND refs.constraint_schema = constraints.constraint_schema
+			AND refs.constraint_name = constraints.constraint_name
 		JOIN information_schema.key_column_usage AS referenced_columns
-			ON referenced_columns.constraint_catalog = references.unique_constraint_catalog
-			AND referenced_columns.constraint_schema = references.unique_constraint_schema
-			AND referenced_columns.constraint_name = references.unique_constraint_name
+			ON referenced_columns.constraint_catalog = refs.unique_constraint_catalog
+			AND referenced_columns.constraint_schema = refs.unique_constraint_schema
+			AND referenced_columns.constraint_name = refs.unique_constraint_name
 			AND referenced_columns.ordinal_position = key_columns.position_in_unique_constraint
 		WHERE constraints.constraint_type = 'FOREIGN KEY' AND referenced_columns.table_schema = $1 AND referenced_columns.table_name = $2
 		ORDER BY constraints.table_schema, constraints.table_name, constraints.constraint_name, key_columns.ordinal_position`, schema, name)
