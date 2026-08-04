@@ -155,14 +155,24 @@ func (h *History) NewConversation(ctx context.Context, connectionID, title strin
 // a wrong connection scope is a silent no-op instead of a cross-scope write.
 func (h *History) AppendMessage(ctx context.Context, connectionID, conversationID string, message Message) error {
 	now := time.Now().UTC()
-	if _, err := h.db.ExecContext(ctx, `INSERT INTO messages (conversation_id, role, agent, content, created_at)
+	// One transaction: a message insert plus its conversation touch previously
+	// ran as two implicit transactions (two fsyncs) per message.
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning message save: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (conversation_id, role, agent, content, created_at)
 		SELECT ?, ?, ?, ?, ?
 		WHERE EXISTS (SELECT 1 FROM conversations WHERE id = ? AND connection_id = ?)`,
 		conversationID, message.Role, message.Agent, message.Content, now.Format(time.RFC3339Nano), conversationID, connectionID); err != nil {
 		return fmt.Errorf("saving conversation message: %w", err)
 	}
-	if _, err := h.db.ExecContext(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ? AND connection_id = ?`, now.Format(time.RFC3339Nano), conversationID, connectionID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET updated_at = ? WHERE id = ? AND connection_id = ?`, now.Format(time.RFC3339Nano), conversationID, connectionID); err != nil {
 		return fmt.Errorf("updating conversation: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("committing conversation message: %w", err)
 	}
 	return nil
 }
