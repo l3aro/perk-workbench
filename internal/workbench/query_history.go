@@ -44,6 +44,19 @@ func queryLogPageSize() int {
 	return defaultQueryLogPageSize
 }
 
+// queryLogDB returns the model's persistent query-log database, opened lazily
+// on first use and reused for every save. Previously every query completion
+// opened a fresh connection and re-ran the full migration/import sequence on
+// the UI goroutine.
+func (m *Model) queryLogDB() *sql.DB {
+	if m.queryLogDatabase == nil && m.queryLogPath != "" {
+		if db, err := openQueryLog(m.queryLogPath); err == nil {
+			m.queryLogDatabase = db
+		}
+	}
+	return m.queryLogDatabase
+}
+
 func loadQueryLog(path, connectionID string) []queryLogEntry {
 	// Without a profile scope there is nothing safe to read: an empty scope
 	// must never surface unscoped rows.
@@ -78,16 +91,22 @@ func loadQueryLog(path, connectionID string) []queryLogEntry {
 }
 
 func saveQueryLog(path, connectionID string, entry queryLogEntry) error {
-	// Never persist query history without a profile scope; the caller keeps
-	// the entry in memory only.
-	if connectionID == "" {
-		return errors.New("query log requires a connection scope")
-	}
 	db, err := openQueryLog(path)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
+	return saveQueryLogDB(db, connectionID, entry)
+}
+
+// saveQueryLogDB persists one entry through an already-open query-log
+// database: prune by retention, insert, then trim to the in-memory cap.
+func saveQueryLogDB(db *sql.DB, connectionID string, entry queryLogEntry) error {
+	// Never persist query history without a profile scope; the caller keeps
+	// the entry in memory only.
+	if connectionID == "" {
+		return errors.New("query log requires a connection scope")
+	}
 	if err := pruneQueryLog(db, time.Now(), connectionID); err != nil {
 		return err
 	}
@@ -95,7 +114,7 @@ func saveQueryLog(path, connectionID string, entry queryLogEntry) error {
 		connectionID, entry.startedAt.UnixNano(), entry.statement, int64(entry.duration), entry.message, entry.status); err != nil {
 		return err
 	}
-	_, err = db.Exec(`DELETE FROM query_log WHERE id IN (
+	_, err := db.Exec(`DELETE FROM query_log WHERE id IN (
 		SELECT id FROM query_log WHERE connection_id = ? ORDER BY started_at DESC, id DESC LIMIT -1 OFFSET ?
 	)`, connectionID, queryLogLimit)
 	return err

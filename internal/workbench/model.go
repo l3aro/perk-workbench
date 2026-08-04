@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -95,6 +96,7 @@ type Model struct {
 	quitDialog                                                                                     *confirmationDialog
 	queryConfirmation                                                                              *queryConfirmation
 	recentPath, queryLogPath, configPath                                                           string
+	queryLogDatabase                                                                               *sql.DB
 	keybindings                                                                                    Keybindings
 	tableFilterInput                                                                               textinput.Model
 	width, height, schemaWidth, editorWidth, chatWidth                                             int

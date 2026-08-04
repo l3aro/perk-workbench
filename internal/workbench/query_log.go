@@ -62,7 +62,9 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 	if len(m.queryLogEntries) > queryLogLimit {
 		m.queryLogEntries = m.queryLogEntries[:queryLogLimit]
 	}
-	_ = saveQueryLog(m.queryLogPath, m.connectionID, entry)
+	if db := m.queryLogDB(); db != nil {
+		_ = saveQueryLogDB(db, m.connectionID, entry)
+	}
 	m.renderQueryLog()
 }
 
