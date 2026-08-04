@@ -187,6 +187,30 @@ func tableLine(columns []table.Column, row table.Row, numericColumns []bool, off
 	return tableLineWithSelection(columns, row, numericColumns, offset, width, -1, false)
 }
 
+// cellStyle returns a cached width-fixed table cell style. Styles depend only
+// on (width, alignment); distinct widths are bounded by the column count, and
+// all access happens on the Bubble Tea UI goroutine.
+var (
+	cellStyleCache      = map[int]lipgloss.Style{}
+	cellStyleCacheRight = map[int]lipgloss.Style{}
+)
+
+func cellStyle(width int, numeric bool) lipgloss.Style {
+	cache := cellStyleCache
+	if numeric {
+		cache = cellStyleCacheRight
+	}
+	if style, ok := cache[width]; ok {
+		return style
+	}
+	style := lipgloss.NewStyle().Width(width).MaxWidth(width).Inline(true)
+	if numeric {
+		style = style.Align(lipgloss.Right)
+	}
+	cache[width] = style
+	return style
+}
+
 func tableLineWithSelection(columns []table.Column, row table.Row, numericColumns []bool, offset, width, selectedColumn int, selectedRow bool) string {
 	cells := make([]string, len(columns))
 	for index, column := range columns {
@@ -197,10 +221,7 @@ func tableLineWithSelection(columns []table.Column, row table.Row, numericColumn
 				value = row[index]
 			}
 		}
-		style := lipgloss.NewStyle().Width(column.Width).MaxWidth(column.Width).Inline(true)
-		if row != nil && index < len(numericColumns) && numericColumns[index] {
-			style = style.Align(lipgloss.Right)
-		}
+		style := cellStyle(column.Width, row != nil && index < len(numericColumns) && numericColumns[index])
 		if selectedRow {
 			value = ansi.Strip(value)
 		}
@@ -228,19 +249,19 @@ func cropTableLine(line string, offset, width int) string {
 
 func tableLineSegment(line string, offset, width int) string {
 	var visible strings.Builder
-	var buf strings.Builder
 	total := offset + width
+	lineWidth := 0
 	for len(line) > 0 {
 		cluster, _ := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
-		start := ansi.StringWidth(buf.String())
-		buf.WriteString(cluster)
-		if ansi.StringWidth(buf.String()) > total {
+		clusterWidth := ansi.StringWidth(cluster)
+		if lineWidth+clusterWidth > total {
 			break
 		}
-		if start >= offset {
+		if lineWidth >= offset {
 			visible.WriteString(cluster)
 		}
 		line = line[len(cluster):]
+		lineWidth += clusterWidth
 	}
 	return visible.String()
 }

@@ -228,7 +228,10 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 
 // queryLogTop returns the screen Y of the query log pane's title row:
 // y=1 in the compact single-pane layout; below the rendered workspace pane
-// (title + body + border) in the wide layout.
+// (title + body + border) in the wide layout. The workspace view is
+// re-measured because its rendered height can exceed workspaceHeight when
+// content overflows; the inner render is cheap now (cached editor lexing,
+// cached cell styles, linear segment crop).
 func (m Model) queryLogTop() int {
 	if m.compact {
 		return 1
