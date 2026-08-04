@@ -11,7 +11,33 @@ import (
 	"github.com/l3aro/perk-workbench/internal/chrome"
 )
 
-type sqlTextarea struct{ input textarea.Model }
+type sqlTextarea struct {
+	input textarea.Model
+	// styledLines cache: keyed by wrap width, invalidated whenever the
+	// buffer value changes. Chroma tokenization + per-rune styling is the
+	// dominant per-frame cost, and the value only changes on keystrokes.
+	styledValue string
+	styledCache map[int][]sqlVisualLine
+}
+
+// styledLines returns syntax-highlighted visual lines for value, reusing the
+// cached result when neither the value nor the width changed since the last
+// call. View() and completionCursorOffset() share this cache.
+func (t *sqlTextarea) styledLines(value string, width int) []sqlVisualLine {
+	if t.styledValue != value {
+		t.styledValue = value
+		t.styledCache = nil
+	}
+	if lines, ok := t.styledCache[width]; ok {
+		return lines
+	}
+	lines := sqlStyledLines(value, width)
+	if t.styledCache == nil {
+		t.styledCache = make(map[int][]sqlVisualLine)
+	}
+	t.styledCache[width] = lines
+	return lines
+}
 
 type styledRune struct {
 	rune
@@ -52,7 +78,7 @@ func (t sqlTextarea) View() string {
 		return t.input.View()
 	}
 
-	lines := sqlStyledLines(t.input.Value(), max(t.input.Width(), 1))
+	lines := t.styledLines(t.input.Value(), max(t.input.Width(), 1))
 	info := t.input.LineInfo()
 	start := min(t.input.ScrollYOffset(), len(lines))
 	end := min(start+t.input.Height(), len(lines))

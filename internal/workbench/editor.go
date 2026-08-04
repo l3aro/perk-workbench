@@ -117,7 +117,7 @@ func (m Model) completionOverlay() string {
 		Render(lipgloss.JoinVertical(lipgloss.Left, items...))
 }
 func (m Model) completionCursorOffset() int {
-	styledLines := sqlStyledLines(m.editor.value, max(m.editor.width, 1))
+	styledLines := m.editor.text.styledLines(m.editor.value, max(m.editor.width, 1))
 	cursorLine := m.editor.text.input.Line()
 	cursorInfo := m.editor.text.input.LineInfo()
 	start := min(m.editor.text.input.ScrollYOffset(), len(styledLines))
