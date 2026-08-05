@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -66,12 +67,51 @@ func TestConnectionForm_buildsPostgreSQLDSNWithSelectedTLSMode(t *testing.T) {
 		t.Fatalf("PostgreSQL sslmode = %q, want require", target.Query().Get("sslmode"))
 	}
 }
+func TestConnectionForm_blankHostAndPortUseDefaults(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		driver      connectionDriver
+		defaultPort string
+	}{
+		{name: "MySQL", driver: driverMySQL, defaultPort: "3306"},
+		{name: "PostgreSQL", driver: driverPostgreSQL, defaultPort: "5432"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			form := newConnectionForm()
+			form.values.driver = test.driver
+			form.values.user = "alice"
+
+			if err := form.validate(); err != nil {
+				t.Fatalf("blank host and port rejected: %v", err)
+			}
+
+			want := net.JoinHostPort("localhost", test.defaultPort)
+			if test.driver == driverMySQL {
+				dsn, err := mysql.ParseDSN(form.targetValue())
+				if err != nil {
+					t.Fatalf("parsing MySQL DSN: %v", err)
+				}
+				if dsn.Addr != want {
+					t.Fatalf("MySQL addr = %q, want %q", dsn.Addr, want)
+				}
+				return
+			}
+			target, err := url.Parse(form.targetValue())
+			if err != nil {
+				t.Fatalf("parsing PostgreSQL target: %v", err)
+			}
+			if target.Host != want {
+				t.Fatalf("PostgreSQL host = %q, want %q", target.Host, want)
+			}
+		})
+	}
+}
 func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
 	for _, test := range []struct {
 		name, present, absent string
 		driver                connectionDriver
 	}{
-		{name: "SQLite", driver: driverSQLite, present: "Target*", absent: "Host*"},
+		{name: "SQLite", driver: driverSQLite, present: "Target*", absent: "Host"},
 		{name: "MySQL", driver: driverMySQL, present: "Database", absent: "Database*"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -99,9 +139,8 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 		set    func(*connectionFormValues)
 	}{
 		{name: "SQLite target", driver: driverSQLite},
-		{name: "MySQL host", driver: driverMySQL, set: func(values *connectionFormValues) { values.port, values.user = "3306", "alice" }},
 		{name: "MySQL port", driver: driverMySQL, set: func(values *connectionFormValues) {
-			values.host, values.port, values.user = "localhost", "", "alice"
+			values.host, values.port, values.user = "localhost", "not-a-port", "alice"
 		}},
 		{name: "MySQL username", driver: driverMySQL, set: func(values *connectionFormValues) {
 			values.host, values.port = "localhost", "3306"
@@ -277,7 +316,7 @@ func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing
 	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model.connection.values.driver, model.connection.values.host = driverMySQL, ""
-	model.connection.values.port, model.connection.values.user, model.connection.values.target = "3306", "alice", "app"
+	model.connection.values.port, model.connection.values.user, model.connection.values.target = "not-a-port", "alice", "app"
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
@@ -455,7 +494,7 @@ func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 	model = resolveConnectionMessage(model, message, 16)
 
 	// Then
-	if model.connection.values.driver != driverMySQL || !strings.Contains(model.connection.View(), "Host*") {
+	if model.connection.values.driver != driverMySQL || !strings.Contains(model.connection.View(), "Host") {
 		t.Fatalf("driver switch form = driver %v, view %q", model.connection.values.driver, model.connection.View())
 	}
 }

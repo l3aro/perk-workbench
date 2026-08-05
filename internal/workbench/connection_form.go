@@ -65,7 +65,7 @@ type connectionFormValues struct {
 type connectionTestMsg struct{ err error }
 
 func newConnectionForm() connectionForm {
-	form := connectionForm{values: &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}, width: 80}
+	form := connectionForm{values: &connectionFormValues{mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}, width: 80}
 	_ = form.rebuildForm()
 	return form
 }
@@ -84,7 +84,7 @@ func (f connectionForm) fieldTitles() []string {
 	if f.values.driver == driverSQLite {
 		return []string{"Driver", "Name", "Target*", "Read-Only", "Action"}
 	}
-	return []string{"Driver", "Name", "Host*", "Port*", "Username*", "Password", "Database", "TLS", "Privacy", "Read-Only", "Action"}
+	return []string{"Driver", "Name", "Host", "Port", "Username*", "Password", "Database", "TLS", "Privacy", "Read-Only", "Action"}
 }
 
 func (f connectionForm) fieldKeys() []string {
@@ -129,8 +129,8 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 	}
 	if f.values.driver != driverSQLite {
 		fields = append(fields,
-			newEditableInput(huh.NewInput().Key("host").Title("Host*").Placeholder("localhost").Value(&f.values.host).Validate(requiredConnectionHost), &f.values.host),
-			newEditableInput(huh.NewInput().Key("port").Title("Port*").Value(&f.values.port).Validate(requiredConnectionPort), &f.values.port),
+			newEditableInput(huh.NewInput().Key("host").Title("Host").Placeholder("localhost").Value(&f.values.host), &f.values.host),
+			newEditableInput(huh.NewInput().Key("port").Title("Port").Placeholder(f.defaultPort()).Value(&f.values.port), &f.values.port),
 			newEditableInput(huh.NewInput().Key("username").Title("Username*").Value(&f.values.user).Validate(requiredConnectionUser), &f.values.user),
 			newEditableInput(huh.NewInput().Key("password").Title("Password").Value(&f.values.pass).EchoMode(huh.EchoModePassword), &f.values.pass),
 			newEditableInput(huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.values.target), &f.values.target),
@@ -257,6 +257,32 @@ func (f connectionForm) driverName() string {
 	}
 }
 
+// hostValue returns the effective connection host: an empty Host field
+// falls back to localhost so the user can leave the field untouched.
+func (f connectionForm) hostValue() string {
+	if host := strings.TrimSpace(f.values.host); host != "" {
+		return host
+	}
+	return "localhost"
+}
+
+// defaultPort returns the well-known port for the selected driver.
+func (f connectionForm) defaultPort() string {
+	if f.values.driver == driverPostgreSQL {
+		return "5432"
+	}
+	return "3306"
+}
+
+// portValue returns the effective connection port: an empty Port field
+// falls back to the driver default so the user can leave the field untouched.
+func (f connectionForm) portValue() string {
+	if port := strings.TrimSpace(f.values.port); port != "" {
+		return port
+	}
+	return f.defaultPort()
+}
+
 func (f connectionForm) targetValue() string {
 	pass := resolveSecretRef(f.values.pass)
 	if f.values.driver == driverMySQL {
@@ -264,7 +290,7 @@ func (f connectionForm) targetValue() string {
 		config.User = strings.TrimSpace(f.values.user)
 		config.Passwd = pass
 		config.Net = "tcp"
-		config.Addr = net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port))
+		config.Addr = net.JoinHostPort(f.hostValue(), f.portValue())
 		config.DBName = strings.TrimSpace(f.values.target)
 		tls := f.values.mysqlTLS
 		if tls == "" {
@@ -277,7 +303,7 @@ func (f connectionForm) targetValue() string {
 		target := &url.URL{
 			Scheme: "postgres",
 			User:   url.UserPassword(strings.TrimSpace(f.values.user), pass),
-			Host:   net.JoinHostPort(strings.TrimSpace(f.values.host), strings.TrimSpace(f.values.port)),
+			Host:   net.JoinHostPort(f.hostValue(), f.portValue()),
 			Path:   strings.TrimSpace(f.values.target),
 		}
 		tls := f.values.postgresTLS
@@ -294,10 +320,7 @@ func (f connectionForm) validate() error {
 	if f.values.driver == driverSQLite {
 		return requiredConnectionTarget(f.values.target)
 	}
-	if err := requiredConnectionHost(f.values.host); err != nil {
-		return err
-	}
-	if err := requiredConnectionPort(f.values.port); err != nil {
+	if err := requiredConnectionPort(f.portValue()); err != nil {
 		return err
 	}
 	if err := requiredConnectionUser(f.values.user); err != nil {
@@ -309,13 +332,6 @@ func (f connectionForm) validate() error {
 func requiredConnectionTarget(value string) error {
 	if strings.TrimSpace(value) == "" {
 		return errors.New("target is required")
-	}
-	return nil
-}
-
-func requiredConnectionHost(value string) error {
-	if strings.TrimSpace(value) == "" {
-		return errors.New("host is required")
 	}
 	return nil
 }

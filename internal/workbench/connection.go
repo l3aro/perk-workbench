@@ -51,8 +51,8 @@ func (m *Model) recordConnection() error {
 		ReadOnly: m.ReadOnly,
 	}
 	if connection.Driver != driverSQLite {
-		connection.Host = strings.TrimSpace(m.connection.values.host)
-		connection.Port = strings.TrimSpace(m.connection.values.port)
+		connection.Host = m.connection.hostValue()
+		connection.Port = m.connection.portValue()
 		connection.User = strings.TrimSpace(m.connection.values.user)
 		switch connection.Driver {
 		case driverMySQL:
@@ -156,7 +156,7 @@ func (m *Model) deleteSelectedRecentConnection() {
 }
 
 func (m *Model) newConnection() tea.Cmd {
-	m.connection.values = &connectionFormValues{port: "3306", mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}
+	m.connection.values = &connectionFormValues{mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.formMode.mode = formModeNormal
