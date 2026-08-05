@@ -31,11 +31,6 @@ func workspaceButtonRowY(model Model) int {
 	return model.workspaceHeight - 3 // contentY = workspaceHeight-4, plus header
 }
 
-// connectionButtonRowY returns the screen y of the connection button bar.
-func connectionButtonRowY(model Model) int {
-	return model.height - 5 // contentY = height-6, plus header
-}
-
 func TestFormButtonAt_hitTest(t *testing.T) {
 	saveWidth := ansi.StringWidth(formSaveButtonStyle.Render("Save"))
 	cancelWidth := ansi.StringWidth(formCancelButtonStyle.Render("Cancel"))
@@ -179,31 +174,6 @@ func TestBrowseFilterForm_mouseSaveCommitsEditAndApplies(t *testing.T) {
 	}
 	if got := model.browseSettings.limit; got != 3 {
 		t.Fatalf("limit = %d, want 3", got)
-	}
-}
-
-func TestConnectionForm_mouseSaveAfterMouseEditConnects(t *testing.T) {
-	model := New("", context.Background(), testOpen, false)
-	model.connection.focus = connectionFocusForm
-	model.connection.values.driver = driverSQLite
-	model.connection.values.target = ":memory:"
-	_ = model.connection.rebuildForm()
-	_ = model.connection.form.Init()
-	model = resizeModel(model, 100, 24)
-
-	// Mouse-enter insert mode on the Name field (view line 5, screen y=7).
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
-	model = updated.(Model)
-	if model.formMode.mode != formModeInsert {
-		t.Fatal("double click did not enter insert mode")
-	}
-
-	model = clickFormButton(model, model.schemaWidth+1+2, connectionButtonRowY(model))
-
-	if model.connection.confirmation == nil {
-		t.Fatal("Save after mouse edit did not start the connect confirmation")
 	}
 }
 
@@ -402,7 +372,7 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 // TestConnectionForm_viewportKeepsActionsReachable guards the connection
 // form at heights where the field list overflows the pane body: field
 // navigation must scroll the focused field into view so the action buttons
-// and the Save/Cancel footer stay reachable instead of being clipped away.
+// stay reachable instead of being clipped away.
 func TestConnectionForm_viewportKeepsActionsReachable(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
@@ -431,8 +401,8 @@ func TestConnectionForm_viewportKeepsActionsReachable(t *testing.T) {
 	if !strings.Contains(view, connectionActionTest) || !strings.Contains(view, connectionActionConnect) {
 		t.Fatalf("scrolled connection pane view = %q, want action buttons visible", view)
 	}
-	if !strings.Contains(view, "Save") || !strings.Contains(view, "Cancel") {
-		t.Fatalf("scrolled connection pane view = %q, want Save/Cancel footer visible", view)
+	if strings.Contains(view, "Save") || strings.Contains(view, "Cancel") {
+		t.Fatalf("scrolled connection pane view = %q, want no Save/Cancel footer", view)
 	}
 }
 
@@ -441,85 +411,23 @@ func updateConnectionForm(model Model, message tea.Msg) Model {
 	return updated.(Model)
 }
 
-func TestConnectionForm_mouseSaveStartsConnectConfirmation(t *testing.T) {
-	model := New("", context.Background(), testOpen, false)
-	model.connection.focus = connectionFocusForm
-	model.connection.values.driver = driverSQLite
-	model.connection.values.target = ":memory:"
-	_ = model.connection.rebuildForm()
-	_ = model.connection.form.Init()
-	model = resizeModel(model, 100, 24)
-
-	model = clickFormButton(model, model.schemaWidth+1+2, connectionButtonRowY(model))
-
-	if model.connection.confirmation == nil {
-		t.Fatal("Save click did not start the connect confirmation")
-	}
-}
-
-func TestConnectionForm_mouseCancelSwitchesToProfiles(t *testing.T) {
-	model := New("", context.Background(), testOpen, false)
-	model.connection.focus = connectionFocusForm
-	model.connection.values.driver = driverSQLite
-	model.connection.values.target = ":memory:"
-	_ = model.connection.rebuildForm()
-	_ = model.connection.form.Init()
-	model = resizeModel(model, 100, 24)
-
-	model = clickFormButton(model, model.schemaWidth+1+8, connectionButtonRowY(model))
-
-	if model.connection.focus != connectionFocusRecent {
-		t.Fatalf("Cancel click focus = %d, want profiles list", model.connection.focus)
-	}
-}
-
-func TestConnectionForm_mouseCancelAfterMouseEditSwitchesToProfiles(t *testing.T) {
-	model := New("", context.Background(), testOpen, false)
-	model.connection.focus = connectionFocusForm
-	model.connection.values.driver = driverSQLite
-	model.connection.values.target = ":memory:"
-	_ = model.connection.rebuildForm()
-	_ = model.connection.form.Init()
-	model = resizeModel(model, 100, 24)
-
-	// Mouse-enter insert mode on the Name field (view line 5, screen y=7).
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
-	model = updated.(Model)
-	if model.formMode.mode != formModeInsert {
-		t.Fatal("double click did not enter insert mode")
-	}
-	if got := model.connection.values.name; got != "Local database" && got != "" {
-		t.Fatalf("fixture name = %q, want untouched", got)
-	}
-
-	model = clickFormButton(model, model.schemaWidth+1+8, connectionButtonRowY(model))
-
-	if model.connection.focus != connectionFocusRecent {
-		t.Fatalf("Cancel after mouse edit focus = %d, want profiles list", model.connection.focus)
-	}
-	if got := model.connection.values.name; strings.Contains(got, "1") {
-		t.Fatalf("Cancel typed into the field: name = %q", got)
-	}
-}
-
-func TestConnectionForm_buttonsRenderInPaneFooter(t *testing.T) {
+func TestConnectionForm_paneFooterHasNoButtons(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model = resizeModel(model, 100, 24)
 
 	view := ansi.Strip(model.connectionPaneView(model.height - 6))
-	if !strings.Contains(view, "Save") || !strings.Contains(view, "Cancel") {
-		t.Fatalf("connection pane view = %q, want Save/Cancel buttons", view)
+	if strings.Contains(view, "Save") || strings.Contains(view, "Cancel") {
+		t.Fatalf("connection pane view = %q, want no Save/Cancel buttons", view)
 	}
 }
 
-// TestConnectionScreen_titledPanesKeepFormFooterVisible guards the pane
+// TestConnectionScreen_titledPanesKeepModeBadgeVisible guards the pane
 // geometry at the smallest non-compact height: titledPane swaps the top
 // border for the title row, so the form view's padded height must still
-// leave the footer (buttons + mode badge) inside the pane body.
-func TestConnectionScreen_titledPanesKeepFormFooterVisible(t *testing.T) {
+// leave the mode-badge footer inside the pane body — with no Save/Cancel
+// button row on the connection screen.
+func TestConnectionScreen_titledPanesKeepModeBadgeVisible(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
 	model = resizeModel(model, 100, 24)
@@ -528,19 +436,18 @@ func TestConnectionScreen_titledPanesKeepFormFooterVisible(t *testing.T) {
 	if !strings.Contains(view, "Profiles <1>") || !strings.Contains(view, "Connection <2>") {
 		t.Fatalf("connection screen = %q, want titled pane overlays", view)
 	}
+	if strings.Contains(view, "Save") || strings.Contains(view, "Cancel") {
+		t.Fatalf("connection screen = %q, want no Save/Cancel footer", view)
+	}
 
 	footer := ""
 	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, "Save") && strings.Contains(line, "Cancel") {
+		if strings.Contains(line, "NORMAL") {
 			footer = line
-			break
 		}
 	}
 	if footer == "" {
-		t.Fatalf("connection screen = %q, want Save/Cancel footer row", view)
-	}
-	if !strings.Contains(footer, "NORMAL") {
-		t.Fatalf("footer row = %q, want mode badge", footer)
+		t.Fatalf("connection screen = %q, want mode-badge footer", view)
 	}
 }
 

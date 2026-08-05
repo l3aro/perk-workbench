@@ -26,7 +26,12 @@ func (m *Model) setRecentConnections(connections []recentConnection) {
 	}
 }
 
-func (m *Model) recordConnection() error {
+// recordConnection saves the form's current credentials as a recent profile.
+// openedTarget is the target that was actually opened (Connect after updateOpen,
+// or the target a successful Test just verified); for SQLite it wins over the
+// form value, so Connect records the resolved file while Test records the form
+// target and never picks up a previously connected m.Target.
+func (m *Model) recordConnection(openedTarget string) error {
 	driver := m.connection.values.driver
 	if driver == "" {
 		driver = driverSQLite
@@ -34,8 +39,8 @@ func (m *Model) recordConnection() error {
 	target := strings.TrimSpace(m.connection.values.target)
 	name := strings.TrimSpace(m.connection.values.name)
 	if driver == driverSQLite {
-		if openedTarget := strings.TrimSpace(m.Target); openedTarget != "" {
-			target = openedTarget
+		if opened := strings.TrimSpace(openedTarget); opened != "" {
+			target = opened
 		}
 		if name == "" {
 			name = filepath.Base(target)
@@ -176,7 +181,7 @@ func (m Model) testConnection() tea.Cmd {
 		if err != nil {
 			return connectionTestMsg{err: err}
 		}
-		return connectionTestMsg{err: opened.Service.Close()}
+		return connectionTestMsg{err: opened.Service.Close(), target: target}
 	}
 }
 
@@ -224,9 +229,15 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		if test.err != nil {
 			log.Error("connection test", test.err)
 			m.Status = "connection test failed"
-		} else {
-			m.Status = "connection test succeeded: " + safeText(m.connection.connectionName())
+			return m, nil
 		}
+		// A successful test stands in for the removed Save button: the form's
+		// current credentials become the saved profile.
+		if err := m.recordConnection(test.target); err != nil {
+			m.Status = safeText("saving connection profile: " + err.Error())
+			return m, nil
+		}
+		m.Status = "connection test succeeded: " + safeText(m.connection.connectionName())
 		return m, nil
 	}
 	if m.connection.focus == connectionFocusRecent {
@@ -326,8 +337,5 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) connectionPaneView(height int) string {
 	content := m.connection.View()
 	footer := m.modeBadge()
-	if m.connection.focus == connectionFocusForm && m.connection.form != nil && m.connection.confirmation == nil {
-		footer = formButtonsBar(false, 0) + " " + footer
-	}
 	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + footer
 }

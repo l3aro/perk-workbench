@@ -311,6 +311,47 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 		})
 	}
 }
+
+// TestConnectionForm_successfulTestPersistsProfile guards the removed Save
+// button: a successful Test records the form's current credentials, and the
+// recorded SQLite target is the tested one — never a previously connected
+// m.Target.
+func TestConnectionForm_successfulTestPersistsProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	model := New("", context.Background(), testOpen, false)
+	model.connection.focus = connectionFocusForm
+	model.connection.values.target = ":memory:"
+	_ = model.connection.rebuildForm()
+	_ = model.connection.form.Init()
+	model.Target = "/stale/old.db" // a previous connect must not leak in
+
+	for range 4 {
+		_ = model.connection.form.NextField()
+	}
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "action" {
+		t.Fatalf("focused field = %q, want action", got)
+	}
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Test action returned no command")
+	}
+	test, ok := command().(connectionTestMsg)
+	if !ok || test.err != nil {
+		t.Fatalf("test message = %#v, want successful connection test", command())
+	}
+	updated, _ = model.Update(test)
+	model = updated.(Model)
+
+	if len(model.recentConnections) != 1 {
+		t.Fatalf("recent profiles = %#v, want the tested credentials recorded", model.recentConnections)
+	}
+	if got := model.recentConnections[0].Target; got != ":memory:" {
+		t.Fatalf("recorded target = %q, want the tested target, not stale m.Target", got)
+	}
+}
+
 func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
@@ -444,7 +485,7 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	model.connection.values.mysqlTLS = mysqlTLSSkipVerify
 
 	// When
-	model.recordConnection()
+	model.recordConnection("")
 
 	// Then
 	if len(model.recentConnections) != 1 {
@@ -465,7 +506,7 @@ func TestConnectionForm_recordsSQLiteProfileWithoutRemoteFields(t *testing.T) {
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When
-	model.recordConnection()
+	model.recordConnection("")
 
 	// Then
 	profile := model.recentConnections[0]

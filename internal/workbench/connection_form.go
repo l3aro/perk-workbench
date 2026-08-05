@@ -62,7 +62,10 @@ type connectionFormValues struct {
 	action       string
 }
 
-type connectionTestMsg struct{ err error }
+type connectionTestMsg struct {
+	err    error
+	target string // target that was tested; persisted when the test succeeds
+}
 
 func newConnectionForm() connectionForm {
 	form := connectionForm{values: &connectionFormValues{mysqlTLS: mysqlTLSDisabled, postgresTLS: postgresTLSDisabled, action: connectionActionTest}, width: 80}

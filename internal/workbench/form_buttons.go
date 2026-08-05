@@ -65,12 +65,6 @@ func formEscapeKeyPress() tea.Cmd {
 	return func() tea.Msg { return tea.KeyPressMsg{Code: tea.KeyEscape} }
 }
 
-// formListKeyPress synthesizes connection.switch_to_list ("1"): the Cancel
-// action of the connection form, where Escape is a no-op.
-func formListKeyPress() tea.Cmd {
-	return func() tea.Msg { return tea.KeyPressMsg{Code: '1', Text: "1"} }
-}
-
 // formSaveCommand returns the Save-button command. While a field is being
 // edited (insert mode), the Escape that exits the editor is applied
 // synchronously — exactly what the keyboard does — so the returned form.save
@@ -83,17 +77,4 @@ func (m Model) formSaveCommand() (Model, tea.Cmd) {
 		m = updated.(Model)
 	}
 	return m, formSaveKeyPress()
-}
-
-// connectionCancelCommand returns the Cancel-button command of the
-// connection form. While a field is being edited, the Escape that exits the
-// editor is applied synchronously — so the following switch_to_list key
-// ("1") reaches the profiles list instead of being typed into the focused
-// field.
-func (m Model) connectionCancelCommand() (Model, tea.Cmd) {
-	if m.formMode.editing() {
-		updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-		m = updated.(Model)
-	}
-	return m, formListKeyPress()
 }

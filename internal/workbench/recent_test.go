@@ -38,11 +38,11 @@ func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.values.driver, model.connection.values.name = driverSQLite, ""
 	model.connection.values.target = "/tmp/alpha.db"
-	model.recordConnection()
+	model.recordConnection("")
 	model.connection.values.target = "/tmp/beta.db"
 
 	// When
-	model.recordConnection()
+	model.recordConnection("")
 	loaded, _ := loadRecentConnections(model.recentPath)
 
 	// Then
@@ -76,7 +76,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
 	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
 	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
-	model.recordConnection()
+	model.recordConnection("")
 
 	// When
 	if err := saveRecentConnections(path, model.recentConnections); err != nil {
@@ -486,7 +486,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
 
 	// When — a new profile is recorded
-	model.recordConnection()
+	model.recordConnection("")
 
 	// Then — it carries a fresh UUIDv7 scope
 	profile := model.recentConnections[0]
@@ -514,7 +514,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 		t.Fatalf("form ID = %q, want selected profile ID %q", model2.connection.values.id, profile.ID)
 	}
 	model2.connection.values.name = "Renamed"
-	model2.recordConnection()
+	model2.recordConnection("")
 	if model2.recentConnections[0].ID != profile.ID {
 		t.Fatalf("edited profile ID = %q, want preserved %q", model2.recentConnections[0].ID, profile.ID)
 	}
@@ -522,7 +522,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	// A brand-new profile must mint a distinct ID, and the saved file keeps it.
 	model2.connection.values.id = ""
 	model2.connection.values.name, model2.connection.values.target = "Other", "/tmp/other.db"
-	model2.recordConnection()
+	model2.recordConnection("")
 	if model2.recentConnections[0].ID == profile.ID {
 		t.Fatal("new profile reused the previous profile's ID")
 	}

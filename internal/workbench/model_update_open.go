@@ -27,7 +27,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	m.Focus = focusSchema
 	m.editor.text.Blur()
 	m.blurTables()
-	if err := m.recordConnection(); err != nil {
+	if err := m.recordConnection(message.target); err != nil {
 		m.connectionID = ""
 		m.Status = safeText("saving connection profile: " + err.Error())
 	}

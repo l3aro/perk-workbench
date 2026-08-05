@@ -209,20 +209,6 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		if x < m.schemaWidth || m.connection.focus != connectionFocusForm || m.connection.form == nil || m.connection.confirmation != nil {
 			return m, nil
 		}
-		if contentY == m.height-6 {
-			switch formButtonAt(x - m.schemaWidth - 1) {
-			case "save":
-				m.formButtonHit = true
-				var command tea.Cmd
-				m, command = m.formSaveCommand()
-				return m, command
-			case "cancel":
-				m.formButtonHit = true
-				var command tea.Cmd
-				m, command = m.connectionCancelCommand()
-				return m, command
-			}
-		}
 		return m.clickFormField(x, y, m.connection.View(), 0, contentY-1, m.connection.fieldTitles(), m.connection.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.connection.focusForm()) })
 	}
 	return m, nil
