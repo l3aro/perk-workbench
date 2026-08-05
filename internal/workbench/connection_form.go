@@ -45,6 +45,9 @@ type connectionForm struct {
 	confirmation *confirmationDialog
 	values       *connectionFormValues
 	focus, width int
+	// height is the pane body height the form viewport is clipped to; huh
+	// scrolls its group viewport to the focused field (see setHeight).
+	height int
 }
 
 type connectionFormValues struct {
@@ -161,6 +164,9 @@ func (f *connectionForm) rebuildForm() tea.Cmd {
 		newConnectionActionButtons(&f.values.action),
 	)
 	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	if f.height > 0 {
+		f.form.WithHeight(f.height)
+	}
 	return f.form.Init()
 }
 
@@ -220,9 +226,23 @@ func (f *connectionForm) focusForm() tea.Cmd {
 }
 
 func (f *connectionForm) setWidth(width int) {
-	f.width = max(width, 1)
+	// Huh's text input panics when its internal width goes negative, which
+	// happens below roughly frame(2) + prompt(2) + 1 cells. Keep the form
+	// renderable even during degenerate 0x0 layouts.
+	f.width = max(width, 8)
 	if f.form != nil {
 		f.form.WithWidth(f.width).WithShowHelp(f.width >= 40)
+	}
+}
+
+// setHeight clips the form viewport to the pane body height. Huh's group
+// viewport scrolls to the focused field on every navigation, so fields that
+// overflow the pane (TLS options, Read-Only, the action buttons) stay
+// reachable and visible instead of being clipped away.
+func (f *connectionForm) setHeight(height int) {
+	f.height = max(height, 1)
+	if f.form != nil {
+		f.form.WithHeight(f.height)
 	}
 }
 

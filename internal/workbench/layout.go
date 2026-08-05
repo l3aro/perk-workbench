@@ -46,6 +46,7 @@ func (m *Model) layout(width, height int) {
 		connectionWidth = m.editorWidth
 	}
 	m.connection.setWidth(max(connectionWidth-4, 1))
+	m.connection.setHeight(max(m.height-8, 1))
 	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
 	m.editor.setSize(max(m.editorWidth-8, 1), max(m.editorHeight-4, 1))
 	m.resizeChat()

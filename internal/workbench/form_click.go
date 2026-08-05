@@ -33,13 +33,15 @@ func formFieldIndexAt(view string, scrollOffset, viewLine int, titles []string) 
 			}
 		}
 		if titleLine < 0 {
-			// The view is height-truncated (huh WithHeight): the remaining
-			// titles render below the visible region, so the click maps to
-			// the last field whose title is visible.
-			return field
+			// The view is a focus-scrolled window (huh group viewport):
+			// titles outside the visible region are absent. Skip them; the
+			// first visible title anchors the mapping below.
+			continue
 		}
 		if target < titleLine {
-			return field
+			// The click is above this title: it lands in the block of the
+			// field right before it, whose title may be scrolled out.
+			return index - 1
 		}
 		field, searchFrom = index, titleLine+1
 	}

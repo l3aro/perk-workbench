@@ -45,6 +45,27 @@ func TestFormFieldIndexAt(t *testing.T) {
 	}
 }
 
+func TestFormFieldIndexAt_windowedViewMapsVisibleFields(t *testing.T) {
+	// A focus-scrolled window (huh group viewport): the first field's title
+	// (Name*) is scrolled out above, and the visible window starts mid-way
+	// through the Type block. Clicks on the scrolled-in tail must map to the
+	// field whose block is visible, not to -1.
+	view := "┃ > TEXT\n┃   INTEGER\n\n┃ Nullable\n┃\n┃   Yes     No\n\nenter next"
+	titles := []string{"Name*", "Type*", "Nullable"}
+	cases := []struct {
+		line int
+		want int
+	}{
+		{0, 1}, {1, 1}, {2, 1}, // Type block tail + gap, title scrolled out
+		{3, 2}, {4, 2}, {5, 2}, {6, 2}, {7, 2}, // Nullable + help footer
+	}
+	for _, c := range cases {
+		if got := formFieldIndexAt(view, 0, c.line, titles); got != c.want {
+			t.Fatalf("line %d = %d, want %d", c.line, got, c.want)
+		}
+	}
+}
+
 func TestFormLineIsTitle(t *testing.T) {
 	cases := []struct {
 		line, title string

@@ -399,6 +399,48 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 	}
 }
 
+// TestConnectionForm_viewportKeepsActionsReachable guards the connection
+// form at heights where the field list overflows the pane body: field
+// navigation must scroll the focused field into view so the action buttons
+// and the Save/Cancel footer stay reachable instead of being clipped away.
+func TestConnectionForm_viewportKeepsActionsReachable(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+	model.connection.focus = connectionFocusForm
+	model.connection.values.driver = driverMySQL
+	model.connection.values.host, model.connection.values.port = "localhost", "5432"
+	model.connection.values.user = "postgres"
+	_ = model.connection.rebuildForm()
+	_ = model.connection.form.Init()
+	model = resizeModel(model, 100, 24)
+
+	// A MySQL form is taller than the pane body: the action buttons start
+	// below the fold and are clipped at the top of the form.
+	if view := ansi.Strip(model.connectionPaneView(model.height - 6)); strings.Contains(view, connectionActionConnect) {
+		t.Fatalf("tall connection form at the top of the pane shows the action buttons")
+	}
+
+	// driver name host port username password database tls readOnly action
+	for range 9 {
+		model = updateConnectionForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "action" {
+		t.Fatalf("focused field = %q, want action", got)
+	}
+	view := ansi.Strip(model.connectionPaneView(model.height - 6))
+	if !strings.Contains(view, connectionActionTest) || !strings.Contains(view, connectionActionConnect) {
+		t.Fatalf("scrolled connection pane view = %q, want action buttons visible", view)
+	}
+	if !strings.Contains(view, "Save") || !strings.Contains(view, "Cancel") {
+		t.Fatalf("scrolled connection pane view = %q, want Save/Cancel footer visible", view)
+	}
+}
+
+func updateConnectionForm(model Model, message tea.Msg) Model {
+	updated, _ := model.Update(message)
+	return updated.(Model)
+}
+
 func TestConnectionForm_mouseSaveStartsConnectConfirmation(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
