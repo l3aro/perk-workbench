@@ -557,6 +557,9 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		if !m.hasOverlay() && m.contextMenu == nil {
+			if (m.formActive() || m.State == stateConnection) && !m.tableFiltering {
+				return m.scrollForm(message)
+			}
 			return m.handleMouseWheel(message)
 		}
 	case tea.MouseReleaseMsg:

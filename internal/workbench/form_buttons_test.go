@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -448,6 +449,105 @@ func TestConnectionScreen_titledPanesKeepModeBadgeVisible(t *testing.T) {
 	}
 	if footer == "" {
 		t.Fatalf("connection screen = %q, want mode-badge footer", view)
+	}
+}
+
+func TestIndexForm_mouseWheelScrollsViewport(t *testing.T) {
+	model := readyIndexesModel(t)
+	model = openIndexEditor(t, model, nil)
+	model = resizeModel(model, 100, 24)
+	start := model.indexForm.scrollOffset
+
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	if model.indexForm.scrollOffset != start+1 {
+		t.Fatalf("wheel down scroll offset = %d, want %d", model.indexForm.scrollOffset, start+1)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	model = updated.(Model)
+	if model.indexForm.scrollOffset != start {
+		t.Fatalf("wheel up scroll offset = %d, want %d", model.indexForm.scrollOffset, start)
+	}
+
+	// Wheeling past the bottom clamps at the last full window.
+	model.indexForm.scrollOffset = 1 << 20
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	lines := len(strings.Split(model.indexForm.View(), "\n"))
+	if want := lines - model.formViewportHeight(); model.indexForm.scrollOffset != want {
+		t.Fatalf("wheel at bottom scroll offset = %d, want %d", model.indexForm.scrollOffset, want)
+	}
+}
+
+func TestBrowseFilterForm_mouseWheelScrollsRowsNotHeader(t *testing.T) {
+	columns := make([]sharedsql.ColumnInfo, 12)
+	for index := range columns {
+		columns[index] = sharedsql.ColumnInfo{Name: "col" + strconv.Itoa(index), Type: "TEXT"}
+	}
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabBrowse
+	model.structureColumns = columns
+	model = resizeModel(model, 100, 26)
+	_ = model.openBrowseFilterForm()
+
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	if model.browseFilterForm.scrollOffset != 1 {
+		t.Fatalf("wheel down scroll offset = %d, want 1", model.browseFilterForm.scrollOffset)
+	}
+	// The wheel must advance the field rows, not double-scroll the already
+	// windowed view: the header stays pinned and the first field row shows
+	// the row at the new offset.
+	lines := strings.Split(ansi.Strip(model.workspaceView()), "\n")
+	if !strings.HasPrefix(strings.TrimSpace(lines[2]), "Column") {
+		t.Fatalf("filter view line 2 = %q, want pinned header", lines[2])
+	}
+	if !strings.Contains(lines[3], "col1") {
+		t.Fatalf("filter view line 3 = %q, want first row col1", lines[3])
+	}
+}
+
+func TestColumnForm_mouseWheelMovesFieldFocus(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	if model.columnForm.focusedField() != 1 {
+		t.Fatalf("wheel down focused field = %d, want 1", model.columnForm.focusedField())
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	model = updated.(Model)
+	if model.columnForm.focusedField() != 0 {
+		t.Fatalf("wheel up focused field = %d, want 0", model.columnForm.focusedField())
+	}
+
+	// Wheeling down past the last field stays put instead of moving onto
+	// the button bar.
+	for range model.columnForm.fieldCount() {
+		updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+		model = updated.(Model)
+	}
+	if model.formMode.buttonsFocused {
+		t.Fatal("wheel down past the last field focused the button bar")
+	}
+	if got := model.columnForm.focusedField(); got != model.columnForm.fieldCount()-1 {
+		t.Fatalf("wheel down past the last field = %d, want %d", got, model.columnForm.fieldCount()-1)
+	}
+}
+
+func TestConnectionForm_mouseWheelMovesFieldFocus(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 100, 30)
+	_ = model.newConnection()
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "name" {
+		t.Fatalf("wheel down focused field = %q, want name", got)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	model = updated.(Model)
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "driver" {
+		t.Fatalf("wheel up focused field = %q, want driver", got)
 	}
 }
 

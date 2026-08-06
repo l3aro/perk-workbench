@@ -611,7 +611,10 @@ func (m Model) structureView() string {
 
 func (m Model) browseView() string {
 	if m.browseFilterForm != nil {
-		return m.formViewport(m.browseFilterForm.View(), m.browseFilterForm.scrollOffset)
+		// The filter view is already windowed at its scroll offset (it
+		// renders at most one screenful per frame), so the viewport slice
+		// must not re-apply the offset.
+		return m.formViewport(m.browseFilterForm.View(), 0)
 	}
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)

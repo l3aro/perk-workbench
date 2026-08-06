@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/table"
@@ -339,6 +340,59 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		m.queryLog.SetCursor(newCursor)
 	}
 	return m, nil
+}
+
+// scrollForm scrolls the active form on mouse wheel. Forms whose view is
+// clipped by huh's group viewport (column, connection) move field focus —
+// huh pins its viewport to the focused field — while viewport-sliced forms
+// (browse, filter, indexes, foreign keys) advance their scroll offset
+// without moving focus.
+func (m Model) scrollForm(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
+	step := 0
+	switch wheel.Button {
+	case tea.MouseWheelDown:
+		step = 1
+	case tea.MouseWheelUp:
+		step = -1
+	default:
+		return m, nil
+	}
+	if m.State == stateConnection {
+		if m.connection.focus == connectionFocusForm && m.connection.form != nil {
+			if step > 0 {
+				return m, m.connection.form.NextField()
+			}
+			return m, m.connection.form.PrevField()
+		}
+		return m, nil
+	}
+	switch {
+	case m.columnForm.active():
+		if step > 0 {
+			return m, m.columnForm.nextField()
+		}
+		return m, m.columnForm.previousField()
+	case m.browseFilterForm != nil:
+		m.browseFilterForm.scrollOffset = clamp(m.browseFilterForm.scrollOffset+step, 0, len(m.browseFilterForm.fields)+1)
+	case m.browseForm.active():
+		m.browseForm.scrollOffset = formScrollOffset(m.browseForm.View(), m.browseForm.scrollOffset, step, m.formViewportHeight())
+	case m.indexForm.active():
+		m.indexForm.scrollOffset = formScrollOffset(m.indexForm.View(), m.indexForm.scrollOffset, step, m.formViewportHeight())
+	case m.foreignKeyForm.active():
+		m.foreignKeyForm.scrollOffset = formScrollOffset(m.foreignKeyForm.View(), m.foreignKeyForm.scrollOffset, step, m.formViewportHeight())
+	}
+	return m, nil
+}
+
+// formScrollOffset advances a form view offset by step, clamped to the last
+// line that keeps the window full; the offset is unchanged when the view
+// fits the viewport.
+func formScrollOffset(view string, offset, step, height int) int {
+	lines := len(strings.Split(view, "\n"))
+	if lines <= height {
+		return offset
+	}
+	return clamp(offset+step, 0, lines-height)
 }
 
 // handleSchemaTableClick handles left-click on structure, indexes, or foreignKeys tables.
