@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -349,6 +350,94 @@ func TestConnectionForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	}
 	if got := model.connection.form.GetFocusedField().GetKey(); got != "target" {
 		t.Fatalf("focused field = %q, want target", got)
+	}
+}
+
+func TestConnectionForm_clickExecutesActionButtons(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		action string
+	}{
+		{name: "test", action: connectionActionTest},
+		{name: "connect", action: connectionActionConnect},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			// Given
+			model := readyModel(t)
+			model.State = stateConnection
+			model = resizeModel(model, 100, 30)
+			_ = model.newConnection()
+			model.connection.values.target = ":memory:"
+			lines := strings.Split(ansi.Strip(model.connection.View()), "\n")
+			buttonLine, x := -1, -1
+			for line, text := range lines {
+				if start := strings.Index(text, test.action); start >= 0 {
+					buttonLine, x = line, start
+					break
+				}
+			}
+			if buttonLine < 0 || x < 0 {
+				t.Fatalf("buttons row not found in connection form view")
+			}
+
+			// When
+			updated, command := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 1 + x, Y: buttonLine + 2, Button: tea.MouseLeft})
+			model = updated.(Model)
+
+			// Then
+			if test.action == connectionActionTest {
+				if command == nil {
+					t.Fatal("Test click returned no command")
+				}
+				if _, ok := command().(connectionTestMsg); !ok {
+					t.Fatalf("Test click message = %T, want connection test", command())
+				}
+			} else if model.State != stateOpening {
+				t.Fatalf("connection state = %v, want opening", model.State)
+			}
+		})
+	}
+}
+
+// TestConnectionForm_compactClickExecutesActionButtons guards the compact
+// single-pane layout: the connection form renders full-width there, and
+// clicks on its action buttons must execute like in the wide layout
+// instead of being ignored.
+func TestConnectionForm_compactClickExecutesActionButtons(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 60, 20) // height < 24 forces compact
+	if !model.compact {
+		t.Fatal("model not compact after small resize")
+	}
+	_ = model.newConnection()
+	model.connection.values.target = ":memory:"
+	for range 4 {
+		updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+		model = updated.(Model)
+	}
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "action" {
+		t.Fatalf("focused field = %q, want action", got)
+	}
+	lines := strings.Split(ansi.Strip(model.connection.View()), "\n")
+	buttonLine, x := -1, -1
+	for line, text := range lines {
+		if start := strings.Index(text, connectionActionTest); start >= 0 {
+			buttonLine, x = line, start
+			break
+		}
+	}
+	if buttonLine < 0 || x < 0 {
+		t.Fatalf("buttons row not visible in compact connection form view")
+	}
+
+	updated, command := model.Update(tea.MouseClickMsg{X: 1 + x, Y: buttonLine + 2, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Test click returned no command")
+	}
+	if _, ok := command().(connectionTestMsg); !ok {
+		t.Fatalf("Test click message = %T, want connection test", command())
 	}
 }
 

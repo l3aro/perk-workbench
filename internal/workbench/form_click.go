@@ -108,6 +108,40 @@ func (m Model) clickFormField(x, y int, view string, scrollOffset, viewLine int,
 	return m, focus(field)
 }
 
+// connectionActionAt returns the connection form action whose rendered
+// button the click landed on, or "" when it misses both buttons. viewLine
+// is the pane-relative line of the click, relX its pane-relative column.
+// The buttons render as "<Test connection> <Connect>" (stacked when the
+// pane is narrow). "Connect" is a prefix of "connection", so only tokens
+// that are not part of a longer word count as buttons.
+func connectionActionAt(view string, viewLine, relX int) string {
+	if viewLine < 0 {
+		return ""
+	}
+	lines := strings.Split(ansi.Strip(view), "\n")
+	if viewLine >= len(lines) {
+		return ""
+	}
+	line := lines[viewLine]
+	for _, action := range []string{connectionActionTest, connectionActionConnect} {
+		for offset := 0; offset < len(line); {
+			index := strings.Index(line[offset:], action)
+			if index < 0 {
+				break
+			}
+			index += offset
+			end := index + len(action)
+			if end >= len(line) || line[end] == ' ' {
+				if relX >= index && relX < end {
+					return action
+				}
+			}
+			offset = index + len(action)
+		}
+	}
+	return ""
+}
+
 // workspaceLeft returns the screen X where the workspace pane's left border
 // starts: 0 in the compact single-pane layout, after the schema pane in wide.
 func (m Model) workspaceLeft() int {
@@ -210,16 +244,24 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 	case stateConnection:
 		if m.compact {
-			if m.connection.focus != connectionFocusRecent {
-				return m, nil
+			if m.connection.focus == connectionFocusRecent {
+				return m.handleRecentClick(x, y)
 			}
-			return m.handleRecentClick(x, y)
-		}
-		if x < m.schemaWidth {
+		} else if x < m.schemaWidth {
 			return m.handleRecentClick(x, y)
 		}
 		if m.connection.focus != connectionFocusForm || m.connection.form == nil || m.connection.confirmation != nil {
 			return m, nil
+		}
+		// A click on the Test connection / Connect buttons executes the
+		// action, matching Enter on the focused action field.
+		if action := connectionActionAt(m.connection.View(), contentY-1, x-workspaceLeft-1); action != "" {
+			m.formMode.mode = formModeNormal
+			m.connection.blur()
+			if action == connectionActionTest {
+				return m, m.testConnection()
+			}
+			return m.openConnection()
 		}
 		return m.clickFormField(x, y, m.connection.View(), 0, contentY-1, m.connection.fieldTitles(), m.connection.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.connection.focusForm()) })
 	}
