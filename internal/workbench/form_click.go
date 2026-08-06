@@ -263,6 +263,11 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 			return m.openConnection()
 		}
+		// A click on an option row of the Driver or TLS select selects it:
+		// huh's select fields don't handle mouse clicks.
+		if field, option := m.connection.selectOptionAt(m.connection.View(), contentY-1); field != "" {
+			return m, m.connection.applySelectOption(field, option)
+		}
 		return m.clickFormField(x, y, m.connection.View(), 0, contentY-1, m.connection.fieldTitles(), m.connection.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.connection.focusForm()) })
 	}
 	return m, nil

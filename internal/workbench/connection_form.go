@@ -4,11 +4,14 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -39,6 +42,14 @@ const (
 	connectionActionTest    = "Test connection"
 	connectionActionConnect = "Connect"
 )
+
+// connectionSelectOptions lists the option labels of the Driver and TLS
+// selects in render order. The TLS labels are shared; the bound values
+// differ per driver (see applySelectOption).
+var connectionSelectOptions = map[string][]string{
+	"driver": {"SQLite", "MySQL", "PostgreSQL"},
+	"tls":    {"Verify certificate", "Encrypt, don't verify certificate", "Don't encrypt"},
+}
 
 type connectionForm struct {
 	form         *huh.Form
@@ -181,18 +192,109 @@ func (f *connectionForm) updateHuh(message tea.Msg, controller *formModeControll
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if f.values.driver != driver {
-		if f.values.driver == driverPostgreSQL && f.values.port == "3306" {
-			f.values.port = "5432"
-		} else if f.values.driver == driverMySQL && f.values.port == "5432" {
-			f.values.port = "3306"
-		}
-		return f.rebuildForm(), ""
+		return f.selectDriver(f.values.driver), ""
 	}
 	if f.form.State != huh.StateCompleted {
 		return command, ""
 	}
 	action := f.values.action
 	return f.rebuildForm(), action
+}
+
+// selectDriver applies a driver change: the port keeps its well-known
+// default when switching between MySQL and PostgreSQL, then the form
+// rebuilds for the new driver's layout.
+func (f *connectionForm) selectDriver(driver connectionDriver) tea.Cmd {
+	f.values.driver = driver
+	if driver == driverPostgreSQL && f.values.port == "3306" {
+		f.values.port = "5432"
+	} else if driver == driverMySQL && f.values.port == "5432" {
+		f.values.port = "3306"
+	}
+	return f.rebuildForm()
+}
+
+// selectOptionAt maps a click on the rendered form view to an option row of
+// the Driver or TLS select. It returns the field key and option index, or
+// ("", -1) when the click misses every option row. Huh's select fields do
+// not handle mouse clicks, so the app picks the option itself: option rows
+// render below the select's title line, long option keys are word-wrapped
+// across several lines, and the scan stops at the nearest field title so a
+// value line that happens to read like an option (a database named "MySQL")
+// is not mistaken for a select row.
+func (f connectionForm) selectOptionAt(view string, viewLine int) (string, int) {
+	if viewLine < 0 {
+		return "", -1
+	}
+	lines := strings.Split(ansi.Strip(view), "\n")
+	if viewLine >= len(lines) {
+		return "", -1
+	}
+	titles := f.fieldTitles()
+	keys := f.fieldKeys()
+	for line := viewLine; line >= 0; line-- {
+		key := ""
+		for index, title := range titles {
+			if formLineIsTitle(lines[line], title) {
+				key = keys[index]
+				break
+			}
+		}
+		if key == "" {
+			continue
+		}
+		if key != "driver" && key != "tls" {
+			break // a different field owns this line
+		}
+		for option, label := range connectionSelectOptions[key] {
+			if selectLineIsOption(lines[viewLine], label, f.width) {
+				return key, option
+			}
+		}
+		break
+	}
+	return "", -1
+}
+
+// selectLineIsOption reports whether the stripped form line is a row of the
+// given option label. Huh word-wraps option keys with lipgloss.Wrap at the
+// field width minus the frame and cursor cells, so any wrapped fragment of
+// the label counts as the option's row.
+func selectLineIsOption(line, label string, width int) bool {
+	clean := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "┃"))
+	clean = strings.TrimSpace(strings.TrimPrefix(clean, ">"))
+	if clean == "" {
+		return false
+	}
+	for _, fragment := range strings.Split(lipgloss.Wrap(label, max(width-4, 1), ",.-; "), "\n") {
+		if clean == strings.TrimSpace(fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+// applySelectOption sets the clicked select's value and rebuilds the form so
+// the selection highlight follows (huh renders the cursor from its own
+// state). A TLS click restores focus to the TLS field; the driver rebuild
+// resets focus to the first field, matching the keyboard path.
+func (f *connectionForm) applySelectOption(field string, option int) tea.Cmd {
+	switch field {
+	case "driver":
+		return f.selectDriver([]connectionDriver{driverSQLite, driverMySQL, driverPostgreSQL}[option])
+	case "tls":
+		if f.values.driver == driverMySQL {
+			f.values.mysqlTLS = []mysqlTLSMode{mysqlTLSVerify, mysqlTLSSkipVerify, mysqlTLSDisabled}[option]
+		} else {
+			f.values.postgresTLS = []postgresTLSMode{postgresTLSVerifyFull, postgresTLSEncrypt, postgresTLSDisabled}[option]
+		}
+		tls := slices.Index(f.fieldKeys(), "tls")
+		if tls < 0 {
+			return f.rebuildForm()
+		}
+		return tea.Sequence(f.rebuildForm(), f.focusField(tls))
+	}
+	return nil
 }
 
 func (f *connectionForm) beginConfirmation() tea.Cmd {

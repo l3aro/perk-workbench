@@ -318,6 +318,162 @@ func TestForeignKeyForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	}
 }
 
+func TestConnectionForm_clickSelectsDriverOption(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 100, 44)
+	_ = model.newConnection()
+	// SQLite layout: Driver title at view line 0, options at 1-3
+	// (SQLite, MySQL, PostgreSQL). Pane content starts at screen y=2, so
+	// the MySQL option row is at y=4.
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.driver != driverMySQL {
+		t.Fatalf("driver = %q, want mysql", model.connection.values.driver)
+	}
+	// The rebuild resets focus to the first field, matching the keyboard
+	// path, and the form now carries the MySQL TLS select.
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "driver" {
+		t.Fatalf("focused field = %q, want driver", got)
+	}
+	if !strings.Contains(model.connection.View(), "TLS") {
+		t.Fatal("MySQL form has no TLS field after driver click")
+	}
+}
+
+func TestConnectionForm_clickSwapsPortOnDriverOption(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 100, 44)
+	_ = model.newConnection()
+	model.connection.values.port = "5432"
+	// Click the MySQL option (view line 2, screen y=4): the port follows
+	// the MySQL default, matching the keyboard driver change.
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.driver != driverMySQL || model.connection.values.port != "3306" {
+		t.Fatalf("driver/port = %q/%q, want mysql/3306", model.connection.values.driver, model.connection.values.port)
+	}
+}
+
+func TestConnectionForm_clickSelectsTLSOption(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 100, 44)
+	_ = model.newConnection()
+	model.connection.values.driver = driverMySQL
+	_ = model.connection.rebuildForm()
+	// MySQL layout: TLS title at view line 23, options at 24-26. Pane
+	// content starts at screen y=2, so "Verify certificate" is at y=26.
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 26, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.mysqlTLS != mysqlTLSVerify {
+		t.Fatalf("mysqlTLS = %q, want %q", model.connection.values.mysqlTLS, mysqlTLSVerify)
+	}
+	// Focus returns to the TLS field so the pane stays scrolled to it.
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "tls" {
+		t.Fatalf("focused field = %q, want tls", got)
+	}
+}
+
+func TestConnectionForm_clickOnSelectTitleOnlyFocuses(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 100, 44)
+	_ = model.newConnection()
+	// The Driver title (view line 0, screen y=2) is not an option row: the
+	// click focuses the field without changing the value.
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 2, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.driver != driverSQLite {
+		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.values.driver)
+	}
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "driver" {
+		t.Fatalf("focused field = %q, want driver", got)
+	}
+	// A click on the blank line under the options (view line 4, screen y=6)
+	// also leaves the value alone.
+	updated, _ = model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 6, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.driver != driverSQLite {
+		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.values.driver)
+	}
+}
+
+func TestConnectionForm_clickSelectsWrappedTLSOption(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	// Compact pane 40 wide: the form renders at 36 (width-4), so huh wraps
+	// "Encrypt, don't verify certificate" across two option rows.
+	model = resizeModel(model, 40, 44)
+	_ = model.newConnection()
+	model.connection.values.driver = driverMySQL
+	_ = model.connection.rebuildForm()
+	// Click the wrapped continuation row, then the option after the wrapped
+	// one; each click re-locates its row in the freshly rendered view (the
+	// rebuild scrolls the form viewport to the refocused TLS field).
+	for _, test := range []struct {
+		label string
+		want  mysqlTLSMode
+	}{
+		{label: "certificate", want: mysqlTLSSkipVerify},
+		{label: "Don't encrypt", want: mysqlTLSDisabled},
+	} {
+		view := model.connection.View()
+		viewLine := -1
+		for index, line := range strings.Split(ansi.Strip(view), "\n") {
+			clean := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "┃"))
+			clean = strings.TrimSpace(strings.TrimPrefix(clean, ">"))
+			if clean == test.label {
+				viewLine = index
+				break
+			}
+		}
+		if viewLine < 0 {
+			t.Fatalf("rendered form does not contain option row %q", test.label)
+		}
+		updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: viewLine + 2, Button: tea.MouseLeft})
+		model = updated.(Model)
+		if model.connection.values.mysqlTLS != test.want {
+			t.Fatalf("mysqlTLS = %q, want %q after clicking %q", model.connection.values.mysqlTLS, test.want, test.label)
+		}
+	}
+}
+
+func TestConnectionForm_clickValueReadingLikeOptionFocusesField(t *testing.T) {
+	model := readyModel(t)
+	model.State = stateConnection
+	model = resizeModel(model, 100, 44)
+	_ = model.newConnection()
+	// A Name value that reads like a driver label must not change the
+	// driver: the click focuses the input field instead. Name title at
+	// view line 5, value at 6; pane content starts at screen y=2.
+	model.connection.values.name = "MySQL"
+	_ = model.connection.rebuildForm()
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 8, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.driver != driverSQLite {
+		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.values.driver)
+	}
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "name" {
+		t.Fatalf("focused field = %q, want name", got)
+	}
+	// A Database value that reads like a wrapped TLS fragment must not
+	// change the TLS mode. Database title at view line 20, value at 21
+	// (screen y=23).
+	model.connection.values.driver = driverMySQL
+	model.connection.values.target = "certificate"
+	_ = model.connection.rebuildForm()
+	updated, _ = model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 23, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.connection.values.mysqlTLS != mysqlTLSDisabled {
+		t.Fatalf("mysqlTLS = %q, want disabled unchanged", model.connection.values.mysqlTLS)
+	}
+	if got := model.connection.form.GetFocusedField().GetKey(); got != "database" {
+		t.Fatalf("focused field = %q, want database", got)
+	}
+}
+
 func TestConnectionForm_clickFocusesClickedField(t *testing.T) {
 	model := readyModel(t)
 	model.State = stateConnection
