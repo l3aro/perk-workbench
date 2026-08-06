@@ -147,5 +147,5 @@ func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd
 	m.formMode.buttonsFocused = false
 	m.foreignKeyForm.keybindings = m.keybindings
 	m.foreignKeyForm.setWidth(m.tableViewportWidth)
-	return m.foreignKeyForm.form.Init()
+	return m.openForm(m.foreignKeyForm.form.Init(), m.foreignKeyForm.focus)
 }

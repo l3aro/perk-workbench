@@ -108,6 +108,13 @@ func (m *Model) focusActiveTable() {
 	case tabBrowse:
 		m.browse.Focus()
 	case tabSQL:
+		if !m.vimMode {
+			// No modal modes: the editor is the SQL tab's text target, so
+			// typing works the moment the tab gains focus. The focus cmd is
+			// dropped by design; Focused is set synchronously.
+			m.formMode.beginInsert(m.editor)
+			return
+		}
 		if len(m.results.Rows()) > 0 {
 			m.results.Focus()
 		}
@@ -154,6 +161,11 @@ func (m *Model) cycleFocus(forward bool) {
 		}
 	case focusChat:
 		m.chat.chatMode = formModeNormal
+		if !m.vimMode {
+			// Focus is set synchronously; the cursor cmd is dropped.
+			m.chat.chatMode = formModeInsert
+			m.chat.input.Focus()
+		}
 	}
 }
 

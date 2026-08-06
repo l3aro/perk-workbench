@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
@@ -30,6 +31,11 @@ type Config struct {
 	// Theme is the startup theme: one of ocean, nord, monokai, dracula,
 	// catppuccin, solarized.
 	Theme string `json:"theme"`
+	// VimMode enables modal vim-style editing: normal mode navigates with
+	// j/k-style keys and insert mode (i/Enter) types. Disabled, the focused
+	// input is always editable — click to type, no mode switch. Omitted
+	// means enabled (the built-in default).
+	VimMode *bool `json:"vim_mode"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -49,6 +55,12 @@ func SetAppConfig(config Config) {
 			return
 		}
 	}
+}
+
+// vimModeEnabled reports whether modal vim-style editing is on. The
+// built-in default is on; config.json opts out with "vim_mode": false.
+func vimModeEnabled() bool {
+	return appConfig.VimMode == nil || *appConfig.VimMode
 }
 
 // LoadConfig reads config.json and returns the Config. If the file does not
@@ -107,6 +119,27 @@ func themeNames() []string {
 // unknown or future fields the Config struct does not model. A missing or
 // empty file starts from the built-in defaults.
 func SaveTheme(path, theme string) error {
+	if err := saveConfigValue(path, "theme", theme); err != nil {
+		return err
+	}
+	appConfig.Theme = theme // keep the resolved config in sync
+	return nil
+}
+
+// SaveVimMode persists the vim-mode toggle into config.json, replacing only
+// the vim_mode key and preserving every other key byte-for-byte.
+func SaveVimMode(path string, enabled bool) error {
+	if err := saveConfigValue(path, "vim_mode", enabled); err != nil {
+		return err
+	}
+	appConfig.VimMode = boolPtr(enabled) // keep the resolved config in sync
+	return nil
+}
+
+// saveConfigValue rewrites config.json with a single key replaced, keeping
+// every other key byte-for-byte. A missing or empty file starts from the
+// built-in defaults.
+func saveConfigValue(path, key string, value any) error {
 	contents, err := os.ReadFile(path)
 	var raw map[string]json.RawMessage
 	switch {
@@ -124,12 +157,11 @@ func SaveTheme(path, theme string) error {
 	if raw == nil {
 		raw = defaultConfigValues()
 	}
-	themeValue, err := json.Marshal(theme)
+	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	raw["theme"] = themeValue
-	appConfig.Theme = theme // keep the resolved config in sync
+	raw[key] = valueJSON
 	data, err := json.MarshalIndent(raw, "", "  ")
 	if err != nil {
 		return err
@@ -140,6 +172,35 @@ func SaveTheme(path, theme string) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
+func boolPtr(value bool) *bool { return &value }
+
+// toggleVimMode flips the vim-mode flag and persists it to config.json so it
+// survives the next launch. Switching off also transitions the currently
+// focused text input into insert mode, so typing works without a re-click.
+// Persistence is best-effort: a failure is shown in the status line without
+// reverting the toggle.
+func (m *Model) toggleVimMode() tea.Cmd {
+	m.vimMode = !m.vimMode
+	var command tea.Cmd
+	if !m.vimMode {
+		command = m.beginInsertForCurrentFocus()
+	}
+	state := "off"
+	if m.vimMode {
+		state = "on"
+	}
+	if m.configPath == "" {
+		m.Status = "vim mode: " + state
+		return command
+	}
+	if err := SaveVimMode(m.configPath, m.vimMode); err != nil {
+		m.Status = "vim mode: " + state + " (not saved: " + err.Error() + ")"
+		return command
+	}
+	m.Status = "vim mode: " + state
+	return command
+}
+
 // defaultConfigValues returns the built-in defaults as a JSON map, used when
 // materializing a missing config file.
 func defaultConfigValues() map[string]json.RawMessage {
@@ -148,6 +209,7 @@ func defaultConfigValues() map[string]json.RawMessage {
 		QueryLogPageSize:      defaultQueryLogPageSize,
 		QueryLogRetentionDays: defaultQueryLogRetentionDays,
 		Theme:                 string(themeOcean),
+		VimMode:               boolPtr(true),
 	})
 	if err != nil {
 		panic(err) // plain struct: cannot fail

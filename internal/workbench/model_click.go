@@ -372,6 +372,13 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	targetTable.SetCursor(dataRow)
 
+	// Non-vim mode: the clicked table owns focus, so leave any text editing.
+	if !m.vimMode {
+		m.formMode.mode = formModeNormal
+		m.editor.text.Blur()
+		targetTable.Focus()
+	}
+
 	// Check for double-click at the same position on the same tab and row:
 	// open the row's edit form, matching the enter/i keybinding behavior.
 	now := time.Now()
@@ -484,6 +491,13 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 	if col >= len(columns) {
 		return m, nil
+	}
+
+	// Non-vim mode: the clicked table owns focus, so leave any text editing.
+	if !m.vimMode {
+		m.formMode.mode = formModeNormal
+		m.editor.text.Blur()
+		targetTable.Focus()
 	}
 
 	// Check for double-click at the same position.

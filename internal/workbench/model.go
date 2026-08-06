@@ -115,6 +115,7 @@ type Model struct {
 	lastFormClickX, lastFormClickY                                                                 int
 	chatKeepInsert                                                                                 bool
 	formButtonHit                                                                                  bool
+	vimMode                                                                                        bool
 	contextMenu                                                                                    *contextMenuModel
 	deleteConfirm                                                                                  *confirmationDialog
 	deletePending                                                                                  string
@@ -200,6 +201,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		connection:        newConnectionForm(),
 		completionColumns: map[string][]string{},
 		keybindings:       DefaultKeybindings(),
+		vimMode:           vimModeEnabled(),
 		browsePageSize:    browsePageSizeDefault(),
 		historyIndex:      -1,
 		queryLogPageSize:  queryLogPageSize(),

@@ -122,5 +122,5 @@ func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {
 	m.formMode.buttonsFocused = false
 	m.indexForm.keybindings = m.keybindings
 	m.indexForm.setWidth(m.tableViewportWidth)
-	return m.indexForm.form.Init()
+	return m.openForm(m.indexForm.form.Init(), m.indexForm.focus)
 }

@@ -677,23 +677,32 @@ func (m Model) footer() string {
 
 func (m Model) modeBadge() string {
 	badge := ""
-	if m.formMode.editing() {
-		badge = modeInsertStyle.Render("INSERT")
-	} else {
-		badge = modeNormalStyle.Render("NORMAL")
+	if m.vimMode {
+		// The modal INSERT/NORMAL state only exists in vim mode.
+		if m.formMode.editing() {
+			badge = modeInsertStyle.Render("INSERT")
+		} else {
+			badge = modeNormalStyle.Render("NORMAL")
+		}
 	}
 	if m.ReadOnly && m.State == stateReady {
-		badge += " " + readOnlyStyle.Render("RO")
+		if badge != "" {
+			badge += " "
+		}
+		badge += readOnlyStyle.Render("READONLY")
 	}
 	return badge
 }
 
 func (m Model) chatModeBadge() string {
 	left := ""
-	if m.chat.chatMode == formModeInsert {
-		left = modeInsertStyle.Render("INSERT")
-	} else {
-		left = modeNormalStyle.Render("NORMAL")
+	if m.vimMode {
+		// The modal INSERT/NORMAL state only exists in vim mode.
+		if m.chat.chatMode == formModeInsert {
+			left = modeInsertStyle.Render("INSERT")
+		} else {
+			left = modeNormalStyle.Render("NORMAL")
+		}
 	}
 	right := ""
 	run := m.chat.activeRun()

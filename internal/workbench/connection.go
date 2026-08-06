@@ -166,7 +166,7 @@ func (m *Model) newConnection() tea.Cmd {
 	m.connection.focus = connectionFocusForm
 	m.formMode.mode = formModeNormal
 	m.Status = "new connection"
-	return command
+	return m.openForm(command, m.connection.focusForm)
 }
 
 func (m Model) testConnection() tea.Cmd {

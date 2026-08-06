@@ -15,6 +15,8 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "theme.select":
 		m.themePicker = newThemePicker()
 		return m, nil
+	case "vim.toggle":
+		return m, m.toggleVimMode()
 	case "theme.ocean":
 		m.commitTheme(themeOcean)
 		return m, nil
@@ -80,10 +82,14 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "focus.chat":
 		if m.State == stateReady && m.chat.visible {
 			m.Focus = focusChat
-			m.chat.chatMode = formModeNormal
 			m.queryLogPendingG = false
 			m.editor.text.Blur()
 			m.blurTables()
+			if !m.vimMode {
+				m.chat.chatMode = formModeInsert
+				return m, m.chat.input.Focus()
+			}
+			m.chat.chatMode = formModeNormal
 			return m, nil
 		}
 		return m, nil

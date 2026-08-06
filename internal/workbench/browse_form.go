@@ -57,7 +57,7 @@ func (m *Model) openBrowseForm() tea.Cmd {
 		m.browseForm.identifier = m.actionIdentifier
 	}
 	m.browseForm.setWidth(m.tableViewportWidth)
-	return m.browseForm.form.Init()
+	return m.openForm(m.browseForm.form.Init(), m.browseForm.focus)
 }
 
 func newBrowseForm(columns []string, original []*string, info []sharedsql.ColumnInfo) (browseForm, error) {

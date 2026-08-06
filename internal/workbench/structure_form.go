@@ -99,7 +99,7 @@ func (m *Model) openNewColumnForm() tea.Cmd {
 	m.columnForm.keybindings = m.keybindings
 	m.columnForm.setWidth(m.tableViewportWidth)
 	m.columnForm.setHeight(m.formViewportHeight())
-	return m.columnForm.form.Init()
+	return m.openForm(m.columnForm.form.Init(), m.columnForm.focus)
 }
 
 func (f columnForm) active() bool { return f.form != nil }

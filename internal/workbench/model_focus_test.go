@@ -210,6 +210,32 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 	}
 }
 
+// TestView_vimOffHidesModeBadges: without vim mode the modal INSERT/NORMAL
+// state does not exist, so neither the workspace nor the chat pane render a
+// mode badge (RO/spinner/YOLO indicators still show).
+func TestView_vimOffHidesModeBadges(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+	model.vimMode = false
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.formMode.mode = formModeInsert
+	model.ReadOnly = true
+	model.layout(100, 24)
+
+	workspace := ansi.Strip(model.workspaceView())
+	if strings.Contains(workspace, "INSERT") || strings.Contains(workspace, "NORMAL") {
+		t.Fatalf("workspace view = %q, want no mode badge with vim off", workspace)
+	}
+	if !strings.Contains(workspace, "READONLY") {
+		t.Fatalf("workspace view = %q, want READONLY badge retained", workspace)
+	}
+	if badge := ansi.Strip(model.chatModeBadge()); strings.Contains(badge, "INSERT") || strings.Contains(badge, "NORMAL") {
+		t.Fatalf("chat badge = %q, want no mode badge with vim off", badge)
+	}
+	if badge := model.modeBadge(); strings.Contains(badge, "INSERT") || strings.Contains(badge, "NORMAL") {
+		t.Fatalf("mode badge = %q, want no mode badge with vim off", badge)
+	}
+}
+
 func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)

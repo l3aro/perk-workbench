@@ -2,6 +2,8 @@ package workbench
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -104,13 +106,80 @@ func TestCommandPalette_drawsTitleInTopBorder(t *testing.T) {
 	}
 }
 
+// TestVimMode_paletteToggleTransitionsAndPersists drives the palette toggle
+// in place: the flag flips, the active SQL editor enters insert mode so
+// typing works without a re-click, and config.json is rewritten.
+func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{})
+
+	model := readyModel(t)
+	model.configPath = filepath.Join(dir, "perk-workbench", "config.json")
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model = resizeModel(model, 100, 24)
+	if !model.vimMode {
+		t.Fatal("test setup: vim mode should default on")
+	}
+	if model.formMode.editing() {
+		t.Fatal("test setup: SQL editor should start in normal mode")
+	}
+	for _, item := range newCommandPalette(model).items {
+		if item.id == "vim.toggle" && item.label != "vim mode: on" {
+			t.Fatalf("palette label = %q, want vim mode: on", item.label)
+		}
+	}
+
+	// Normal mode swallows typing.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updated.(Model)
+	if model.editor.value != "" {
+		t.Fatalf("editor = %q, want empty before toggle", model.editor.value)
+	}
+
+	// Toggle off via the palette command.
+	updated, _ = model.handlePaletteCommand("vim.toggle")
+	model = updated.(Model)
+	if model.vimMode {
+		t.Fatal("vim mode still on after toggle")
+	}
+	if !model.formMode.editing() {
+		t.Fatal("SQL editor did not enter insert mode when vim mode switched off")
+	}
+
+	// Typing now lands in the editor.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updated.(Model)
+	if model.editor.value != "j" {
+		t.Fatalf("editor = %q, want j after toggle", model.editor.value)
+	}
+
+	// Persisted for the next launch.
+	contents, err := os.ReadFile(model.configPath)
+	if err != nil {
+		t.Fatalf("config not written: %v", err)
+	}
+	if !strings.Contains(string(contents), `"vim_mode": false`) {
+		t.Fatalf("config = %q, want vim_mode false", contents)
+	}
+
+	// Toggle back on.
+	updated, _ = model.handlePaletteCommand("vim.toggle")
+	model = updated.(Model)
+	if !model.vimMode {
+		t.Fatal("vim mode still off after second toggle")
+	}
+}
+
 func TestCommandPalette_connectionShowsExecutableCommands(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 
-	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "theme.select")
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "theme.select", "vim.toggle")
 
 	model.connection.focus = connectionFocusForm
-	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "theme.select")
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "theme.select", "vim.toggle")
 }
 
 func assertCommandIDs(t *testing.T, palette *commandPalette, want ...CommandID) {

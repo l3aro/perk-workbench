@@ -1,11 +1,55 @@
 package workbench
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
+
+// TestNonVim_singleClickEntersInsertOnEditor: without vim mode a single
+// click on the SQL editor enters insert mode, so typing works with no mode
+// switch (vim mode needs a double-click).
+func TestNonVim_singleClickEntersInsertOnEditor(t *testing.T) {
+	model := readyModel(t)
+	model.vimMode = false
+	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model = resizeModel(model, 100, 24)
+
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 4, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.formMode.editing() {
+		t.Fatal("single click on SQL editor did not enter insert mode")
+	}
+	for _, ch := range "select 1" {
+		updated, _ := model.Update(tea.KeyPressMsg{Code: ch, Text: string(ch)})
+		model = updated.(Model)
+	}
+	if got := model.editor.value; got != "select 1" {
+		t.Fatalf("editor value = %q, want typed text", got)
+	}
+}
+
+// TestNonVim_singleClickEntersInsertOnFormField: without vim mode a single
+// click on a form field enters insert mode (vim mode needs a double-click).
+func TestNonVim_singleClickEntersInsertOnFormField(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model.vimMode = false
+	model = resizeModel(model, 100, 24)
+
+	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 5, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.formMode.mode != formModeInsert {
+		t.Fatal("single click on form field did not enter insert mode")
+	}
+	for _, ch := range "renamed" {
+		model = updateColumn(model, tea.KeyPressMsg{Code: ch, Text: string(ch)})
+	}
+	if got := model.columnForm.values.name; !strings.Contains(got, "renamed") {
+		t.Fatalf("name = %q, want typed text", got)
+	}
+}
 
 func TestFormFieldIndexAt(t *testing.T) {
 	view := "┃ Name*\n┃ > value\n\n┃ Type*\n┃ > TEXT\n┃   INTEGER\n\n┃ Nullable\n┃\n┃   Yes     No\n\nenter next"

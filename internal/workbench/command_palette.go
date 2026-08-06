@@ -63,6 +63,12 @@ func newCommandPalette(m Model) *commandPalette {
 	}
 	items = append(items, commandPaletteItem{id: "theme.select", label: "theme", scope: scopeGlobal})
 
+	vimLabel := "vim mode: off"
+	if m.vimMode {
+		vimLabel = "vim mode: on"
+	}
+	items = append(items, commandPaletteItem{id: "vim.toggle", label: vimLabel, scope: scopeGlobal})
+
 	// Compute context title from current model state
 	contextTitle := contextLabel(m)
 	sort.Slice(items, func(i, j int) bool {

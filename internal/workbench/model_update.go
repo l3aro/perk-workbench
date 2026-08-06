@@ -402,9 +402,13 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.Focus = focusChat
 				m.queryLogPendingG = false
-				m.chat.chatMode = formModeNormal
 				m.editor.text.Blur()
 				m.blurTables()
+				if !m.vimMode {
+					m.chat.chatMode = formModeInsert
+					return m, m.chat.input.Focus()
+				}
+				m.chat.chatMode = formModeNormal
 				return m, nil
 			case m.keybindings.Match(message, "ai.toggle", []scope{scopeGlobal}):
 				m.toggleAI()

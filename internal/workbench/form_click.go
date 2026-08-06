@@ -94,14 +94,15 @@ func (m *Model) recordFormClick(x, y int) bool {
 }
 
 // clickFormField focuses the form field under a left-click and enters insert
-// mode on a double-click. focus moves the field cursor to the clicked field;
+// mode on a double-click (or on any click when vim mode is off — no mode
+// switch needed to type). focus moves the field cursor to the clicked field;
 // insert runs afterwards, in insert mode.
 func (m Model) clickFormField(x, y int, view string, scrollOffset, viewLine int, titles []string, focus, insert func(int) tea.Cmd) (tea.Model, tea.Cmd) {
 	field := formFieldIndexAt(view, scrollOffset, viewLine, titles)
 	if field < 0 {
 		return m, nil
 	}
-	if m.recordFormClick(x, y) {
+	if !m.vimMode || m.recordFormClick(x, y) {
 		return m, tea.Batch(focus(field), insert(field))
 	}
 	return m, focus(field)
@@ -132,9 +133,10 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 	case stateReady:
 		if m.chat.visible && (!m.compact && x >= m.schemaWidth+m.editorWidth || m.compact && m.Focus == focusChat) {
 			// handleLeftClick focuses the chat pane on any click; a
-			// double-click enters insert mode on the input. The keep-insert
-			// flag stops the trailing release from resetting the mode.
-			if m.recordFormClick(x, y) {
+			// double-click (or any click without vim mode) enters insert
+			// mode on the input. The keep-insert flag stops the trailing
+			// release from resetting the mode.
+			if !m.vimMode || m.recordFormClick(x, y) {
 				m.chatKeepInsert = true
 				m.chat.chatMode = formModeInsert
 				return m, m.chat.input.Focus()
@@ -187,10 +189,11 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 		case tabSQL:
 			// The editor box fills the first editorHeight lines of the pane:
-			// a single click focuses it (cursor appears), a double-click
-			// enters insert mode.
+			// a single click focuses it, and without vim mode the click
+			// also enters insert mode so typing works immediately. With vim
+			// mode, a double-click enters insert.
 			if !m.formActive() && contentY-3 < m.editorHeight {
-				if m.recordFormClick(x, y) {
+				if !m.vimMode || m.recordFormClick(x, y) {
 					return m, m.formMode.beginInsert(m.editor)
 				}
 				m.editor.text.Focus()
@@ -215,8 +218,8 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 }
 
 // handleFilterFormClick focuses the clicked filter row and starts editing it
-// on a double-click. The rendered view is: header line, one line per filter
-// row, then the Rows limit row.
+// on a double-click (or on any click without vim mode). The rendered view is:
+// header line, one line per filter row, then the Rows limit row.
 func (m Model) handleFilterFormClick(x, y, viewLine, workspaceLeft int) (tea.Model, tea.Cmd) {
 	f := m.browseFilterForm
 	row := viewLine + f.scrollOffset - 1
@@ -224,7 +227,7 @@ func (m Model) handleFilterFormClick(x, y, viewLine, workspaceLeft int) (tea.Mod
 		return m, nil
 	}
 	relX := x - workspaceLeft - 1 + f.horizontalOffset
-	if m.recordFormClick(x, y) {
+	if !m.vimMode || m.recordFormClick(x, y) {
 		f.row = row
 		if row < len(f.fields) {
 			f.cell = f.cellAtX(relX)

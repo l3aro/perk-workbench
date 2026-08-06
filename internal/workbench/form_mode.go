@@ -80,6 +80,53 @@ func (c *formModeController) focusButtons() {
 	c.buttonChoice = 0
 }
 
+// openForm runs a form's init command and, without vim mode, immediately
+// enters insert mode on the focused field so typing works without a mode
+// switch.
+func (m *Model) openForm(command tea.Cmd, focus func() tea.Cmd) tea.Cmd {
+	if m.vimMode {
+		return command
+	}
+	return tea.Batch(command, m.formMode.beginHuh(focus()))
+}
+
+// beginInsertForCurrentFocus transitions the active text input into insert
+// mode. Used when vim mode is switched off mid-session, so typing works
+// without a mode switch or a re-click. Widgets that are already editing are
+// left alone.
+func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
+	if m.State == stateReady && m.Focus == focusChat && m.chat.visible {
+		if m.chat.chatMode != formModeInsert {
+			m.chat.chatMode = formModeInsert
+			return m.chat.input.Focus()
+		}
+		return nil
+	}
+	if m.formMode.editing() {
+		return nil
+	}
+	switch {
+	case m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.form != nil && m.connection.confirmation == nil:
+		return m.formMode.beginHuh(m.connection.focusForm())
+	case m.sqlEditorActive() && !m.tableFormOpen():
+		return m.formMode.beginInsert(m.editor)
+	case m.columnForm.active():
+		return m.formMode.beginHuh(m.columnForm.focus())
+	case m.browseForm.active():
+		return m.formMode.beginHuh(m.browseForm.focus())
+	case m.browseFilterForm != nil:
+		command, _ := m.browseFilterForm.beginEdit()
+		return command
+	case m.indexForm.active():
+		return m.formMode.beginHuh(m.indexForm.focus())
+	case m.foreignKeyForm.active():
+		return m.formMode.beginHuh(m.foreignKeyForm.focus())
+	case m.tableFormOpen():
+		return m.formMode.beginHuh(m.tableForm.focus())
+	}
+	return nil
+}
+
 func isInsertModeKey(keyPress tea.KeyPressMsg) bool {
 	return keyPress.Key().Code == 'i'
 }
