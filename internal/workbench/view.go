@@ -660,7 +660,7 @@ func (m Model) footer() string {
 			parts = append(parts, m.Status)
 		}
 		if m.ReadOnly {
-			parts = append(parts, "RO")
+			parts = append(parts, "READONLY")
 		}
 		if m.databaseInfo.Product != "" && m.databaseInfo.Version != "" {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)

@@ -44,7 +44,7 @@ func (c recentConnection) Description() string {
 		desc = safeText(c.driverName() + ": " + c.Target)
 	}
 	if c.ReadOnly {
-		desc += " [RO]"
+		desc += " [READONLY]"
 	}
 	return desc
 }
