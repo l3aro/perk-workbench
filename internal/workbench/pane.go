@@ -247,12 +247,24 @@ func cropTableLine(line string, offset, width int) string {
 	return visible + strings.Repeat(" ", max(width-ansi.StringWidth(visible), 0))
 }
 
+// tableLineSegment returns the visible columns [offset, offset+width) of the
+// line. Clusters are included on their start column (a cluster may overhang
+// the right edge), matching the crop contract; ANSI sequences count as zero
+// width and are kept whole so colors survive cropping.
 func tableLineSegment(line string, offset, width int) string {
 	var visible strings.Builder
 	total := offset + width
 	lineWidth := 0
 	for len(line) > 0 {
 		cluster, _ := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
+		if strings.HasPrefix(cluster, "\x1b") {
+			n := ansiSequenceLen(line)
+			if lineWidth >= offset && lineWidth < total {
+				visible.WriteString(line[:n])
+			}
+			line = line[n:]
+			continue
+		}
 		clusterWidth := ansi.StringWidth(cluster)
 		if lineWidth+clusterWidth > total {
 			break
