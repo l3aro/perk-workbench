@@ -118,12 +118,9 @@ func (m *Model) selectedRecentConnection() (recentConnection, bool) {
 	return connection, ok
 }
 
-func (m *Model) editSelectedRecentConnection() tea.Cmd {
-	connection, ok := m.selectedRecentConnection()
-	if !ok {
-		m.Status = "select a connection profile"
-		return nil
-	}
+// loadRecentConnectionValues copies a saved profile into the connection
+// form's values, normalizing empty TLS modes to the disabled defaults.
+func (m *Model) loadRecentConnectionValues(connection recentConnection) {
 	m.connection.values.driver, m.connection.values.name, m.connection.values.target = connection.Driver, connection.Name, connection.Target
 	m.connection.values.id = connection.ID
 	m.connection.values.host, m.connection.values.port, m.connection.values.user = connection.Host, connection.Port, connection.User
@@ -137,10 +134,19 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	}
 	m.connection.values.readOnly = connection.ReadOnly
 	m.connection.values.pass = connection.Pass
+}
+
+func (m *Model) editSelectedRecentConnection() tea.Cmd {
+	connection, ok := m.selectedRecentConnection()
+	if !ok {
+		m.Status = "select a connection profile"
+		return nil
+	}
+	m.loadRecentConnectionValues(connection)
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.Status = "editing " + safeText(connection.Name)
-	return command
+	return m.openForm(command, m.connection.focusForm)
 }
 
 func (m *Model) deleteSelectedRecentConnection() {

@@ -209,7 +209,16 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 		}
 	case stateConnection:
-		if x < m.schemaWidth || m.connection.focus != connectionFocusForm || m.connection.form == nil || m.connection.confirmation != nil {
+		if m.compact {
+			if m.connection.focus != connectionFocusRecent {
+				return m, nil
+			}
+			return m.handleRecentClick(x, y)
+		}
+		if x < m.schemaWidth {
+			return m.handleRecentClick(x, y)
+		}
+		if m.connection.focus != connectionFocusForm || m.connection.form == nil || m.connection.confirmation != nil {
 			return m, nil
 		}
 		return m.clickFormField(x, y, m.connection.View(), 0, contentY-1, m.connection.fieldTitles(), m.connection.focusField, func(int) tea.Cmd { return m.formMode.beginHuh(m.connection.focusForm()) })

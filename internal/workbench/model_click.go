@@ -118,6 +118,37 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleRecentClick maps a click on the recent-connections list to its item:
+// a single click selects the profile, a double click loads it into the
+// connection form (matching the Enter keybinding). Presses only — the
+// trailing release routes through handleLeftClick, which only switches pane
+// focus.
+func (m Model) handleRecentClick(x, y int) (tea.Model, tea.Cmd) {
+	contentY := y - 1
+	// Pane top border at contentY=0; the list renders its status bar (3
+	// lines) above the items. Filtering inserts the filter prompt line.
+	itemOffset := 4
+	if m.recent.SettingFilter() {
+		itemOffset = 5
+	}
+	itemLine := contentY - itemOffset
+	if itemLine < 0 {
+		return m, nil
+	}
+	itemOnPage := itemLine / 3 // DefaultDelegate: Height 2 + Spacing 1
+	items := m.recent.VisibleItems()
+	start, end := m.recent.Paginator.GetSliceBounds(len(items))
+	if start+itemOnPage >= end {
+		return m, nil
+	}
+	m.recent.Select(start + itemOnPage)
+	if !m.recordFormClick(x, y) {
+		return m, nil
+	}
+	// Double-click: load the profile into the form, matching Enter.
+	return m, m.editSelectedRecentConnection()
+}
+
 func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	if m.Focus != focusWorkspace {
 		m.Focus = focusWorkspace
