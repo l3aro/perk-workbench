@@ -26,7 +26,7 @@ func (m *Model) layout(width, height int) {
 		m.queryLogHeight = contentHeight
 	}
 	if !m.compact {
-		m.schemaWidth = 30
+		m.schemaWidth = 44
 		if m.State == stateReady && m.chat.visible {
 			m.chatWidth = chatPaneWidth
 			m.editorWidth = max(m.width-m.schemaWidth-m.chatWidth-4, 1)
@@ -39,15 +39,17 @@ func (m *Model) layout(width, height int) {
 	}
 	m.editorHeight = min(m.workspaceHeight, sqlEditorRows+2)
 	m.resultsHeight = max(m.workspaceHeight-m.editorHeight, 0)
-	m.schema.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
+	m.schema.SetSize(max(m.schemaWidth-4, 0), max(contentHeight-2, 0))
 	m.picker.SetSize(max(m.width-2, 0), max(contentHeight-2, 0))
 	connectionWidth := m.width
 	if !m.compact {
-		connectionWidth = m.editorWidth
+		connectionWidth = max(m.width-m.schemaWidth, 1)
 	}
 	m.connection.setWidth(max(connectionWidth-4, 1))
 	m.connection.setHeight(max(m.height-8, 1))
-	m.recent.SetSize(max(m.schemaWidth-2, 0), max(contentHeight-2, 0))
+	// The profiles list spans the pane body exactly; its bottom row is
+	// reserved for the pane action hints (see recentPaneView).
+	m.recent.SetSize(max(m.schemaWidth-4, 0), max(contentHeight-3, 0))
 	m.editor.setSize(max(m.editorWidth-8, 1), max(m.editorHeight-4, 1))
 	m.resizeChat()
 	m.tableViewportWidth = max(m.editorWidth-4, 1)

@@ -51,7 +51,7 @@ func TestBrowseForm_cellEditorUsesModelWidth(t *testing.T) {
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 
-	if got, want := model.cellEditor.width, 80; got != want {
+	if got, want := model.cellEditor.width, 66; got != want {
 		t.Fatalf("cell editor width = %d, want %d", got, want)
 	}
 }

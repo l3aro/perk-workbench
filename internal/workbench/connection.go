@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"github.com/l3aro/perk-workbench/internal/chrome"
 	"github.com/l3aro/perk-workbench/internal/log"
 )
 
@@ -344,4 +345,10 @@ func (m Model) connectionPaneView(height int) string {
 	content := m.connection.View()
 	footer := m.modeBadge()
 	return content + strings.Repeat("\n", max(height-strings.Count(content, "\n")-1, 1)) + footer
+}
+
+// recentPaneView renders the profiles list with its pane-local action hints;
+// the layout reserves one row for the hint line (see layout).
+func (m Model) recentPaneView() string {
+	return m.recent.View() + "\n" + chrome.PaneStatus("a add | e edit | d delete | / filter", "", max(m.schemaWidth-4, 0))
 }

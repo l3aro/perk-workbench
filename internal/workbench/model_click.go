@@ -1,12 +1,14 @@
 package workbench
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const doubleClickTimeout = 500 * time.Millisecond
@@ -177,15 +179,78 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// schemaStatusText mirrors the list's statusView text (filter chip, item
+// count, filtered count) so the offset can predict how the pane body wraps
+// it.
+func (m Model) schemaStatusText() string {
+	name := "items"
+	if n := len(m.schema.VisibleItems()); n == 1 {
+		name = "item"
+	}
+	var status string
+	if m.schema.SettingFilter() && len(m.schema.VisibleItems()) == 0 {
+		status = "Nothing matched"
+	} else {
+		status = fmt.Sprintf("%d %s", len(m.schema.VisibleItems()), name)
+		if !m.schema.SettingFilter() && m.schema.IsFiltered() {
+			filter := ansi.Truncate(strings.TrimSpace(m.schema.FilterValue()), 10, "…")
+			status = fmt.Sprintf("“%s” %s", filter, status)
+		}
+	}
+	if filtered := len(m.schema.Items()) - len(m.schema.VisibleItems()); filtered > 0 {
+		status += fmt.Sprintf(" • %d filtered", filtered)
+	}
+	return status
+}
+
+// statusWrapLines counts the lines the status text occupies when the pane
+// body wraps it at the given inner width, mirroring lipgloss's word wrap
+// (plus the 2 leading cells of the list's StatusBar style). The first word
+// sits directly after the padding — no joining space before it.
+func statusWrapLines(status string, inner int) int {
+	if inner < 1 {
+		return 1
+	}
+	words := strings.Fields(status)
+	if len(words) == 0 {
+		return 1
+	}
+	lines := 1
+	width := 2 + ansi.StringWidth(words[0])
+	for _, word := range words[1:] {
+		w := ansi.StringWidth(word)
+		if w > inner { // a single word longer than the line hard-wraps
+			lines += w / inner
+			width = w % inner
+			continue
+		}
+		if width+1+w > inner {
+			lines++
+			width = w
+		} else {
+			width += 1 + w
+		}
+	}
+	return lines
+}
+
+// schemaItemOffset returns the content Y of the first schema item line (the
+// pane border plus the list's title/status sections). The wrapped status
+// line can take several rows on narrow panes; the open filter input adds
+// one more line.
+func (m Model) schemaItemOffset() int {
+	offset := 3 + statusWrapLines(m.schemaStatusText(), m.schemaWidth-6)
+	if m.schema.SettingFilter() {
+		offset++
+	}
+	return offset
+}
+
 // schemaItemAt maps a schema-pane Y coordinate to its item, using the same
 // visible/filter/pagination mapping as the rendered sidebar, and selects it.
 func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
-	// contentY = terminal Y - 1 (after header). Filtering adds one status
-	// line above the visible list items.
-	itemOffset := 4
-	if m.schema.IsFiltered() || m.schema.SettingFilter() {
-		itemOffset = 5
-	}
+	// contentY = terminal Y - 1 (after header).
+	itemOffset := m.schemaItemOffset()
 	itemY := contentY - itemOffset
 	if itemY < 0 {
 		return schemaItem{}, false
@@ -206,10 +271,7 @@ func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
 // schemaRowY returns the screen Y of the schema list item at the given
 // index, clamped to the visible window.
 func (m Model) schemaRowY(index int) int {
-	itemOffset := 4
-	if m.schema.IsFiltered() || m.schema.SettingFilter() {
-		itemOffset = 5
-	}
+	itemOffset := m.schemaItemOffset()
 	items := m.schema.VisibleItems()
 	start, _ := m.schema.Paginator.GetSliceBounds(len(items))
 	row := itemOffset + (index - start)

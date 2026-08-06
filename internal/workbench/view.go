@@ -455,12 +455,12 @@ func (m Model) contentView() string {
 		if m.compact {
 			title, content := "Connection <2>", m.connectionPaneView(max(m.height-6, 0))
 			if m.connection.focus == connectionFocusRecent {
-				title, content = "Profiles <1>", m.recent.View()
+				title, content = "Profiles <1>", m.recentPaneView()
 			}
 			return titledPane(title, content, paneStyle(true).Width(max(m.width-2, 0)).MaxWidth(max(m.width-2, 0)).Height(max(m.height-4, 0)).MaxHeight(max(m.height-4, 0)))
 		}
-		left := titledPane("Profiles <1>", m.recent.View(), paneStyle(m.connection.focus == connectionFocusRecent).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)))
-		right := titledPane("Connection <2>", m.connectionPaneView(max(m.height-6, 0)), paneStyle(m.connection.focus != connectionFocusRecent).Width(max(m.editorWidth-2, 0)).Height(max(m.height-4, 0)))
+		left := titledPane("Profiles <1>", m.recentPaneView(), paneStyle(m.connection.focus == connectionFocusRecent).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)))
+		right := titledPane("Connection <2>", m.connectionPaneView(max(m.height-6, 0)), paneStyle(m.connection.focus != connectionFocusRecent).Width(max(m.width-m.schemaWidth, 0)).Height(max(m.height-4, 0)))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	case statePicking:
 		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(m.picker.View())
@@ -653,7 +653,7 @@ func (m Model) footer() string {
 	if m.State == stateConnection {
 		quitKey := m.keybindings.DisplayKey("app.quit")
 		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
-		return safeText(m.Status + " | 1 profiles | 2 form | tab controls | a add | e edit | d delete | / filter | " + quitHint)
+		return safeText(m.Status + " | 1 profiles | 2 form | tab controls | " + quitHint)
 	}
 	if m.State == stateReady {
 		quitKey := m.keybindings.DisplayKey("app.quit_dialog")

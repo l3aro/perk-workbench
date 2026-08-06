@@ -927,17 +927,17 @@ func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 
 	model.SetAI(fakeChatClient{}, nil)
 	model.layout(140, 32)
-	if !model.chat.visible || model.editorWidth != 72 {
+	if !model.chat.visible || model.editorWidth != 58 {
 		t.Fatalf("AI pane = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
 	}
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl, Text: "g"})
 	model = updated.(Model)
-	if model.chat.visible || model.editorWidth != 108 {
+	if model.chat.visible || model.editorWidth != 94 {
 		t.Fatalf("AI pane after toggle = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl, Text: "g"})
 	model = updated.(Model)
-	if !model.chat.visible || model.editorWidth != 72 {
+	if !model.chat.visible || model.editorWidth != 58 {
 		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
 	}
 }

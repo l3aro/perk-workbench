@@ -69,11 +69,11 @@ func TestResize_wide_layout_uses_plan_formula(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 
 	// Then
-	if got := model.schemaWidth; got != 30 {
-		t.Errorf("schema width = %d, want 30", got)
+	if got := model.schemaWidth; got != 44 {
+		t.Errorf("schema width = %d, want 44", got)
 	}
-	if got := model.editorWidth; got != 68 {
-		t.Errorf("workspace width = %d, want 68 with stacked query log pane", got)
+	if got := model.editorWidth; got != 54 {
+		t.Errorf("workspace width = %d, want 54 with stacked query log pane", got)
 	}
 	if got := model.chatWidth; got != 0 {
 		t.Errorf("chat width = %d, want hidden without an Assistant", got)

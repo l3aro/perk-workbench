@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -381,6 +382,145 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
 				t.Fatalf("filtered click selected %q, want queue_1", model.SelectedTable)
 			}
 		})
+	}
+}
+
+// TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact guards the
+// committed-filter offset on a narrow compact layout: the filter chip and
+// item count share the status line, which wraps to two lines there, so the
+// item rows shift down by one.
+func TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 30, 24)
+	if !model.compact {
+		t.Fatal("30-wide model is not compact")
+	}
+	model.State, model.Focus = stateReady, focusSchema
+	model.schema.SetItems([]list.Item{
+		schemaItem{title: "accounts", description: "table"},
+		schemaItem{title: "queue_1", description: "table"},
+	})
+
+	// Commit the filter: the "“q1” 1 item • 1 filtered" status line wraps on
+	// the 26-wide list.
+	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	clickY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "queue_1") {
+			clickY = y
+			break
+		}
+	}
+	if clickY < 0 {
+		t.Fatal("filtered schema does not render queue_1")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: clickY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.SelectedTable != "queue_1" {
+		t.Fatalf("compact filtered click selected %q, want queue_1", model.SelectedTable)
+	}
+}
+
+// TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow guards
+// the wrap count beyond one extra line: at a 16-wide pane the committed
+// status (“q1” 1 item • 9 filtered) wraps to three rows, shifting the items
+// down by two.
+func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 16, 24)
+	if !model.compact {
+		t.Fatal("16-wide model is not compact")
+	}
+	model.State, model.Focus = stateReady, focusSchema
+	items := []list.Item{schemaItem{title: "queue_1", description: "table"}}
+	for i := range 9 {
+		items = append(items, schemaItem{title: fmt.Sprintf("other_%d", i), description: "table"})
+	}
+	model.schema.SetItems(items)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	clickY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "queue_1") {
+			clickY = y
+			break
+		}
+	}
+	if clickY < 0 {
+		t.Fatal("filtered schema does not render queue_1")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: clickY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.SelectedTable != "queue_1" {
+		t.Fatalf("narrow filtered click selected %q, want queue_1", model.SelectedTable)
+	}
+}
+
+// TestFocus_schemaFilteredMouseClickSelectsRenderedTableExactFit guards the
+// exact-fit boundary: at a 32-wide pane the committed status
+// (“q1” 1 item • 1 filtered, 24 chars + 2 padding) fits the 26-wide inner
+// exactly on one line; overcounting the leading padding would shift the
+// items down and miss the click.
+func TestFocus_schemaFilteredMouseClickSelectsRenderedTableExactFit(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 32, 24)
+	if !model.compact {
+		t.Fatal("32-wide model is not compact")
+	}
+	model.State, model.Focus = stateReady, focusSchema
+	model.schema.SetItems([]list.Item{
+		schemaItem{title: "accounts", description: "table"},
+		schemaItem{title: "queue_1", description: "table"},
+	})
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	clickY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "queue_1") {
+			clickY = y
+			break
+		}
+	}
+	if clickY < 0 {
+		t.Fatal("filtered schema does not render queue_1")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: clickY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.SelectedTable != "queue_1" {
+		t.Fatalf("exact-fit filtered click selected %q, want queue_1", model.SelectedTable)
 	}
 }
 

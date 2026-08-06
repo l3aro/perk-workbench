@@ -104,9 +104,9 @@ func TestColumnForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 
 	// Mouse-enter insert mode on the Name value line (view line 1, y=5).
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 5, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 5, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeInsert {
 		t.Fatal("double click did not enter insert mode")
@@ -132,9 +132,9 @@ func TestIndexForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 
 	// Mouse-enter insert mode on the Name value line (view line 1, y=5).
-	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 5, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 5, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.formMode.mode != formModeInsert {
 		t.Fatal("double click did not enter insert mode")
@@ -282,7 +282,7 @@ func TestFormButtonPress_swallowsTrailingRelease(t *testing.T) {
 	}
 
 	// The swallow is one-shot: a later real click presses normally.
-	updated, _ = model.Update(tea.MouseClickMsg{X: 40, Y: 6, Button: tea.MouseLeft})
+	updated, _ = model.Update(tea.MouseClickMsg{X: model.schemaWidth + 10, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if got := model.browse.Cursor(); got == cursor {
 		t.Fatal("press after the swallow did not click the browse table")
