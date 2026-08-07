@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/huh/v2"
@@ -10,6 +11,14 @@ import (
 func (f *columnForm) selectType(index int, values []string) {
 	if index < 0 || index >= len(f.typeOptions) {
 		return
+	}
+	// Drop an attribute picked from the previous type's option set (e.g.
+	// AUTO_INCREMENT) when the new type no longer offers it, instead of
+	// emitting invalid DDL like "TEXT AUTO_INCREMENT". Free-text attributes
+	// (COMMENT 'x') and values seeded from the database survive.
+	attribute := f.values.attributes
+	if attribute != "" && slices.Contains(f.typeOptions[f.typeIndex()].Attributes, attribute) && !slices.Contains(f.typeOptions[index].Attributes, attribute) {
+		f.values.attributes = ""
 	}
 	f.values.typeName = f.typeOptions[index].Name
 	parameters := f.typeOptions[index].Parameters

@@ -372,9 +372,32 @@ func (f *columnForm) rebuildForm() {
 	fields = append(fields,
 		huh.NewConfirm().Key("nullable").Title("Nullable").Affirmative("Yes").Negative("No").Value(&f.values.nullable),
 		newEditableInput(huh.NewInput().Key("default").Title("Default").Value(&f.values.defaultValue), &f.values.defaultValue),
-		newEditableInput(huh.NewInput().Key("attributes").Title("Attributes").Value(&f.values.attributes), &f.values.attributes),
+		f.attributesField(),
 	)
 	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
+}
+
+// attributesField returns the attributes form field: a select of the
+// driver/type-specific attribute options when the selected type declares
+// any, otherwise a free-text input for database-specific attributes.
+func (f columnForm) attributesField() huh.Field {
+	options := f.typeOptions[f.typeIndex()].Attributes
+	if len(options) == 0 {
+		return newEditableInput(huh.NewInput().Key("attributes").Title("Attributes").Value(&f.values.attributes), &f.values.attributes)
+	}
+	choices := make([]huh.Option[string], 0, len(options)+2)
+	choices = append(choices, huh.NewOption("None", ""))
+	seen := false
+	for _, option := range options {
+		if option == f.values.attributes {
+			seen = true
+		}
+		choices = append(choices, huh.NewOption(option, option))
+	}
+	if !seen && strings.TrimSpace(f.values.attributes) != "" {
+		choices = append(choices, huh.NewOption(f.values.attributes, f.values.attributes))
+	}
+	return huh.NewSelect[string]().Key("attributes").Title("Attributes").Options(choices...).Value(&f.values.attributes)
 }
 
 func requiredColumnName(value string) error {

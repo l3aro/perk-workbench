@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 )
@@ -351,6 +352,114 @@ func TestStructureForm_fieldCountIncludesAttributes(t *testing.T) {
 	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if want := len(form.values.parameters) + 5; form.fieldCount() != want {
 		t.Fatalf("fieldCount() = %d, want %d", form.fieldCount(), want)
+	}
+}
+
+func TestStructureForm_attributesFieldIsSelectWhenTypeDeclaresOptions(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	_ = form.form.Init()
+
+	for range form.fieldCount() - 1 {
+		_ = form.nextField()
+	}
+	field := form.form.GetFocusedField()
+	if got, want := field.GetKey(), "attributes"; got != want {
+		t.Fatalf("last field key = %q, want %q", got, want)
+	}
+	if _, ok := field.(*huh.Select[string]); !ok {
+		t.Fatalf("attributes field = %T, want *huh.Select[string]", field)
+	}
+}
+
+func TestStructureForm_attributesFieldStaysInputWithoutOptions(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	_ = form.form.Init()
+
+	for range form.fieldCount() - 1 {
+		_ = form.nextField()
+	}
+	if _, ok := form.form.GetFocusedField().(*huh.Select[string]); ok {
+		t.Fatal("attributes field = *huh.Select[string], want editable input for SQLite TEXT")
+	}
+}
+
+func TestStructureForm_attributesSelectRebuildsWhenTypeChanges(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "value", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	form.selectType(2, nil) // BIGINT
+	form.rebuildForm()
+	_ = form.form.Init()
+
+	for range form.fieldCount() - 1 {
+		_ = form.nextField()
+	}
+	if _, ok := form.form.GetFocusedField().(*huh.Select[string]); !ok {
+		t.Fatalf("attributes field after type change = %T, want *huh.Select[string]", form.form.GetFocusedField())
+	}
+}
+
+func TestStructureForm_attributesSelectPreservesSeededValueOutsideOptions(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT", Attributes: "IDENTITY ALWAYS"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	if got, want := form.values.attributes, "IDENTITY ALWAYS"; got != want {
+		t.Fatalf("form attributes = %q, want %q", got, want)
+	}
+	change, err := form.change()
+	if err != nil {
+		t.Fatalf("change() error = %v", err)
+	}
+	if change.Attributes != nil {
+		t.Fatalf("change attributes = %v, want nil (unchanged)", change.Attributes)
+	}
+}
+
+func typeIndexByName(t *testing.T, types []sharedsql.ColumnType, name string) int {
+	t.Helper()
+	for index, typeDefinition := range types {
+		if typeDefinition.Name == name {
+			return index
+		}
+	}
+	t.Fatalf("type %q not in catalog", name)
+	return -1
+}
+
+func TestStructureForm_attributesResetWhenTypeChangeDropsOption(t *testing.T) {
+	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
+	form.values.attributes = "AUTO_INCREMENT"
+
+	form.selectType(typeIndexByName(t, types, "TEXT"), nil)
+	if got := form.values.attributes; got != "" {
+		t.Fatalf("attributes after INT->TEXT = %q, want empty", got)
+	}
+	form.rebuildForm()
+	def, err := form.columnDef()
+	if err != nil {
+		t.Fatalf("columnDef() error = %v", err)
+	}
+	if def.Attributes != nil {
+		t.Fatalf("columnDef attributes = %v, want nil (no stale AUTO_INCREMENT)", def.Attributes)
+	}
+}
+
+func TestStructureForm_attributesKeptWhenTypeChangeKeepsOption(t *testing.T) {
+	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
+	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
+	form.values.attributes = "AUTO_INCREMENT"
+
+	form.selectType(typeIndexByName(t, types, "BIGINT"), nil)
+	if got, want := form.values.attributes, "AUTO_INCREMENT"; got != want {
+		t.Fatalf("attributes after INT->BIGINT = %q, want %q", got, want)
+	}
+}
+
+func TestStructureForm_attributesKeptWhenTypeChangeIsFreeText(t *testing.T) {
+	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
+	form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "VARCHAR(50)"}, types)
+	form.values.attributes = "COMMENT 'updated'"
+
+	form.selectType(typeIndexByName(t, types, "TEXT"), nil)
+	if got, want := form.values.attributes, "COMMENT 'updated'"; got != want {
+		t.Fatalf("free-text attributes after VARCHAR->TEXT = %q, want %q", got, want)
 	}
 }
 
