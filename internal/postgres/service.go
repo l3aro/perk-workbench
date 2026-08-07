@@ -47,33 +47,93 @@ func (s *Service) Close() error {
 
 func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 
+// ListSchema reports every connectable database as a root, followed by the
+// connected database's schemas and tables. PostgreSQL can only address
+// objects in the current database, so only its children are listed; the
+// other roots exist so the sidebar mirrors MySQL (where created databases
+// appear immediately) without pretending to browse into them.
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
+	var current string
+	if err := s.db.QueryRowContext(ctx, "SELECT current_database()").Scan(&current); err != nil {
+		return nil, fmt.Errorf("reading current database: %w", err)
+	}
+	// Schemas (even empty ones) and their tables, limited to the connected
+	// database; the sidebar qualifies tables as schema.table. Built first
+	// so the children can be appended right after their root.
+	children, err := s.listCurrentDatabase(ctx, current)
+	if err != nil {
+		return nil, err
+	}
+	objects := []sharedsql.SchemaObject{}
+	databaseRows, err := s.db.QueryContext(ctx, `
+		SELECT datname
+		FROM pg_database
+		WHERE datallowconn
+		ORDER BY datname <> current_database(), datname`)
+	if err != nil {
+		return nil, fmt.Errorf("listing databases: %w", err)
+	}
+	first := true
+	for databaseRows.Next() {
+		var database string
+		if err := databaseRows.Scan(&database); err != nil {
+			return nil, sharedsql.CloseRows(databaseRows, "scanning database", err)
+		}
+		database = sharedsql.SanitizeDisplay(database)
+		objects = append(objects, sharedsql.SchemaObject{Database: database, Type: "database", Name: database})
+		if first {
+			// The connected database sorts first; its children follow.
+			objects = append(objects, children...)
+			first = false
+		}
+	}
+	if err := databaseRows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(databaseRows, "iterating databases", err)
+	}
+	if err := databaseRows.Close(); err != nil {
+		return nil, fmt.Errorf("closing database rows: %w", err)
+	}
+	return objects, nil
+}
+
+func (s *Service) listCurrentDatabase(ctx context.Context, current string) ([]sharedsql.SchemaObject, error) {
+	objects := []sharedsql.SchemaObject{}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT table_schema, table_type, table_name
-		FROM information_schema.tables
-		WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-			AND table_schema NOT LIKE 'pg_toast%'
-		ORDER BY table_schema, table_type, table_name`)
+		SELECT schemata.schema_name, tables.table_type, tables.table_name
+		FROM information_schema.schemata AS schemata
+		LEFT JOIN information_schema.tables AS tables
+			ON tables.table_schema = schemata.schema_name
+			AND tables.table_type IN ('BASE TABLE', 'VIEW')
+		WHERE schemata.schema_name NOT IN ('information_schema', 'pg_catalog')
+			AND schemata.schema_name NOT LIKE 'pg_toast%'
+			AND schemata.schema_name NOT LIKE 'pg_temp%'
+		ORDER BY schemata.schema_name, tables.table_type, tables.table_name`)
 	if err != nil {
 		return nil, fmt.Errorf("listing schema: %w", err)
 	}
-	objects := []sharedsql.SchemaObject{}
 	lastSchema := ""
 	for rows.Next() {
-		var schema, tableType, tableName string
+		var schema string
+		var tableType, tableName stdsql.NullString
 		if err := rows.Scan(&schema, &tableType, &tableName); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning schema", err)
 		}
 		schema = sharedsql.SanitizeDisplay(schema)
 		if schema != lastSchema {
-			objects = append(objects, sharedsql.SchemaObject{Database: schema, Type: "database", Name: schema})
+			objects = append(objects, sharedsql.SchemaObject{Database: current, Type: "schema", Name: schema})
 			lastSchema = schema
 		}
-		objectType := "view"
-		if tableType == "BASE TABLE" {
-			objectType = "table"
+		if tableName.Valid {
+			objectType := "view"
+			if tableType.String == "BASE TABLE" {
+				objectType = "table"
+			}
+			objects = append(objects, sharedsql.SchemaObject{
+				Database: current,
+				Type:     objectType,
+				Name:     schema + "." + sharedsql.SanitizeDisplay(tableName.String),
+			})
 		}
-		objects = append(objects, sharedsql.SchemaObject{Database: schema, Type: objectType, Name: sharedsql.SanitizeDisplay(tableName)})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, sharedsql.CloseRows(rows, "iterating schema", err)
