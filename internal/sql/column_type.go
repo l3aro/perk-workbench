@@ -104,7 +104,8 @@ func IsNumericColumnType(typeName string) bool {
 	typeName, _, _ = strings.Cut(typeName, "(")
 	typeName, _, _ = strings.Cut(typeName, " ")
 	switch typeName {
-	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL":
+	case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT", "LONG",
+		"DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL":
 		return true
 	default:
 		return false

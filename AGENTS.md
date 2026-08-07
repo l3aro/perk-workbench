@@ -3,7 +3,7 @@
 ## Scope
 
 - Go 1.25 module; the executable is `cmd/perk-workbench`. `internal/workbench` owns Bubble Tea state, layout decisions, and async commands. `internal/chrome` owns stateless terminal rendering helpers and must not import `workbench` or hold Bubble Tea state.
-- `internal/database` selects SQLite, MySQL, or PostgreSQL; `internal/sql` defines their shared service and display contracts. Keep driver-specific SQL in `internal/sqlite`, `internal/mysql`, or `internal/postgres`.
+- `internal/database` selects SQLite, MySQL, PostgreSQL, or MongoDB; `internal/sql` defines their shared service and display contracts. Keep driver-specific SQL in `internal/sqlite`, `internal/mysql`, or `internal/postgres`, and mongosh-style statement handling in `internal/mongodb`.
 - Preserve the SQLite contract: only existing files open (`:memory:` is the exception); non-memory targets use read-write mode and must not create files. The shared statement validator accepts one statement and rejects trigger creation.
 - Preserve query behavior in `workbench` and driver services: execution is asynchronous and cancelable, failed queries retain the prior result table, and display results cap at 500 rows and 300 runes per cell.
 

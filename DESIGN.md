@@ -2,7 +2,7 @@
 
 ## Goal
 
-Perk Workbench is an interactive terminal database client. It opens one SQLite, MySQL, or PostgreSQL target; exposes its schema; executes SQL; and supports table browsing and schema changes through a shared driver contract.
+Perk Workbench is an interactive terminal database client. It opens one SQLite, MySQL, PostgreSQL, or MongoDB target; exposes its schema; executes SQL (or mongosh-style statements for MongoDB); and supports table browsing and schema changes through a shared driver contract.
 
 ## Non-goals
 
@@ -21,9 +21,9 @@ internal/workbench  <-- Bubble Tea state, input, layout, async commands
         |                         |
         |                         +--> internal/ai (optional chat)
         v
-internal/database -- target routing --> sqlite | mysql | postgres
-        |                                      \       |       /
-        +--------------------------------------> internal/sql
+internal/database -- target routing --> sqlite | mysql | postgres | mongodb
+        |                                      \       |       /        |
+        +--------------------------------------> internal/sql <---------+
 
 internal/core      query lifecycle, focus, and tab state
 internal/chrome    stateless terminal rendering
@@ -41,6 +41,7 @@ internal/log       event types
 
 - `mysql:<DSN>` → MySQL
 - `postgres:`, `postgres://`, or `postgresql://` → PostgreSQL
+- `mongo:` or `mongodb://` / `mongodb+srv://` → MongoDB (database from the URI path, default `test`)
 - everything else → SQLite
 
 It opens the service, lists the initial schema, and returns both atomically. On schema-list failure it closes the service. SQLite accepts `:memory:`; every other target must resolve to an existing regular file.
@@ -56,6 +57,8 @@ It opens the service, lists the initial schema, and returns both atomically. On 
 5. A pending quit completes after the active query finishes or cancels.
 
 All services validate ad-hoc statements with `sql.ValidateStatement`: the input must contain one non-empty statement, may have one trailing semicolon, and may not create a trigger. Read-only execution is selected by `--read-only` in the workbench, not by UI convention.
+
+The MongoDB driver replaces SQL with a small mongosh-style DSL (`db.<collection>.find(...)`, `countDocuments`, `aggregate`, `distinct`, writes, `drop`, `createIndex`, `show collections`/`show dbs`) and validates it with its own parser. Collections map to tables: `ListSchema` advertises only the connected database and its collections (table operations carry no database, so cross-database roots would silently target the connected DB), `TableInfo` reports fields sampled from up to 100 documents with `_id` as the implicit primary key, and indexes are real MongoDB indexes. Result tables show compact mongosh-style cells; the cell viewer and copy action render object and array cells as valid relaxed extended JSON so values paste straight into mongosh, mongoimport, or jq. Foreign keys and column DDL have no MongoDB equivalent and return explicit errors. The browse row edit/delete flows emit SQL and are not supported on MongoDB connections yet.
 
 `sql.CollectRows` retains at most 500 display rows. It stores both display-safe and full cell values so the cell viewer can show original content; rendered cells use the shared display sanitizer and 300-rune cap.
 

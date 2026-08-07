@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/l3aro/perk-workbench/internal/mongodb"
 	"github.com/l3aro/perk-workbench/internal/mysql"
 	"github.com/l3aro/perk-workbench/internal/postgres"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -16,6 +17,16 @@ import (
 
 // Open connects to target and returns its schema for the initial workbench view.
 func Open(ctx context.Context, target string) (sharedsql.Opened, error) {
+	if dsn, ok := strings.CutPrefix(target, "mongo:"); ok {
+		return open(ctx, dsn, func(ctx context.Context, target string) (sharedsql.Service, error) {
+			return mongodb.Open(ctx, target)
+		})
+	}
+	if strings.HasPrefix(target, "mongodb://") || strings.HasPrefix(target, "mongodb+srv://") {
+		return open(ctx, target, func(ctx context.Context, target string) (sharedsql.Service, error) {
+			return mongodb.Open(ctx, target)
+		})
+	}
 	if dsn, ok := strings.CutPrefix(target, "mysql:"); ok {
 		return open(ctx, dsn, func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return mysql.Open(ctx, target)

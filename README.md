@@ -31,12 +31,15 @@ npm install -g perk-workbench
 perk-workbench path/to/database.db
 ```
 
-Connect to MySQL and PostgreSQL:
+Connect to MySQL, PostgreSQL, and MongoDB:
 
 ```bash
 perk-workbench 'mysql:user:pass@tcp(host:3306)/db'
 perk-workbench 'postgres://user:pass@host:5432/db'
+perk-workbench 'mongodb://user:pass@host:27017/db'
 ```
+
+MongoDB connections accept mongosh-style statements in the query editor (`db.restaurants.find({"borough": "Bronx"}).limit(5)`, `countDocuments`, `aggregate`, `distinct`, writes, and index DDL); the schema pane lists collections, and the structure tab shows fields sampled from the collection.
 
 Or configure the connection with Laravel-compatible environment variables, then launch without an argument:
 
@@ -66,9 +69,9 @@ Accepted `DB_CONNECTION` values are `sqlite`, `mysql`, and `pgsql`. SQLite requi
 | | |
 |---|---|
 | **Browse schemas** | Tables, views, columns, types, indexes, foreign keys |
-| **Run queries** | Write, execute, and cancel SQL queries |
+| **Run queries** | Write, execute, and cancel SQL or mongosh-style queries |
 | **AI assist** | Natural language to SQL (OpenAI, Claude, Gemini) |
-| **3 backends** | SQLite, MySQL, PostgreSQL via a shared query interface |
+| **4 backends** | SQLite, MySQL, PostgreSQL, MongoDB via a shared query interface |
 | **Configurable** | TLS support for MySQL/Postgres, custom keybindings, `config.json` defaults |
 
 ## Architecture
@@ -83,6 +86,7 @@ internal/
 ├── sqlite/            SQLite driver (modernc.org/sqlite, no CGO)
 ├── mysql/             MySQL driver
 ├── postgres/          PostgreSQL driver
+├── mongodb/           MongoDB driver (mongosh-style statements)
 ├── chrome/            Stateless terminal rendering helpers
 ├── ai/                AI clients (OpenAI, Anthropic, Gemini)
 ├── clipboard/         System clipboard access
@@ -104,6 +108,7 @@ Demo databases for testing:
 make sqlite      # Chinook (SQLite)
 make mysql       # Office demo (MySQL)
 make postgres    # Employees demo (PostgreSQL)
+make mongo       # Restaurants demo (MongoDB)
 ```
 
 ## License

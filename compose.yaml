@@ -21,6 +21,25 @@ services:
       - ${DEMO_DIR:-./demo}/employees-postgres.sql.gz:/init-data/employees.sql.gz:ro
       - ${DEMO_DIR:-./demo}/init-employees.sh:/docker-entrypoint-initdb.d/init-employees.sh:ro
 
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: restaurants
+    volumes:
+      - mongo-data:/data/db
+      - ${DEMO_DIR:-./demo}/restaurants.json:/demo/restaurants.json:ro
+      - ${DEMO_DIR:-./demo}/init-restaurants.sh:/docker-entrypoint-initdb.d/init-restaurants.sh:ro
+    healthcheck:
+      # Unhealthy until the one-shot init import finishes seeding the
+      # restaurants collection, so `make mongo` never opens an empty schema.
+      test: ["CMD", "mongosh", "--quiet", "--eval", "const n = db.getSiblingDB('restaurants').restaurants.estimatedDocumentCount(); quit(n === 25359 ? 0 : 1)"]
+      start_period: 20s
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
   dev:
     image: golang:1.25
     working_dir: /workspace
@@ -42,3 +61,4 @@ services:
 volumes:
   go-build-cache:
   go-mod-cache:
+  mongo-data:
