@@ -31,6 +31,7 @@ var defaultDefs = []commandDef{
 	// ── Schema tab (view) ───────────────────────────────────────
 	{id: "schema.select_table", scope: scopeView, keys: []string{"enter"}, label: "open"},
 	{id: "schema.add_table", scope: scopeView, keys: []string{"a"}, label: "add table"},
+	{id: "schema.create_database", scope: scopeView, keys: []string{"A"}, label: "create database"},
 	{id: "schema.rename_table", scope: scopeView, keys: []string{"m", "r"}, label: "rename table"},
 	{id: "schema.delete_table", scope: scopeView, keys: []string{"d"}, label: "delete table"},
 	{id: "schema.context_menu", scope: scopeView, keys: []string{","}, label: "context menu"},

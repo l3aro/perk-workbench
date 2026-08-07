@@ -278,19 +278,75 @@ func (m Model) schemaRowY(index int) int {
 	return max(row, itemOffset)
 }
 
+// schemaAddTarget returns the qualifier for a new table next to the
+// selected item: the database for SQLite/MySQL, the schema for PostgreSQL
+// (whose sidebar groups tables under database roots).
+func (m Model) schemaAddTarget(item schemaItem) (string, bool) {
+	if m.databaseInfo.Product == "PostgreSQL" {
+		switch item.kind {
+		case "schema":
+			return item.schema, true
+		case "table":
+			schema, _, found := strings.Cut(item.table, ".")
+			return schema, found
+		}
+		return "", false
+	}
+	if item.root || item.kind == "table" {
+		return item.database, true
+	}
+	return "", false
+}
+
 // openSchemaItemMenu opens the schema context menu for the given item:
-// Add table on a database root, Rename/Delete on a table row, nothing for
-// views.
+// Add table on a database root or a PostgreSQL schema, Rename/Delete on a
+// table row, nothing for views or for PostgreSQL database roots (only the
+// connected database has schemas to create in).
 func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 	switch {
-	case item.root:
+	case item.kind == "schema":
 		m.contextMenu = &contextMenuModel{
 			options:  []menuOption{{label: "Add table", action: "add_table", keys: "a"}},
 			selected: 0,
 			visible:  true,
 			x:        x,
 			y:        y,
-			database: item.database,
+			database: item.schema,
+		}
+	case item.root:
+		switch {
+		case m.databaseInfo.Product == "PostgreSQL":
+			// A database root has no schema to create a table in, but
+			// creating a database is always valid.
+			m.contextMenu = &contextMenuModel{
+				options:  []menuOption{{label: "Create database", action: "create_database", keys: "A"}},
+				selected: 0,
+				visible:  true,
+				x:        x,
+				y:        y,
+			}
+		case m.supportsCreateDatabase():
+			// MySQL roots keep Add table and also offer Create database.
+			m.contextMenu = &contextMenuModel{
+				options: []menuOption{
+					{label: "Create database", action: "create_database", keys: "A"},
+					{label: "Add table", action: "add_table", keys: "a"},
+				},
+				selected: 0,
+				visible:  true,
+				x:        x,
+				y:        y,
+				database: item.database,
+			}
+		default:
+			m.contextMenu = &contextMenuModel{
+				options:  []menuOption{{label: "Add table", action: "add_table", keys: "a"}},
+				selected: 0,
+				visible:  true,
+				x:        x,
+				y:        y,
+				database: item.database,
+			}
 		}
 	case item.kind == "table":
 		m.contextMenu = &contextMenuModel{
@@ -312,6 +368,11 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 	item, ok := m.schemaItemAt(contentY)
 	if !ok {
 		return m, nil
+	}
+	if item.kind == "schema" {
+		key := m.schemaExpansionKey(item.database, item.schema)
+		m.expandedSchemas[key] = !m.expandedSchemas[key]
+		return m, m.rebuildSchemaTree()
 	}
 	if item.root {
 		m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
@@ -688,8 +749,26 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if inSchema {
 		item, ok := m.schemaItemAt(contentY)
 		if !ok {
-			// Blank sidebar space: offer Add table in the current
-			// selection's database; without a selection, no menu.
+			// Blank sidebar space: offer Create database on server
+			// products, plus Add table for the selection's context;
+			// without a selection, only Create database.
+			if m.supportsCreateDatabase() {
+				menu := &contextMenuModel{
+					options:  []menuOption{{label: "Create database", action: "create_database", keys: "A"}},
+					selected: 0,
+					visible:  true,
+					x:        absX,
+					y:        absY + 1,
+				}
+				if selected, ok := m.schema.SelectedItem().(schemaItem); ok {
+					if target, ok := m.schemaAddTarget(selected); ok {
+						menu.options = append(menu.options, menuOption{label: "Add table", action: "add_table", keys: "a"})
+						menu.database = target
+					}
+				}
+				m.contextMenu = menu
+				return m, nil
+			}
 			item, ok = m.schema.SelectedItem().(schemaItem)
 			if !ok || item.database == "" {
 				return m, nil

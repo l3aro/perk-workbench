@@ -141,6 +141,11 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "schema.select_table":
 		if m.State == stateReady && m.Focus == focusSchema {
 			if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+				if item.kind == "schema" {
+					key := m.schemaExpansionKey(item.database, item.schema)
+					m.expandedSchemas[key] = !m.expandedSchemas[key]
+					return m, m.rebuildSchemaTree()
+				}
 				if item.root {
 					m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 					return m, m.rebuildSchemaTree()
@@ -151,8 +156,10 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "schema.add_table":
 		if m.State == stateReady && m.Focus == focusSchema {
-			if item, ok := m.schema.SelectedItem().(schemaItem); ok && (item.root || item.kind == "table") {
-				return m, m.openTableForm(item.database, "")
+			if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+				if target, ok := m.schemaAddTarget(item); ok {
+					return m, m.openTableForm(target, "")
+				}
 			}
 		}
 		return m, nil

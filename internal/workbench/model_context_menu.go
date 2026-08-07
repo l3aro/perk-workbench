@@ -24,6 +24,8 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.openTableForm(menu.database, menu.table)
 		case "add_table":
 			return m, m.openTableForm(menu.database, "")
+		case "create_database":
+			return m, m.openDatabaseForm()
 		case "delete_table":
 			m.confirmTableDelete(menu.database, menu.table)
 		case "query_log_yank":

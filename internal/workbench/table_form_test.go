@@ -430,6 +430,279 @@ func TestSchemaContextMenu_rootAndBlankSpaceAdd(t *testing.T) {
 	}
 }
 
+// createDatabaseStub accepts CREATE DATABASE statements and reports a fixed
+// schema listing, standing in for a MySQL/PostgreSQL connection.
+type createDatabaseStub struct {
+	sharedsql.Service
+	statements []string
+	objects    []sharedsql.SchemaObject
+}
+
+func (s *createDatabaseStub) Close() error { return nil }
+
+func (s *createDatabaseStub) Execute(_ context.Context, statement string) (sharedsql.Result, error) {
+	s.statements = append(s.statements, statement)
+	return sharedsql.Result{}, nil
+}
+
+func (s *createDatabaseStub) ListSchema(_ context.Context) ([]sharedsql.SchemaObject, error) {
+	return s.objects, nil
+}
+
+// serverProductModel builds a ready model backed by a stub reporting the
+// given server product (MySQL or PostgreSQL).
+func serverProductModel(t *testing.T, product string, stub *createDatabaseStub) Model {
+	t.Helper()
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{Service: stub, Info: sharedsql.DatabaseInfo{Product: product, Version: "16"}}, nil
+	}, false)
+	model.queryLogPath = t.TempDir() + "/data.db"
+	model.queryLogEntries = nil
+	model.renderQueryLog()
+	model.State, model.Database = stateReady, stub
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: product}
+	model.Focus = focusSchema
+	return resizeModel(model, 100, 24)
+}
+
+func TestSchemaCreateDatabase_shiftAOpensDatabaseForm(t *testing.T) {
+	for _, product := range []string{"MySQL", "PostgreSQL"} {
+		t.Run(product, func(t *testing.T) {
+			model := serverProductModel(t, product, &createDatabaseStub{})
+			updated, command := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if !model.tableForm.active() || !model.tableForm.createDatabase {
+				t.Fatalf("Shift+A did not open the create-database popup: %+v", model.tableForm)
+			}
+		})
+	}
+}
+
+func TestSchemaCreateDatabase_ignoredForSQLite(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	if model.tableForm.active() {
+		t.Fatal("Shift+A opened a create-database popup on SQLite")
+	}
+}
+
+func TestSchemaCreateDatabase_flowConfirmsRunsAndRefreshes(t *testing.T) {
+	tests := []struct {
+		product string
+		quote   string
+	}{
+		{product: "PostgreSQL", quote: `"`},
+		{product: "MySQL", quote: "`"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.product, func(t *testing.T) {
+			stub := &createDatabaseStub{}
+			model := serverProductModel(t, tt.product, stub)
+
+			updated, command := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			model.tableForm.name = "orders"
+
+			// Save opens the confirmation with the exact DDL.
+			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			if !model.tableForm.confirming() {
+				t.Fatal("Enter did not open the create-database confirmation")
+			}
+			want := "CREATE DATABASE " + tt.quote + "orders" + tt.quote
+			if got := model.tableForm.confirmation.description; got != want {
+				t.Fatalf("confirmation DDL = %q, want %q", got, want)
+			}
+
+			// Accept: the DDL runs and the sidebar refreshes with the
+			// new database.
+			stub.objects = []sharedsql.SchemaObject{{Database: "orders", Type: "database", Name: "orders"}}
+			updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if model.tableForm.active() || model.tableFormRunning {
+				t.Fatal("popup still open after successful create database")
+			}
+			if len(stub.statements) != 1 || stub.statements[0] != want {
+				t.Fatalf("executed statements = %#v, want %q", stub.statements, want)
+			}
+			if !model.expandedDatabases["orders"] {
+				t.Fatal("new database is not in the refreshed sidebar")
+			}
+			if view := ansi.Strip(model.View().Content); !strings.Contains(view, "orders") {
+				t.Fatalf("sidebar did not show the new database: %q", view)
+			}
+		})
+	}
+}
+
+func TestSchemaContextMenu_blankSpaceOffersCreateDatabase(t *testing.T) {
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+
+	// Without any schema items or selection, blank-space right-click
+	// offers Create database only; the A shortcut opens the popup.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 20, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.contextMenu
+	if menu == nil || !menu.visible {
+		t.Fatal("blank-space right-click did not open a menu")
+	}
+	if len(menu.options) != 1 || menu.options[0].action != "create_database" || menu.options[0].keys != "A" {
+		t.Fatalf("blank-space menu = %+v, want Create database", menu.options)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	if !model.tableForm.active() || !model.tableForm.createDatabase {
+		t.Fatal("menu shortcut A did not open the create-database popup")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+
+	// With a selection, Add table joins the menu, targeted at the selected
+	// item's schema.
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+	})
+	model.schema.Select(1)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: 20, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu = model.contextMenu
+	if menu == nil || len(menu.options) != 2 || menu.options[0].action != "create_database" || menu.options[1].action != "add_table" || menu.database != "public" {
+		t.Fatalf("selected blank-space menu = %+v, want Create database and Add table in public", menu.options)
+	}
+}
+
+// postgresTreeModel builds a ready PostgreSQL model whose sidebar shows two
+// databases, with the connected database ("main") holding schema "public"
+// and its table.
+func postgresTreeModel(t *testing.T) Model {
+	t.Helper()
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+		{Database: "archive", Type: "database", Name: "archive"},
+	})
+	return model
+}
+
+func TestPostgresTree_rendersDatabaseSchemaAndTableLevels(t *testing.T) {
+	model := postgresTreeModel(t)
+	view := ansi.Strip(model.View().Content)
+	for _, label := range []string{"▾ main", "  ▾ public", "    └ accounts", "▾ archive"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("postgres sidebar = %q, want %q", view, label)
+		}
+	}
+}
+
+func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
+	model := postgresTreeModel(t)
+
+	// Click the schema row: its tables hide behind a collapsed marker.
+	schemaY := findRenderedRow(t, model, "  ▾ public")
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: schemaY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	view := ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "  ▸ public") || strings.Contains(view, "└ accounts") {
+		t.Fatalf("collapsed postgres sidebar = %q, want ▸ public without tables", view)
+	}
+
+	// Enter on the selected schema node expands it again.
+	model.schema.Select(1)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	view = ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "  ▾ public") || !strings.Contains(view, "    └ accounts") {
+		t.Fatalf("re-expanded postgres sidebar = %q, want public with tables", view)
+	}
+}
+
+func TestSchemaAddTable_onPostgresSchemaNodeTargetsSchema(t *testing.T) {
+	model := postgresTreeModel(t)
+	model.schema.Select(1) // the public schema node
+
+	// a opens the create popup with the schema as its target.
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.tableForm.active() || model.tableForm.database != "public" {
+		t.Fatalf("add popup = %+v, want target public", model.tableForm)
+	}
+
+	// Saving confirms the schema-qualified DDL.
+	model.tableForm.name = "new"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if got, want := model.tableForm.confirmation.description, `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`; got != want {
+		t.Fatalf("confirmation DDL = %q, want %q", got, want)
+	}
+}
+
+func TestSchemaContextMenu_mysqlRootOffersCreateDatabaseAndAddTable(t *testing.T) {
+	model := serverProductModel(t, "MySQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "app", Type: "database", Name: "app"},
+	})
+	rootY := findRenderedRow(t, model, "▾ app")
+
+	// Right-click the database root: Create database then Add table.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.contextMenu
+	if menu == nil || len(menu.options) != 2 || menu.options[0].action != "create_database" || menu.options[0].keys != "A" || menu.options[1].action != "add_table" || menu.database != "app" {
+		t.Fatalf("mysql root menu = %+v, want Create database then Add table in app", menu.options)
+	}
+
+	// A opens the create-database popup.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	if !model.tableForm.active() || !model.tableForm.createDatabase {
+		t.Fatal("A did not open the create-database popup")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+
+	// a opens the add-table popup targeted at the root's database.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if !model.tableForm.active() || model.tableForm.createDatabase || model.tableForm.database != "app" {
+		t.Fatalf("a did not open the add-table popup in app: %+v", model.tableForm)
+	}
+}
+
+func TestSchemaAddTable_ignoredOnPostgresDatabaseRoot(t *testing.T) {
+	model := postgresTreeModel(t)
+
+	// A database root has no schema to create in: a is a no-op, but
+	// right-click still offers Create database.
+	model.schema.Select(0)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if model.tableForm.active() {
+		t.Fatal("a opened an add-table popup on a PostgreSQL database root")
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▾ archive"), Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.contextMenu
+	if menu == nil || len(menu.options) != 1 || menu.options[0].action != "create_database" {
+		t.Fatalf("database-root right-click menu = %+v, want Create database", menu)
+	}
+}
+
 func TestSchemaContextMenu_viewsExposeNoMenu(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusSchema
@@ -505,7 +778,7 @@ func TestTableFormStatement_quoting(t *testing.T) {
 		{name: "mysql create", product: "MySQL", form: tableForm{name: "new", database: "app"}, expected: "CREATE TABLE `app`.`new` (id INTEGER PRIMARY KEY)"},
 		{name: "mysql rename", product: "MySQL", form: tableForm{name: "new", originalName: "old", database: "app", table: "old"}, expected: "ALTER TABLE `app`.`old` RENAME TO `app`.`new`"},
 		{name: "postgres create", product: "PostgreSQL", form: tableForm{name: "new", database: "public"}, expected: `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`},
-		{name: "postgres rename", product: "PostgreSQL", form: tableForm{name: "new", originalName: "old", database: "public", table: "old"}, expected: `ALTER TABLE "public"."old" RENAME TO "new"`},
+		{name: "postgres rename", product: "PostgreSQL", form: tableForm{name: "new", originalName: "old", database: "main", table: "public.old"}, expected: `ALTER TABLE "public"."old" RENAME TO "new"`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

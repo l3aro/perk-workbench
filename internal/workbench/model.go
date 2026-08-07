@@ -91,6 +91,7 @@ type Model struct {
 	recentConnections                                                                              []recentConnection
 	schemaObjects                                                                                  []sharedsql.SchemaObject
 	expandedDatabases                                                                              map[string]bool
+	expandedSchemas                                                                                map[string]bool
 	commandPalette                                                                                 *commandPalette
 	themePicker                                                                                    *themePicker
 	quitDialog                                                                                     *confirmationDialog
@@ -147,6 +148,7 @@ type contextMenuModel struct {
 type schemaItem struct {
 	title, description string
 	database, table    string
+	schema             string
 	kind               string
 	root               bool
 }
@@ -189,6 +191,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		picker:            newList("Choose database", true),
 		recent:            newList("", true),
 		expandedDatabases: map[string]bool{},
+		expandedSchemas:   map[string]bool{},
 		structure:         newResultsTable(),
 		browse:            newResultsTable(),
 		results:           newResultsTable(),
@@ -285,6 +288,7 @@ func (m *Model) disconnect() {
 	m.completionTable = ""
 	m.schemaObjects = nil
 	m.expandedDatabases = map[string]bool{}
+	m.expandedSchemas = map[string]bool{}
 	m.databaseInfo = sharedsql.DatabaseInfo{}
 	m.connectionID = ""
 	m.schema.SetItems(nil)
@@ -325,28 +329,67 @@ func (m *Model) setSchemaObjects(objects []sharedsql.SchemaObject) tea.Cmd {
 	if m.expandedDatabases == nil {
 		m.expandedDatabases = map[string]bool{}
 	}
+	if m.expandedSchemas == nil {
+		m.expandedSchemas = map[string]bool{}
+	}
 	for _, object := range objects {
-		if object.Type == "database" {
+		switch object.Type {
+		case "database":
 			m.expandedDatabases[object.Database] = true
+		case "schema":
+			m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] = true
 		}
 	}
 	return m.rebuildSchemaTree()
 
 }
 
+// schemaExpansionKey identifies a schema under a database root; the
+// separator cannot appear in either name.
+func (m Model) schemaExpansionKey(database, schema string) string {
+	return database + "\x00" + schema
+}
+
 func (m *Model) rebuildSchemaTree() tea.Cmd {
 	items := make([]list.Item, 0, len(m.schemaObjects))
 	for _, object := range m.schemaObjects {
-		if object.Type == "database" {
+		switch object.Type {
+		case "database":
 			description := ""
 			if !m.expandedDatabases[object.Database] {
 				description = "collapsed"
 			}
-			items = append(items, schemaItem{title: object.Database, description: description, database: object.Database, root: true})
-			continue
-		}
-		if m.expandedDatabases[object.Database] {
-			items = append(items, schemaItem{title: object.Name, description: object.Type, database: object.Database, table: object.Name, kind: object.Type})
+			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, root: true})
+		case "schema":
+			// PostgreSQL only: schemas nest under the connected
+			// database's root.
+			if !m.expandedDatabases[object.Database] {
+				continue
+			}
+			description := ""
+			if !m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
+				description = "collapsed"
+			}
+			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema"})
+		default: // table or view
+			if !m.expandedDatabases[object.Database] {
+				continue
+			}
+			table := object.Name
+			schema := ""
+			if m.databaseInfo.Product == "PostgreSQL" {
+				// The name carries schema.table; only the connected
+				// database's tables are listed.
+				var found bool
+				schema, table, found = strings.Cut(object.Name, ".")
+				if !found {
+					continue
+				}
+				if !m.expandedSchemas[m.schemaExpansionKey(object.Database, schema)] {
+					continue
+				}
+			}
+			items = append(items, schemaItem{title: table, description: object.Type, database: object.Database, schema: schema, table: object.Name, kind: object.Type})
 		}
 	}
 	return m.schema.SetItems(items)
@@ -357,7 +400,7 @@ func (m Model) schemaTable(item schemaItem) string {
 	if table == "" {
 		table = item.title
 	}
-	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
+	if m.databaseInfo.Product == "MySQL" {
 		return item.database + "." + table
 	}
 	return table

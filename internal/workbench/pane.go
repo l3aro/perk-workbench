@@ -85,8 +85,18 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 		} else {
 			label = "▾ " + label
 		}
+	} else if schema.kind == "schema" {
+		if schema.description == "collapsed" {
+			label = "  ▸ " + label
+		} else {
+			label = "  ▾ " + label
+		}
 	} else if schema.table != "" {
-		label = "  └ " + label
+		if schema.schema != "" {
+			label = "    └ " + label
+		} else {
+			label = "  └ " + label
+		}
 	}
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
 	if index == model.Index() {

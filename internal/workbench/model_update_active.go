@@ -58,8 +58,15 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.add_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.SelectedItem().(schemaItem); ok && (item.root || item.kind == "table") {
-						return m, m.openTableForm(item.database, "")
+					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+						if target, ok := m.schemaAddTarget(item); ok {
+							return m, m.openTableForm(target, "")
+						}
+					}
+					return m, nil
+				case m.keybindings.Match(keyPress, "schema.create_database", []scope{scopeView, scopeGlobal}):
+					if m.supportsCreateDatabase() {
+						return m, m.openDatabaseForm()
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.rename_table", []scope{scopeView, scopeGlobal}):
@@ -74,6 +81,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}):
 					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+						if item.kind == "schema" {
+							key := m.schemaExpansionKey(item.database, item.schema)
+							m.expandedSchemas[key] = !m.expandedSchemas[key]
+							return m, m.rebuildSchemaTree()
+						}
 						if item.root {
 							m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 							return m, m.rebuildSchemaTree()

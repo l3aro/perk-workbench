@@ -17,20 +17,22 @@ const (
 	tableFormExecute
 )
 
-// tableForm is the create/rename table popup: a single name input plus a
-// confirmation for the generated DDL. Rename mode carries the original name
-// so an unchanged save closes without any SQL. The typed name is kept
-// verbatim for quoted SQL; it is only trimmed to test emptiness and equality.
+// tableForm is the create/rename table popup and the create database popup:
+// a single name input plus a confirmation for the generated DDL. Rename mode
+// carries the original name so an unchanged save closes without any SQL. The
+// typed name is kept verbatim for quoted SQL; it is only trimmed to test
+// emptiness and equality.
 type tableForm struct {
-	form          *huh.Form
-	confirmation  *confirmationDialog
-	name          string
-	nameValue     *string
-	originalName  string
-	database      string
-	table         string
-	width, height int
-	keybindings   Keybindings
+	form           *huh.Form
+	confirmation   *confirmationDialog
+	name           string
+	nameValue      *string
+	originalName   string
+	database       string
+	table          string
+	createDatabase bool
+	width, height  int
+	keybindings    Keybindings
 }
 
 func newTableForm(database, table string) tableForm {
@@ -47,10 +49,35 @@ func newTableForm(database, table string) tableForm {
 	return form
 }
 
+// newDatabaseForm is the create database popup: only MySQL and PostgreSQL
+// support it (SQLite has no CREATE DATABASE).
+func newDatabaseForm() tableForm {
+	name := ""
+	form := tableForm{
+		createDatabase: true,
+		nameValue:      &name,
+		keybindings:    DefaultKeybindings(),
+	}
+	form.rebuildForm()
+	return form
+}
+
+func (m Model) supportsCreateDatabase() bool {
+	return m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL"
+}
+
 func (f tableForm) active() bool     { return f.form != nil }
 func (f tableForm) confirming() bool { return f.confirmation != nil }
 func (m *Model) openTableForm(database, table string) tea.Cmd {
-	m.tableForm = newTableForm(database, table)
+	return m.openPopup(newTableForm(database, table))
+}
+
+func (m *Model) openDatabaseForm() tea.Cmd {
+	return m.openPopup(newDatabaseForm())
+}
+
+func (m *Model) openPopup(form tableForm) tea.Cmd {
+	m.tableForm = form
 	m.tableForm.keybindings = m.keybindings
 	m.tableForm.setWidth(m.tableViewportWidth)
 	m.tableForm.setHeight(m.formViewportHeight())
@@ -119,7 +146,11 @@ func (f *tableForm) updateHuh(message tea.Msg, controller *formModeController) (
 }
 
 func (f *tableForm) save(controller *formModeController) (tea.Cmd, tableFormAction) {
-	if err := requiredTableName(f.name); err != nil {
+	required := requiredTableName
+	if f.createDatabase {
+		required = requiredDatabaseName
+	}
+	if err := required(f.name); err != nil {
 		if f.nameValue != nil {
 			*f.nameValue = f.name
 		}
@@ -135,6 +166,9 @@ func (f *tableForm) save(controller *formModeController) (tea.Cmd, tableFormActi
 	if f.table != "" {
 		title = "Rename table?"
 	}
+	if f.createDatabase {
+		title = "Create database?"
+	}
 	f.confirmation = yesNoConfirmation(title, "", "confirm")
 	controller.beginConfirm()
 	return nil, tableFormSave
@@ -142,13 +176,16 @@ func (f *tableForm) save(controller *formModeController) (tea.Cmd, tableFormActi
 
 // statement returns the DDL for the pending create or rename, quoting
 // identifiers with the active product's rules and keeping the typed name
-// verbatim. MySQL/PostgreSQL qualify the old name with the selected database
-// so the ALTER targets the right schema; the new name stays bare for
-// PostgreSQL, matching its RENAME TO semantics.
+// verbatim. MySQL qualifies names with the selected database so the ALTER
+// targets the right schema; PostgreSQL renames keep the bare new name
+// (RENAME TO semantics) and creates carry the target schema.
 func (f tableForm) statement(m Model) string {
+	if f.createDatabase {
+		return "CREATE DATABASE " + m.actionIdentifier(f.name)
+	}
 	if f.table != "" {
 		oldName := f.table
-		if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
+		if m.databaseInfo.Product == "MySQL" {
 			oldName = m.qualifiedTableName(f.database, f.table)
 		}
 		newName := f.name
@@ -157,13 +194,21 @@ func (f tableForm) statement(m Model) string {
 		}
 		return "ALTER TABLE " + m.actionIdentifier(oldName) + " RENAME TO " + m.actionIdentifier(newName)
 	}
-	return "CREATE TABLE " + m.actionIdentifier(m.qualifiedTableName(f.database, f.name)) + " (id INTEGER PRIMARY KEY)"
+	createName := f.name
+	switch m.databaseInfo.Product {
+	case "MySQL":
+		createName = m.qualifiedTableName(f.database, f.name)
+	case "PostgreSQL":
+		// f.database carries the target schema from the sidebar item.
+		createName = f.database + "." + f.name
+	}
+	return "CREATE TABLE " + m.actionIdentifier(createName) + " (id INTEGER PRIMARY KEY)"
 }
 
-// qualifiedTableName returns name for SQLite and database.name for
-// MySQL/PostgreSQL, preserving the selected schema.
+// qualifiedTableName returns name for SQLite and PostgreSQL (whose sidebar
+// tables already carry schema.table) and database.name for MySQL.
 func (m Model) qualifiedTableName(database, name string) string {
-	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
+	if m.databaseInfo.Product == "MySQL" {
 		return database + "." + name
 	}
 	return name
@@ -209,14 +254,25 @@ func (f *tableForm) rebuildForm() {
 	} else {
 		*f.nameValue = f.name
 	}
+	title, required := "Table name", requiredTableName
+	if f.createDatabase {
+		title, required = "Database name", requiredDatabaseName
+	}
 	f.form = newForm(huh.NewGroup(
-		newEditableInput(huh.NewInput().Key("name").Title("Table name").Value(f.nameValue).Validate(requiredTableName), f.nameValue),
+		newEditableInput(huh.NewInput().Key("name").Title(title).Value(f.nameValue).Validate(required), f.nameValue),
 	)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
 }
 
 func requiredTableName(value string) error {
 	if strings.TrimSpace(value) == "" {
 		return errors.New("table name is required")
+	}
+	return nil
+}
+
+func requiredDatabaseName(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return errors.New("database name is required")
 	}
 	return nil
 }
