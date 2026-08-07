@@ -619,9 +619,30 @@ func postgresTreeModel(t *testing.T) Model {
 func TestPostgresTree_rendersDatabaseSchemaAndTableLevels(t *testing.T) {
 	model := postgresTreeModel(t)
 	view := ansi.Strip(model.View().Content)
-	for _, label := range []string{"▾ main", "  ▾ public", "    └ accounts", "▾ archive"} {
+	for _, label := range []string{"▾ main (1)", "  ▾ public (1)", "    └ accounts", "▾ archive"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("postgres sidebar = %q, want %q", view, label)
+		}
+	}
+	// Objects outside the connected database are not introspected, so the
+	// archive root carries no count.
+	if strings.Contains(view, "archive (") {
+		t.Fatalf("postgres sidebar = %q, want archive root without a count", view)
+	}
+}
+
+func TestSchemaSidebar_sqliteCountsAndViewLabel(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "table", Name: "accounts"},
+		{Database: "main", Type: "view", Name: "audit_log"},
+	})
+	view := ansi.Strip(model.View().Content)
+	for _, label := range []string{"▾ main (2)", "  └ accounts", "  └ audit_log (view)"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("sidebar = %q, want %q", view, label)
 		}
 	}
 }

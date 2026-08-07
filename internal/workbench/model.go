@@ -153,6 +153,7 @@ type schemaItem struct {
 	schema             string
 	kind               string
 	root               bool
+	count              int // child tables/views; -1 = unknown (not rendered)
 }
 
 func (i schemaItem) FilterValue() string {
@@ -425,6 +426,7 @@ func (m Model) schemaExpansionKey(database, schema string) string {
 
 func (m *Model) rebuildSchemaTree() tea.Cmd {
 	items := make([]list.Item, 0, len(m.schemaObjects))
+	schemaCounts, databaseCounts := m.schemaChildCounts()
 	for _, object := range m.schemaObjects {
 		switch object.Type {
 		case "database":
@@ -432,7 +434,13 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			if !m.expandedDatabases[object.Database] {
 				description = "collapsed"
 			}
-			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, root: true})
+			// PostgreSQL objects outside the connected database are not
+			// introspected, so only its root gets a child count.
+			count := -1
+			if m.databaseInfo.Product != "PostgreSQL" || m.databaseRootConnected(object.Database) {
+				count = databaseCounts[object.Database]
+			}
+			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, root: true, count: count})
 		case "schema":
 			// PostgreSQL only: schemas nest under the connected
 			// database's root.
@@ -443,7 +451,7 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			if !m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
 				description = "collapsed"
 			}
-			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema"})
+			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema", count: schemaCounts[m.schemaExpansionKey(object.Database, object.Name)]})
 		default: // table or view
 			if !m.expandedDatabases[object.Database] {
 				continue
@@ -466,6 +474,25 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 		}
 	}
 	return m.schema.SetItems(items)
+}
+
+// schemaChildCounts tallies the table/view objects under each database and
+// schema so expander rows can show child counts from data already loaded.
+func (m Model) schemaChildCounts() (schemaCounts, databaseCounts map[string]int) {
+	schemaCounts = map[string]int{}
+	databaseCounts = map[string]int{}
+	for _, object := range m.schemaObjects {
+		switch object.Type {
+		case "table", "view":
+			databaseCounts[object.Database]++
+			if m.databaseInfo.Product == "PostgreSQL" {
+				if schema, _, ok := strings.Cut(object.Name, "."); ok {
+					schemaCounts[m.schemaExpansionKey(object.Database, schema)]++
+				}
+			}
+		}
+	}
+	return schemaCounts, databaseCounts
 }
 
 func (m Model) schemaTable(item schemaItem) string {

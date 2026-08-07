@@ -79,26 +79,41 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 		return
 	}
 	label := schema.Title()
-	if schema.root {
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
+	switch {
+	case schema.root:
 		if schema.description == "collapsed" {
 			label = "▸ " + label
 		} else {
 			label = "▾ " + label
 		}
-	} else if schema.kind == "schema" {
+		if schema.count >= 0 {
+			label += fmt.Sprintf(" (%d)", schema.count)
+		}
+	case schema.kind == "schema":
 		if schema.description == "collapsed" {
 			label = "  ▸ " + label
 		} else {
 			label = "  ▾ " + label
 		}
-	} else if schema.table != "" {
+		if schema.count >= 0 {
+			label += fmt.Sprintf(" (%d)", schema.count)
+		}
+	case schema.kind == "view":
+		if schema.schema != "" {
+			label = "    └ " + label
+		} else {
+			label = "  └ " + label
+		}
+		label += " (view)"
+		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	case schema.table != "":
 		if schema.schema != "" {
 			label = "    └ " + label
 		} else {
 			label = "  └ " + label
 		}
 	}
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
 	if index == model.Index() {
 		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary))
 	}
