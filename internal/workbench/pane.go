@@ -3,6 +3,7 @@ package workbench
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -116,6 +117,11 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 	if schema.kind == "view" {
 		label += " (view)"
 	}
+	// Estimated row counts (PostgreSQL reltuples, MySQL table_rows) show as
+	// a badge.
+	if schema.rowCount != nil {
+		label += " (" + abbreviateCount(*schema.rowCount) + ")"
+	}
 	color := colorMuted // idle
 	if schema.open {
 		color = colorSecondary
@@ -184,6 +190,24 @@ func (m Model) schemaFilterRow() string {
 		Width(max(width-2, 0))
 	// Box content area: width-2 (box) - 2 (borders) - 2 (padding) - 2 (icon).
 	return box.Render(ansi.Truncate(m.schemaFilter.View(), max(width-8, 0), "") + icon)
+}
+
+// abbreviateCount renders a compact human-readable count: 10k, 490k,
+// 1.23M; up to two decimals with trailing zeros trimmed, raw below 1k.
+func abbreviateCount(n int64) string {
+	trim := func(s string) string { return strings.TrimRight(strings.TrimRight(s, "0"), ".") }
+	switch {
+	case n >= 1_000_000_000_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000_000_000)) + "T"
+	case n >= 1_000_000_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000_000)) + "B"
+	case n >= 1_000_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000)) + "M"
+	case n >= 1_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000)) + "k"
+	default:
+		return strconv.FormatInt(n, 10)
+	}
 }
 
 func newResultsTable() table.Model {

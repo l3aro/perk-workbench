@@ -49,7 +49,7 @@ func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT schemata.schema_name, tables.table_type, tables.table_name
+		SELECT schemata.schema_name, tables.table_type, tables.table_name, tables.table_rows
 		FROM information_schema.schemata AS schemata
 		LEFT JOIN information_schema.tables AS tables
 			ON tables.table_schema = schemata.schema_name
@@ -64,7 +64,8 @@ func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, err
 	for rows.Next() {
 		var database string
 		var tableType, tableName stdsql.NullString
-		if err := rows.Scan(&database, &tableType, &tableName); err != nil {
+		var tableRows stdsql.NullInt64
+		if err := rows.Scan(&database, &tableType, &tableName, &tableRows); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning schema", err)
 		}
 		database = sharedsql.SanitizeDisplay(database)
@@ -77,11 +78,18 @@ func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, err
 			if tableType.String == "BASE TABLE" {
 				objectType = "table"
 			}
-			objects = append(objects, sharedsql.SchemaObject{
+			object := sharedsql.SchemaObject{
 				Database: database,
 				Type:     objectType,
 				Name:     sharedsql.SanitizeDisplay(tableName.String),
-			})
+			}
+			// table_rows is exact for MyISAM, an estimate for InnoDB;
+			// NULL for views.
+			if tableType.String == "BASE TABLE" && tableRows.Valid {
+				count := tableRows.Int64
+				object.RowCount = &count
+			}
+			objects = append(objects, object)
 		}
 	}
 	if err := rows.Err(); err != nil {

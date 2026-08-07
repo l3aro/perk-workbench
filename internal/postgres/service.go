@@ -100,11 +100,16 @@ func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, err
 func (s *Service) listCurrentDatabase(ctx context.Context, current string) ([]sharedsql.SchemaObject, error) {
 	objects := []sharedsql.SchemaObject{}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT schemata.schema_name, tables.table_type, tables.table_name
+		SELECT schemata.schema_name, tables.table_type, tables.table_name, class.reltuples
 		FROM information_schema.schemata AS schemata
 		LEFT JOIN information_schema.tables AS tables
 			ON tables.table_schema = schemata.schema_name
 			AND tables.table_type IN ('BASE TABLE', 'VIEW')
+		LEFT JOIN pg_catalog.pg_namespace AS namespaces
+			ON namespaces.nspname = tables.table_schema
+		LEFT JOIN pg_catalog.pg_class AS class
+			ON class.relnamespace = namespaces.oid
+			AND class.relname = tables.table_name
 		WHERE schemata.schema_name NOT IN ('information_schema', 'pg_catalog')
 			AND schemata.schema_name NOT LIKE 'pg_toast%'
 			AND schemata.schema_name NOT LIKE 'pg_temp%'
@@ -116,7 +121,8 @@ func (s *Service) listCurrentDatabase(ctx context.Context, current string) ([]sh
 	for rows.Next() {
 		var schema string
 		var tableType, tableName stdsql.NullString
-		if err := rows.Scan(&schema, &tableType, &tableName); err != nil {
+		var relTuples stdsql.NullFloat64
+		if err := rows.Scan(&schema, &tableType, &tableName, &relTuples); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning schema", err)
 		}
 		schema = sharedsql.SanitizeDisplay(schema)
@@ -129,11 +135,18 @@ func (s *Service) listCurrentDatabase(ctx context.Context, current string) ([]sh
 			if tableType.String == "BASE TABLE" {
 				objectType = "table"
 			}
-			objects = append(objects, sharedsql.SchemaObject{
+			object := sharedsql.SchemaObject{
 				Database: current,
 				Type:     objectType,
 				Name:     schema + "." + sharedsql.SanitizeDisplay(tableName.String),
-			})
+			}
+			// reltuples is the planner's estimate; negative means unknown.
+			// Views are excluded: their reltuples is meaningless.
+			if tableType.String == "BASE TABLE" && relTuples.Valid && relTuples.Float64 > 0 {
+				count := int64(relTuples.Float64)
+				object.RowCount = &count
+			}
+			objects = append(objects, object)
 		}
 	}
 	if err := rows.Err(); err != nil {

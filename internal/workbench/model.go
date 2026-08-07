@@ -154,8 +154,9 @@ type schemaItem struct {
 	schema             string
 	kind               string
 	root               bool
-	open               bool // on the path from the root to the open table
-	count              int  // child tables/views; -1 = unknown (not rendered)
+	open               bool   // on the path from the root to the open table
+	count              int    // child tables/views; -1 = unknown (not rendered)
+	rowCount           *int64 // estimated rows for tables; nil = unknown
 }
 
 func (i schemaItem) FilterValue() string {
@@ -488,6 +489,9 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 				}
 			}
 			item := schemaItem{title: table, description: object.Type, database: object.Database, schema: schema, table: object.Name, kind: object.Type}
+			if object.Type == "table" {
+				item.rowCount = object.RowCount
+			}
 			item.open = m.schemaOpenPath(item)
 			items = append(items, item)
 		}

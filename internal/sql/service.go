@@ -93,6 +93,10 @@ type SchemaObject struct {
 	Database string
 	Type     string
 	Name     string
+	// RowCount is the estimated row count where the engine exposes one
+	// (PostgreSQL pg_class.reltuples, MySQL information_schema.table_rows);
+	// nil when unknown or when only an exact count exists (SQLite, views).
+	RowCount *int64
 }
 
 type IndexKind uint8

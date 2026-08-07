@@ -29,6 +29,27 @@ func TestTitledPane_replacesTopBorderWithPlainTitle(t *testing.T) {
 	}
 }
 
+func TestAbbreviateCount(t *testing.T) {
+	// Given
+	cases := map[int64]string{
+		0:          "0",
+		999:        "999",
+		1000:       "1k",
+		10420:      "10.42k",
+		490000:     "490k",
+		1000000:    "1M",
+		1234567:    "1.23M",
+		1230000000: "1.23B",
+	}
+
+	// When/Then
+	for input, want := range cases {
+		if got := abbreviateCount(input); got != want {
+			t.Errorf("abbreviateCount(%d) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestNewSchemaList_hidesInternalTitle(t *testing.T) {
 	// Given
 
