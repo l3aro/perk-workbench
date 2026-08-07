@@ -545,7 +545,7 @@ func (m Model) schemaChildCounts() (schemaCounts, databaseCounts map[string]int)
 	databaseCounts = map[string]int{}
 	for _, object := range m.schemaObjects {
 		switch object.Type {
-		case "table", "view":
+		case "table", "view", "collection":
 			databaseCounts[object.Database]++
 			if m.databaseInfo.Product == "PostgreSQL" {
 				if schema, _, ok := strings.Cut(object.Name, "."); ok {

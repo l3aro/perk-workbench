@@ -149,6 +149,30 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	}
 }
 
+func TestSchemaTree_collections_count_in_database_badge(t *testing.T) {
+	// MongoDB lists collections with Type "collection"; they must count
+	// toward the database root badge like tables and views.
+	model := New("", context.Background(), testOpen, false)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo.Product = "MongoDB"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "mydb", Type: "database", Name: "mydb"},
+		{Database: "mydb", Type: "collection", Name: "users"},
+		{Database: "mydb", Type: "collection", Name: "orders"},
+	})
+	model.schema.SetSize(30, 8)
+
+	expanded := ansi.Strip(model.schema.View())
+	for _, label := range []string{"▣ mydb", "  ▪ users", "  ▪ orders"} {
+		if !strings.Contains(expanded, label) {
+			t.Fatalf("expanded schema tree = %q, want %q", expanded, label)
+		}
+	}
+	if !strings.HasSuffix(strings.TrimRight(sidebarRow(expanded, "▣ mydb"), " "), " (2)") {
+		t.Fatalf("expanded schema tree = %q, want (2) count badge on mydb", expanded)
+	}
+}
+
 func TestSchemaTree_stateColors(t *testing.T) {
 	// Given — the workspace has accounts open; the sidebar marks the path
 	// from the connected root down to that table.
