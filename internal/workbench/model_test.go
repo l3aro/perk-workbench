@@ -134,9 +134,14 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	collapsed := ansi.Strip(model.schema.View())
 
 	// Then
-	for _, label := range []string{"▣ analytics (1)", "  ▪ events", "▣ app (1)", "  ▪ accounts"} {
+	for _, label := range []string{"▣ analytics", "  ▪ events", "▣ app", "  ▪ accounts"} {
 		if !strings.Contains(expanded, label) {
 			t.Fatalf("expanded schema tree = %q, want %q", expanded, label)
+		}
+	}
+	for _, label := range []string{"▣ analytics", "▣ app"} {
+		if !strings.HasSuffix(strings.TrimRight(sidebarRow(expanded, label), " "), " (1)") {
+			t.Fatalf("expanded schema tree = %q, want a right-aligned count badge on %s", expanded, label)
 		}
 	}
 	if strings.Contains(collapsed, "  ▪ events") {
@@ -168,21 +173,26 @@ func TestSchemaTree_stateColors(t *testing.T) {
 
 	// Then — each level has its own marker, and state shows only in color:
 	// the open path is secondary, the selected row is primary, everything
-	// else is idle muted.
+	// else is idle muted. Count badges pin to the row's right edge instead
+	// of sitting inline after the name.
 	view := model.schema.View()
-	for _, label := range []string{"▣ main (2)", "  ▤ public (2)", "    ▪ accounts", "    ▪ orders", "▣ archive"} {
+	for _, label := range []string{"▣ main", "  ▤ public", "    ▪ accounts", "    ▪ orders", "▣ archive"} {
 		if !strings.Contains(ansi.Strip(view), label) {
 			t.Fatalf("schema tree = %q, want %q", ansi.Strip(view), label)
 		}
 	}
-	if !strings.Contains(view, row("▣", "", "main (2)", colorPrimary)) {
+	if !strings.Contains(view, row("▣", "", "main", colorPrimary)) {
 		t.Fatalf("selected row = %q, want primary color", view)
 	}
-	if !strings.Contains(view, row("▤", "  ", "public (2)", colorSecondary)) || !strings.Contains(view, row("▪", "    ", "accounts", colorSecondary)) {
+	if !strings.Contains(view, row("▤", "  ", "public", colorSecondary)) || !strings.Contains(view, row("▪", "    ", "accounts", colorSecondary)) {
 		t.Fatalf("open path rows = %q, want secondary color", view)
 	}
 	if !strings.Contains(view, row("▪", "    ", "orders", colorMuted)) || !strings.Contains(view, row("▣", "", "archive", colorMuted)) {
 		t.Fatalf("idle rows = %q, want muted color", view)
+	}
+	badge := lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Render(" (2)")
+	if !strings.Contains(view, badge) {
+		t.Fatalf("selected row = %q, want the count badge in the row color", view)
 	}
 
 	// When — Enter opens the orders table: the path moves with it.
@@ -209,7 +219,7 @@ func TestSchemaTree_stateColors(t *testing.T) {
 	_ = model.rebuildSchemaTree()
 	model.schema.Select(2)
 	view = model.schema.View()
-	if !strings.Contains(view, row("▣", "", "main (2)", colorMuted)) {
+	if !strings.Contains(view, row("▣", "", "main", colorMuted)) {
 		t.Fatalf("root without open table = %q, want muted color", view)
 	}
 	if !strings.Contains(view, row("▪", "    ", "accounts", colorPrimary)) {

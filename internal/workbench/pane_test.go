@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -47,6 +48,37 @@ func TestAbbreviateCount(t *testing.T) {
 		if got := abbreviateCount(input); got != want {
 			t.Errorf("abbreviateCount(%d) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestSchemaItemDelegate_rightAlignsBadgeAndTruncatesLongName(t *testing.T) {
+	count := int64(331_600)
+	model := newSchemaList()
+	model.SetSize(40, 10)
+	model.SetItems([]list.Item{schemaItem{
+		title:    "department_employee_that_have_a_very_long_name",
+		kind:     "table",
+		table:    "x",
+		rowCount: &count,
+	}})
+
+	var buf strings.Builder
+	schemaItemDelegate{}.Render(&buf, model, 0, model.Items()[0])
+	plain := ansi.Strip(buf.String())
+
+	// One line of exactly the list width; name truncated with an ellipsis
+	// so the count badge stays flush against the right edge.
+	if strings.Contains(plain, "\n") {
+		t.Fatalf("row wrapped across lines: %q", plain)
+	}
+	if got := lipgloss.Width(plain); got != 40 {
+		t.Fatalf("rendered row width = %d, want 40: %q", got, plain)
+	}
+	if !strings.HasSuffix(plain, " (331.6k)") {
+		t.Fatalf("row = %q, want count badge at the right edge", plain)
+	}
+	if !strings.Contains(plain, "…") || strings.Contains(plain, "long_name") {
+		t.Fatalf("row = %q, want the long name truncated with an ellipsis", plain)
 	}
 }
 

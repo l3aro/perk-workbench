@@ -133,7 +133,25 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 	// The marker renders bold so the icon reads larger than the regular
 	// label; terminal cells are fixed size, so weight is the only scaling
 	// that keeps the layout intact.
-	fmt.Fprint(writer, indent+style.Bold(true).Render(marker+" ")+style.Render(label))
+	prefix := indent + style.Bold(true).Render(marker+" ")
+	// Parenthetical badges (row counts, view marker) pin to the right edge
+	// of the sidebar; the name truncates with an ellipsis so a long name
+	// never wraps or overlaps the badge.
+	name, badge, hasBadge := strings.Cut(label, " (")
+	if hasBadge {
+		badge = " (" + badge
+		if lipgloss.Width(badge) >= model.Width()-lipgloss.Width(prefix) {
+			badge, hasBadge = "", false // sidebar too narrow for the badge
+		}
+	}
+	if limit := model.Width() - lipgloss.Width(prefix) - lipgloss.Width(badge); lipgloss.Width(name) > limit {
+		name = ansi.Truncate(name, max(limit, 0), "…")
+	}
+	line := prefix + style.Render(name)
+	if hasBadge {
+		line += strings.Repeat(" ", model.Width()-lipgloss.Width(line)-lipgloss.Width(badge)) + style.Render(badge)
+	}
+	fmt.Fprint(writer, line)
 }
 
 func newSchemaList() list.Model {

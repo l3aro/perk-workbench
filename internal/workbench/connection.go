@@ -350,5 +350,5 @@ func (m Model) connectionPaneView(height int) string {
 // recentPaneView renders the profiles list with its pane-local action hints;
 // the layout reserves one row for the hint line (see layout).
 func (m Model) recentPaneView() string {
-	return m.recent.View() + "\n" + chrome.PaneStatus("a add | e edit | d delete | / filter", "", max(m.schemaWidth-4, 0))
+	return m.recent.View() + "\n" + chrome.PaneStatus("a add | e edit | d delete | / filter", "", max(m.schemaWidth-6, 0))
 }

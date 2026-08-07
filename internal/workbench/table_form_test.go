@@ -623,7 +623,7 @@ func TestPostgresTree_nerdFontMarkers(t *testing.T) {
 
 	model := postgresTreeModel(t)
 	view := ansi.Strip(model.View().Content)
-	for _, label := range []string{"\uf1c0 main (1)", "  \uf07b public (1)", "    \uf0ce accounts", "\uf1c0 archive"} {
+	for _, label := range []string{"\uf1c0 main", "  \uf07b public", "    \uf0ce accounts", "\uf1c0 archive"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("nerd schema tree = %q, want %q", view, label)
 		}
@@ -633,16 +633,34 @@ func TestPostgresTree_nerdFontMarkers(t *testing.T) {
 func TestPostgresTree_rendersDatabaseSchemaAndTableLevels(t *testing.T) {
 	model := postgresTreeModel(t)
 	view := ansi.Strip(model.View().Content)
-	for _, label := range []string{"▣ main (1)", "  ▤ public (1)", "    ▪ accounts", "▣ archive"} {
+	for _, label := range []string{"▣ main", "  ▤ public", "    ▪ accounts", "▣ archive"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("postgres sidebar = %q, want %q", view, label)
 		}
 	}
+	// Counts render as right-aligned badges on the connected root and its
+	// schema; the sidebar segment of the row ends with the badge.
+	mainRow := sidebarRow(view, "▣ main")
+	if !strings.HasSuffix(strings.TrimRight(mainRow, " "), " (1)") {
+		t.Fatalf("main row = %q, want a right-aligned count badge", mainRow)
+	}
 	// Objects outside the connected database are not introspected, so the
 	// archive root carries no count.
-	if strings.Contains(view, "archive (") {
+	if strings.Contains(sidebarRow(view, "▣ archive"), " (") {
 		t.Fatalf("postgres sidebar = %q, want archive root without a count", view)
 	}
+}
+
+// sidebarRow returns the first 40 display cells of the view line that
+// contains label: the sidebar pane's left border, its padding, and the
+// 38-cell content area (the right border sits at cell 42).
+func sidebarRow(view, label string) string {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, label) {
+			return ansi.Truncate(line, 40, "")
+		}
+	}
+	return ""
 }
 
 func TestSchemaSidebar_sqliteCountsAndViewLabel(t *testing.T) {
@@ -654,10 +672,51 @@ func TestSchemaSidebar_sqliteCountsAndViewLabel(t *testing.T) {
 		{Database: "main", Type: "view", Name: "audit_log"},
 	})
 	view := ansi.Strip(model.View().Content)
-	for _, label := range []string{"▣ main (2)", "  ▪ accounts", "  ▪ audit_log (view)"} {
+	for _, label := range []string{"▣ main", "  ▪ accounts", "  ▪ audit_log"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("sidebar = %q, want %q", view, label)
 		}
+	}
+	// The child count and the view marker render as right-aligned badges.
+	if !strings.HasSuffix(strings.TrimRight(sidebarRow(view, "▣ main"), " "), " (2)") {
+		t.Fatalf("sidebar = %q, want the child count badge on the main row", view)
+	}
+	if !strings.HasSuffix(strings.TrimRight(sidebarRow(view, "audit_log"), " "), " (view)") {
+		t.Fatalf("sidebar = %q, want the view marker badge on the audit_log row", view)
+	}
+}
+
+func TestSchemaSidebar_longNameStaysOnOneLine(t *testing.T) {
+	// Given — a table whose name exceeds the sidebar content width.
+	count := int64(331_600)
+	model := resizeModel(serverProductModel(t, "PostgreSQL", &createDatabaseStub{}), 100, 24)
+	model.Focus = focusSchema
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.department_employee_that_have_a_very_long_name", RowCount: &count},
+	})
+	view := ansi.Strip(model.View().Content)
+	row := sidebarRow(view, "▪")
+
+	// Then — the name truncates with an ellipsis and the count badge pins
+	// to the sidebar's right edge, all on one line: no wrapped tail row.
+	if strings.Contains(row, "long_name") || !strings.Contains(row, "…") {
+		t.Fatalf("table row = %q, want a truncated name with ellipsis", row)
+	}
+	if !strings.HasSuffix(strings.TrimRight(row, " "), " (331.6k)") {
+		t.Fatalf("table row = %q, want the count badge at the right edge", row)
+	}
+	if strings.Contains(view, "ong_name") {
+		t.Fatalf("sidebar = %q, want no wrapped name tail line", view)
+	}
+
+	// And the single-line row still maps back to the item for clicks.
+	rowY := findRenderedRow(t, model, "▪")
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rowY, Button: tea.MouseRight})
+	model = updated.(Model)
+	if menu := model.contextMenu; menu == nil || menu.table != "public.department_employee_that_have_a_very_long_name" {
+		t.Fatalf("right-click menu = %+v, want the long-name table's menu", menu)
 	}
 }
 
