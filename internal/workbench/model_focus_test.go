@@ -293,11 +293,14 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	model = updateFromCommand(model, command)
 
 	// Then
-	if !model.schema.SettingFilter() {
-		t.Fatal("schema filter is not active")
+	if !model.schemaFilter.Focused() {
+		t.Fatal("schema filter input is not focused")
 	}
-	if got := model.schema.FilterValue(); got != "q1" {
+	if got := model.schemaFilter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want %q", got, "q1")
+	}
+	if !model.schema.IsFiltered() {
+		t.Fatal("schema list is not filtered")
 	}
 	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].FilterValue() != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
@@ -306,10 +309,10 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	// Escape exits filter editing without clearing the applied filter.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.schema.SettingFilter() {
-		t.Fatal("schema filter remains active after escape")
+	if model.schemaFilter.Focused() {
+		t.Fatal("schema filter input remains focused after escape")
 	}
-	if got := model.schema.FilterValue(); got != "q1" {
+	if got := model.schemaFilter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want preserved q1", got)
 	}
 	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].FilterValue() != "queue_1" {
@@ -320,13 +323,13 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	selectedBeforeFilter := model.SelectedTable
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.schema.SettingFilter() {
-		t.Fatal("slash did not re-enter schema filtering")
+	if !model.schemaFilter.Focused() {
+		t.Fatal("slash did not re-focus the schema filter input")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.schema.SettingFilter() || model.schema.FilterValue() != "q1" {
-		t.Fatalf("after enter: filtering=%t value=%q, want inactive/q1", model.schema.SettingFilter(), model.schema.FilterValue())
+	if model.schemaFilter.Focused() || model.schemaFilter.Value() != "q1" {
+		t.Fatalf("after enter: focused=%t value=%q, want inactive/q1", model.schemaFilter.Focused(), model.schemaFilter.Value())
 	}
 	if model.SelectedTable != selectedBeforeFilter {
 		t.Fatalf("enter selected table %q, want unchanged %q", model.SelectedTable, selectedBeforeFilter)
@@ -385,10 +388,113 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
 	}
 }
 
+func TestSchemaFilter_matchesObjectKind(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+	model.State, model.Focus = stateReady, focusSchema
+	model.schema.SetItems([]list.Item{
+		schemaItem{title: "accounts", database: "main", table: "accounts", kind: "table"},
+		schemaItem{title: "audit_log", database: "main", table: "audit_log", kind: "view"},
+	})
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	for _, r := range "view" {
+		updated, command = model.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		model = updated.(Model)
+		model = updateFromCommand(model, command)
+	}
+
+	visible := model.schema.VisibleItems()
+	if len(visible) != 1 {
+		t.Fatalf("filtered items = %d, want 1", len(visible))
+	}
+	item, ok := visible[0].(schemaItem)
+	if !ok || item.kind != "view" || item.title != "audit_log" {
+		t.Fatalf("filtered item = %+v, want the view", visible[0])
+	}
+}
+
+func TestSchemaFilter_visibleInputRendersPlaceholderAndIcon(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+	model.State, model.Focus = stateReady, focusSchema
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	filterY := -1
+	for y, line := range lines {
+		if strings.Contains(line, "filter") && strings.Contains(line, "🔍") {
+			filterY = y
+			break
+		}
+	}
+	if filterY < 0 {
+		t.Fatal("sidebar view has no filter row with placeholder and magnifying glass")
+	}
+	// The input sits inside a bordered box: top border above, bottom below.
+	if !strings.Contains(lines[filterY-1], "╭") || !strings.Contains(lines[filterY+1], "╰") {
+		t.Fatalf("filter row %q is not bordered: %q / %q", lines[filterY], lines[filterY-1], lines[filterY+1])
+	}
+	// The item count status line is gone: the item rows start right below
+	// the box.
+	if !strings.Contains(lines[filterY+2], "└") && !strings.Contains(lines[filterY+2], "▾") && !strings.Contains(lines[filterY+2], "No items") {
+		t.Fatalf("row below the filter box = %q, want the first tree row", lines[filterY+2])
+	}
+}
+
+func TestSchemaFilter_escapeInTreeNavigationClearsInput(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+	model.State, model.Focus = stateReady, focusSchema
+	model.schema.SetItems([]list.Item{
+		schemaItem{title: "accounts", description: "table"},
+		schemaItem{title: "queue_1", description: "table"},
+	})
+
+	// Commit a filter, then press escape in tree navigation: the list's
+	// clear-filter keymap resets the filter and the visible input follows.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if !model.schema.IsFiltered() {
+		t.Fatal("escape should commit, not clear, the filter")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.schema.IsFiltered() {
+		t.Fatal("escape in tree navigation should clear the filter")
+	}
+	if got := model.schemaFilter.Value(); got != "" {
+		t.Fatalf("visible filter input = %q, want cleared", got)
+	}
+}
+
+func TestSchemaFilter_clickFocusesInput(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+	model.State, model.Focus = stateReady, focusSchema
+
+	// Click the filter row (contentY 1 = terminal Y 2).
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 2, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.schemaFilter.Focused() {
+		t.Fatal("click on the filter row did not focus the input")
+	}
+
+	// Typing after the click filters the tree.
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	if got := model.schemaFilter.Value(); got != "x" {
+		t.Fatalf("filter value = %q, want x", got)
+	}
+	if !model.schema.IsFiltered() {
+		t.Fatal("typing in the filter did not filter the tree")
+	}
+}
+
 // TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact guards the
-// committed-filter offset on a narrow compact layout: the filter chip and
-// item count share the status line, which wraps to two lines there, so the
-// item rows shift down by one.
+// committed-filter click offset on a narrow compact layout with the filter
+// box and no status bar.
 func TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 30, 24)
 	if !model.compact {
@@ -433,9 +539,8 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact(t *testing.T)
 }
 
 // TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow guards
-// the wrap count beyond one extra line: at a 16-wide pane the committed
-// status (“q1” 1 item • 9 filtered) wraps to three rows, shifting the items
-// down by two.
+// the committed-filter click offset on a very narrow pane where the filter
+// box still renders.
 func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 16, 24)
 	if !model.compact {
@@ -479,10 +584,9 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing
 }
 
 // TestFocus_schemaFilteredMouseClickSelectsRenderedTableExactFit guards the
-// exact-fit boundary: at a 32-wide pane the committed status
-// (“q1” 1 item • 1 filtered, 24 chars + 2 padding) fits the 26-wide inner
-// exactly on one line; overcounting the leading padding would shift the
-// items down and miss the click.
+// exact-fit boundary: at a 32-wide pane the filter box and items fill the
+// pane edge to edge; overcounting rows would shift the items down and miss
+// the click.
 func TestFocus_schemaFilteredMouseClickSelectsRenderedTableExactFit(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 32, 24)
 	if !model.compact {

@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -123,13 +124,57 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 func newSchemaList() list.Model {
 	model := newList("", true)
 	model.SetShowTitle(false)
+	model.SetShowFilter(false)
+	model.SetShowStatusBar(false)
+	// The sidebar renders its own persistent filter input; the list's
+	// built-in filter bar and keybinding are unused.
+	model.KeyMap.Filter = key.NewBinding(key.WithDisabled())
 	model.SetDelegate(schemaItemDelegate{})
-	model.KeyMap.CancelWhileFiltering = key.NewBinding(key.WithDisabled())
-	model.KeyMap.AcceptWhileFiltering = key.NewBinding(
-		key.WithKeys("enter", "esc"),
-		key.WithHelp("enter/esc", "stop filtering"),
-	)
 	return model
+}
+
+// newSchemaFilterInput returns the sidebar's persistent filter input. The
+// list's built-in filter is driven externally via SetFilterText so the input
+// can stay visible with its own placeholder and icon.
+func newSchemaFilterInput() textinput.Model {
+	input := textinput.New()
+	input.Prompt = ""
+	input.Placeholder = "filter"
+	styles := textinput.DefaultDarkStyles()
+	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	input.SetStyles(styles)
+	input.CharLimit = 64
+	return input
+}
+
+// schemaFilterShown reports whether the pane is wide enough for the filter
+// box (3 rows: top border, input, bottom border).
+func (m Model) schemaFilterShown() bool {
+	return m.schemaWidth >= 7
+}
+
+// schemaFilterRow renders the sidebar's filter input in a bordered box with
+// a magnifying-glass suffix, sized to the list width. The border turns
+// primary while the input is focused. The input is truncated because its
+// placeholder view renders one cell wider than Width.
+func (m Model) schemaFilterRow() string {
+	if !m.schemaFilterShown() {
+		return ""
+	}
+	width := max(m.schemaWidth-4, 0)
+	icon := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("🔍")
+	borderColor := colorBorder
+	if m.schemaFilter.Focused() {
+		borderColor = colorPrimary
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(borderColor)).
+		Padding(0, 1).
+		Width(max(width-2, 0))
+	// Box content area: width-2 (box) - 2 (borders) - 2 (padding) - 2 (icon).
+	return box.Render(ansi.Truncate(m.schemaFilter.View(), max(width-8, 0), "") + icon)
 }
 
 func newResultsTable() table.Model {

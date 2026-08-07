@@ -39,7 +39,13 @@ func (m *Model) layout(width, height int) {
 	}
 	m.editorHeight = min(m.workspaceHeight, sqlEditorRows+2)
 	m.resultsHeight = max(m.workspaceHeight-m.editorHeight, 0)
-	m.schema.SetSize(max(m.schemaWidth-4, 0), max(contentHeight-2, 0))
+	schemaListHeight := max(contentHeight-2, 0)
+	if m.schemaFilterShown() {
+		// The filter box takes 3 rows; the list must yield two of its own.
+		schemaListHeight = max(schemaListHeight-2, 0)
+	}
+	m.schema.SetSize(max(m.schemaWidth-4, 0), schemaListHeight)
+	m.schemaFilter.SetWidth(max(m.schemaWidth-6, 0))
 	m.picker.SetSize(max(m.width-2, 0), max(contentHeight-2, 0))
 	connectionWidth := m.width
 	if !m.compact {

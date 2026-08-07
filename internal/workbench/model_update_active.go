@@ -50,8 +50,28 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.results, command = m.results.Update(message)
 				return m, command
 			}
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.schema.SettingFilter() {
+			if m.schemaFilter.Focused() {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok {
+					switch keyPress.Code {
+					case tea.KeyEscape, tea.KeyEnter:
+						// Exit editing, keeping the applied filter.
+						m.schemaFilter.Blur()
+						return m, nil
+					}
+				}
+				before := m.schemaFilter.Value()
+				var filterCommand tea.Cmd
+				m.schemaFilter, filterCommand = m.schemaFilter.Update(message)
+				if m.schemaFilter.Value() != before {
+					m.applySchemaFilter()
+				}
+				return m, filterCommand
+			}
+			if keyPress, ok := message.(tea.KeyPressMsg); ok {
 				switch {
+				case m.keybindings.Match(keyPress, "schema.filter", []scope{scopeView, scopeGlobal}):
+					m.schemaFilter.Focus()
+					return m, nil
 				case m.keybindings.Match(keyPress, "schema.context_menu", []scope{scopeView, scopeGlobal}):
 					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 						m.openSchemaItemMenu(item, m.schemaWidth/2, m.schemaRowY(m.schema.Index())+1)
@@ -100,6 +120,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.schema, command = m.schema.Update(message)
+			// The list's own keymap can clear the filter (esc in tree
+			// navigation); keep the visible input in sync.
+			if !m.schema.IsFiltered() && m.schemaFilter.Value() != "" {
+				m.schemaFilter.SetValue("")
+			}
 			return m, command
 		case focusWorkspace:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.formMode.editing()) &&

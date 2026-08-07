@@ -29,6 +29,7 @@ var defaultDefs = []commandDef{
 	{id: "workspace.tab_prev", scope: scopeView, keys: []string{"H"}, label: "prev tab"},
 
 	// ── Schema tab (view) ───────────────────────────────────────
+	{id: "schema.filter", scope: scopeView, keys: []string{"/"}, label: "filter tables"},
 	{id: "schema.select_table", scope: scopeView, keys: []string{"enter"}, label: "open"},
 	{id: "schema.add_table", scope: scopeView, keys: []string{"a"}, label: "add table"},
 	{id: "schema.create_database", scope: scopeView, keys: []string{"A"}, label: "create database"},

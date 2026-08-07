@@ -473,7 +473,7 @@ func (m Model) contentView() string {
 		width, height := max(1, m.width-2), max(1, m.height-4)
 		switch m.Focus {
 		case focusSchema:
-			return titledPane("Databases <1>", m.schema.View(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
+			return titledPane("Databases <1>", m.schemaPaneBody(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusWorkspace:
 			return titledPane("Workspace <2>", m.workspaceView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusQueryLog:
@@ -482,12 +482,21 @@ func (m Model) contentView() string {
 			return titledPane("Assistant <4>", m.chatContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		}
 	}
-	left := titledPane("Databases <1>", m.schema.View(), paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)))
+	left := titledPane("Databases <1>", m.schemaPaneBody(), paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)))
 	center := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
 	if !m.chat.visible {
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, center)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, center, m.chatPaneView())
+}
+
+// schemaPaneBody is the sidebar body: the persistent filter row above the
+// schema list. The row is omitted when the pane is too narrow to show it.
+func (m Model) schemaPaneBody() string {
+	if row := m.schemaFilterRow(); row != "" {
+		return row + "\n" + m.schema.View()
+	}
+	return m.schema.View()
 }
 
 func (m Model) rightView() string {

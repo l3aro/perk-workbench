@@ -52,6 +52,7 @@ type Model struct {
 	editorValidity                                                                                 sqlValidity
 	sqlValidationTag                                                                               uint64
 	schema, picker, recent                                                                         list.Model
+	schemaFilter                                                                                   textinput.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
 	structureRows, indexRows, foreignKeyRows                                                       []table.Row
 	structureColumns                                                                               []sharedsql.ColumnInfo
@@ -157,7 +158,14 @@ type schemaItem struct {
 }
 
 func (i schemaItem) FilterValue() string {
-	return strings.TrimSpace(i.database + " " + i.title)
+	parts := []string{i.database, i.title}
+	if i.schema != "" {
+		parts = append(parts, i.schema)
+	}
+	if i.kind != "" {
+		parts = append(parts, i.kind)
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
 }
 
 func (i schemaItem) Title() string       { return i.title }
@@ -194,6 +202,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		schema:            newSchemaList(),
 		picker:            newList("Choose database", true),
 		recent:            newList("", true),
+		schemaFilter:      newSchemaFilterInput(),
 		expandedDatabases: map[string]bool{},
 		expandedSchemas:   map[string]bool{},
 		structure:         newResultsTable(),
@@ -374,6 +383,9 @@ func (m *Model) disconnect() {
 	}
 	m.chat.runs = map[string]*chatRun{}
 	m.chat.activeID = ""
+	m.schema.ResetFilter()
+	m.schemaFilter.SetValue("")
+	m.schemaFilter.Blur()
 }
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {
@@ -493,6 +505,17 @@ func (m Model) schemaChildCounts() (schemaCounts, databaseCounts map[string]int)
 		}
 	}
 	return schemaCounts, databaseCounts
+}
+
+// applySchemaFilter pushes the visible filter input's value into the schema
+// list, which filters its items and reports the committed state the status
+// line mirrors.
+func (m *Model) applySchemaFilter() {
+	if query := strings.TrimSpace(m.schemaFilter.Value()); query != "" {
+		m.schema.SetFilterText(query)
+		return
+	}
+	m.schema.ResetFilter()
 }
 
 func (m Model) schemaTable(item schemaItem) string {

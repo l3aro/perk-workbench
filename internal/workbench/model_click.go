@@ -1,14 +1,12 @@
 package workbench
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 const doubleClickTimeout = 500 * time.Millisecond
@@ -153,6 +151,7 @@ func (m Model) handleRecentClick(x, y int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
+	m.schemaFilter.Blur()
 	if m.Focus != focusWorkspace {
 		m.Focus = focusWorkspace
 		m.queryLogPendingG = false
@@ -179,71 +178,14 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// schemaStatusText mirrors the list's statusView text (filter chip, item
-// count, filtered count) so the offset can predict how the pane body wraps
-// it.
-func (m Model) schemaStatusText() string {
-	name := "items"
-	if n := len(m.schema.VisibleItems()); n == 1 {
-		name = "item"
-	}
-	var status string
-	if m.schema.SettingFilter() && len(m.schema.VisibleItems()) == 0 {
-		status = "Nothing matched"
-	} else {
-		status = fmt.Sprintf("%d %s", len(m.schema.VisibleItems()), name)
-		if !m.schema.SettingFilter() && m.schema.IsFiltered() {
-			filter := ansi.Truncate(strings.TrimSpace(m.schema.FilterValue()), 10, "…")
-			status = fmt.Sprintf("“%s” %s", filter, status)
-		}
-	}
-	if filtered := len(m.schema.Items()) - len(m.schema.VisibleItems()); filtered > 0 {
-		status += fmt.Sprintf(" • %d filtered", filtered)
-	}
-	return status
-}
-
-// statusWrapLines counts the lines the status text occupies when the pane
-// body wraps it at the given inner width, mirroring lipgloss's word wrap
-// (plus the 2 leading cells of the list's StatusBar style). The first word
-// sits directly after the padding — no joining space before it.
-func statusWrapLines(status string, inner int) int {
-	if inner < 1 {
-		return 1
-	}
-	words := strings.Fields(status)
-	if len(words) == 0 {
-		return 1
-	}
-	lines := 1
-	width := 2 + ansi.StringWidth(words[0])
-	for _, word := range words[1:] {
-		w := ansi.StringWidth(word)
-		if w > inner { // a single word longer than the line hard-wraps
-			lines += w / inner
-			width = w % inner
-			continue
-		}
-		if width+1+w > inner {
-			lines++
-			width = w
-		} else {
-			width += 1 + w
-		}
-	}
-	return lines
-}
-
-// schemaItemOffset returns the content Y of the first schema item line (the
-// pane border plus the list's title/status sections). The wrapped status
-// line can take several rows on narrow panes; the open filter input adds
-// one more line.
+// schemaItemOffset returns the content Y of the first schema item line: the
+// pane title row plus the 3-row filter box (when shown). The list's status
+// bar is hidden, so nothing else precedes the items.
 func (m Model) schemaItemOffset() int {
-	offset := 3 + statusWrapLines(m.schemaStatusText(), m.schemaWidth-6)
-	if m.schema.SettingFilter() {
-		offset++
+	if m.schemaFilterShown() {
+		return 4
 	}
-	return offset
+	return 1
 }
 
 // openBlankServerMenu opens the blank-sidebar context menu: creating a
@@ -422,10 +364,19 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 // (matching the recent list's double-click-to-load); any other root or
 // schema click toggles the subtree, and a table click selects it.
 func (m Model) schemaClick(x, contentY int) (tea.Model, tea.Cmd) {
-	item, ok := m.schemaItemAt(contentY)
-	if !ok {
+	// The filter box is the first body rows; clicking it focuses the
+	// input for typing.
+	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
+		m.schemaFilter.Focus()
 		return m, nil
 	}
+	item, ok := m.schemaItemAt(contentY)
+	if !ok {
+		m.schemaFilter.Blur()
+		return m, nil
+	}
+	// Item clicks leave filter editing so navigation keys work again.
+	m.schemaFilter.Blur()
 	if item.kind == "schema" {
 		key := m.schemaExpansionKey(item.database, item.schema)
 		m.expandedSchemas[key] = !m.expandedSchemas[key]
@@ -807,6 +758,10 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		inSchema = m.Focus == focusSchema
 	}
 	if inSchema {
+		if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
+			// The filter box is not blank sidebar space.
+			return m, nil
+		}
 		item, ok := m.schemaItemAt(contentY)
 		if !ok {
 			// Blank sidebar space on server products offers creating a

@@ -240,7 +240,7 @@ func commandLabel(id CommandID, raw string) string {
 func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "app.quit":
-		return !m.formActive() && !m.schema.SettingFilter() &&
+		return !m.formActive() && !m.schemaFilter.Focused() &&
 			!(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
 			!(m.sqlEditorActive() && m.formMode.editing())
 	case "editor.external":
@@ -253,7 +253,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.chat.visible
 	case "focus.schema", "focus.workspace", "focus.query_log",
 		"focus.toggle_fullscreen", "focus.cycle_forward", "focus.cycle_backward":
-		return m.State == stateReady && !m.formActive() && !m.schema.SettingFilter()
+		return m.State == stateReady && !m.formActive() && !m.schemaFilter.Focused()
 	case "query.execute":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
 	case "query.history", "app.quit_dialog":
