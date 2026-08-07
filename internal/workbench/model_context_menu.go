@@ -25,7 +25,19 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "add_table":
 			return m, m.openTableForm(menu.database, "")
 		case "create_database":
-			return m, m.openDatabaseForm()
+			return m, m.openDatabaseForm("")
+		case "rename_database":
+			return m, m.openDatabaseForm(menu.database)
+		case "delete_database":
+			m.confirmDatabaseDelete(menu.database)
+		case "create_schema":
+			return m, m.openSchemaForm("")
+		case "rename_schema":
+			return m, m.openSchemaForm(menu.schema)
+		case "delete_schema":
+			m.confirmSchemaDelete(menu.schema)
+		case "connect_database":
+			return m.reconnectDatabase(menu.database)
 		case "delete_table":
 			m.confirmTableDelete(menu.database, menu.table)
 		case "query_log_yank":
@@ -71,8 +83,12 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			menu.selected = min(menu.selected+1, max(len(menu.options)-1, 0))
 		default:
-			if model, command, ok := selectShortcut(msg.Keystroke()); ok {
-				return model, command
+			// Real terminals report shifted letters as shift+a; match the
+			// same strokes as the keybinding index (text first).
+			for _, stroke := range keyStrokes(msg) {
+				if model, command, ok := selectShortcut(stroke); ok {
+					return model, command
+				}
 			}
 		case "enter":
 			if menu.selected >= 0 && menu.selected < len(menu.options) {
@@ -102,6 +118,23 @@ func (m *Model) confirmTableDelete(database, table string) {
 	m.deletePendingDatabase = database
 	m.deletePendingName = table
 	m.deleteConfirm = yesNoConfirmation("Delete table?", "DROP TABLE "+m.actionIdentifier(m.qualifiedTableName(database, table)), "delete_table")
+}
+
+// confirmSchemaDelete opens the Delete schema? confirmation for the given
+// schema. RESTRICT is fixed policy: a schema with contained objects is left
+// untouched when the server rejects the drop.
+func (m *Model) confirmSchemaDelete(schema string) {
+	m.deletePending = "schema"
+	m.deletePendingName = schema
+	m.deleteConfirm = yesNoConfirmation("Delete schema?", "DROP SCHEMA "+m.quoteIdentifier(schema)+" RESTRICT", "delete")
+}
+
+// confirmDatabaseDelete opens the Delete database? confirmation for the
+// given database.
+func (m *Model) confirmDatabaseDelete(database string) {
+	m.deletePending = "database"
+	m.deletePendingDatabase = database
+	m.deleteConfirm = yesNoConfirmation("Delete database?", "DROP DATABASE "+m.quoteIdentifier(database), "delete")
 }
 
 func (m *Model) copyBrowseCell() tea.Cmd {

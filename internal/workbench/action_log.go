@@ -6,17 +6,21 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
-func (m Model) actionIdentifier(name string) string {
+func (m Model) quoteIdentifier(name string) string {
 	quote := `"`
 	if m.databaseInfo.Product == "MySQL" {
 		quote = "`"
 	}
+	return quote + strings.ReplaceAll(name, quote, quote+quote) + quote
+}
+
+func (m Model) actionIdentifier(name string) string {
 	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
 		if database, table, found := strings.Cut(name, "."); found {
-			return quote + strings.ReplaceAll(database, quote, quote+quote) + quote + "." + quote + strings.ReplaceAll(table, quote, quote+quote) + quote
+			return m.quoteIdentifier(database) + "." + m.quoteIdentifier(table)
 		}
 	}
-	return quote + strings.ReplaceAll(name, quote, quote+quote) + quote
+	return m.quoteIdentifier(name)
 }
 
 func (m Model) indexChangeStatement(table, previous string, change sharedsql.IndexChange) string {

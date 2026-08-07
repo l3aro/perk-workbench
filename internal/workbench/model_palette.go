@@ -147,6 +147,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 					return m, m.rebuildSchemaTree()
 				}
 				if item.root {
+					if m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
+						return m.reconnectDatabase(item.database)
+					}
 					m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 					return m, m.rebuildSchemaTree()
 				}

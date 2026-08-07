@@ -55,6 +55,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				case m.keybindings.Match(keyPress, "schema.context_menu", []scope{scopeView, scopeGlobal}):
 					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 						m.openSchemaItemMenu(item, m.schemaWidth/2, m.schemaRowY(m.schema.Index())+1)
+					} else if m.supportsCreateDatabase() {
+						m.openBlankServerMenu(m.schemaWidth/2, m.schemaRowY(0)+1)
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.add_table", []scope{scopeView, scopeGlobal}):
@@ -66,7 +68,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.create_database", []scope{scopeView, scopeGlobal}):
 					if m.supportsCreateDatabase() {
-						return m, m.openDatabaseForm()
+						return m, m.openDatabaseForm("")
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.rename_table", []scope{scopeView, scopeGlobal}):
@@ -87,6 +89,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							return m, m.rebuildSchemaTree()
 						}
 						if item.root {
+							if m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
+								return m.reconnectDatabase(item.database)
+							}
 							m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 							return m, m.rebuildSchemaTree()
 						}

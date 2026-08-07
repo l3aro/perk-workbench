@@ -558,6 +558,24 @@ func TestConnectionForm_f5AllowsBlankMySQLDatabase(t *testing.T) {
 	}
 }
 
+func TestConnectionForm_f5AllowsBlankPostgreSQLDatabase(t *testing.T) {
+	// Given
+	model := New("", context.Background(), testOpen, false)
+	model.connection.focus = connectionFocusForm
+	model.connection.values.driver = driverPostgreSQL
+	model.connection.values.host, model.connection.values.port, model.connection.values.user = "localhost", "5432", "alice"
+	_ = model.connection.rebuildForm()
+
+	// When
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+
+	// Then
+	if model.connection.confirmation == nil {
+		t.Fatal("blank PostgreSQL database did not reach connection confirmation")
+	}
+}
+
 func TestConnectionForm_completionSequencesInitBeforeConnectionAction(t *testing.T) {
 	// Given
 	form := newConnectionForm()

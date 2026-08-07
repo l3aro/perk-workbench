@@ -246,6 +246,18 @@ func (m Model) schemaItemOffset() int {
 	return offset
 }
 
+// openBlankServerMenu opens the blank-sidebar context menu: creating a
+// database is valid on any server product and needs no selection.
+func (m *Model) openBlankServerMenu(x, y int) {
+	m.contextMenu = &contextMenuModel{
+		options:  []menuOption{{label: "Add new database", action: "create_database", keys: "A"}},
+		selected: 0,
+		visible:  true,
+		x:        x,
+		y:        y,
+	}
+}
+
 // schemaItemAt maps a schema-pane Y coordinate to its item, using the same
 // visible/filter/pagination mapping as the rendered sidebar, and selects it.
 func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
@@ -299,38 +311,63 @@ func (m Model) schemaAddTarget(item schemaItem) (string, bool) {
 }
 
 // openSchemaItemMenu opens the schema context menu for the given item:
-// Add table on a database root or a PostgreSQL schema, Rename/Delete on a
-// table row, nothing for views or for PostgreSQL database roots (only the
-// connected database has schemas to create in).
+// each tree level offers its sibling, child, edit, and delete operations.
+// SQLite keeps the table-only menu; views expose no menu.
 func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 	switch {
 	case item.kind == "schema":
+		// database carries the schema-qualified Add table target (the
+		// table form uses it as the PostgreSQL schema); schema carries
+		// the same value for the schema-level actions.
 		m.contextMenu = &contextMenuModel{
-			options:  []menuOption{{label: "Add table", action: "add_table", keys: "a"}},
+			options: []menuOption{
+				{label: "Add new schema", action: "create_schema", keys: "A"},
+				{label: "Add new table", action: "add_table", keys: "a"},
+				{label: "Edit schema", action: "rename_schema", keys: "r"},
+				{label: "Delete schema", action: "delete_schema", keys: "d"},
+			},
 			selected: 0,
 			visible:  true,
 			x:        x,
 			y:        y,
 			database: item.schema,
+			schema:   item.schema,
 		}
 	case item.root:
 		switch {
 		case m.databaseInfo.Product == "PostgreSQL":
-			// A database root has no schema to create a table in, but
-			// creating a database is always valid.
+			// The connected database cannot be renamed or dropped in
+			// place; a root that is not the connected database offers
+			// Connect to switch to it and full database operations.
+			options := []menuOption{
+				{label: "Add new database", action: "create_database", keys: "A"},
+				{label: "Add new schema", action: "create_schema", keys: "a"},
+			}
+			if !m.databaseRootConnected(item.database) {
+				options = []menuOption{
+					{label: "Connect", action: "connect_database", keys: "enter"},
+					{label: "Add new database", action: "create_database", keys: "A"},
+					{label: "Edit database", action: "rename_database", keys: "r"},
+					{label: "Delete database", action: "delete_database", keys: "d"},
+				}
+			}
 			m.contextMenu = &contextMenuModel{
-				options:  []menuOption{{label: "Create database", action: "create_database", keys: "A"}},
+				options:  options,
 				selected: 0,
 				visible:  true,
 				x:        x,
 				y:        y,
+				database: item.database,
 			}
 		case m.supportsCreateDatabase():
-			// MySQL roots keep Add table and also offer Create database.
+			// MySQL treats database and schema as one level: sibling
+			// database actions plus the table child. Database rename
+			// has no safe DDL, so Edit database is not offered.
 			m.contextMenu = &contextMenuModel{
 				options: []menuOption{
-					{label: "Create database", action: "create_database", keys: "A"},
-					{label: "Add table", action: "add_table", keys: "a"},
+					{label: "Add new database", action: "create_database", keys: "A"},
+					{label: "Add new table", action: "add_table", keys: "a"},
+					{label: "Delete database", action: "delete_database", keys: "d"},
 				},
 				selected: 0,
 				visible:  true,
@@ -349,16 +386,32 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 			}
 		}
 	case item.kind == "table":
-		m.contextMenu = &contextMenuModel{
-			options: []menuOption{
-				{label: "Rename table", action: "rename_table", keys: "r"},
+		// Server products add the same-level Add new table; SQLite keeps
+		// its table-only menu.
+		options := []menuOption{
+			{label: "Rename table", action: "rename_table", keys: "r"},
+			{label: "Delete table", action: "delete_table", keys: "d"},
+		}
+		menuDatabase := item.database
+		if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
+			options = []menuOption{
+				{label: "Add new table", action: "add_table", keys: "a"},
+				{label: "Edit table", action: "rename_table", keys: "r"},
 				{label: "Delete table", action: "delete_table", keys: "d"},
-			},
+			}
+			if target, ok := m.schemaAddTarget(item); ok {
+				// PostgreSQL creates tables inside the table's schema,
+				// so the Add new table target is the schema.
+				menuDatabase = target
+			}
+		}
+		m.contextMenu = &contextMenuModel{
+			options:  options,
 			selected: 0,
 			visible:  true,
 			x:        x,
 			y:        y,
-			database: item.database,
+			database: menuDatabase,
 			table:    item.table,
 		}
 	}
@@ -749,24 +802,10 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if inSchema {
 		item, ok := m.schemaItemAt(contentY)
 		if !ok {
-			// Blank sidebar space: offer Create database on server
-			// products, plus Add table for the selection's context;
-			// without a selection, only Create database.
+			// Blank sidebar space on server products offers creating a
+			// database; the keyboard path shares this helper.
 			if m.supportsCreateDatabase() {
-				menu := &contextMenuModel{
-					options:  []menuOption{{label: "Create database", action: "create_database", keys: "A"}},
-					selected: 0,
-					visible:  true,
-					x:        absX,
-					y:        absY + 1,
-				}
-				if selected, ok := m.schema.SelectedItem().(schemaItem); ok {
-					if target, ok := m.schemaAddTarget(selected); ok {
-						menu.options = append(menu.options, menuOption{label: "Add table", action: "add_table", keys: "a"})
-						menu.database = target
-					}
-				}
-				m.contextMenu = menu
+				m.openBlankServerMenu(absX, absY+1)
 				return m, nil
 			}
 			item, ok = m.schema.SelectedItem().(schemaItem)

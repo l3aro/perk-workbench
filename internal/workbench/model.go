@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"strings"
 	"time"
 
@@ -141,6 +142,7 @@ type contextMenuModel struct {
 	selected int
 	x, y     int // screen position (top-left of border)
 	database string
+	schema   string
 	table    string
 	visible  bool
 }
@@ -161,11 +163,12 @@ func (i schemaItem) Title() string       { return i.title }
 func (i schemaItem) Description() string { return i.description }
 
 type databaseOpenedMsg struct {
-	target  string
-	service sharedsql.Service
-	info    sharedsql.DatabaseInfo
-	objects []sharedsql.SchemaObject
-	err     error
+	target    string
+	service   sharedsql.Service
+	info      sharedsql.DatabaseInfo
+	objects   []sharedsql.SchemaObject
+	reconnect bool // sidebar database switch: no new connection profile
+	err       error
 }
 
 type directoryReadMsg struct {
@@ -235,19 +238,76 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	return model
 }
 
-func (m Model) openTarget(target string) tea.Cmd {
+func (m Model) openTarget(target string) tea.Cmd { return m.openTargetWith(target, false) }
+
+// reopenTarget mirrors openTarget for sidebar database switching: the open
+// completes without recording a new connection profile.
+func (m Model) reopenTarget(target string) tea.Cmd { return m.openTargetWith(target, true) }
+
+func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 	return func() tea.Msg {
 		opened, err := m.openDatabase(m.appContext, target)
 		if err != nil {
-			return databaseOpenedMsg{err: err}
+			return databaseOpenedMsg{err: err, reconnect: reconnect}
 		}
 		return databaseOpenedMsg{
-			target:  opened.Target,
-			service: opened.Service,
-			info:    opened.Info,
-			objects: opened.Objects,
+			target:    opened.Target,
+			service:   opened.Service,
+			info:      opened.Info,
+			objects:   opened.Objects,
+			reconnect: reconnect,
 		}
 	}
+}
+
+// reconnectDatabase switches a PostgreSQL session to another database on
+// the same server: the sidebar's non-connected roots become the connected
+// database. PostgreSQL cannot address objects outside the connected
+// database, so opening the root is the only way to reach it.
+func (m Model) reconnectDatabase(database string) (tea.Model, tea.Cmd) {
+	target := m.postgresTargetFor(database)
+	if target == "" {
+		m.Status = safeText("cannot reconnect to " + database)
+		return m, nil
+	}
+	m.BeginOpening(target, "opening "+safeText(database))
+	return m, m.reopenTarget(target)
+}
+
+// postgresTargetFor rewrites the current PostgreSQL target to connect to
+// database on the same host, preserving user, port, and TLS settings.
+func (m Model) postgresTargetFor(database string) string {
+	u, err := url.Parse(strings.TrimSpace(m.Target))
+	if err != nil || u.Scheme != "postgres" || u.Host == "" {
+		return ""
+	}
+	u.Path = "/" + database // String() escapes the raw path once
+	return u.String()
+}
+
+// connectedDatabase returns the PostgreSQL database the session is
+// connected to, taken from the target URL's (unescaped) path.
+func (m Model) connectedDatabase() string {
+	u, err := url.Parse(strings.TrimSpace(m.Target))
+	if err != nil || u.Scheme != "postgres" || u.Host == "" {
+		return ""
+	}
+	return strings.TrimPrefix(u.Path, "/")
+}
+
+// databaseRootConnected reports whether database is the connected
+// PostgreSQL database. The target URL's database name is authoritative;
+// schema children are only a fallback when the target carries no path.
+func (m Model) databaseRootConnected(database string) bool {
+	if connected := m.connectedDatabase(); connected != "" {
+		return connected == database
+	}
+	for _, object := range m.schemaObjects {
+		if object.Type == "schema" && object.Database == database {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) Service() sharedsql.Service { return m.Database }

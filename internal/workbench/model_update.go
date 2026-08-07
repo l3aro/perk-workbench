@@ -610,6 +610,14 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.deletePendingDatabase, m.deletePendingName = "", ""
 			statement := "DROP TABLE " + m.actionIdentifier(m.qualifiedTableName(database, table))
 			return m.startQueryStatement(statement, true)
+		case "schema":
+			schema := m.deletePendingName
+			m.deletePendingName, m.deletePendingDatabase = "", ""
+			return m.startQueryStatement("DROP SCHEMA "+m.quoteIdentifier(schema)+" RESTRICT", true)
+		case "database":
+			database := m.deletePendingDatabase
+			m.deletePendingDatabase, m.deletePendingName = "", ""
+			return m.startQueryStatement("DROP DATABASE "+m.quoteIdentifier(database), true)
 		default:
 			m.deletePendingName = ""
 			return m, m.deleteRow()
