@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -705,6 +706,62 @@ func TestPostgresTree_enterOnConnectedRootToggles(t *testing.T) {
 	view := ansi.Strip(model.View().Content)
 	if !strings.Contains(view, "▸ employees") || strings.Contains(view, "▾ employees") {
 		t.Fatalf("sidebar = %q, want collapsed employees root", view)
+	}
+}
+
+func TestPostgresTree_doubleClickOnUnconnectedRootReconnects(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// A double-click on the employers root reconnects, matching the
+	// recent list's double-click-to-load convention.
+	model.schema.Select(2)
+	y := findRenderedRow(t, model, "▾ employers")
+	updated, command := model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+	model = updated.(Model)
+	updated, command = model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	if model.State != stateOpening {
+		t.Fatalf("state = %v, want opening after double-click", model.State)
+	}
+	if command == nil {
+		t.Fatal("double-click on an unconnected root returned no command")
+	}
+	command()
+	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
+		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
+	}
+
+	// A single click on the same row must not reconnect: the latch is
+	// reset by the completed double-click, and the toggle command it
+	// returns must not reopen the database.
+	model.State, model.Focus = stateReady, focusSchema
+	model.lastFormClickTime = time.Time{}
+	opensBefore := len(*opened)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.State != stateReady || len(*opened) != opensBefore {
+		t.Fatalf("single click = state %v, opens %d, want ready and no reopen", model.State, len(*opened))
+	}
+}
+
+func TestPostgresTree_rebuildKeepsCursorOnConnectedRoot(t *testing.T) {
+	model, _ := reconnectPostgresModel(t)
+
+	// Simulate the reopen against employers completing: updateOpen sets
+	// the target from the reopened URL, then rebuilds the tree.
+	model.Target = "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable"
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+		{Database: "employers", Type: "schema", Name: "public"},
+	})
+
+	// employees still sorts first; the cursor must land on the connected
+	// employers root, not on the first item.
+	if got := model.schema.Index(); got != 1 {
+		t.Fatalf("cursor = %d, want the connected employers root at 1", got)
 	}
 }
 

@@ -51,15 +51,16 @@ func (s *Service) Info() sharedsql.DatabaseInfo { return s.info }
 // connected database's schemas and tables. PostgreSQL can only address
 // objects in the current database, so only its children are listed; the
 // other roots exist so the sidebar mirrors MySQL (where created databases
-// appear immediately) without pretending to browse into them.
+// appear immediately) without pretending to browse into them. Roots sort
+// alphabetically, not connected-first: reconnecting to another database
+// must not reshuffle the sidebar under the selection.
 func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	var current string
 	if err := s.db.QueryRowContext(ctx, "SELECT current_database()").Scan(&current); err != nil {
 		return nil, fmt.Errorf("reading current database: %w", err)
 	}
 	// Schemas (even empty ones) and their tables, limited to the connected
-	// database; the sidebar qualifies tables as schema.table. Built first
-	// so the children can be appended right after their root.
+	// database; the sidebar qualifies tables as schema.table.
 	children, err := s.listCurrentDatabase(ctx, current)
 	if err != nil {
 		return nil, err
@@ -69,22 +70,22 @@ func (s *Service) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, err
 		SELECT datname
 		FROM pg_database
 		WHERE datallowconn
-		ORDER BY datname <> current_database(), datname`)
+		ORDER BY datname`)
 	if err != nil {
 		return nil, fmt.Errorf("listing databases: %w", err)
 	}
-	first := true
 	for databaseRows.Next() {
 		var database string
 		if err := databaseRows.Scan(&database); err != nil {
 			return nil, sharedsql.CloseRows(databaseRows, "scanning database", err)
 		}
+		// The connected database's children follow its root, wherever it
+		// sorts alphabetically.
+		connected := database == current
 		database = sharedsql.SanitizeDisplay(database)
 		objects = append(objects, sharedsql.SchemaObject{Database: database, Type: "database", Name: database})
-		if first {
-			// The connected database sorts first; its children follow.
+		if connected {
 			objects = append(objects, children...)
-			first = false
 		}
 	}
 	if err := databaseRows.Err(); err != nil {

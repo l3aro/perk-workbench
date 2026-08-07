@@ -38,7 +38,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 			switch m.Focus {
 			case focusSchema:
-				return m.schemaClick(contentY)
+				return m.schemaClick(x, contentY)
 			case focusWorkspace:
 				return m.handleWorkspaceClick(x, contentY)
 			case focusQueryLog:
@@ -64,7 +64,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 				m.editor.text.Blur()
 				m.blurTables()
 			}
-			return m.schemaClick(contentY)
+			return m.schemaClick(x, contentY)
 		}
 		if m.chat.visible && x >= m.schemaWidth+m.editorWidth {
 			m.Focus = focusChat
@@ -417,7 +417,11 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 	}
 }
 
-func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
+// schemaClick maps a schema-pane click to its item. A double-click on a
+// PostgreSQL root that is not the connected database reconnects to it
+// (matching the recent list's double-click-to-load); any other root or
+// schema click toggles the subtree, and a table click selects it.
+func (m Model) schemaClick(x, contentY int) (tea.Model, tea.Cmd) {
 	item, ok := m.schemaItemAt(contentY)
 	if !ok {
 		return m, nil
@@ -428,6 +432,9 @@ func (m Model) schemaClick(contentY int) (tea.Model, tea.Cmd) {
 		return m, m.rebuildSchemaTree()
 	}
 	if item.root {
+		if m.recordFormClick(x, contentY+1) && m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
+			return m.reconnectDatabase(item.database)
+		}
 		m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
 		return m, m.rebuildSchemaTree()
 	}

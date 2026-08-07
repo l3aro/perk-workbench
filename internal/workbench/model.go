@@ -400,8 +400,21 @@ func (m *Model) setSchemaObjects(objects []sharedsql.SchemaObject) tea.Cmd {
 			m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] = true
 		}
 	}
-	return m.rebuildSchemaTree()
-
+	cmd := m.rebuildSchemaTree()
+	// Keep the cursor on the connected root: switching databases rebuilds
+	// the tree, and with roots in stable alphabetical order the selection
+	// must land where the user picked, not on the first item.
+	if m.databaseInfo.Product == "PostgreSQL" {
+		if connected := m.connectedDatabase(); connected != "" {
+			for index, item := range m.schema.Items() {
+				if root, ok := item.(schemaItem); ok && root.root && root.database == connected {
+					m.schema.Select(index)
+					break
+				}
+			}
+		}
+	}
+	return cmd
 }
 
 // schemaExpansionKey identifies a schema under a database root; the
