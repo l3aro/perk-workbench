@@ -36,6 +36,11 @@ type Config struct {
 	// input is always editable — click to type, no mode switch. Omitted
 	// means enabled (the built-in default).
 	VimMode *bool `json:"vim_mode"`
+	// NerdFont renders the schema tree's node markers as Nerd Font icons
+	// (database, folder, table). Omitted means enabled (the built-in
+	// default); terminals without a Nerd Font can set false to fall back to
+	// geometric symbols.
+	NerdFont *bool `json:"nerd_font"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -210,6 +215,7 @@ func defaultConfigValues() map[string]json.RawMessage {
 		QueryLogRetentionDays: defaultQueryLogRetentionDays,
 		Theme:                 string(themeOcean),
 		VimMode:               boolPtr(true),
+		NerdFont:              boolPtr(true),
 	})
 	if err != nil {
 		panic(err) // plain struct: cannot fail

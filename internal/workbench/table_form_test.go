@@ -112,7 +112,7 @@ func TestSchemaRename_viaM_renamesAndRefreshesSidebar(t *testing.T) {
 	if len(names) != 1 || names[0] != "new" {
 		t.Fatalf("database tables = %v, want only new", names)
 	}
-	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "└ new") || strings.Contains(view, "└ old") {
+	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "  ▪ new") || strings.Contains(view, "  ▪ old") {
 		t.Fatalf("sidebar did not refresh: %q", view)
 	}
 }
@@ -320,7 +320,7 @@ func TestSchemaDelete_viaD_dropsTable(t *testing.T) {
 	if names := schemaTableNames(t, model); len(names) != 0 {
 		t.Fatalf("accepting delete left tables: %v", names)
 	}
-	if view := ansi.Strip(model.View().Content); strings.Contains(view, "└ old") {
+	if view := ansi.Strip(model.View().Content); strings.Contains(view, "  ▪ old") {
 		t.Fatalf("sidebar still shows old: %q", view)
 	}
 }
@@ -329,7 +329,7 @@ func TestSchemaContextMenu_renameDeleteViaRightClick(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusSchema
 	model = createTableInSchema(t, model, "old")
-	tableY := findRenderedRow(t, model, "└ old")
+	tableY := findRenderedRow(t, model, "  ▪ old")
 
 	// When: right-click the table row.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseRight})
@@ -398,7 +398,7 @@ func TestSchemaContextMenu_rootAndBlankSpaceAdd(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusSchema
 	model = createTableInSchema(t, model, "accounts")
-	rootY := findRenderedRow(t, model, "▾ main")
+	rootY := findRenderedRow(t, model, "▣ main")
 
 	// When: right-click the database root row.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
@@ -616,10 +616,24 @@ func postgresTreeModel(t *testing.T) Model {
 	return model
 }
 
+func TestPostgresTree_nerdFontMarkers(t *testing.T) {
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{NerdFont: boolPtr(true)})
+
+	model := postgresTreeModel(t)
+	view := ansi.Strip(model.View().Content)
+	for _, label := range []string{"\uf1c0 main (1)", "  \uf07b public (1)", "    \uf0ce accounts", "\uf1c0 archive"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("nerd schema tree = %q, want %q", view, label)
+		}
+	}
+}
+
 func TestPostgresTree_rendersDatabaseSchemaAndTableLevels(t *testing.T) {
 	model := postgresTreeModel(t)
 	view := ansi.Strip(model.View().Content)
-	for _, label := range []string{"▾ main (1)", "  ▾ public (1)", "    └ accounts", "▾ archive"} {
+	for _, label := range []string{"▣ main (1)", "  ▤ public (1)", "    ▪ accounts", "▣ archive"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("postgres sidebar = %q, want %q", view, label)
 		}
@@ -640,7 +654,7 @@ func TestSchemaSidebar_sqliteCountsAndViewLabel(t *testing.T) {
 		{Database: "main", Type: "view", Name: "audit_log"},
 	})
 	view := ansi.Strip(model.View().Content)
-	for _, label := range []string{"▾ main (2)", "  └ accounts", "  └ audit_log (view)"} {
+	for _, label := range []string{"▣ main (2)", "  ▪ accounts", "  ▪ audit_log (view)"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("sidebar = %q, want %q", view, label)
 		}
@@ -651,12 +665,12 @@ func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
 	model := postgresTreeModel(t)
 
 	// Click the schema row: its tables hide behind a collapsed marker.
-	schemaY := findRenderedRow(t, model, "  ▾ public")
+	schemaY := findRenderedRow(t, model, "  ▤ public")
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: schemaY, Button: tea.MouseLeft})
 	model = updated.(Model)
 	view := ansi.Strip(model.View().Content)
-	if !strings.Contains(view, "  ▸ public") || strings.Contains(view, "└ accounts") {
-		t.Fatalf("collapsed postgres sidebar = %q, want ▸ public without tables", view)
+	if !strings.Contains(view, "  ▤ public") || strings.Contains(view, "    ▪ accounts") {
+		t.Fatalf("collapsed postgres sidebar = %q, want ▤ public without tables", view)
 	}
 
 	// Enter on the selected schema node expands it again.
@@ -664,7 +678,7 @@ func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	view = ansi.Strip(model.View().Content)
-	if !strings.Contains(view, "  ▾ public") || !strings.Contains(view, "    └ accounts") {
+	if !strings.Contains(view, "  ▤ public") || !strings.Contains(view, "    ▪ accounts") {
 		t.Fatalf("re-expanded postgres sidebar = %q, want public with tables", view)
 	}
 }
@@ -725,7 +739,7 @@ func TestPostgresTree_enterOnConnectedRootToggles(t *testing.T) {
 		t.Fatalf("connected root Enter = state %v, opens %v, want ready and no reopen", model.State, *opened)
 	}
 	view := ansi.Strip(model.View().Content)
-	if !strings.Contains(view, "▸ employees") || strings.Contains(view, "▾ employees") {
+	if !strings.Contains(view, "▣ employees") || strings.Contains(view, "  ▤ public") {
 		t.Fatalf("sidebar = %q, want collapsed employees root", view)
 	}
 }
@@ -736,7 +750,7 @@ func TestPostgresTree_doubleClickOnUnconnectedRootReconnects(t *testing.T) {
 	// A double-click on the employers root reconnects, matching the
 	// recent list's double-click-to-load convention.
 	model.schema.Select(2)
-	y := findRenderedRow(t, model, "▾ employers")
+	y := findRenderedRow(t, model, "▣ employers")
 	updated, command := model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
 	model = updated.(Model)
 	updated, command = model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
@@ -790,7 +804,7 @@ func TestPostgresTree_contextMenuConnectSwitchesDatabase(t *testing.T) {
 	model, opened := reconnectPostgresModel(t)
 
 	// Right-click the employers root: Connect is offered first.
-	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▾ employers"), Button: tea.MouseRight})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▣ employers"), Button: tea.MouseRight})
 	model = updated.(Model)
 	menu := model.contextMenu
 	if menu == nil || len(menu.options) != 4 || menu.options[0].action != "connect_database" || menu.options[1].action != "create_database" || menu.options[2].action != "rename_database" || menu.options[3].action != "delete_database" || menu.database != "employers" {
@@ -876,7 +890,7 @@ func TestSchemaContextMenu_mysqlRootOffersCreateDatabaseAndAddTable(t *testing.T
 	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
 		{Database: "app", Type: "database", Name: "app"},
 	})
-	rootY := findRenderedRow(t, model, "▾ app")
+	rootY := findRenderedRow(t, model, "▣ app")
 
 	// Right-click the database root: Create database then Add table.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
@@ -918,7 +932,7 @@ func TestSchemaAddTable_ignoredOnPostgresDatabaseRoot(t *testing.T) {
 	if model.tableForm.active() {
 		t.Fatal("a opened an add-table popup on a PostgreSQL database root")
 	}
-	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▾ archive"), Button: tea.MouseRight})
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▣ archive"), Button: tea.MouseRight})
 	model = updated.(Model)
 	menu := model.contextMenu
 	if menu == nil || len(menu.options) != 4 || menu.options[0].action != "connect_database" || menu.options[1].action != "create_database" || menu.options[2].action != "rename_database" || menu.options[3].action != "delete_database" || menu.database != "archive" {
@@ -930,7 +944,7 @@ func TestSchemaAddTable_ignoredOnPostgresDatabaseRoot(t *testing.T) {
 	// active database.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▾ main"), Button: tea.MouseRight})
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▣ main"), Button: tea.MouseRight})
 	model = updated.(Model)
 	menu = model.contextMenu
 	if menu == nil || len(menu.options) != 2 || menu.options[0].action != "create_database" || menu.options[1].action != "create_schema" {
@@ -1099,7 +1113,7 @@ func TestSchemaRenameSchema_flowConfirmsRunsAndRefreshes(t *testing.T) {
 	if len(stub.statements) != 1 || stub.statements[0] != `ALTER SCHEMA "public" RENAME TO "renamed"` {
 		t.Fatalf("executed statements = %#v, want the ALTER SCHEMA", stub.statements)
 	}
-	if view := ansi.Strip(model.View().Content); strings.Contains(view, "  ▾ public") || !strings.Contains(view, "renamed") {
+	if view := ansi.Strip(model.View().Content); strings.Contains(view, "  ▤ public") || !strings.Contains(view, "renamed") {
 		t.Fatalf("sidebar did not show the renamed schema: %q", view)
 	}
 }
@@ -1165,7 +1179,7 @@ func TestSchemaDeleteSchema_confirmsRestrictAndRefreshes(t *testing.T) {
 	if len(stub.statements) != 1 || stub.statements[0] != `DROP SCHEMA "public" RESTRICT` {
 		t.Fatalf("executed statements = %#v, want the DROP SCHEMA", stub.statements)
 	}
-	if view := ansi.Strip(model.View().Content); strings.Contains(view, "▾ public") {
+	if view := ansi.Strip(model.View().Content); strings.Contains(view, "▤ public") {
 		t.Fatalf("sidebar still shows the dropped schema: %q", view)
 	}
 }
@@ -1285,7 +1299,7 @@ func TestSchemaContextMenu_viewsExposeNoMenu(t *testing.T) {
 		{Database: "main", Type: "view", Name: "v1"},
 	})
 	model.schema.Select(2)
-	viewY := findRenderedRow(t, model, "└ v1")
+	viewY := findRenderedRow(t, model, "  ▪ v1")
 
 	// Right-click and the d/r/m/a keys do nothing on a view.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: viewY, Button: tea.MouseRight})

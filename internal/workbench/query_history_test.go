@@ -17,6 +17,10 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("XDG_CONFIG_HOME", dir); err != nil {
 		panic(err)
 	}
+	// Tree-marker tests assert the geometric fallback glyphs, so the suite
+	// runs with Nerd Font icons off; the Nerd Font path is covered by its
+	// own test that opts back in.
+	SetAppConfig(Config{NerdFont: boolPtr(false)})
 	code := m.Run()
 	_ = os.RemoveAll(dir)
 	os.Exit(code)

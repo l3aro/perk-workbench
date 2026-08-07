@@ -82,7 +82,7 @@ func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	m.relationshipDiagram = false
 	m.browsePending = true
 	m.focusActiveTable()
-	return tea.Batch(m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
 }
 
 func (m *Model) toggleTab(forward bool) tea.Cmd {

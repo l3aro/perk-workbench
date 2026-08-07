@@ -9,6 +9,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/database"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -133,13 +134,89 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	collapsed := ansi.Strip(model.schema.View())
 
 	// Then
-	for _, label := range []string{"▾ analytics", "└ events", "▾ app", "└ accounts"} {
+	for _, label := range []string{"▣ analytics (1)", "  ▪ events", "▣ app (1)", "  ▪ accounts"} {
 		if !strings.Contains(expanded, label) {
 			t.Fatalf("expanded schema tree = %q, want %q", expanded, label)
 		}
 	}
-	if !strings.Contains(collapsed, "▸ analytics") || strings.Contains(collapsed, "└ events") {
+	if strings.Contains(collapsed, "  ▪ events") {
 		t.Fatalf("collapsed schema tree = %q, want analytics root without child tables", collapsed)
+	}
+}
+
+func TestSchemaTree_stateColors(t *testing.T) {
+	// Given — the workspace has accounts open; the sidebar marks the path
+	// from the connected root down to that table.
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+		{Database: "main", Type: "table", Name: "public.orders"},
+		{Database: "archive", Type: "database", Name: "archive"},
+	})
+	model.schema.SetSize(30, 8)
+	model.SelectedTable = "public.accounts"
+	_ = model.rebuildSchemaTree()
+	model.schema.Select(0)
+	// The marker renders bold (heavier strokes, same cell), the label
+	// regular; both carry the state color.
+	row := func(marker, indent, label, color string) string {
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+		return indent + style.Bold(true).Render(marker+" ") + style.Render(label)
+	}
+
+	// Then — each level has its own marker, and state shows only in color:
+	// the open path is secondary, the selected row is primary, everything
+	// else is idle muted.
+	view := model.schema.View()
+	for _, label := range []string{"▣ main (2)", "  ▤ public (2)", "    ▪ accounts", "    ▪ orders", "▣ archive"} {
+		if !strings.Contains(ansi.Strip(view), label) {
+			t.Fatalf("schema tree = %q, want %q", ansi.Strip(view), label)
+		}
+	}
+	if !strings.Contains(view, row("▣", "", "main (2)", colorPrimary)) {
+		t.Fatalf("selected row = %q, want primary color", view)
+	}
+	if !strings.Contains(view, row("▤", "  ", "public (2)", colorSecondary)) || !strings.Contains(view, row("▪", "    ", "accounts", colorSecondary)) {
+		t.Fatalf("open path rows = %q, want secondary color", view)
+	}
+	if !strings.Contains(view, row("▪", "    ", "orders", colorMuted)) || !strings.Contains(view, row("▣", "", "archive", colorMuted)) {
+		t.Fatalf("idle rows = %q, want muted color", view)
+	}
+
+	// When — Enter opens the orders table: the path moves with it.
+	model.schema.Select(3)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	// selectSchemaTable schedules the sidebar rebuild in its command batch;
+	// run it directly here because the batch's table-load commands need a
+	// real service (the stub panics). SetItems refreshes the list
+	// synchronously; the returned command only feeds filter matches.
+	model.rebuildSchemaTree()
+	// Move the selection off the opened table: the path keeps its color.
+	model.schema.Select(2)
+	view = model.schema.View()
+	if !strings.Contains(view, row("▪", "    ", "orders", colorSecondary)) {
+		t.Fatalf("opened table row = %q, want secondary color", view)
+	}
+	if !strings.Contains(view, row("▪", "    ", "accounts", colorPrimary)) {
+		t.Fatalf("selected table = %q, want primary color", view)
+	}
+
+	// When — no table is open, only the selection keeps a non-idle color.
+	model.SelectedTable = ""
+	_ = model.rebuildSchemaTree()
+	model.schema.Select(2)
+	view = model.schema.View()
+	if !strings.Contains(view, row("▣", "", "main (2)", colorMuted)) {
+		t.Fatalf("root without open table = %q, want muted color", view)
+	}
+	if !strings.Contains(view, row("▪", "    ", "accounts", colorPrimary)) {
+		t.Fatalf("selected table = %q, want primary color", view)
+	}
+	if !strings.Contains(view, row("▪", "    ", "orders", colorMuted)) {
+		t.Fatalf("idle table = %q, want muted color", view)
 	}
 }
 
@@ -156,7 +233,7 @@ func TestSchemaClick_selectsTheRenderedTable(t *testing.T) {
 		lines := strings.Split(ansi.Strip(model.View().Content), "\n")
 		tableY := -1
 		for y, line := range lines {
-			if strings.Contains(line, "└ "+want) {
+			if strings.Contains(line, "  ▪ "+want) {
 				tableY = y
 				break
 			}

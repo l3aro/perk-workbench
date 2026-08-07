@@ -74,51 +74,60 @@ type schemaItemDelegate struct{}
 func (schemaItemDelegate) Height() int                         { return 1 }
 func (schemaItemDelegate) Spacing() int                        { return 0 }
 func (schemaItemDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+
+// treeMarkers returns the node marker for each tree level: database, schema,
+// table/view. Nerd Font icons are the default; config.json "nerd_font":
+// false falls back to geometric symbols for terminals without a Nerd Font.
+func treeMarkers() (database, schema, table string) {
+	if appConfig.NerdFont == nil || *appConfig.NerdFont {
+		return "\uf1c0", "\uf07b", "\uf0ce" // nf-fa-database, nf-fa-folder, nf-fa-table
+	}
+	return "▣", "▤", "▪"
+}
+
+// schemaItemDelegate renders each tree level with its own marker (database,
+// schema, table/view); state is conveyed by color: muted when idle,
+// secondary on the open table's path, primary when selected.
 func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
 	schema, ok := item.(schemaItem)
 	if !ok {
 		return
 	}
-	label := schema.Title()
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(colorInk))
+	dbMarker, schemaMarker, tableMarker := treeMarkers()
+	marker, indent := tableMarker, ""
 	switch {
 	case schema.root:
-		if schema.description == "collapsed" {
-			label = "▸ " + label
-		} else {
-			label = "▾ " + label
-		}
-		if schema.count >= 0 {
-			label += fmt.Sprintf(" (%d)", schema.count)
-		}
+		marker = dbMarker
 	case schema.kind == "schema":
-		if schema.description == "collapsed" {
-			label = "  ▸ " + label
+		marker, indent = schemaMarker, "  "
+	case schema.kind == "view", schema.table != "":
+		if schema.schema != "" {
+			indent = "    "
 		} else {
-			label = "  ▾ " + label
+			indent = "  "
 		}
+	}
+	label := schema.Title()
+	if schema.root || schema.kind == "schema" {
 		if schema.count >= 0 {
 			label += fmt.Sprintf(" (%d)", schema.count)
 		}
-	case schema.kind == "view":
-		if schema.schema != "" {
-			label = "    └ " + label
-		} else {
-			label = "  └ " + label
-		}
+	}
+	if schema.kind == "view" {
 		label += " (view)"
-		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	case schema.table != "":
-		if schema.schema != "" {
-			label = "    └ " + label
-		} else {
-			label = "  └ " + label
-		}
+	}
+	color := colorMuted // idle
+	if schema.open {
+		color = colorSecondary
 	}
 	if index == model.Index() {
-		style = lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary))
+		color = colorPrimary
 	}
-	fmt.Fprint(writer, style.Render(label))
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
+	// The marker renders bold so the icon reads larger than the regular
+	// label; terminal cells are fixed size, so weight is the only scaling
+	// that keeps the layout intact.
+	fmt.Fprint(writer, indent+style.Bold(true).Render(marker+" ")+style.Render(label))
 }
 
 func newSchemaList() list.Model {

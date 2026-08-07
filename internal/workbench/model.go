@@ -154,7 +154,8 @@ type schemaItem struct {
 	schema             string
 	kind               string
 	root               bool
-	count              int // child tables/views; -1 = unknown (not rendered)
+	open               bool // on the path from the root to the open table
+	count              int  // child tables/views; -1 = unknown (not rendered)
 }
 
 func (i schemaItem) FilterValue() string {
@@ -452,7 +453,9 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			if m.databaseInfo.Product != "PostgreSQL" || m.databaseRootConnected(object.Database) {
 				count = databaseCounts[object.Database]
 			}
-			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, root: true, count: count})
+			item := schemaItem{title: object.Name, description: description, database: object.Database, root: true, count: count}
+			item.open = m.schemaOpenPath(item)
+			items = append(items, item)
 		case "schema":
 			// PostgreSQL only: schemas nest under the connected
 			// database's root.
@@ -463,7 +466,9 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			if !m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
 				description = "collapsed"
 			}
-			items = append(items, schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema", count: schemaCounts[m.schemaExpansionKey(object.Database, object.Name)]})
+			item := schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema", count: schemaCounts[m.schemaExpansionKey(object.Database, object.Name)]}
+			item.open = m.schemaOpenPath(item)
+			items = append(items, item)
 		default: // table or view
 			if !m.expandedDatabases[object.Database] {
 				continue
@@ -482,10 +487,51 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 					continue
 				}
 			}
-			items = append(items, schemaItem{title: table, description: object.Type, database: object.Database, schema: schema, table: object.Name, kind: object.Type})
+			item := schemaItem{title: table, description: object.Type, database: object.Database, schema: schema, table: object.Name, kind: object.Type}
+			item.open = m.schemaOpenPath(item)
+			items = append(items, item)
 		}
 	}
 	return m.schema.SetItems(items)
+}
+
+// schemaOpenPath reports whether item lies on the path from its root down to
+// the currently open table, which is the sidebar's "opened" state.
+func (m Model) schemaOpenPath(item schemaItem) bool {
+	if m.SelectedTable == "" {
+		return false
+	}
+	switch m.databaseInfo.Product {
+	case "PostgreSQL":
+		if !m.databaseRootConnected(item.database) {
+			return false
+		}
+		schema, _, _ := strings.Cut(m.SelectedTable, ".")
+		switch {
+		case item.root:
+			return true
+		case item.kind == "schema":
+			return item.schema == schema
+		case item.table != "":
+			return item.table == m.SelectedTable
+		}
+	case "MySQL":
+		database, table, _ := strings.Cut(m.SelectedTable, ".")
+		switch {
+		case item.root:
+			return item.database == database
+		case item.table != "":
+			return item.database == database && item.table == table
+		}
+	default: // SQLite: a single root per file, tables are bare names.
+		switch {
+		case item.root:
+			return true
+		case item.table != "":
+			return item.table == m.SelectedTable
+		}
+	}
+	return false
 }
 
 // schemaChildCounts tallies the table/view objects under each database and

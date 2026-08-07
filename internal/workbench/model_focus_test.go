@@ -434,7 +434,7 @@ func TestSchemaFilter_visibleInputRendersPlaceholderAndIcon(t *testing.T) {
 	}
 	// The item count status line is gone: the item rows start right below
 	// the box.
-	if !strings.Contains(lines[filterY+2], "└") && !strings.Contains(lines[filterY+2], "▾") && !strings.Contains(lines[filterY+2], "No items") {
+	if !strings.Contains(lines[filterY+2], "▪") && !strings.Contains(lines[filterY+2], "▣") && !strings.Contains(lines[filterY+2], "▤") && !strings.Contains(lines[filterY+2], "No items") {
 		t.Fatalf("row below the filter box = %q, want the first tree row", lines[filterY+2])
 	}
 }
