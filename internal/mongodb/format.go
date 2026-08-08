@@ -266,7 +266,7 @@ func documentColumns(docs []bson.D) []string {
 
 // documentsResult converts decoded documents into the shared result shape:
 // display cells use compact mongosh-style formatting and are sanitized and
-// capped at 300 runes; full cells render objects, arrays, and binary as
+// capped at MaxRunes; full cells render objects, arrays, and binary as
 // extended JSON for the cell viewer and the copy action.
 func documentsResult(docs []bson.D, hasMore bool, duration time.Duration) sharedsql.Result {
 	columns := documentColumns(docs)

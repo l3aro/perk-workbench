@@ -7,7 +7,7 @@ import (
 
 const (
 	MaxRows  = 500
-	MaxRunes = 300
+	MaxRunes = 50
 )
 
 type Service interface {

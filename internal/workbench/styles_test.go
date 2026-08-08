@@ -9,7 +9,7 @@ import (
 
 func TestCellTextCapsAtSharedRuneLimit(t *testing.T) {
 	input := strings.Repeat("x", sharedsql.MaxRunes+1)
-	if got, want := cellText(input), strings.Repeat("x", 300)+"…"; got != want {
+	if got, want := cellText(input), strings.Repeat("x", sharedsql.MaxRunes)+"…"; got != want {
 		t.Fatalf("cellText() = %q, want %q", got, want)
 	}
 }

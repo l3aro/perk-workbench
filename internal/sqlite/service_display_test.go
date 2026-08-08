@@ -39,7 +39,7 @@ func TestServiceExecuteDisplayCells(t *testing.T) {
 		t.Fatalf("UntruncatedRows missing newline and tail: %q", full)
 	}
 	// Rows is sanitized and capped at MaxRunes: newline replaced with space,
-	// truncated to 300 runes with an ellipsis. The full value lives in
+	// truncated to MaxRunes with an ellipsis. The full value lives in
 	// UntruncatedRows for the cell viewer.
 	display := *result.Rows[0][0]
 	if strings.Contains(display, "\n") {
