@@ -266,7 +266,7 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	// Then
 	assertTableTitlesAndPositiveWidths(t, model.structure, []string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"})
 	rows := model.structure.Rows()
-	if len(rows) != 2 || !strings.Contains(rows[0][1], iconPrimaryKey+"PK") || !strings.Contains(rows[1][1], iconUnique+"UQ") || !strings.Contains(rows[1][1], iconRegular+"IX") || ansi.Strip(rows[1][1]) != iconUnique+"UQ "+iconRegular+"IX" || !strings.Contains(rows[0][1], "\x1b[") || !strings.Contains(rows[1][1], "\x1b[") {
+	if len(rows) != 2 || !strings.Contains(rows[0][1], iconPrimaryKey+" PK") || !strings.Contains(rows[1][1], iconUnique+" UQ") || !strings.Contains(rows[1][1], iconRegular+" IX") || ansi.Strip(rows[1][1]) != iconUnique+" UQ | "+iconRegular+" IX" || !strings.Contains(rows[0][1], "\x1b[") || !strings.Contains(rows[1][1], "\x1b[") {
 		t.Fatalf("structure index markers = %#v, want colored primary, unique, and regular icons", rows)
 	}
 	if got, want := rows[1][3], "GENERATED STORED"; got != want {

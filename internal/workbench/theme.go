@@ -222,14 +222,14 @@ func indexIcons(indexes []sharedsql.IndexKind) string {
 	for _, index := range indexes {
 		switch index {
 		case sharedsql.IndexPrimaryKey:
-			icons = append(icons, primaryIndexStyle.Render(iconPrimaryKey+"PK"))
+			icons = append(icons, primaryIndexStyle.Render(iconPrimaryKey+" PK"))
 		case sharedsql.IndexUnique:
-			icons = append(icons, uniqueIndexStyle.Render(iconUnique+"UQ"))
+			icons = append(icons, uniqueIndexStyle.Render(iconUnique+" UQ"))
 		case sharedsql.IndexRegular:
-			icons = append(icons, regularIndexStyle.Render(iconRegular+"IX"))
+			icons = append(icons, regularIndexStyle.Render(iconRegular+" IX"))
 		}
 	}
-	return strings.Join(icons, " ")
+	return strings.Join(icons, " | ")
 }
 
 // commitTheme applies a theme and persists the choice to config.json so it
