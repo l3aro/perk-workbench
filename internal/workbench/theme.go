@@ -18,7 +18,7 @@ var (
 	headerStyle, headerButtonStyle, footerStyle, statusStyle, thinkingStyle           lipgloss.Style
 	focusStyle, panelStyle                                                            lipgloss.Style
 	connectionActionStyle                                                             lipgloss.Style
-	connectionActionSelectedStyle                                                     lipgloss.Style
+	connectionActionSelectedStyle, connectionActionFocusedStyle                       lipgloss.Style
 	formSaveButtonStyle, formCancelButtonStyle, formButtonFocusedStyle                lipgloss.Style
 	primaryIndexStyle, uniqueIndexStyle                                               lipgloss.Style
 	regularIndexStyle                                                                 lipgloss.Style
@@ -112,6 +112,11 @@ func resetStyles() {
 	connectionActionSelectedStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorPrimary)).
+		Bold(true).
+		Padding(0, spaceCompact)
+	connectionActionFocusedStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorCanvas)).
+		Background(lipgloss.Color(colorFocused)).
 		Bold(true).
 		Padding(0, spaceCompact)
 	formSaveButtonStyle = lipgloss.NewStyle().

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/go-sql-driver/mysql"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
@@ -309,6 +310,66 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 				t.Fatalf("selected action = %q, want %q", model.connection.values.action, test.action)
 			}
 		})
+	}
+}
+
+// TestConnectionForm_actionButtonsHighlightOnFocus guards the focus cue of
+// the Action buttons: the selected button renders with the selection color
+// (primary) while blurred and shifts to the focus color while the field is
+// focused — the same convention huh applies to its own options and buttons.
+func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+	model.connection.focus = connectionFocusForm
+	model.connection.values.target = ":memory:"
+	model = resolveConnectionCommand(model, model.connection.form.Init())
+
+	highlighted := func(view string, style lipgloss.Style) []string {
+		var got []string
+		if strings.Contains(view, style.Render(connectionActionTest)) {
+			got = append(got, connectionActionTest)
+		}
+		if strings.Contains(view, style.Render(connectionActionConnect)) {
+			got = append(got, connectionActionConnect)
+		}
+		return got
+	}
+
+	// Action field starts blurred (focus is on Driver): the selected button
+	// shows the teal selection style, not the focus style.
+	view := model.connection.form.View()
+	if got := highlighted(view, connectionActionSelectedStyle); !reflect.DeepEqual(got, []string{connectionActionTest}) {
+		t.Fatalf("blurred action field highlighted %v, want %q", got, connectionActionTest)
+	}
+	if got := highlighted(view, connectionActionFocusedStyle); len(got) != 0 {
+		t.Fatalf("blurred action field used focus style on %v, want none", got)
+	}
+
+	// Navigate onto the action field: the selection shifts to the focus color.
+	for range 4 {
+		_ = model.connection.form.NextField()
+	}
+	view = model.connection.form.View()
+	if got := highlighted(view, connectionActionFocusedStyle); !reflect.DeepEqual(got, []string{connectionActionTest}) {
+		t.Fatalf("focused action field highlighted %v, want %q", got, connectionActionTest)
+	}
+	if got := highlighted(view, connectionActionSelectedStyle); len(got) != 0 {
+		t.Fatalf("focused action field kept selection style on %v, want none", got)
+	}
+
+	// Switch the selection: the focus highlight moves to Connect.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+	view = model.connection.form.View()
+	if got := highlighted(view, connectionActionFocusedStyle); !reflect.DeepEqual(got, []string{connectionActionConnect}) {
+		t.Fatalf("after h/l highlighted %v, want %q", got, connectionActionConnect)
+	}
+
+	// Leave the field: the highlight returns to the selection color, keeping
+	// the chosen action.
+	_ = model.connection.form.PrevField()
+	view = model.connection.form.View()
+	if got := highlighted(view, connectionActionSelectedStyle); !reflect.DeepEqual(got, []string{connectionActionConnect}) {
+		t.Fatalf("blurred action field highlighted %v, want %q", got, connectionActionConnect)
 	}
 }
 

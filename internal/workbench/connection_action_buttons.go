@@ -13,6 +13,7 @@ type connectionActionButtons struct {
 	selector      *huh.Select[string]
 	value         *string
 	width, height int
+	focused       bool
 }
 
 func newConnectionActionButtons(value *string) *connectionActionButtons {
@@ -38,11 +39,18 @@ func (b *connectionActionButtons) Update(message tea.Msg) (huh.Model, tea.Cmd) {
 }
 
 func (b *connectionActionButtons) View() string {
+	// Mirrors huh's own focus convention: the selected option renders with
+	// the focus color while the field is focused and the selection color
+	// (primary) when blurred.
+	selectedStyle := connectionActionSelectedStyle
+	if b.focused {
+		selectedStyle = connectionActionFocusedStyle
+	}
 	testStyle, connectStyle := connectionActionStyle, connectionActionStyle
 	if *b.value == connectionActionTest {
-		testStyle = connectionActionSelectedStyle
+		testStyle = selectedStyle
 	} else {
-		connectStyle = connectionActionSelectedStyle
+		connectStyle = selectedStyle
 	}
 	buttons := lipgloss.JoinHorizontal(lipgloss.Left, testStyle.Render(connectionActionTest), " ", connectStyle.Render(connectionActionConnect))
 	if b.width > 0 && lipgloss.Width(buttons) > b.width {
@@ -51,10 +59,16 @@ func (b *connectionActionButtons) View() string {
 	return "Action\n" + buttons
 }
 
-func (b *connectionActionButtons) Blur() tea.Cmd  { return b.selector.Blur() }
-func (b *connectionActionButtons) Focus() tea.Cmd { return b.selector.Focus() }
-func (b *connectionActionButtons) Error() error   { return b.selector.Error() }
-func (b *connectionActionButtons) Run() error     { return b.selector.Run() }
+func (b *connectionActionButtons) Blur() tea.Cmd {
+	b.focused = false
+	return b.selector.Blur()
+}
+func (b *connectionActionButtons) Focus() tea.Cmd {
+	b.focused = true
+	return b.selector.Focus()
+}
+func (b *connectionActionButtons) Error() error { return b.selector.Error() }
+func (b *connectionActionButtons) Run() error   { return b.selector.Run() }
 func (b *connectionActionButtons) RunAccessible(writer io.Writer, reader io.Reader) error {
 	return b.selector.RunAccessible(writer, reader)
 }
