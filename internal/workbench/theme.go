@@ -130,9 +130,8 @@ func resetStyles() {
 		Padding(0, spaceCompact)
 	formButtonFocusedStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
-		Background(lipgloss.Color(colorPrimary)).
+		Background(lipgloss.Color(colorFocused)).
 		Bold(true).
-		Underline(true).
 		Padding(0, spaceCompact)
 	userMessageStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorInk)).

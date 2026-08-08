@@ -311,6 +311,63 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 	}
 }
 
+// TestStructureForm_tabReachesButtonsFromInsertMode guards the vim-off
+// flow: Tab on the last field must focus the Save/Cancel bar while staying
+// in insert mode, so the bar is reachable without Escape. Bar keys keep
+// working there, and k returns to the field with insert intact — j then
+// types instead of navigating.
+func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model.formMode.beginHuh(model.columnForm.focus()) // insert mode, vim off
+	for range 4 {
+		_ = model.columnForm.form.NextField() // attributes (last field)
+	}
+
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !model.formMode.buttonsFocused || model.formMode.mode != formModeInsert {
+		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.formMode.buttonsFocused, model.formMode.mode)
+	}
+
+	// h/l still switch the choice while the bar is focused in insert mode.
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if model.formMode.buttonChoice != 1 {
+		t.Fatalf("button choice = %d, want 1 (Cancel)", model.formMode.buttonChoice)
+	}
+
+	// Shift+Tab returns to the last field, keeping insert mode.
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if model.formMode.buttonsFocused || model.formMode.mode != formModeInsert {
+		t.Fatalf("shift+tab from bar: bar=%t mode=%d, want unfocused/insert", model.formMode.buttonsFocused, model.formMode.mode)
+	}
+
+	// j is content on the field, not field navigation.
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if got := model.columnForm.values.attributes; got != "j" {
+		t.Fatalf("attributes = %q, want %q", got, "j")
+	}
+}
+
+// TestStructureForm_insertModeBarEnterActivatesChoice guards the replay
+// path: Enter on Cancel from insert mode must reach the discard
+// confirmation, not be eaten as an insert-mode Escape.
+func TestStructureForm_insertModeBarEnterActivatesChoice(t *testing.T) {
+	model := openColumn(t, "name", "TEXT")
+	model.formMode.beginHuh(model.columnForm.focus()) // insert mode, vim off
+	for range 4 {
+		_ = model.columnForm.form.NextField() // attributes (last field)
+	}
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'l', Text: "l"}) // Cancel
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if !model.columnForm.confirming() || model.columnForm.confirmationSave {
+		t.Fatalf("form = confirming:%t save:%t, want confirming discard", model.columnForm.confirming(), model.columnForm.confirmationSave)
+	}
+	if model.formMode.mode != formModeConfirm {
+		t.Fatalf("mode = %d, want confirm", model.formMode.mode)
+	}
+}
+
 func openColumn(t *testing.T, name, typeName string) Model {
 	t.Helper()
 	model := readyModel(t)

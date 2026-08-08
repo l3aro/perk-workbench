@@ -141,22 +141,29 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 		!controller.buttonsFocused {
 		return f.save(controller)
 	}
-	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
-		if route == formRouteHuh {
-			return f.updateHuh(message, controller)
-		}
-		return nil, tableFormNoAction
-	}
+	// The Save/Cancel bar is a real focus target in both modes: route its
+	// keys first so insert mode (vim off) never needs Escape to reach it.
 	keyPress, ok := message.(tea.KeyPressMsg)
+	replay := false
+	if ok && controller.buttonsFocused {
+		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focus() }); route != formButtonContinue {
+			if route == formButtonReplay {
+				keyPress, replay = replayed, true
+			} else {
+				return cmd, tableFormNoAction
+			}
+		}
+	}
+	if !replay {
+		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+			if route == formRouteHuh {
+				return f.updateHuh(message, controller)
+			}
+			return nil, tableFormNoAction
+		}
+	}
 	if !ok {
 		return nil, tableFormNoAction
-	}
-	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focus() }); route != formButtonContinue {
-		if route == formButtonReplay {
-			keyPress = replay
-		} else {
-			return cmd, tableFormNoAction
-		}
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
@@ -171,6 +178,10 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 }
 
 func (f *tableForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, tableFormAction) {
+	// The name field is the form's only field, so Tab always lands on the bar.
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, true, f.blur) {
+		return nil, tableFormNoAction
+	}
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if input, ok := f.form.GetFocusedField().(*editableInput); ok {

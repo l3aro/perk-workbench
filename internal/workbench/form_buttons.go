@@ -7,11 +7,13 @@ import (
 )
 
 // formButtonsBar renders the Save/Cancel button row shown under editable
-// forms. When focused, the chosen button is highlighted. The row is
-// hit-tested with formButtonAt.
+// forms. When focused, only the chosen button is lit (focus color) and the
+// other renders dimmed, so the primary style never reads as a second
+// highlight. The row is hit-tested with formButtonAt.
 func formButtonsBar(focused bool, choice int) string {
 	save, cancel := formSaveButtonStyle, formCancelButtonStyle
 	if focused {
+		save, cancel = formCancelButtonStyle, formCancelButtonStyle
 		if choice == 0 {
 			save = formButtonFocusedStyle
 		} else {

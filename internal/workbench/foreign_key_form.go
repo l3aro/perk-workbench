@@ -77,22 +77,29 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 		}
 		return nil, foreignKeyFormDiscard
 	}
-	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
-		if route == formRouteHuh {
-			return f.updateHuh(message, controller)
-		}
-		return nil, foreignKeyFormNoAction
-	}
+	// The Save/Cancel bar is a real focus target in both modes: route its
+	// keys first so insert mode (vim off) never needs Escape to reach it.
 	keyPress, ok := message.(tea.KeyPressMsg)
+	replay := false
+	if ok && controller.buttonsFocused {
+		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(4) }); route != formButtonContinue {
+			if route == formButtonReplay {
+				keyPress, replay = replayed, true
+			} else {
+				return cmd, foreignKeyFormNoAction
+			}
+		}
+	}
+	if !replay {
+		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+			if route == formRouteHuh {
+				return f.updateHuh(message, controller)
+			}
+			return nil, foreignKeyFormNoAction
+		}
+	}
 	if !ok {
 		return nil, foreignKeyFormNoAction
-	}
-	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(4) }); route != formButtonContinue {
-		if route == formButtonReplay {
-			keyPress = replay
-		} else {
-			return cmd, foreignKeyFormNoAction
-		}
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
@@ -131,6 +138,9 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 }
 
 func (f *foreignKeyForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, foreignKeyFormAction) {
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, f.focusedField() >= 4, f.blur) {
+		return nil, foreignKeyFormNoAction
+	}
 	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)

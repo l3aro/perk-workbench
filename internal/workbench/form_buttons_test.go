@@ -59,6 +59,20 @@ func TestFormButtonsBar_focusedHighlightsChoice(t *testing.T) {
 	if view := formButtonsBar(false, 0); strings.Contains(view, formButtonFocusedStyle.Render("Save")) || strings.Contains(view, formButtonFocusedStyle.Render("Cancel")) {
 		t.Fatalf("unfocused bar = %q, want no highlight", view)
 	}
+	// The focused button must use the focus color, rendered identically to
+	// the action buttons' focus cue — not the teal selection color.
+	if got := formButtonFocusedStyle.Render("Save"); got != connectionActionFocusedStyle.Render("Save") {
+		t.Fatalf("focused form button = %q, want the shared focus color", got)
+	}
+	// Only the chosen button is lit: with the bar focused, the unchosen
+	// button must drop to the dim base style instead of keeping the teal
+	// primary highlight.
+	if view := formButtonsBar(true, 0); strings.Contains(view, formSaveButtonStyle.Render("Save")) || !strings.Contains(view, formCancelButtonStyle.Render("Cancel")) {
+		t.Fatalf("focused bar choice 0 = %q, want Save lit and Cancel dimmed", view)
+	}
+	if view := formButtonsBar(true, 1); strings.Contains(view, formSaveButtonStyle.Render("Save")) || !strings.Contains(view, formCancelButtonStyle.Render("Save")) {
+		t.Fatalf("focused bar choice 1 = %q, want Cancel lit and Save dimmed", view)
+	}
 }
 
 func TestFormButtonsBar_rendersOnlyWhileFormActive(t *testing.T) {

@@ -263,6 +263,31 @@ func (s browseExecuteService) Execute(context.Context, string) (sharedsql.Result
 	return s.result, nil
 }
 
+// TestBrowseForm_tabReachesButtonsFromInsertMode guards the vim-off flow
+// for the row editor: Tab on the last field focuses the Save/Cancel bar
+// without leaving insert mode, and k returns with typing intact.
+func TestBrowseForm_tabReachesButtonsFromInsertMode(t *testing.T) {
+	model := openBrowseRow(t, 0)
+	model.formMode.beginHuh(model.browseForm.focus()) // insert mode, vim off
+	_ = model.browseForm.form.NextField()             // id -> name (last field)
+
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !model.formMode.buttonsFocused || model.formMode.mode != formModeInsert {
+		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.formMode.buttonsFocused, model.formMode.mode)
+	}
+
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if model.formMode.buttonsFocused || model.formMode.mode != formModeInsert {
+		t.Fatalf("k from bar: bar=%t mode=%d, want unfocused/insert", model.formMode.buttonsFocused, model.formMode.mode)
+	}
+
+	// j is content on the name field, not field navigation.
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if got := model.browseForm.values.fields[1]; got != "firstj" {
+		t.Fatalf("name = %q, want %q", got, "firstj")
+	}
+}
+
 func openBrowseRow(t *testing.T, row int) Model {
 	t.Helper()
 	model := readyBrowseModel(t)

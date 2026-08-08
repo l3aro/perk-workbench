@@ -62,7 +62,8 @@ func (c *formModeController) routeFormButtons(keyPress tea.KeyPressMsg, keybindi
 	case keyPress.Key().Code == tea.KeyRight, keyPress.Key().Code == 'l':
 		c.buttonChoice = 1
 		return formButtonHandled, tea.KeyPressMsg{}, nil
-	case keyPress.Key().Code == tea.KeyUp, keyPress.Key().Code == 'k':
+	case keyPress.Key().Code == tea.KeyUp, keyPress.Key().Code == 'k',
+		keyPress.Key().Code == tea.KeyTab && keyPress.Key().Mod&tea.ModShift != 0:
 		c.buttonsFocused = false
 		return formButtonHandled, tea.KeyPressMsg{}, focusLast()
 	case keyPress.Key().Code == tea.KeyDown, keyPress.Key().Code == 'j':
@@ -78,6 +79,20 @@ func (c *formModeController) routeFormButtons(keyPress tea.KeyPressMsg, keybindi
 func (c *formModeController) focusButtons() {
 	c.buttonsFocused = true
 	c.buttonChoice = 0
+}
+
+// routeToBar moves focus to the Save/Cancel bar when Tab is pressed on the
+// form's last field, so the bar is reachable from insert mode without
+// leaving it (vim mode off never needs Escape). Only Tab is intercepted:
+// j/k are content keys on insert-mode inputs, and Down is option navigation
+// on selects. Returns true when the key was consumed.
+func (c *formModeController) routeToBar(keyPress tea.KeyPressMsg, atLastField bool, blur func()) bool {
+	if c.buttonsFocused || !atLastField || keyPress.Key().Code != tea.KeyTab {
+		return false
+	}
+	c.focusButtons()
+	blur()
+	return true
 }
 
 // openForm runs a form's init command and, without vim mode, immediately

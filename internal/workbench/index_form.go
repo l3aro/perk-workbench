@@ -84,22 +84,29 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 		}
 		return nil, indexFormDiscard
 	}
-	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
-		if route == formRouteHuh {
-			return f.updateHuh(message, controller)
-		}
-		return nil, indexFormNoAction
-	}
+	// The Save/Cancel bar is a real focus target in both modes: route its
+	// keys first so insert mode (vim off) never needs Escape to reach it.
 	keyPress, ok := message.(tea.KeyPressMsg)
+	replay := false
+	if ok && controller.buttonsFocused {
+		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(2) }); route != formButtonContinue {
+			if route == formButtonReplay {
+				keyPress, replay = replayed, true
+			} else {
+				return cmd, indexFormNoAction
+			}
+		}
+	}
+	if !replay {
+		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+			if route == formRouteHuh {
+				return f.updateHuh(message, controller)
+			}
+			return nil, indexFormNoAction
+		}
+	}
 	if !ok {
 		return nil, indexFormNoAction
-	}
-	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(2) }); route != formButtonContinue {
-		if route == formButtonReplay {
-			keyPress = replay
-		} else {
-			return cmd, indexFormNoAction
-		}
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
@@ -138,6 +145,9 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 }
 
 func (f *indexForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, indexFormAction) {
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, f.focusedField() >= 2, f.blur) {
+		return nil, indexFormNoAction
+	}
 	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)

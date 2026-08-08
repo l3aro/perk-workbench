@@ -128,22 +128,31 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		}
 		return nil, columnFormDiscard
 	}
-	if route := controller.routeHuh(message, f.blur); route != formRouteParent {
-		if route == formRouteHuh {
-			return f.updateHuh(message, controller)
-		}
-		return nil, columnFormNoAction
-	}
+	// The Save/Cancel bar is a real focus target in both modes: route its
+	// keys first so insert mode (vim off) never needs Escape to reach it.
+	// A replayed activation key skips mode routing so Enter on Cancel
+	// discards instead of being eaten as insert-mode Escape.
 	keyPress, ok := message.(tea.KeyPressMsg)
+	replay := false
+	if ok && controller.buttonsFocused {
+		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(f.fieldCount() - 1) }); route != formButtonContinue {
+			if route == formButtonReplay {
+				keyPress, replay = replayed, true
+			} else {
+				return cmd, columnFormNoAction
+			}
+		}
+	}
+	if !replay {
+		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+			if route == formRouteHuh {
+				return f.updateHuh(message, controller)
+			}
+			return nil, columnFormNoAction
+		}
+	}
 	if !ok {
 		return nil, columnFormNoAction
-	}
-	if route, replay, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(f.fieldCount() - 1) }); route != formButtonContinue {
-		if route == formButtonReplay {
-			keyPress = replay
-		} else {
-			return cmd, columnFormNoAction
-		}
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
@@ -185,6 +194,9 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 }
 
 func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, columnFormAction) {
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, f.focusedField() >= f.fieldCount()-1, f.blur) {
+		return nil, columnFormNoAction
+	}
 	focused := f.focusedField()
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
