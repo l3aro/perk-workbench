@@ -30,6 +30,7 @@ go run ./cmd/perk-workbench path/to/database.db
 make sqlite                 # demo SQLite database (recommended)
 make mysql                  # starts MySQL and opens its office demo database
 make postgres               # starts PostgreSQL and opens its employees demo database
+make mongo                  # starts MongoDB and opens its atlas demo database (restaurants primer + Atlas sample datasets, re-seeded when missing)
 ```
 - Compose mounts the source tree at `/workspace` and `demo/` at `/demo`; its default command opens `/demo/chinook-sqlite.db`.
 - The TUI needs an alternate-screen terminal. For manual query QA, run `F5`; `Escape` cancels a running query.

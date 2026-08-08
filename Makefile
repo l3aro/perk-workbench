@@ -13,4 +13,5 @@ postgres:
 
 mongo:
 	docker compose up -d --wait mongo
-	docker compose run --rm -t dev go run ./cmd/perk-workbench 'mongodb://mongo:27017/restaurants'
+	docker compose run --rm mongo-seed
+	docker compose run --rm -t dev go run ./cmd/perk-workbench 'mongodb://mongo:27017/atlas'

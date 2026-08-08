@@ -25,20 +25,29 @@ services:
     image: mongo:8
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_DATABASE: restaurants
     volumes:
       - mongo-data:/data/db
-      - ${DEMO_DIR:-./demo}/restaurants.json:/demo/restaurants.json:ro
-      - ${DEMO_DIR:-./demo}/init-restaurants.sh:/docker-entrypoint-initdb.d/init-restaurants.sh:ro
     healthcheck:
-      # Unhealthy until the one-shot init import finishes seeding the
-      # restaurants collection, so `make mongo` never opens an empty schema.
-      test: ["CMD", "mongosh", "--quiet", "--eval", "const n = db.getSiblingDB('restaurants').restaurants.estimatedDocumentCount(); quit(n === 25359 ? 0 : 1)"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.runCommand({ping:1}).ok ? 0 : 1)"]
       start_period: 20s
       interval: 5s
       timeout: 10s
       retries: 30
+
+  # Idempotent seeder: imports whichever collections are missing or stale and
+  # exits. Run it on demand via `docker compose run --rm mongo-seed` (which
+  # `make mongo` does after mongo is healthy) — one-shot containers are not
+  # re-executed by plain `up`, and initdb scripts would only run on a fresh
+  # volume.
+  mongo-seed:
+    image: mongo:8
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ${DEMO_DIR:-./demo}:/demo:ro
+    command: sh /demo/init-mongo.sh
 
   dev:
     image: golang:1.25
