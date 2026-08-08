@@ -13,10 +13,20 @@ const doubleClickTimeout = 500 * time.Millisecond
 
 func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	if y == 0 {
-		// Header row: the button pinned to the far right opens the command
-		// palette. Callers only route here when no overlay is open, so this
-		// matches the app.palette keybinding's guard.
-		if x >= m.width-headerButtonWidth() {
+		// Header row: the I/O button pinned to the right opens the quit
+		// confirmation dialog, the palette button left of it (separated by a
+		// fixed gap) opens the command palette; the margin cell between the
+		// quit button and the right edge does nothing. Both buttons share
+		// one width. Callers only route here when no overlay is open. The
+		// dialog's actions are safe in every state (Disconnect just closes
+		// the database if one is open), so unlike the Ctrl+Q keybinding it
+		// opens regardless of form or running state.
+		width := headerButtonWidth()
+		quitX := m.width - headerRightMargin - width
+		if x >= quitX && x < quitX+width {
+			return m.openQuitDialog(), nil
+		}
+		if x >= quitX-headerButtonGap-width && x < quitX-headerButtonGap {
 			m.commandPalette = newCommandPalette(m)
 			m.commandPalette.visible = true
 		}

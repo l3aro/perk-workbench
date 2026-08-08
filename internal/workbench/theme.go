@@ -9,24 +9,24 @@ import (
 )
 
 var (
-	activeTheme                                                                       = themeOcean
-	colorCanvas, colorPanel, colorStripe                                              string
-	colorInk, colorMuted, colorPrimary                                                string
-	colorSecondary, colorDanger, colorFocused, colorSuccess                           string
-	colorBorder, colorModeNormal                                                      string
-	colorModeInsert                                                                   string
-	headerStyle, headerButtonStyle, footerStyle, statusStyle, thinkingStyle           lipgloss.Style
-	focusStyle, panelStyle                                                            lipgloss.Style
-	connectionActionStyle                                                             lipgloss.Style
-	connectionActionSelectedStyle, connectionActionFocusedStyle                       lipgloss.Style
-	formSaveButtonStyle, formCancelButtonStyle, formButtonFocusedStyle                lipgloss.Style
-	primaryIndexStyle, uniqueIndexStyle                                               lipgloss.Style
-	regularIndexStyle                                                                 lipgloss.Style
-	statusSuccessStyle, statusFailedStyle                                             lipgloss.Style
-	statusCanceledStyle, readOnlyStyle                                                lipgloss.Style
-	modeNormalStyle, modeInsertStyle                                                  lipgloss.Style
-	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle lipgloss.Style
-	userMessageStyle, userMessageAccentStyle                                          lipgloss.Style
+	activeTheme                                                                                    = themeOcean
+	colorCanvas, colorPanel, colorStripe                                                           string
+	colorInk, colorMuted, colorPrimary                                                             string
+	colorSecondary, colorDanger, colorFocused, colorSuccess                                        string
+	colorBorder, colorModeNormal                                                                   string
+	colorModeInsert                                                                                string
+	headerStyle, headerButtonStyle, headerQuitButtonStyle, footerStyle, statusStyle, thinkingStyle lipgloss.Style
+	focusStyle, panelStyle                                                                         lipgloss.Style
+	connectionActionStyle                                                                          lipgloss.Style
+	connectionActionSelectedStyle, connectionActionFocusedStyle                                    lipgloss.Style
+	formSaveButtonStyle, formCancelButtonStyle, formButtonFocusedStyle                             lipgloss.Style
+	primaryIndexStyle, uniqueIndexStyle                                                            lipgloss.Style
+	regularIndexStyle                                                                              lipgloss.Style
+	statusSuccessStyle, statusFailedStyle                                                          lipgloss.Style
+	statusCanceledStyle, readOnlyStyle                                                             lipgloss.Style
+	modeNormalStyle, modeInsertStyle                                                               lipgloss.Style
+	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle              lipgloss.Style
+	userMessageStyle, userMessageAccentStyle                                                       lipgloss.Style
 )
 
 func init() { setTheme(themeOcean) }
@@ -83,6 +83,11 @@ func resetStyles() {
 	headerButtonStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorPrimary)).
+		Bold(true).
+		Padding(0, spaceCompact)
+	headerQuitButtonStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorCanvas)).
+		Background(lipgloss.Color(colorDanger)).
 		Bold(true).
 		Padding(0, spaceCompact)
 	footerStyle = lipgloss.NewStyle().

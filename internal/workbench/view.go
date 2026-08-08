@@ -66,22 +66,52 @@ func (m Model) View() tea.View {
 	return view
 }
 
-// headerButtonLabel is the command-palette button pinned to the far right of
-// the header row.
-const headerButtonLabel = "☰"
+// headerButtonLabel is the command-palette button pinned to the right side
+// of the header row, next to the quit button.
+const headerButtonLabel = ">_ Command"
 
-// headerButtonWidth returns the rendered width of the header palette button.
+// headerButtonWidth returns the common rendered width of the two header
+// buttons: both are padded to the wider one so they render identically.
 func headerButtonWidth() int {
-	return ansi.StringWidth(headerButtonStyle.Render(headerButtonLabel))
+	pal := ansi.StringWidth(headerButtonStyle.Render(headerButtonLabel))
+	quit := ansi.StringWidth(headerQuitButtonStyle.Render(headerQuitButtonLabel))
+	return max(pal, quit)
 }
 
-// headerView renders the header row: the logo on the left, the clickable
-// command-palette button at the very right.
+// headerQuitButtonLabel is the I/O power-symbol button pinned to the far
+// right of the header row: it opens the quit confirmation dialog (Ctrl+Q).
+const headerQuitButtonLabel = "⏻ Quit"
+
+// headerButtonGap is the fixed padding between the palette and quit buttons,
+// kept even when the terminal is too narrow for a leading gap.
+const headerButtonGap = 1
+
+// headerRightMargin is the fixed padding between the quit button and the
+// right edge of the header row.
+const headerRightMargin = 1
+
+// renderHeaderButton renders a header button at the given width with its
+// symbol and label centered.
+func renderHeaderButton(style lipgloss.Style, label string, width int) string {
+	free := width - ansi.StringWidth(style.Render(label))
+	if free <= 0 {
+		return style.Render(label)
+	}
+	return style.Render(strings.Repeat(" ", free/2) + label + strings.Repeat(" ", free-free/2))
+}
+
+// headerView renders the header row: the logo on the left, then the
+// command-palette button, then the quit button (equal width, symbol and
+// label centered), with fixed padding between the two buttons and a fixed
+// margin before the right edge.
 func (m Model) headerView() string {
 	logo := headerStyle.Render("PERK WORKBENCH")
-	button := headerButtonStyle.Render(headerButtonLabel)
-	gap := max(m.width-ansi.StringWidth(logo)-headerButtonWidth(), 0)
-	return logo + strings.Repeat(" ", gap) + button
+	width := headerButtonWidth()
+	button := renderHeaderButton(headerButtonStyle, headerButtonLabel, width)
+	quitButton := renderHeaderButton(headerQuitButtonStyle, headerQuitButtonLabel, width)
+	buttons := button + strings.Repeat(" ", headerButtonGap) + quitButton + strings.Repeat(" ", headerRightMargin)
+	gap := max(m.width-ansi.StringWidth(logo)-ansi.StringWidth(buttons), 0)
+	return logo + strings.Repeat(" ", gap) + buttons
 }
 
 // tableFormOpen reports whether the table popup is visible: open and not

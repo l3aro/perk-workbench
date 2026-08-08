@@ -282,7 +282,7 @@ func TestCommandPalette_clickSelectsItem(t *testing.T) {
 
 func TestModelCommandPalette_wheelNavigatesSelection(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if !model.commandPalette.visible {
 		t.Fatal("palette did not open")
@@ -306,7 +306,7 @@ func TestModelCommandPalette_wheelNavigatesSelection(t *testing.T) {
 
 func TestModelCommandPalette_outsideClickClosesWithoutLeakingRelease(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if !model.commandPalette.visible {
 		t.Fatal("palette did not open")
@@ -337,7 +337,7 @@ func TestModelCommandPalette_outsideClickClosesWithoutLeakingRelease(t *testing.
 
 func TestModelCommandPalette_clickSelectDoesNotLeakReleaseToPane(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 	p := model.commandPalette
 
@@ -392,7 +392,7 @@ func TestModelCommandPalette_clickSelectDoesNotLeakReleaseToPane(t *testing.T) {
 
 func TestModelCommandPalette_clickSelectsRenderedItem(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	updated, _ := model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if !model.commandPalette.visible {
 		t.Fatal("palette did not open")

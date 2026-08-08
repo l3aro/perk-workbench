@@ -148,19 +148,50 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	}
 }
 
-func TestHeader_paletteButtonPinnedToFarRight(t *testing.T) {
+func TestHeader_buttonsPinnedToFarRight(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
 
 	// When
 	headerLine := strings.Split(ansi.Strip(model.View().Content), "\n")[0]
 
-	// Then — header spans the full width and the button sits at the very right.
+	// Then — header spans the full width.
 	if got := ansi.StringWidth(headerLine); got != model.width {
 		t.Fatalf("header row width = %d, want %d", got, model.width)
 	}
-	if got, want := headerLine[len(headerLine)-headerButtonWidth():], headerButtonLabel; !strings.Contains(got, want) {
-		t.Fatalf("header right edge = %q, want it to contain %q", got, want)
+
+	// The quit button is the rightmost non-space content.
+	trimmed := strings.TrimRight(headerLine, " ")
+	if !strings.HasSuffix(trimmed, headerQuitButtonLabel) {
+		t.Fatalf("header right edge = %q, want it to end with %q", trimmed[len(trimmed)-10:], headerQuitButtonLabel)
+	}
+
+	// The palette button sits left of the quit button with the fixed gap
+	// (plus each button's own padding) between their glyphs.
+	palIdx := strings.Index(headerLine, headerButtonLabel)
+	quitIdx := strings.LastIndex(headerLine, headerQuitButtonLabel)
+	if palIdx < 0 || quitIdx < 0 || palIdx > quitIdx {
+		t.Fatalf("header button order wrong: palette@%d quit@%d", palIdx, quitIdx)
+	}
+	if gap := quitIdx - palIdx - len(headerButtonLabel); gap < headerButtonGap+2 {
+		t.Fatalf("gap between button glyphs = %d cells, want at least %d", gap, headerButtonGap+2)
+	}
+
+	// A margin of at least headerRightMargin cells follows the quit button.
+	if margin := len(headerLine) - quitIdx - len(headerQuitButtonLabel); margin < headerRightMargin {
+		t.Fatalf("margin right of quit button = %d cells, want at least %d", margin, headerRightMargin)
+	}
+}
+
+func TestHeader_buttonsSameWidth(t *testing.T) {
+	// Given — both buttons are rendered through the same header path.
+	width := headerButtonWidth()
+	pal := renderHeaderButton(headerButtonStyle, headerButtonLabel, width)
+	quit := renderHeaderButton(headerQuitButtonStyle, headerQuitButtonLabel, width)
+
+	// Then — they render at the shared width.
+	if pw, qw := ansi.StringWidth(pal), ansi.StringWidth(quit); pw != qw || pw != width {
+		t.Fatalf("button widths palette=%d quit=%d, want both %d", pw, qw, width)
 	}
 }
 
@@ -177,22 +208,74 @@ func TestHeader_paletteButtonClickOpensPalette(t *testing.T) {
 		t.Fatal("logo-area click opened the palette")
 	}
 
-	// When — click on the header button at the very right.
-	updated, _ = model.Update(tea.MouseClickMsg{X: 99, Y: 0, Button: tea.MouseLeft})
+	// When — click the palette button, left of the quit button.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - headerButtonGap - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 
 	// Then — the command palette opens.
 	if !model.commandPalette.visible {
-		t.Fatal("header button click did not open the command palette")
+		t.Fatal("header palette click did not open the command palette")
 	}
 
-	// When — click just left of the button (outside the palette box).
-	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - headerButtonWidth() - 1, Y: 0, Button: tea.MouseLeft})
+	// When — click just left of both header buttons (outside their boxes).
+	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - headerButtonGap - headerButtonWidth() - 1, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 
 	// Then — the outside click dismisses the palette.
 	if model.commandPalette.visible {
-		t.Fatal("header click left of the button did not close the palette")
+		t.Fatal("header click left of the buttons did not close the palette")
+	}
+}
+
+func TestHeader_quitButtonOpensQuitDialog(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+
+	// When — click the I/O button, right of the palette button.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - 1, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — the quit confirmation dialog opens (like Ctrl+Q).
+	if model.quitDialog == nil {
+		t.Fatal("header quit button click did not open the quit dialog")
+	}
+
+	// When — the dialog is dismissed, then the margin cell is clicked.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.quitDialog != nil {
+		t.Fatal("escape did not dismiss the quit dialog")
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - 1, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — the margin click does nothing.
+	if model.quitDialog != nil || model.commandPalette.visible {
+		t.Fatal("margin click opened a dialog or the palette")
+	}
+
+	// When — the palette button is clicked.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - headerButtonGap - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — the palette opens, not a second dialog.
+	if !model.commandPalette.visible {
+		t.Fatal("header palette click did not open the command palette")
+	}
+}
+
+func TestHeader_quitButtonOpensDialogOnConnectionScreen(t *testing.T) {
+	// Given — connection screen: Ctrl+Q's state/form guards would block, the
+	// button must still open the dialog (its actions are safe in every state).
+	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+
+	// When — click the I/O button, right of the palette button.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - 1, Y: 0, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	// Then — the quit confirmation dialog opens.
+	if model.quitDialog == nil {
+		t.Fatal("quit button did not open the dialog on the connection screen")
 	}
 }
 

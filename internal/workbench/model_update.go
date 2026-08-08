@@ -359,12 +359,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.State == stateReady && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
 			!m.hasOverlay() && !m.formActive() && !m.Running() {
-			m.quitDialog = newConfirmationDialog("Quit?", "", []confirmationOption{
-				{label: "Disconnect", action: "disconnect"},
-				{label: "Quit", action: "quit"},
-				{label: "Cancel", action: "cancel"},
-			})
-			return m, nil
+			return m.openQuitDialog(), nil
 		}
 
 		// Route chat Escape before global keybindings so chat's
