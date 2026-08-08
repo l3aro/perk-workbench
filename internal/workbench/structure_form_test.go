@@ -278,6 +278,39 @@ func TestStructureForm_escapeCancelsRunningQueryBeforeDiscard(t *testing.T) {
 	_, _ = model.Update(queryCanceledMsg{requestID: requestID})
 }
 
+// TestStructureForm_vimOffEditColumnEntersInsert guards the bug where
+// editing an existing column opened the form in normal mode even with vim
+// mode disabled, forcing a manual i/Enter before typing. Editing must enter
+// insert mode without vim mode, exactly like every other form.
+func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
+	model := readyModel(t)
+	model.vimMode = false
+	model.SelectedTable, model.Tab = "items", tabStructure
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (name TEXT)"); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	model = resolveColumnCommand(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !model.formMode.editing() {
+		t.Fatalf("vim-off edit opened mode = %d, want insert", model.formMode.mode)
+	}
+	// Typing must reach the focused Name field: mode alone could be set by
+	// beginHuh while the field stayed blurred.
+	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	if got := model.columnForm.values.name; got == "name" {
+		t.Fatalf("typed text did not reach the Name field, values.name = %q", got)
+	}
+
+	// With vim mode on the same flow must stay in normal mode.
+	model = readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	updated, _ = model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	model = resolveColumnCommand(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
+	if model.formMode.editing() {
+		t.Fatalf("vim-on edit opened mode = %d, want normal", model.formMode.mode)
+	}
+}
+
 func openColumn(t *testing.T, name, typeName string) Model {
 	t.Helper()
 	model := readyModel(t)
