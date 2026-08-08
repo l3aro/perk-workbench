@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"io"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -38,6 +39,25 @@ func (b *connectionActionButtons) Update(message tea.Msg) (huh.Model, tea.Cmd) {
 	return b, command
 }
 
+// connectionActionWidth returns the common rendered width of the Test
+// connection and Connect buttons; the shorter label is centered into it.
+func connectionActionWidth() int {
+	return max(
+		lipgloss.Width(connectionActionStyle.Render(connectionActionTest)),
+		lipgloss.Width(connectionActionStyle.Render(connectionActionConnect)),
+	)
+}
+
+// connectionActionRender renders an action button at the common width with
+// its label centered.
+func connectionActionRender(style lipgloss.Style, label string) string {
+	free := connectionActionWidth() - lipgloss.Width(style.Render(label))
+	if free <= 0 {
+		return style.Render(label)
+	}
+	return style.Render(strings.Repeat(" ", free/2) + label + strings.Repeat(" ", free-free/2))
+}
+
 func (b *connectionActionButtons) View() string {
 	// Mirrors huh's own focus convention: the selected option renders with
 	// the focus color while the field is focused and the selection color
@@ -52,9 +72,11 @@ func (b *connectionActionButtons) View() string {
 	} else {
 		connectStyle = selectedStyle
 	}
-	buttons := lipgloss.JoinHorizontal(lipgloss.Left, testStyle.Render(connectionActionTest), " ", connectStyle.Render(connectionActionConnect))
+	testButton := connectionActionRender(testStyle, connectionActionTest)
+	connectButton := connectionActionRender(connectStyle, connectionActionConnect)
+	buttons := lipgloss.JoinHorizontal(lipgloss.Left, testButton, " ", connectButton)
 	if b.width > 0 && lipgloss.Width(buttons) > b.width {
-		buttons = lipgloss.JoinVertical(lipgloss.Left, testStyle.Render(connectionActionTest), connectStyle.Render(connectionActionConnect))
+		buttons = lipgloss.JoinVertical(lipgloss.Left, testButton, connectButton)
 	}
 	return "Action\n" + buttons
 }

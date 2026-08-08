@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/go-sql-driver/mysql"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
@@ -317,6 +318,41 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 // the Action buttons: the selected button renders with the selection color
 // (primary) while blurred and shifts to the focus color while the field is
 // focused — the same convention huh applies to its own options and buttons.
+// TestConnectionForm_actionButtonsSameWidth guards the equal-width Action
+// buttons: both render at connectionActionWidth() in the form view, with the
+// shorter "Connect" label centered into the wider "Test connection" button.
+func TestConnectionForm_actionButtonsSameWidth(t *testing.T) {
+	model := New("", context.Background(), testOpen, false)
+	model.connection.focus = connectionFocusForm
+	model.connection.values.target = ":memory:"
+	model = resolveConnectionCommand(model, model.connection.form.Init())
+	view := ansi.Strip(model.connection.form.View())
+
+	width := connectionActionWidth()
+	connectPad := (width - lipgloss.Width(connectionActionStyle.Render(connectionActionConnect))) / 2
+
+	found := false
+	for _, line := range strings.Split(view, "\n") {
+		testIdx := strings.Index(line, connectionActionTest)
+		connectIdx := strings.LastIndex(line, connectionActionConnect)
+		if testIdx < 0 || connectIdx < 0 {
+			continue
+		}
+		found = true
+		// Each button spans its label, the style padding (1 per side), and
+		// for Connect the centering padding (connectPad per side).
+		if testSpan := len(connectionActionTest) + 2; testSpan != width {
+			t.Fatalf("Test button span = %d, want %d", testSpan, width)
+		}
+		if connectSpan := len(connectionActionConnect) + 2 + 2*connectPad; connectSpan != width {
+			t.Fatalf("Connect button span = %d, want %d", connectSpan, width)
+		}
+	}
+	if !found {
+		t.Fatal("action buttons not found in connection form view")
+	}
+}
+
 func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.focus = connectionFocusForm
@@ -325,10 +361,10 @@ func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 
 	highlighted := func(view string, style lipgloss.Style) []string {
 		var got []string
-		if strings.Contains(view, style.Render(connectionActionTest)) {
+		if strings.Contains(view, connectionActionRender(style, connectionActionTest)) {
 			got = append(got, connectionActionTest)
 		}
-		if strings.Contains(view, style.Render(connectionActionConnect)) {
+		if strings.Contains(view, connectionActionRender(style, connectionActionConnect)) {
 			got = append(got, connectionActionConnect)
 		}
 		return got
