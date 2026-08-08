@@ -2,6 +2,8 @@ package workbench
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -332,6 +334,46 @@ func TestBrowse_y_yanks_current_cell_value(t *testing.T) {
 	if command == nil {
 		t.Fatal("expected copy command")
 	}
+}
+
+func TestBrowse_y_yanks_full_value_not_display_trimmed(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.browseColumn = 1 // select the "name" column
+	model.browse.SetCursor(0)
+	full := strings.Repeat("x", 400)
+	model.browseResult = sqlite.Result{
+		Columns:         []string{"id", "name"},
+		Rows:            [][]*string{{stringPointer("1"), stringPointer(cellText(full))}, {stringPointer("2"), stringPointer("second")}},
+		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer(full)}, {stringPointer("2"), stringPointer("second")}},
+	}
+
+	// When — y yanks the selected cell
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — the full untruncated value is copied, not the display-trimmed one
+	if got, want := model.Status, "copied to clipboard"; got != want {
+		t.Fatalf("status = %q, want %q", got, want)
+	}
+	if got, want := copiedText(command), full; got != want {
+		t.Fatalf("copied cell = %q, want full untruncated value %q", got, want)
+	}
+}
+
+// copiedText runs a copy command and returns the clipboard text it carries.
+func copiedText(command tea.Cmd) string {
+	if command == nil {
+		return ""
+	}
+	seq := reflect.ValueOf(command())
+	for i := 0; i < seq.Len(); i++ {
+		if msg := seq.Index(i).Interface().(tea.Cmd)(); msg != nil {
+			if text := fmt.Sprint(msg); text != "<nil>" {
+				return text
+			}
+		}
+	}
+	return ""
 }
 
 func TestBrowse_commaOpensContextMenu(t *testing.T) {

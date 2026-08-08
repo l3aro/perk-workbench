@@ -142,10 +142,11 @@ func (m *Model) copyBrowseCell() tea.Cmd {
 	if row < 0 || row >= len(m.browseResult.Rows) || col < 0 || col >= len(m.browseResult.Columns) {
 		return nil
 	}
-	value := ""
-	if cell := m.browseResult.Rows[row][col]; cell != nil {
-		value = *cell
+	display := ""
+	if row < len(m.browse.Rows()) && col < len(m.browse.Rows()[row]) {
+		display = m.browse.Rows()[row][col]
 	}
+	value := m.rawCellValue("browse", row, col, display)
 	m.Status = "copied to clipboard"
 	return copyQueryLogStatement(value)
 }
