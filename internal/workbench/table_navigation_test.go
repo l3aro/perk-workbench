@@ -92,6 +92,34 @@ func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) 
 	}
 }
 
+func TestTableCellNavigation_wideColumn_revealsItsHead(t *testing.T) {
+	// Given
+	model := resizeModel(readyModel(t), 100, 24)
+	requestID := model.StartQueryForTest(context.Background())
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+		Columns: []string{"id", "payload"},
+		Rows:    [][]*string{{stringPointer("1"), stringPointer(strings.Repeat("x", 300))}},
+	}})
+	model = updated.(Model)
+	if got, want := model.results.Columns()[1].Width, model.tableViewportWidth; got <= want {
+		t.Fatalf("payload column width = %d, viewport = %d; want a column wider than the viewport", got, want)
+	}
+
+	// When: move right onto the wide column.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	model = updated.(Model)
+
+	// Then: the viewport aligns with the column start, showing its head
+	// rather than pinning the viewport to the column's tail.
+	if got, want := model.resultsOffset, model.results.Columns()[0].Width+2*spaceCompact; got != want {
+		t.Fatalf("offset = %d, want %d (wide column aligned at its start)", got, want)
+	}
+	line := strings.Split(tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth), "\n")[1]
+	if stripped := ansi.Strip(line); !strings.HasPrefix(stripped, " xxxx") {
+		t.Fatalf("visible line = %q, want the head of the wide cell", stripped)
+	}
+}
+
 func TestTableCellNavigation_consumesMotionKeys_atColumnEdges(t *testing.T) {
 	// Given
 	resultTable := newResultsTable()

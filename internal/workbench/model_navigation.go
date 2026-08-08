@@ -61,7 +61,12 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 	for index, column := range columns {
 		columnEnd := columnStart + column.Width + 2*spaceCompact
 		if index == selectedColumn {
-			if columnStart < *offset {
+			if columnEnd-columnStart >= viewportWidth {
+				// The column is wider than the viewport, so it cannot fit:
+				// align its start so the view opens at the cell's head
+				// instead of pinning the viewport to its tail.
+				*offset = columnStart
+			} else if columnStart < *offset {
 				*offset = columnStart
 			} else if columnEnd > *offset+viewportWidth {
 				*offset = columnEnd - viewportWidth
