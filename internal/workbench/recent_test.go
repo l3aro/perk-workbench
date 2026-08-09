@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
@@ -180,8 +181,8 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.recent.SettingFilter() {
-		t.Fatal("recent list should enter filter mode")
+	if !model.recentFilter.Focused() {
+		t.Fatal("recent filter input should be focused")
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -228,6 +229,117 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model = updated.(Model)
 	if model.connection.focus != connectionFocusForm || model.connection.values.name != "" || model.connection.values.target != "" {
 		t.Fatalf("new connection form = focus %d, name %q, target %q", model.connection.focus, model.connection.values.name, model.connection.values.target)
+	}
+}
+
+// TestConnectionForm_recentFilterInput guards the visible filter input that
+// replaces the list's built-in filter: typing narrows the list live, and
+// enter/escape exit editing while keeping the applied filter.
+func TestConnectionForm_recentFilterInput(t *testing.T) {
+	model := recentClickModel(t)
+	model.connection.setFocus(connectionFocusRecent)
+
+	// The filter row renders at the top of the profiles pane.
+	if !strings.Contains(ansi.Strip(model.View().Content), "filter") {
+		t.Fatal("profiles pane does not render the filter input row")
+	}
+
+	// Enter filter editing, then type: only beta matches.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	if !model.recentFilter.Focused() {
+		t.Fatal("/ did not focus the recent filter input")
+	}
+
+	// Clipboard paste while editing lands in the input, not the list.
+	updated, _ = model.Update(tea.PasteMsg{Content: "be"})
+	model = updated.(Model)
+	if got := model.recentFilter.Value(); got != "be" {
+		t.Fatalf("filter value after paste = %q, want be", got)
+	}
+	if !model.recent.IsFiltered() {
+		t.Fatal("paste did not filter the recent list")
+	}
+	visible := model.recent.VisibleItems()
+	if len(visible) != 1 || visible[0].(recentConnection).Name != "beta" {
+		t.Fatalf("visible profiles = %#v, want only beta", visible)
+	}
+
+	// Typing extends the live filter.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
+	model = updated.(Model)
+	if got := model.recentFilter.Value(); got != "bet" {
+		t.Fatalf("filter value after typing = %q, want bet", got)
+	}
+	if len(model.recent.VisibleItems()) != 1 {
+		t.Fatal("typing dropped the applied filter")
+	}
+
+	// Enter exits editing, keeping the filter and the typed query.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.recentFilter.Focused() || model.recentFilter.Value() != "bet" {
+		t.Fatalf("after enter: focused=%t value=%q, want inactive/bet", model.recentFilter.Focused(), model.recentFilter.Value())
+	}
+	if !model.recent.IsFiltered() || len(model.recent.VisibleItems()) != 1 {
+		t.Fatal("enter dropped the applied filter")
+	}
+
+	// Escape exits editing too; editing keys work again after that.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.recentFilter.Focused() {
+		t.Fatal("escape left the recent filter input focused")
+	}
+	if got := model.recentFilter.Value(); got != "bet" {
+		t.Fatalf("filter value = %q, want preserved bet", got)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+	if model.connection.focus != connectionFocusForm {
+		t.Fatalf("connection focus = %d, want form after filter exit", model.connection.focus)
+	}
+
+	// Clearing the input restores every profile.
+	model.connection.setFocus(connectionFocusRecent)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	for range "bet" {
+		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
+		model = updated.(Model)
+	}
+	if model.recent.IsFiltered() || len(model.recent.VisibleItems()) != 2 {
+		t.Fatalf("after clearing: filtered=%t visible=%d, want all 2 profiles", model.recent.IsFiltered(), len(model.recent.VisibleItems()))
+	}
+}
+
+// TestRecentClick_filterRowFocusesInput guards the click handling of the
+// visible filter row: a click on the box focuses the input, a click on a
+// profile leaves filter editing and selects the profile.
+func TestRecentClick_filterRowFocusesInput(t *testing.T) {
+	model := recentClickModel(t)
+
+	// The filter box occupies screen rows 2-4 (pane top border at y=1).
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 3, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if !model.recentFilter.Focused() {
+		t.Fatal("click on the filter row did not focus the input")
+	}
+
+	itemY := renderedItemY(t, model, "beta")
+	if itemY < 0 {
+		t.Fatal("rendered profiles do not contain beta")
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: itemY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.recentFilter.Focused() {
+		t.Fatal("click on a profile left the filter input focused")
+	}
+	selected, ok := model.recent.SelectedItem().(recentConnection)
+	if !ok || selected.Name != "beta" {
+		t.Fatalf("selected profile = %#v, want beta", selected)
 	}
 }
 

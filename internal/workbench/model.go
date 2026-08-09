@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
@@ -52,7 +53,7 @@ type Model struct {
 	editorValidity                                                                                 sqlValidity
 	sqlValidationTag                                                                               uint64
 	schema, picker, recent                                                                         list.Model
-	schemaFilter                                                                                   textinput.Model
+	schemaFilter, recentFilter                                                                     textinput.Model
 	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
 	structureRows, indexRows, foreignKeyRows                                                       []table.Row
 	structureColumns                                                                               []sharedsql.ColumnInfo
@@ -214,7 +215,8 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		schema:            newSchemaList(),
 		picker:            newList("Choose database", true),
 		recent:            newList("", true),
-		schemaFilter:      newSchemaFilterInput(),
+		schemaFilter:      newFilterInput(),
+		recentFilter:      newFilterInput(),
 		expandedDatabases: map[string]bool{},
 		expandedSchemas:   map[string]bool{},
 		structure:         newResultsTable(),
@@ -242,6 +244,11 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	}
 	model.commandPalette = newCommandPalette(model)
 	model.recent.SetShowTitle(false)
+	// The profiles pane renders its own persistent filter input (like the
+	// schema sidebar); the list's built-in filter bar and keybinding are
+	// unused.
+	model.recent.SetShowFilter(false)
+	model.recent.KeyMap.Filter = key.NewBinding(key.WithDisabled())
 	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
 	model.queryLog.Blur()
 	model.focusActiveTable()
@@ -407,6 +414,9 @@ func (m *Model) disconnect() {
 	m.schema.ResetFilter()
 	m.schemaFilter.SetValue("")
 	m.schemaFilter.Blur()
+	m.recent.ResetFilter()
+	m.recentFilter.SetValue("")
+	m.recentFilter.Blur()
 }
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {

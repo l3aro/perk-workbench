@@ -19,6 +19,17 @@ func sequenceConnectionAction(init tea.Cmd, action string) tea.Cmd {
 	return tea.Sequence(init, func() tea.Msg { return connectionActionMsg{action: action} })
 }
 
+// applyRecentFilter pushes the visible filter input's value into the
+// profiles list, which filters its items and reports the committed state
+// the status bar mirrors.
+func (m *Model) applyRecentFilter() {
+	if query := strings.TrimSpace(m.recentFilter.Value()); query != "" {
+		m.recent.SetFilterText(query)
+		return
+	}
+	m.recent.ResetFilter()
+}
+
 func (m *Model) setRecentConnections(connections []recentConnection) {
 	m.recentConnections = connections
 	_ = m.recent.SetItems(recentListItems(connections))
@@ -258,10 +269,32 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.connection.focus == connectionFocusRecent {
 		keyPress, ok := message.(tea.KeyPressMsg)
+		if m.recentFilter.Focused() {
+			// Filter editing: every message goes to the input (so clipboard
+			// paste works too); enter/escape exit editing, keeping the
+			// applied filter.
+			if ok {
+				switch keyPress.Code {
+				case tea.KeyEscape, tea.KeyEnter:
+					m.recentFilter.Blur()
+					return m, nil
+				}
+			}
+			before := m.recentFilter.Value()
+			var filterCommand tea.Cmd
+			m.recentFilter, filterCommand = m.recentFilter.Update(message)
+			if m.recentFilter.Value() != before {
+				m.applyRecentFilter()
+			}
+			return m, filterCommand
+		}
 		if ok {
 			switch {
 			case m.keybindings.Match(keyPress, "connection.switch_to_form", []scope{scopeView, scopeGlobal}):
 				m.connection.focus = connectionFocusForm
+				return m, nil
+			case m.keybindings.Match(keyPress, "connection.filter", []scope{scopeView, scopeGlobal}):
+				m.recentFilter.Focus()
 				return m, nil
 			case m.keybindings.Match(keyPress, "connection.add", []scope{scopeView, scopeGlobal}):
 				return m, m.newConnection()
@@ -274,6 +307,11 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		var command tea.Cmd
 		m.recent, command = m.recent.Update(message)
+		// The list's own keymap can clear the filter (esc in list
+		// navigation); keep the visible input in sync.
+		if !m.recent.IsFiltered() && m.recentFilter.Value() != "" {
+			m.recentFilter.SetValue("")
+		}
 		return m, command
 	}
 	if m.connection.confirmation != nil {
@@ -357,7 +395,11 @@ func (m Model) connectionPaneView(height int) string {
 }
 
 // recentPaneView renders the profiles list with its pane-local action hints;
-// the layout reserves one row for the hint line (see layout).
+// the layout reserves rows for the filter box (3) and the hint line (1).
 func (m Model) recentPaneView() string {
-	return m.recent.View() + "\n" + chrome.PaneStatus("a add | e edit | d delete | / filter", "", max(m.schemaWidth-6, 0))
+	body := m.recent.View()
+	if row := m.recentFilterRow(); row != "" {
+		body = row + "\n" + body
+	}
+	return body + "\n" + chrome.PaneStatus("a add | e edit | d delete | / filter", "", max(m.schemaWidth-6, 0))
 }

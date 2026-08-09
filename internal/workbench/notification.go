@@ -322,7 +322,7 @@ func newNotificationHistory(entries []notificationEntry, selectedID int64, width
 		entries:  entries,
 		filtered: append([]notificationEntry{}, entries...),
 		list:     newSchemaList(),
-		filter:   newSchemaFilterInput(),
+		filter:   newFilterInput(),
 		pane:     notificationHistoryListPane,
 	}
 	h.list.SetDelegate(notificationItemDelegate{})

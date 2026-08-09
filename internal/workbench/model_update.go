@@ -443,7 +443,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schemaFilter.Focused() &&
-			!(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
+			!(m.State == stateConnection && (m.recentFilter.Focused() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
 			!(m.sqlEditorActive() && m.formMode.editing()) &&
 			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.value == "") {
 			if m.Running() {

@@ -103,6 +103,7 @@ var defaultDefs = []commandDef{
 
 	// ── Connection: recent list (view) ──────────────────────────
 	{id: "connection.switch_to_form", scope: scopeView, keys: []string{"2"}, label: "form"},
+	{id: "connection.filter", scope: scopeView, keys: []string{"/"}, label: "filter profiles"},
 	{id: "connection.add", scope: scopeView, keys: []string{"a"}, label: "add"},
 	{id: "connection.edit", scope: scopeView, keys: []string{"e", "enter"}, label: "edit"},
 	{id: "connection.delete", scope: scopeView, keys: []string{"d"}, label: "delete"},

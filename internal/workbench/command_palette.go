@@ -244,7 +244,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "app.quit":
 		return !m.formActive() && !m.schemaFilter.Focused() &&
-			!(m.State == stateConnection && (m.recent.SettingFilter() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
+			!(m.State == stateConnection && (m.recentFilter.Focused() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
 			!(m.sqlEditorActive() && m.formMode.editing())
 	case "editor.external":
 		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil

@@ -105,6 +105,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		if x >= m.schemaWidth && m.connection.focus != connectionFocusForm {
 			m.connection.focus = connectionFocusForm
+			m.recentFilter.Blur()
 		}
 		return m, nil
 	case statePicking:
@@ -137,11 +138,20 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 // focus.
 func (m Model) handleRecentClick(x, y int) (tea.Model, tea.Cmd) {
 	contentY := y - 1
-	// Pane top border at contentY=0; the list renders its status bar (3
-	// lines) above the items. Filtering inserts the filter prompt line.
+	// Pane top border at contentY=0. The filter box (3 rows, when the pane
+	// is wide enough) and the list's status bar sit above the items.
+	// Clicking the box focuses the input; any other click leaves filter
+	// editing so navigation keys work again.
+	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
+		m.recentFilter.Focus()
+		return m, nil
+	}
+	m.recentFilter.Blur()
+	// The list's status bar renders 2 lines (content plus bottom padding);
+	// the filter box adds 3 more rows when the pane is wide enough.
 	itemOffset := 4
-	if m.recent.SettingFilter() {
-		itemOffset = 5
+	if m.schemaFilterShown() {
+		itemOffset = 6
 	}
 	itemLine := contentY - itemOffset
 	if itemLine < 0 {

@@ -49,6 +49,7 @@ func (m *Model) layout(width, height int) {
 	// row onto a second line inside the bordered pane.
 	m.schema.SetSize(max(m.schemaWidth-6, 0), schemaListHeight)
 	m.schemaFilter.SetWidth(max(m.schemaWidth-6, 0))
+	m.recentFilter.SetWidth(max(m.schemaWidth-6, 0))
 	m.picker.SetSize(max(m.width-2, 0), max(contentHeight-2, 0))
 	connectionWidth := m.width
 	if !m.compact {
@@ -56,9 +57,14 @@ func (m *Model) layout(width, height int) {
 	}
 	m.connection.setWidth(max(connectionWidth-4, 1))
 	m.connection.setHeight(max(m.height-8, 1))
-	// The profiles list spans the pane body exactly; its bottom row is
-	// reserved for the pane action hints (see recentPaneView).
-	m.recent.SetSize(max(m.schemaWidth-6, 0), max(contentHeight-3, 0))
+	// The profiles list spans the pane body exactly; the filter box (3
+	// rows, when the pane is wide enough) and the bottom hint line are
+	// reserved above and below it (see recentPaneView).
+	recentListHeight := max(contentHeight-3, 0)
+	if m.schemaFilterShown() {
+		recentListHeight = max(recentListHeight-3, 0)
+	}
+	m.recent.SetSize(max(m.schemaWidth-6, 0), recentListHeight)
 	m.editor.setSize(max(m.editorWidth-8, 1), max(m.editorHeight-4, 1))
 	m.resizeChat()
 	m.tableViewportWidth = max(m.editorWidth-4, 1)

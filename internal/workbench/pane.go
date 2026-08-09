@@ -166,10 +166,10 @@ func newSchemaList() list.Model {
 	return model
 }
 
-// newSchemaFilterInput returns the sidebar's persistent filter input. The
-// list's built-in filter is driven externally via SetFilterText so the input
-// can stay visible with its own placeholder and icon.
-func newSchemaFilterInput() textinput.Model {
+// newFilterInput returns a persistent pane filter input. The list's built-in
+// filter is driven externally via SetFilterText so the input can stay visible
+// with its own placeholder and icon.
+func newFilterInput() textinput.Model {
 	input := textinput.New()
 	input.Prompt = ""
 	input.Placeholder = "filter"
@@ -187,18 +187,14 @@ func (m Model) schemaFilterShown() bool {
 	return m.schemaWidth >= 7
 }
 
-// schemaFilterRow renders the sidebar's filter input in a bordered box with
-// a magnifying-glass suffix, sized to the list width. The border turns
+// filterInputRow renders a filter input in a bordered box with a
+// magnifying-glass suffix, sized to the given width. The border turns
 // primary while the input is focused. The input is truncated because its
 // placeholder view renders one cell wider than Width.
-func (m Model) schemaFilterRow() string {
-	if !m.schemaFilterShown() {
-		return ""
-	}
-	width := max(m.schemaWidth-4, 0)
+func (m Model) filterInputRow(input textinput.Model, width int) string {
 	icon := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("🔍")
 	borderColor := colorBorder
-	if m.schemaFilter.Focused() {
+	if input.Focused() {
 		borderColor = colorPrimary
 	}
 	box := lipgloss.NewStyle().
@@ -207,7 +203,25 @@ func (m Model) schemaFilterRow() string {
 		Padding(0, 1).
 		Width(max(width-2, 0))
 	// Box content area: width-2 (box) - 2 (borders) - 2 (padding) - 2 (icon).
-	return box.Render(ansi.Truncate(m.schemaFilter.View(), max(width-8, 0), "") + icon)
+	return box.Render(ansi.Truncate(input.View(), max(width-8, 0), "") + icon)
+}
+
+// schemaFilterRow renders the schema sidebar's filter input, omitted when
+// the pane is too narrow to show it.
+func (m Model) schemaFilterRow() string {
+	if !m.schemaFilterShown() {
+		return ""
+	}
+	return m.filterInputRow(m.schemaFilter, max(m.schemaWidth-4, 0))
+}
+
+// recentFilterRow renders the profiles pane's filter input, matching the
+// schema sidebar; both panes share the sidebar width.
+func (m Model) recentFilterRow() string {
+	if !m.schemaFilterShown() {
+		return ""
+	}
+	return m.filterInputRow(m.recentFilter, max(m.schemaWidth-4, 0))
 }
 
 // abbreviateCount renders a compact human-readable count: 10k, 490k,
