@@ -159,6 +159,35 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyTheme(m.themePicker.theme())
 		return m, nil
 	}
+	if m.tableTargetPicker != nil {
+		keyPress, ok := message.(tea.KeyPressMsg)
+		if !ok {
+			return m, nil
+		}
+		switch keyPress.Key().Code {
+		case tea.KeyEscape:
+			m.tableTargetPicker = nil
+			return m, nil
+		case tea.KeyEnter:
+			m.commitTableOpenTarget(m.tableTargetPicker.tab())
+			m.tableTargetPicker = nil
+			return m, nil
+		case tea.KeyUp:
+			m.tableTargetPicker.move(-1)
+		case tea.KeyDown:
+			m.tableTargetPicker.move(1)
+		default:
+			switch keyPress.Keystroke() {
+			case "j":
+				m.tableTargetPicker.move(1)
+			case "k":
+				m.tableTargetPicker.move(-1)
+			default:
+				return m, nil
+			}
+		}
+		return m, nil
+	}
 	if m.commandPalette.visible {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			selectMsg, close, consumed := m.commandPalette.handleKey(keyPress)

@@ -25,7 +25,7 @@ func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default config file not written: %v", err)
 	}
-	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`} {
+	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"table_open_target": "structure"`} {
 		if !strings.Contains(string(contents), want) {
 			t.Fatalf("default config = %q, want it to contain %q", contents, want)
 		}
@@ -59,6 +59,7 @@ func TestLoadConfig_rejects_invalid(t *testing.T) {
 		`{"notification_timeout_seconds": -1}`,
 		`{"notification_timeout_seconds": 86401}`,
 		`{"theme": "vaporwave"}`,
+		`{"table_open_target": "columns"}`,
 		`not json`,
 	} {
 		path := filepath.Join(t.TempDir(), "config.json")
@@ -209,6 +210,81 @@ func TestSaveTheme_preservesUnknownKeys(t *testing.T) {
 	}
 	if err := json.Unmarshal(raw["future_key"], &future); err != nil || len(future.Nested) != 2 || future.Nested[0] != 1 || future.Nested[1] != 2 {
 		t.Fatalf("future_key = %s, want preserved nested value (err %v)", raw["future_key"], err)
+	}
+}
+
+func TestLoadConfig_tableOpenTarget(t *testing.T) {
+	for _, target := range []string{"structure", "browse", "sql", "indexes", "foreign_keys"} {
+		path := filepath.Join(t.TempDir(), "config.json")
+		contents := `{"table_open_target": "` + target + `"}`
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		config, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("LoadConfig(%q) = %v, want nil error", target, err)
+		}
+		if config.TableOpenTarget != target {
+			t.Fatalf("TableOpenTarget = %q, want %q", config.TableOpenTarget, target)
+		}
+	}
+}
+
+func TestTableOpenTarget_defaults_and_config_selects_tab(t *testing.T) {
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+
+	SetAppConfig(Config{})
+	if got := tableOpenTargetTab(); got != tabStructure {
+		t.Fatalf("tableOpenTargetTab = %v, want built-in Structure", got)
+	}
+	SetAppConfig(Config{TableOpenTarget: "browse"})
+	if got := tableOpenTargetTab(); got != tabBrowse {
+		t.Fatalf("tableOpenTargetTab = %v, want Browse from config", got)
+	}
+	SetAppConfig(Config{TableOpenTarget: "foreign_keys"})
+	if got := tableOpenTargetTab(); got != tabForeignKeys {
+		t.Fatalf("tableOpenTargetTab = %v, want Foreign Keys from config", got)
+	}
+}
+
+func TestSaveTableOpenTarget_preservesUnknownKeys(t *testing.T) {
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+
+	path := filepath.Join(t.TempDir(), "config.json")
+	original := `{"browse_page_size": 50, "future_key": {"nested": [1, 2]}}`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SaveTableOpenTarget(path, "browse"); err != nil {
+		t.Fatalf("SaveTableOpenTarget = %v", err)
+	}
+
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &raw); err != nil {
+		t.Fatalf("saved config = %q, not valid JSON: %v", contents, err)
+	}
+	if got := string(raw["table_open_target"]); got != `"browse"` {
+		t.Fatalf("table_open_target = %s, want %q", got, "browse")
+	}
+	if got := string(raw["browse_page_size"]); got != "50" {
+		t.Fatalf("browse_page_size = %s, want 50 (dropped on rewrite)", got)
+	}
+	var future struct {
+		Nested []int
+	}
+	if err := json.Unmarshal(raw["future_key"], &future); err != nil || len(future.Nested) != 2 || future.Nested[0] != 1 || future.Nested[1] != 2 {
+		t.Fatalf("future_key = %s, want preserved nested value (err %v)", raw["future_key"], err)
+	}
+	if got := tableOpenTargetTab(); got != tabBrowse {
+		t.Fatalf("tableOpenTargetTab = %v, want Browse after SaveTableOpenTarget", got)
 	}
 }
 

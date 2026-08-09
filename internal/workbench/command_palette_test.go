@@ -245,10 +245,10 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 func TestCommandPalette_connectionShowsExecutableCommands(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 
-	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "notifications.show", "theme.select", "vim.toggle")
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "notifications.show", "table.open_target", "theme.select", "vim.toggle")
 
 	model.connection.focus = connectionFocusForm
-	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "notifications.show", "theme.select", "vim.toggle")
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "notifications.show", "table.open_target", "theme.select", "vim.toggle")
 }
 
 func assertCommandIDs(t *testing.T, palette *commandPalette, want ...CommandID) {
@@ -645,5 +645,69 @@ func TestThemePicker_commitsPreviewedTheme(t *testing.T) {
 	}
 	if config.Theme != "nord" {
 		t.Fatalf("persisted theme = %q, want %q", config.Theme, "nord")
+	}
+}
+
+func TestModelCommandPalette_tableOpenTargetPickerCommitsAndPersists(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{})
+
+	model := readyModel(t)
+	model.configPath = filepath.Join(dir, "perk-workbench", "config.json")
+	for _, item := range newCommandPalette(model).items {
+		if item.id == "table.open_target" && item.label != "open table → Structure" {
+			t.Fatalf("palette label = %q, want open table → Structure", item.label)
+		}
+	}
+
+	updated, _ := model.handlePaletteCommand("table.open_target")
+	model = updated.(Model)
+	if model.tableTargetPicker == nil {
+		t.Fatal("table.open_target did not open the table target picker")
+	}
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.tableTargetPicker != nil {
+		t.Fatal("table target picker remained visible after selection")
+	}
+	if got := tableOpenTargetTab(); got != tabBrowse {
+		t.Fatalf("tableOpenTargetTab = %v, want Browse", got)
+	}
+	for _, item := range newCommandPalette(model).items {
+		if item.id == "table.open_target" && item.label != "open table → Browse" {
+			t.Fatalf("palette label = %q, want open table → Browse", item.label)
+		}
+	}
+	config, err := LoadConfig(model.configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v", err)
+	}
+	if config.TableOpenTarget != "browse" {
+		t.Fatalf("persisted table_open_target = %q, want %q", config.TableOpenTarget, "browse")
+	}
+}
+
+func TestTableTargetPicker_cancelsWithoutChange(t *testing.T) {
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{})
+
+	model := readyModel(t)
+	model.tableTargetPicker = newTableTargetPicker()
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.tableTargetPicker != nil {
+		t.Fatal("table target picker remained visible after cancel")
+	}
+	if got := tableOpenTargetTab(); got != tabStructure {
+		t.Fatalf("tableOpenTargetTab = %v, want unchanged Structure", got)
 	}
 }

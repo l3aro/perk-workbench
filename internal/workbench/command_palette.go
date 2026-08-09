@@ -70,6 +70,7 @@ func newCommandPalette(m Model) *commandPalette {
 		vimLabel = "vim mode: on"
 	}
 	items = append(items, commandPaletteItem{id: "vim.toggle", label: vimLabel, scope: scopeGlobal})
+	items = append(items, commandPaletteItem{id: "table.open_target", label: "open table → " + tableTargetName(tableOpenTargetTab()), scope: scopeGlobal})
 
 	// Compute context title from current model state
 	contextTitle := contextLabel(m)

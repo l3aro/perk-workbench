@@ -138,6 +138,38 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	}
 }
 
+func TestSchema_enter_lands_on_configured_target_tab(t *testing.T) {
+	// Given — config points table selection at the Browse tab.
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{TableOpenTarget: "browse"})
+
+	model := readyModel(t)
+	if _, err := model.Database.Execute(context.Background(), `CREATE TABLE "project's" (id INTEGER PRIMARY KEY, name TEXT)`); err != nil {
+		t.Fatalf("creating fixture schema: %v", err)
+	}
+	if _, err := model.Database.Execute(context.Background(), `INSERT INTO "project's" (name) VALUES ('first')`); err != nil {
+		t.Fatalf("creating fixture row: %v", err)
+	}
+	model.Focus = focusSchema
+	model.schema.SetItems([]list.Item{schemaItem{title: "project's", description: "table"}})
+
+	// When — select the table.
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Then — focus lands on the configured Browse tab.
+	if command == nil || model.Focus != focusWorkspace || model.Tab != tabBrowse || model.SelectedTable != "project's" {
+		t.Fatalf("schema selection = focus:%v tab:%v table:%q command:%t", model.Focus, model.Tab, model.SelectedTable, command != nil)
+	}
+	model = updateFromCommand(model, command)
+
+	// Then — the browse query ran immediately, no tab toggle needed.
+	if got := model.browse.Rows(); len(got) != 1 || got[0][1] != "first" {
+		t.Fatalf("browse rows = %#v, want selected table data", got)
+	}
+}
+
 func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 	t.Run("results", func(t *testing.T) {
 		// Given

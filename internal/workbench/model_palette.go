@@ -20,6 +20,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "vim.toggle":
 		return m, m.toggleVimMode()
+	case "table.open_target":
+		m.tableTargetPicker = newTableTargetPicker()
+		return m, nil
 	case "theme.ocean":
 		m.commitTheme(themeOcean)
 		return m, nil

@@ -48,6 +48,10 @@ type Config struct {
 	// default); terminals without a Nerd Font can set false to fall back to
 	// geometric symbols.
 	NerdFont *bool `json:"nerd_font"`
+	// TableOpenTarget is the workspace tab focused after selecting a table
+	// in the schema tree: structure (columns), browse, sql, indexes, or
+	// foreign_keys. Omitted keeps the built-in default (structure).
+	TableOpenTarget string `json:"table_open_target"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -111,8 +115,19 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("config %q: notification_timeout_seconds must be at most %d, got %d", path, maxNotificationTimeoutSeconds, config.NotificationTimeoutSeconds)
 	case config.Theme != "" && !validTheme(config.Theme):
 		return Config{}, fmt.Errorf("config %q: theme %q is not one of %v", path, config.Theme, themeNames())
+	case config.TableOpenTarget != "" && !validTableOpenTarget(config.TableOpenTarget):
+		return Config{}, fmt.Errorf("config %q: table_open_target %q is not one of %v", path, config.TableOpenTarget, tableOpenTargetNames())
 	}
 	return config, nil
+}
+
+// tableOpenTargetNames returns the accepted table_open_target values.
+func tableOpenTargetNames() []string {
+	names := make([]string, len(tableTargetChoices))
+	for i, tab := range tableTargetChoices {
+		names[i] = tableTargetKey(tab)
+	}
+	return names
 }
 
 func validTheme(name string) bool {
@@ -152,6 +167,44 @@ func SaveVimMode(path string, enabled bool) error {
 	}
 	appConfig.VimMode = boolPtr(enabled) // keep the resolved config in sync
 	return nil
+}
+
+// SaveTableOpenTarget persists the table-open target into config.json,
+// replacing only the table_open_target key and preserving every other key
+// byte-for-byte.
+func SaveTableOpenTarget(path, target string) error {
+	if err := saveConfigValue(path, "table_open_target", target); err != nil {
+		return err
+	}
+	appConfig.TableOpenTarget = target // keep the resolved config in sync
+	return nil
+}
+
+// tableOpenTargetTab returns the workspace tab focused after selecting a
+// table in the schema tree. The built-in default is the Structure (columns)
+// tab; config.json opts into another tab with "table_open_target".
+func tableOpenTargetTab() workspaceTab {
+	switch appConfig.TableOpenTarget {
+	case tableTargetKey(tabBrowse):
+		return tabBrowse
+	case tableTargetKey(tabSQL):
+		return tabSQL
+	case tableTargetKey(tabIndexes):
+		return tabIndexes
+	case tableTargetKey(tabForeignKeys):
+		return tabForeignKeys
+	default:
+		return tabStructure
+	}
+}
+
+func validTableOpenTarget(value string) bool {
+	for _, tab := range tableTargetChoices {
+		if tableTargetKey(tab) == value {
+			return true
+		}
+	}
+	return false
 }
 
 // saveConfigValue rewrites config.json with a single key replaced, keeping
@@ -219,6 +272,22 @@ func (m *Model) toggleVimMode() tea.Cmd {
 	return command
 }
 
+// commitTableOpenTarget applies the table-open target and persists it to
+// config.json so it survives the next launch. Persistence is best-effort: a
+// failure is shown in the status line without reverting the choice.
+func (m *Model) commitTableOpenTarget(tab workspaceTab) {
+	display := tableTargetName(tab)
+	if m.configPath == "" {
+		m.setStatus("open table → " + display)
+		return
+	}
+	if err := SaveTableOpenTarget(m.configPath, tableTargetKey(tab)); err != nil {
+		m.setStatus("open table → " + display + " (not saved: " + err.Error() + ")")
+		return
+	}
+	m.setStatus("open table → " + display)
+}
+
 // defaultConfigValues returns the built-in defaults as a JSON map, used when
 // materializing a missing config file.
 func defaultConfigValues() map[string]json.RawMessage {
@@ -231,6 +300,7 @@ func defaultConfigValues() map[string]json.RawMessage {
 		Theme:                      string(themeOcean),
 		VimMode:                    boolPtr(true),
 		NerdFont:                   boolPtr(true),
+		TableOpenTarget:            tableTargetKey(tabStructure),
 	})
 	if err != nil {
 		panic(err) // plain struct: cannot fail

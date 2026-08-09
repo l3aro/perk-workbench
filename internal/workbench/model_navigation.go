@@ -80,6 +80,9 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 
 func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	m.SelectTable(m.schemaTable(item))
+	// The landing tab is configurable; SelectTable defaults to the
+	// Structure (columns) tab.
+	m.Tab = tableOpenTargetTab()
 	m.browseSettings = browseSettings{}
 	m.structureColumns = nil
 	m.foreignKeyInfo = nil
@@ -87,7 +90,7 @@ func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	m.relationshipDiagram = false
 	m.browsePending = true
 	m.focusActiveTable()
-	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys())
+	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
 }
 
 func (m *Model) toggleTab(forward bool) tea.Cmd {

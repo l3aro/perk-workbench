@@ -25,12 +25,14 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, m.headerView(), content, footerStyle.Render(m.footer()))
-	if m.commandPalette.visible || m.themePicker != nil {
+	if m.commandPalette.visible || m.themePicker != nil || m.tableTargetPicker != nil {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
 		if m.themePicker != nil {
 			m.drawConfirmDialog(canvas, m.themePicker.content())
+		} else if m.tableTargetPicker != nil {
+			m.drawConfirmDialog(canvas, m.tableTargetPicker.content())
 		} else {
 			m.commandPalette.paletteDraw(canvas, m.width, m.height)
 		}
@@ -184,7 +186,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.notificationHistory != nil || m.notificationDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.tableTargetPicker != nil || m.queryLogDetail != nil || m.notificationHistory != nil || m.notificationDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {

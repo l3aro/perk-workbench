@@ -96,6 +96,7 @@ type Model struct {
 	expandedSchemas                                                                                map[string]bool
 	commandPalette                                                                                 *commandPalette
 	themePicker                                                                                    *themePicker
+	tableTargetPicker                                                                              *tableTargetPicker
 	quitDialog                                                                                     *confirmationDialog
 	queryConfirmation                                                                              *queryConfirmation
 	recentPath, queryLogPath, configPath, notificationPath                                         string

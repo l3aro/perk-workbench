@@ -77,6 +77,7 @@ App defaults load from `$XDG_CONFIG_HOME/perk-workbench/config.json` (also writt
 - `query_log_retention_days` — days of query-log history kept (default 30; set `PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS=0` to keep none)
 - `read_only` — open every connection read-only by default; the per-connection form toggle still opts out
 - `theme` — startup theme: `ocean`, `nord`, `monokai`, `dracula`, `catppuccin`, `solarized`; choosing a theme in-app (palette or picker) writes it back to config.json
+- `table_open_target` — workspace tab focused after selecting a table in the schema tree: `structure` (columns), `browse`, `sql`, `indexes`, or `foreign_keys`; choosing it in the command palette writes it back to config.json
 
 The `PERK_WORKBENCH_QUERY_LOG_*` env vars still override their config values.
 
