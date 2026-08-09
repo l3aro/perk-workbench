@@ -658,8 +658,8 @@ func TestModelCommandPalette_tableOpenTargetPickerCommitsAndPersists(t *testing.
 	model := readyModel(t)
 	model.configPath = filepath.Join(dir, "perk-workbench", "config.json")
 	for _, item := range newCommandPalette(model).items {
-		if item.id == "table.open_target" && item.label != "open table → Structure" {
-			t.Fatalf("palette label = %q, want open table → Structure", item.label)
+		if item.id == "table.open_target" && item.label != "open table → Columns" {
+			t.Fatalf("palette label = %q, want open table → Columns", item.label)
 		}
 	}
 

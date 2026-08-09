@@ -23,11 +23,13 @@ func tableTargetKey(tab workspaceTab) string {
 	return ""
 }
 
-// tableTargetName returns the display label for a workspace tab.
+// tableTargetName returns the display label for a workspace tab. The
+// Structure tab renders as "Columns" in the workspace tab row; keep these
+// labels in sync with view.go workspaceView.
 func tableTargetName(tab workspaceTab) string {
 	switch tab {
 	case tabStructure:
-		return "Structure"
+		return "Columns"
 	case tabBrowse:
 		return "Browse"
 	case tabSQL:

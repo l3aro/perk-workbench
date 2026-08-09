@@ -109,7 +109,7 @@ func contextLabel(m Model) string {
 		case focusWorkspace:
 			switch m.Tab {
 			case tabStructure:
-				return "Structure"
+				return "Columns"
 			case tabBrowse:
 				return "Browse"
 			case tabSQL:
