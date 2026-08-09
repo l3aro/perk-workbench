@@ -221,6 +221,61 @@ func TestBrowseForm_positiveDiscardConfirmationClosesWithoutPersistence(t *testi
 	}
 }
 
+func TestBrowseForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T) {
+	// Given — row open, no edits made
+	model := openBrowseRow(t, 1)
+
+	// When — Escape to discard
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	// Then — form closes directly, no confirmation
+	if model.browseForm.active() || model.browseForm.confirmation != nil {
+		t.Fatal("unchanged discard opened a confirmation")
+	}
+	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
+	if err != nil {
+		t.Fatalf("selecting discarded row: %v", err)
+	}
+	if got := *result.Rows[0][0]; got != "second" {
+		t.Fatalf("name = %q, want second", got)
+	}
+}
+
+func TestBrowseForm_discardFromButtonBarNormalizesFormMode(t *testing.T) {
+	// Given — vim off: the row form opens in insert mode; Tab twice moves
+	// focus to the Save/Cancel bar, l selects Cancel.
+	model := readyBrowseModel(t)
+	model.vimMode = false
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !model.formMode.editing() {
+		t.Fatal("row form should open in insert mode without vim mode")
+	}
+	_ = model.browseForm.form.NextField() // id -> name (last field)
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
+	if !model.formMode.buttonsFocused {
+		t.Fatal("Tab did not focus the button bar")
+	}
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if model.formMode.buttonChoice != 1 {
+		t.Fatalf("button choice = %d, want Cancel", model.formMode.buttonChoice)
+	}
+
+	// When — Enter activates Cancel (replayed Escape) on an unchanged form
+	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	// Then — form closes directly and form mode is normalized
+	if model.browseForm.active() || model.browseForm.confirmation != nil {
+		t.Fatal("bar Cancel on unchanged form opened a confirmation")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal after close", model.formMode.mode)
+	}
+	if model.formMode.buttonsFocused {
+		t.Fatal("button bar stayed focused after form closed")
+	}
+}
+
 func TestBrowseForm_rejectsRowsWithoutPrimaryKey(t *testing.T) {
 	// Given
 	// When

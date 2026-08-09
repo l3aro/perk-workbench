@@ -162,6 +162,11 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 		controller.beginConfirm()
 		return nil, browseFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
+		if !f.hasChanges() {
+			controller.mode = formModeNormal
+			controller.buttonsFocused = false
+			return nil, browseFormDiscard
+		}
 		f.beginConfirmation(false)
 		controller.beginConfirm()
 		return nil, browseFormNoAction

@@ -136,6 +136,7 @@ func TestStructureForm_positiveSaveConfirmationPersistsChange(t *testing.T) {
 
 func TestStructureForm_positiveDiscardConfirmationClosesForm(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
+	model.columnForm.values.name = "renamed"
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
 	if !model.columnForm.active() || model.columnForm.confirming() {
@@ -145,6 +146,77 @@ func TestStructureForm_positiveDiscardConfirmationClosesForm(t *testing.T) {
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 	if model.columnForm.active() {
 		t.Fatal("positive discard confirmation did not close the form")
+	}
+}
+
+func TestStructureForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T) {
+	// Given — column form open, no edits made
+	model := openColumn(t, "name", "TEXT")
+
+	// When — Escape to discard
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	// Then — form closes directly, no confirmation, mode normalized
+	if model.columnForm.active() || model.columnForm.confirming() {
+		t.Fatal("unchanged discard opened a confirmation")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.formMode.mode)
+	}
+}
+
+func TestStructureForm_newColumnDiscardWithoutChangesClosesWithoutConfirmation(t *testing.T) {
+	// Given — new column form open, no edits made
+	model := readyModel(t)
+	model.SelectedTable, model.Tab = "items", tabStructure
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if !model.columnForm.active() || !model.columnForm.isNew {
+		t.Fatal("fixture: 'a' did not open a new column form")
+	}
+
+	// When — Escape to discard
+	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	// Then — form closes directly, no confirmation
+	if model.columnForm.active() || model.columnForm.confirming() {
+		t.Fatal("unchanged new-column discard opened a confirmation")
+	}
+}
+
+// TestColumnForm_clearingDefaultCountsAsChange guards the presence
+// transition: a column with a default that gets cleared would persist as
+// "drop default", so the discard path must treat it as a change — while a
+// pristine form stays unchanged.
+func TestColumnForm_clearingDefaultCountsAsChange(t *testing.T) {
+	// Given — column with a non-empty default
+	form := newColumnForm(sqlite.ColumnInfo{Name: "status", Type: "TEXT", DefaultValue: stringPointer("active")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.hasChanges() {
+		t.Fatal("pristine form reported changes")
+	}
+
+	// When — the user clears the default field
+	form.values.defaultValue = ""
+
+	// Then — the clear is a change (a save would drop the default)
+	if !form.hasChanges() {
+		t.Fatal("cleared default not detected as a change")
+	}
+}
+
+// TestColumnForm_whitespaceDefaultStaysPristine guards the raw-equality
+// baseline: a default that is only whitespace must not make an untouched
+// form look changed, while clearing it still does.
+func TestColumnForm_whitespaceDefaultStaysPristine(t *testing.T) {
+	form := newColumnForm(sqlite.ColumnInfo{Name: "note", Type: "TEXT", DefaultValue: stringPointer(" ")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.hasChanges() {
+		t.Fatal("pristine whitespace-default form reported changes")
+	}
+	form.values.defaultValue = ""
+	if !form.hasChanges() {
+		t.Fatal("cleared whitespace default not detected as a change")
 	}
 }
 
@@ -353,6 +425,11 @@ func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 func TestStructureForm_insertModeBarEnterActivatesChoice(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 	model.formMode.beginHuh(model.columnForm.focus()) // insert mode, vim off
+	// Type a real edit into the name field: a direct values assignment would
+	// be overwritten by Huh's internal input buffer on the next field step.
+	for _, character := range "renamed" {
+		model = updateColumn(model, tea.KeyPressMsg{Code: character, Text: string(character)})
+	}
 	for range 4 {
 		_ = model.columnForm.form.NextField() // attributes (last field)
 	}

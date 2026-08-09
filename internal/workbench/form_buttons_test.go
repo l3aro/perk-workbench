@@ -194,6 +194,7 @@ func TestBrowseFilterForm_mouseSaveCommitsEditAndApplies(t *testing.T) {
 
 func TestColumnForm_mouseCancelStartsDiscardConfirmation(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
+	model.columnForm.values.name = "renamed"
 	model = resizeModel(model, 100, 24)
 	x := model.schemaWidth + 1 + 8 // inside " Cancel "
 
@@ -325,6 +326,7 @@ func TestForeignKeyForm_mouseSaveAndCancelConfirmations(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 	_ = model.openForeignKeyForm(nil)
 	_ = model.foreignKeyForm.form.Init()
+	model.foreignKeyForm.values.columns = "parent_id"
 	model = clickFormButton(model, model.schemaWidth+1+8, y)
 	if !model.foreignKeyForm.confirming() || model.foreignKeyForm.confirmationSave {
 		t.Fatalf("foreign-key form = confirming:%t save:%t, want confirming discard", model.foreignKeyForm.confirming(), model.foreignKeyForm.confirmationSave)

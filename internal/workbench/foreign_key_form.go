@@ -22,6 +22,7 @@ type foreignKeyForm struct {
 	form                                 *huh.Form
 	confirmation                         *confirmationDialog
 	values                               *foreignKeyFormValues
+	baseline                             foreignKeyFormValues
 	previous                             string
 	width, height                        int
 	scrollOffset                         int
@@ -45,6 +46,7 @@ func newForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) foreignKeyForm {
 		form.values.onDelete = foreignKey.OnDelete
 		form.values.onUpdate = foreignKey.OnUpdate
 	}
+	form.baseline = *form.values
 	form.rebuildForm()
 	return form
 }
@@ -113,6 +115,11 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 		controller.beginConfirm()
 		return nil, foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
+		if !f.hasChanges() {
+			controller.mode = formModeNormal
+			controller.buttonsFocused = false
+			return nil, foreignKeyFormDiscard
+		}
 		f.beginConfirmation(false, false)
 		controller.beginConfirm()
 		return nil, foreignKeyFormNoAction
@@ -299,7 +306,14 @@ func (f *foreignKeyForm) focus() tea.Cmd {
 	return f.form.GetFocusedField().Focus()
 }
 
-func (f foreignKeyForm) change() (sharedsql.ForeignKeyChange, error) {
+func (f foreignKeyForm) hasChanges() bool {
+	if f.values == nil {
+		return false
+	}
+	return *f.values != f.baseline
+}
+
+func (f *foreignKeyForm) change() (sharedsql.ForeignKeyChange, error) {
 	change := sharedsql.ForeignKeyChange{
 		Columns:          splitForeignKeyColumns(f.values.columns),
 		ReferenceTable:   strings.TrimSpace(f.values.referenceTable),

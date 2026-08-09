@@ -33,6 +33,15 @@ func (f browseForm) updateStatement(table string) (string, error) {
 	return "UPDATE " + identifier(table) + " SET " + strings.Join(sets, ", ") + " WHERE " + strings.Join(where, " AND "), nil
 }
 
+func (f browseForm) hasChanges() bool {
+	for index := range f.columns {
+		if f.isDirty(index) {
+			return true
+		}
+	}
+	return false
+}
+
 func (f browseForm) isDirty(index int) bool {
 	if f.original[index] == nil {
 		return !f.values.nulls[index] // was NULL, now has a value → dirty

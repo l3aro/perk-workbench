@@ -92,6 +92,7 @@ func TestFormMode_normalEscapeOpensExistingDiscard(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
+	model.columnForm.values.name = "renamed"
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -137,6 +138,7 @@ func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
 	// Press Enter → opens column form (deferred Init cmd but form exists immediately)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
+	model.columnForm.values.name = "renamed"
 	// Press Escape → triggers discard confirmation (formModeConfirm)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
@@ -176,6 +178,7 @@ func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
+	model.columnForm.values.name = "renamed"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 	if !model.columnForm.confirming() {

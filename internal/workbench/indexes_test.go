@@ -199,6 +199,22 @@ func TestIndexForm_positiveDiscardConfirmationClosesWithoutPersistence(t *testin
 	}
 }
 
+func TestIndexForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T) {
+	// Given — new index form open, no edits made
+	model := openIndexEditor(t, readyIndexesModel(t), nil)
+
+	// When — Escape to discard
+	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	// Then — form closes directly, no confirmation, mode normalized
+	if model.indexForm.active() || model.indexForm.confirming() {
+		t.Fatal("unchanged discard opened a confirmation")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.formMode.mode)
+	}
+}
+
 func readyIndexesModel(t *testing.T) Model {
 	t.Helper()
 	model := readyModel(t)

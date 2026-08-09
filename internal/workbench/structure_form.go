@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,7 @@ type columnForm struct {
 	form                            *huh.Form
 	confirmation                    *confirmationDialog
 	values                          *columnFormValues
+	baseline                        columnFormValues
 	previousName, originalType      string
 	originalAttributes              string
 	typeOptions                     []sharedsql.ColumnType
@@ -63,6 +65,8 @@ func newColumnForm(column sharedsql.ColumnInfo, typeOptions []sharedsql.ColumnTy
 	if column.DefaultValue != nil {
 		form.values.defaultValue = *column.DefaultValue
 	}
+	form.baseline = *form.values
+	form.baseline.parameters = slices.Clone(form.values.parameters)
 	form.rebuildForm()
 	return form
 }
@@ -75,6 +79,8 @@ func newEmptyColumnForm(typeOptions []sharedsql.ColumnType) columnForm {
 		keybindings: DefaultKeybindings(),
 	}
 	form.selectType(0, nil)
+	form.baseline = *form.values
+	form.baseline.parameters = slices.Clone(form.values.parameters)
 	form.rebuildForm()
 	return form
 }
@@ -171,6 +177,11 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		controller.beginConfirm()
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
+		if !f.hasChanges() {
+			controller.mode = formModeNormal
+			controller.buttonsFocused = false
+			return nil, columnFormDiscard
+		}
 		f.beginConfirmation(false, false)
 		controller.beginConfirm()
 		return nil, columnFormNoAction
@@ -319,6 +330,32 @@ func (f columnForm) fieldTitles() []string {
 
 func (f *columnForm) scrollToField(field int) {
 	f.scrollOffset = max(field*2, 0)
+}
+
+// hasChanges reports whether the form differs from the values it was opened
+// with, in ways a save would persist. Type parameters count only when the
+// type was re-selected or the column had no recorded type, mirroring
+// typeDeclaration.
+func (f columnForm) hasChanges() bool {
+	baseline := f.baseline
+	if f.values.name != baseline.name || f.values.nullable != baseline.nullable {
+		return true
+	}
+	// The save path drops the default when the field is emptied, so clearing
+	// a non-empty default must count as a change; raw equality keeps a
+	// pristine form clean even when the default is whitespace or empty
+	// (DEFAULT '' is indistinguishable from a cleared field, so it never
+	// counts as changed).
+	if f.values.defaultValue != baseline.defaultValue {
+		return true
+	}
+	if strings.TrimSpace(f.values.attributes) != strings.TrimSpace(baseline.attributes) {
+		return true
+	}
+	if f.typeChanged || strings.TrimSpace(f.originalType) == "" {
+		return f.values.typeName != baseline.typeName || !slices.Equal(f.values.parameters, baseline.parameters)
+	}
+	return false
 }
 
 func (f columnForm) change() (sharedsql.ColumnChange, error) {

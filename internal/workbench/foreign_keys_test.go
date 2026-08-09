@@ -185,6 +185,29 @@ func TestForeignKeyForm_normalModeDoesNotMutateHuhValues(t *testing.T) {
 	}
 }
 
+func TestForeignKeyForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T) {
+	// Given — new foreign-key form open, no edits made
+	model := readyModel(t)
+	model.SelectedTable, model.Tab, model.Focus = "children", tabForeignKeys, focusWorkspace
+	updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: nil})
+	model = updated.(Model)
+	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if !model.foreignKeyForm.active() {
+		t.Fatal("fixture: 'n' did not open a new foreign-key form")
+	}
+
+	// When — Escape to discard
+	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	// Then — form closes directly, no confirmation, mode normalized
+	if model.foreignKeyForm.active() || model.foreignKeyForm.confirming() {
+		t.Fatal("unchanged discard opened a confirmation")
+	}
+	if model.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.formMode.mode)
+	}
+}
+
 func updateForeignKeyForm(model Model, message tea.Msg) Model {
 	updated, _ := model.Update(message)
 	return updated.(Model)

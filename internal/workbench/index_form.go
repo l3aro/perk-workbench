@@ -27,6 +27,7 @@ type indexForm struct {
 	form               *huh.Form
 	confirmation       *confirmationDialog
 	values             *indexFormValues
+	baseline           indexFormValues
 	previous           string
 	width, height      int
 	scrollOffset       int
@@ -52,6 +53,7 @@ func newIndexForm(index *sharedsql.IndexInfo) indexForm {
 			form.values.kind = indexKindUnique
 		}
 	}
+	form.baseline = *form.values
 	form.rebuildForm()
 	return form
 }
@@ -120,6 +122,11 @@ func (f *indexForm) Update(message tea.Msg, controller *formModeController) (tea
 		controller.beginConfirm()
 		return nil, indexFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
+		if !f.hasChanges() {
+			controller.mode = formModeNormal
+			controller.buttonsFocused = false
+			return nil, indexFormDiscard
+		}
 		f.beginConfirmation(false, false)
 		controller.beginConfirm()
 		return nil, indexFormNoAction
@@ -270,6 +277,13 @@ func (f *indexForm) scrollToField(field int) {
 	if offset, ok := scrollToFieldTitle(f.form.View(), f.fieldTitles(), field); ok {
 		f.scrollOffset = offset
 	}
+}
+
+func (f indexForm) hasChanges() bool {
+	if f.values == nil {
+		return false
+	}
+	return *f.values != f.baseline
 }
 
 func (f indexForm) change() (sharedsql.IndexChange, error) {
