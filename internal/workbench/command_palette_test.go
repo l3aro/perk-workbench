@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"image/color"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/chrome"
 )
 
 func TestCommandPalette_navigationAndSelection(t *testing.T) {
@@ -67,26 +69,28 @@ func TestCommandPalette_drawsTitleInTopBorder(t *testing.T) {
 	palette.paletteDraw(canvas, 100, 24)
 
 	lines := strings.Split(ansi.Strip(canvas.Render()), "\n")
-	rawLines := strings.Split(canvas.Render(), "\n")
 	palW, palH, boxX, boxY := palette.layout(100, 24)
 	// Render rows keep the full canvas width; the box starts at column boxX
-	// and byte-slicing at boxX+palW would cut multi-byte border glyphs.
-	top := lines[boxY][boxX:]
+	// and byte-slicing at boxX+palW would cut multi-byte border glyphs. The
+	// backdrop dim fills the row tail, so trim before corner checks.
+	top := strings.TrimRight(lines[boxY][boxX:], " ")
 	if !strings.HasPrefix(top, "╭ Command Palette ") {
 		t.Fatalf("palette top border = %q, want title overlay", top)
 	}
 	if !strings.HasSuffix(top, "╮") {
 		t.Fatalf("palette top border = %q, want closing corner", top)
 	}
-	if got := ansi.StringWidth(strings.TrimRight(top, " ")); got != palW {
+	if got := ansi.StringWidth(top); got != palW {
 		t.Fatalf("palette top border width = %d, want %d", got, palW)
 	}
 	// The title uses the pane title color: no background (SGR 48), but bold
-	// like the other pane overlays (SGR \x1b[…;1m).
-	if rawTop := rawLines[boxY]; strings.Contains(rawTop, "48") || !strings.Contains(rawTop, ";1m") {
-		t.Fatalf("palette title row lacks pane title styling: %q", rawTop)
+	// like the other pane overlays. The backdrop dim adds backgrounds to
+	// cells outside the box, so check the title cell directly.
+	titleCell := canvas.CellAt(boxX+1, boxY)
+	if titleCell == nil || titleCell.Style.Bg != nil || titleCell.Style.Attrs&uv.AttrBold == 0 {
+		t.Fatalf("palette title cell = %+v, want no background and bold", titleCell)
 	}
-	bottom := lines[boxY+palH-1][boxX:]
+	bottom := strings.TrimRight(lines[boxY+palH-1][boxX:], " ")
 	if !strings.HasPrefix(bottom, "╰") || !strings.HasSuffix(bottom, "╯") {
 		t.Fatalf("palette bottom border = %q, want corners", bottom)
 	}
@@ -95,14 +99,79 @@ func TestCommandPalette_drawsTitleInTopBorder(t *testing.T) {
 	if first := lines[boxY+1][boxX:]; !strings.Contains(first, "[Connection]") {
 		t.Fatalf("first inner line = %q, want context", first)
 	}
-	// Scope group headers are plain text, not headerStyle badges: the row
+	// Scope group headers are plain text, not headerStyle badges: the cell
 	// must carry no background (SGR 48) styling.
 	scopeHeader := lines[boxY+3][boxX:]
 	if !strings.Contains(scopeHeader, "Global") {
 		t.Fatalf("scope header row = %q, want Global", scopeHeader)
 	}
-	if strings.Contains(rawLines[boxY+3], "48") {
-		t.Fatalf("scope header row carries a background badge: %q", rawLines[boxY+3])
+	if scopeCell := canvas.CellAt(boxX+1, boxY+3); scopeCell == nil || scopeCell.Style.Bg != nil {
+		t.Fatalf("scope header cell = %+v, want no background", scopeCell)
+	}
+}
+
+// TestCommandPalette_dimBackdrop guards the backdrop dim: content cells
+// outside the palette box keep their glyphs with colors blended toward
+// black, cells without a background get a dim canvas fill, and the box
+// interior is drawn over the dim untouched.
+func TestCommandPalette_dimBackdrop(t *testing.T) {
+	palette := &commandPalette{
+		visible:  true,
+		filtered: []commandPaletteItem{{id: "first", scope: scopeGlobal}},
+	}
+	canvas := uv.NewScreenBuffer(100, 24)
+	screen.Clear(canvas)
+	ink := chrome.ParseHex(colorInk)
+	stripe := chrome.ParseHex(colorStripe)
+	canvas.SetCell(2, 2, &uv.Cell{Content: "X", Width: 1, Style: uv.Style{Fg: ink, Bg: stripe}})
+	canvas.SetCell(2, 3, &uv.Cell{Content: "Y", Width: 1, Style: uv.Style{Fg: ink}})
+
+	palette.paletteDraw(canvas, 100, 24)
+
+	_, _, boxX, boxY := palette.layout(100, 24)
+	if boxX <= 3 || boxY <= 3 {
+		t.Fatalf("palette box at %d,%d too small to keep sample cells outside", boxX, boxY)
+	}
+	// Content cell: the glyph survives, both colors blend toward black.
+	cell := canvas.CellAt(2, 2)
+	if cell == nil || cell.Content != "X" {
+		t.Fatalf("backdrop cell = %v, want glyph X preserved", cell)
+	}
+	if got, want := rgbaOf(cell.Style.Fg), expectDim(ink); got != want {
+		t.Fatalf("backdrop fg = %v, want dimmed %v", got, want)
+	}
+	if got, want := rgbaOf(cell.Style.Bg), expectDim(stripe); got != want {
+		t.Fatalf("backdrop bg = %v, want dimmed %v", got, want)
+	}
+	// Bare text cell: gets the dim canvas fill so the scrim is uniform.
+	bare := canvas.CellAt(2, 3)
+	if bare == nil || bare.Content != "Y" {
+		t.Fatalf("bare backdrop cell = %v, want glyph Y preserved", bare)
+	}
+	if got, want := rgbaOf(bare.Style.Bg), expectDim(chrome.ParseHex(colorCanvas)); got != want {
+		t.Fatalf("bare backdrop bg = %v, want dim canvas %v", got, want)
+	}
+	// Box interior: text cells are drawn fresh over the dim, keeping their
+	// undimmed style (no background).
+	inner := canvas.CellAt(boxX+1, boxY+1)
+	if inner == nil || inner.Style.Bg != nil {
+		t.Fatalf("box interior cell = %+v, want undimmed text cell", inner)
+	}
+}
+
+// rgbaOf normalizes a color to its RGBA channels for comparison.
+func rgbaOf(c color.Color) color.RGBA {
+	return color.RGBAModel.Convert(c).(color.RGBA)
+}
+
+// expectDim is the blend the backdrop dim applies: keep 55% of each channel.
+func expectDim(c color.Color) color.RGBA {
+	rgba := color.RGBAModel.Convert(c).(color.RGBA)
+	return color.RGBA{
+		R: uint8(float64(rgba.R) * 0.55),
+		G: uint8(float64(rgba.G) * 0.55),
+		B: uint8(float64(rgba.B) * 0.55),
+		A: 255,
 	}
 }
 

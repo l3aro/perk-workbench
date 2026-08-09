@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"image"
+	"image/color"
 	"sort"
 	"strings"
 
@@ -495,11 +496,58 @@ func (p *commandPalette) handleClick(msg tea.MouseClickMsg, width, height int) (
 	return commandPaletteSelectMsg{id: p.filtered[idx].id}, true
 }
 
+// paletteDimKeep is the fraction of each backdrop color that survives when
+// the palette is open: the app behind reads as a dimmed scrim (0 = black,
+// 1 = unchanged).
+const paletteDimKeep = 0.55
+
+// dimColor returns c darkened by keeping the given fraction of each channel.
+func dimColor(c color.Color, keep float64) color.Color {
+	rgba := color.RGBAModel.Convert(c).(color.RGBA)
+	return color.RGBA{
+		R: uint8(float64(rgba.R) * keep),
+		G: uint8(float64(rgba.G) * keep),
+		B: uint8(float64(rgba.B) * keep),
+		A: 255,
+	}
+}
+
+// dimPaletteBackdrop faints every cell already drawn on the canvas so the
+// palette box pops against a muted backdrop. Cells without a background get
+// a dim canvas fill so the scrim is uniform; the box is drawn over it next.
+func dimPaletteBackdrop(canvas uv.ScreenBuffer) {
+	bounds := canvas.Bounds()
+	fallback := dimColor(chrome.ParseHex(colorCanvas), paletteDimKeep)
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		line := canvas.Line(y)
+		if line == nil {
+			continue
+		}
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			cell := line.At(x)
+			if cell == nil {
+				canvas.SetCell(x, y, &uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: fallback}})
+				continue
+			}
+			if cell.Style.Bg != nil {
+				cell.Style.Bg = dimColor(cell.Style.Bg, paletteDimKeep)
+			} else {
+				cell.Style.Bg = fallback
+			}
+			if cell.Style.Fg != nil {
+				cell.Style.Fg = dimColor(cell.Style.Fg, paletteDimKeep)
+			}
+		}
+	}
+}
+
 // paletteDraw draws the palette overlay onto an existing screen buffer.
 func (p *commandPalette) paletteDraw(canvas uv.ScreenBuffer, width, height int) {
 	if !p.visible {
 		return
 	}
+
+	dimPaletteBackdrop(canvas)
 
 	// Palette dimensions: ~60% of terminal, centered, capped.
 	palW := min(width*6/10, 80)
