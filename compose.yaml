@@ -20,6 +20,13 @@ services:
     volumes:
       - ${DEMO_DIR:-./demo}/employees-postgres.sql.gz:/init-data/employees.sql.gz:ro
       - ${DEMO_DIR:-./demo}/init-employees.sh:/docker-entrypoint-initdb.d/init-employees.sh:ro
+    # TCP probe: the entrypoint's temporary init server is socket-only, so
+    # 127.0.0.1 only answers once initdb and the demo restore are finished.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
 
   mongo:
     image: mongo:8
