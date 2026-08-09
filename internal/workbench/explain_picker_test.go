@@ -69,8 +69,7 @@ func TestExplainShortcut_prefillsSelectedCommandAndFocusesSQLEditor(t *testing.T
 	if command == nil || !model.Running() {
 		t.Fatal("prefilled explain query did not start")
 	}
-	updated, _ = model.Update(command())
-	model = updated.(Model)
+	model = driveCommand(model, command)
 	if model.Running() || len(model.results.Rows()) == 0 {
 		t.Fatalf("explain query did not complete with results: running=%t rows=%#v", model.Running(), model.results.Rows())
 	}
@@ -97,12 +96,5 @@ func TestExplainShortcut_discardsUnsupportedStatements(t *testing.T) {
 }
 
 func resolveExplainCommand(model Model, command tea.Cmd) Model {
-	for range 4 {
-		if command == nil {
-			return model
-		}
-		updated, next := model.Update(command())
-		model, command = updated.(Model), next
-	}
-	return model
+	return driveCommand(model, command)
 }

@@ -95,7 +95,7 @@ func (m *Model) setResults(result sharedsql.Result) {
 	if result.Truncated {
 		m.resultsStatus += " | truncated"
 	}
-	m.Status = ""
+	m.setStatus("")
 }
 
 func (m Model) loadTableInfo() tea.Cmd {
@@ -198,7 +198,7 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
 			log.Error("loading structure", message.err)
-			m.Status = safeText(fmt.Sprintf("loading structure: %v", message.err))
+			m.setStatus(safeText(fmt.Sprintf("loading structure: %v", message.err)))
 		}
 		return m, nil
 	}
@@ -250,11 +250,11 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 			actionMsg = "adding column"
 		}
 		m.columnForm.saving = false
-		m.Status = safeText(fmt.Sprintf(actionMsg+": %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf(actionMsg+": %v", message.err)))
 		return m, nil
 	}
 	m.columnForm = columnForm{}
-	m.Status = status
+	m.setStatus(status)
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
 
@@ -264,11 +264,11 @@ func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd
 	}
 	if message.err != nil {
 		m.columnForm.saving = false
-		m.Status = safeText(fmt.Sprintf("deleting column: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("deleting column: %v", message.err)))
 		return m, nil
 	}
 	m.columnForm = columnForm{}
-	m.Status = "column deleted"
+	m.setStatus("column deleted")
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
 
@@ -278,11 +278,11 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 	}
 	if message.err != nil {
 		m.browseForm.saving = false
-		m.Status = safeText(fmt.Sprintf("updating row: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("updating row: %v", message.err)))
 		return m, nil
 	}
 	m.browseForm = browseForm{}
-	m.Status = "row updated"
+	m.setStatus("row updated")
 	return m, m.loadBrowse()
 }
 
@@ -328,10 +328,10 @@ func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "deleted 1 row"))
 	}
 	if message.err != nil {
-		m.Status = safeText(fmt.Sprintf("deleting row: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("deleting row: %v", message.err)))
 		return m, nil
 	}
-	m.Status = "row deleted"
+	m.setStatus("row deleted")
 	return m, m.loadBrowse()
 }
 
@@ -384,7 +384,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 			message:   message.err.Error(),
 			status:    "failed",
 		})
-		m.Status = safeText(fmt.Sprintf("loading browse: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("loading browse: %v", message.err)))
 		return m, nil
 	}
 	m.setBrowse(message.result)
@@ -403,7 +403,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		start = 0
 	}
 	m.browseStatus = fmt.Sprintf("%s | %s-%s", safeText(message.table), humanize.Comma(int64(start)), humanize.Comma(int64(end)))
-	m.Status = ""
+	m.setStatus("")
 	return m, nil
 }
 

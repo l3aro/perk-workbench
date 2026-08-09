@@ -45,7 +45,7 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, nil
 			}
-			m.Status = "copied to clipboard"
+			m.setStatus("copied to clipboard")
 			return m, copyQueryLogStatement(queryLogCell(entry, m.queryLogColumn))
 		case "query_log_explain":
 			entry, ok := m.queryLogSelectedEntry()
@@ -147,7 +147,7 @@ func (m *Model) copyBrowseCell() tea.Cmd {
 		display = m.browse.Rows()[row][col]
 	}
 	value := m.rawCellValue("browse", row, col, display)
-	m.Status = "copied to clipboard"
+	m.setStatus("copied to clipboard")
 	return copyQueryLogStatement(value)
 }
 
@@ -160,6 +160,6 @@ func (m *Model) copySQLCell() tea.Cmd {
 	if cell := m.resultsRaw[row][col]; cell != nil {
 		value = *cell
 	}
-	m.Status = "copied to clipboard"
+	m.setStatus("copied to clipboard")
 	return copyQueryLogStatement(value)
 }

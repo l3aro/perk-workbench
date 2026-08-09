@@ -12,6 +12,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	m.commandPalette.visible = false
 
 	switch id {
+	case "notifications.show":
+		m.notificationHistory = newNotificationHistory(m.notificationEntries, 0, m.width, m.height)
+		return m, nil
 	case "theme.select":
 		m.themePicker = newThemePicker()
 		return m, nil
@@ -182,7 +185,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "picker.reload":
 		if m.State == statePicking {
-			m.Status = "reloading picker"
+			m.setStatus("reloading picker")
 			return m, readDirectory(m.pickerDir)
 		}
 		return m, nil
@@ -313,7 +316,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "connection.execute":
 		if m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil {
 			if err := m.connection.validate(); err != nil {
-				m.Status = safeText(err.Error())
+				m.setStatus(safeText(err.Error()))
 				return m, m.connection.showValidationError()
 			}
 			m.formMode.beginConfirm()

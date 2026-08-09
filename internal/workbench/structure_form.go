@@ -82,7 +82,7 @@ func newEmptyColumnForm(typeOptions []sharedsql.ColumnType) columnForm {
 func (m *Model) openColumnForm() tea.Cmd {
 	column := m.selectedColumn()
 	if column == nil {
-		m.Status = "select a column"
+		m.setStatus("select a column")
 		return nil
 	}
 	m.columnForm = newColumnForm(*column, sharedsql.ColumnTypes(m.databaseInfo))

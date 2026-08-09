@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestMain(m *testing.M) {
@@ -19,7 +21,13 @@ func TestMain(m *testing.M) {
 	}
 	// Tree-marker tests assert the geometric fallback glyphs, so the suite
 	// runs with Nerd Font icons off; the Nerd Font path is covered by its
-	// own test that opts back in.
+	// own test that opts back in. Notification popup dismissals are
+	// immediate in tests so status-changing commands (which batch the
+	// dismiss tick) never block command-driving helpers on the real
+	// 10-second timer.
+	notificationDismissTick = func(generation uint64) tea.Cmd {
+		return func() tea.Msg { return notificationDismissMsg{generation: generation} }
+	}
 	SetAppConfig(Config{NerdFont: boolPtr(false)})
 	code := m.Run()
 	_ = os.RemoveAll(dir)

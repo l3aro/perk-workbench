@@ -262,7 +262,7 @@ func (m Model) updateCompletionColumns(message completionColumnsMsg) (tea.Model,
 		return m, nil
 	}
 	if message.err != nil {
-		m.Status = safeText(fmt.Sprintf("loading completion: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("loading completion: %v", message.err)))
 		return m, nil
 	}
 	columnNames := make([]string, len(message.columns))

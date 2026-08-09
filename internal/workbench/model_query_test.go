@@ -307,10 +307,9 @@ func TestExecute_keys_start_a_nonblank_query(t *testing.T) {
 			if command == nil || !model.Running() {
 				t.Fatalf("execute key did not start query: command=%v running=%t", command != nil, model.Running())
 			}
-			message := command()
-			success, ok := message.(querySucceededMsg)
+			success, ok := firstQuerySucceeded(executeCommandAll(command))
 			if !ok || success.requestID != 1 {
-				t.Fatalf("execute command message = %#v, want success for request 1", message)
+				t.Fatalf("execute command messages = %#v, want success for request 1", executeCommandAll(command))
 			}
 			updated, _ = model.Update(success)
 			model = updated.(Model)
@@ -328,8 +327,7 @@ func TestExecute_history_recall_cycles_executed_statements(t *testing.T) {
 		model.editor.setValue(statement)
 		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 		model = updated.(Model)
-		updated, _ = model.Update(command())
-		model = updated.(Model)
+		model = driveCommand(model, command)
 	}
 	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
 	model.editor.setValue("")
@@ -369,8 +367,7 @@ func TestExecute_history_arrow_recall_and_edit_exit(t *testing.T) {
 		model.editor.setValue(statement)
 		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 		model = updated.(Model)
-		updated, _ = model.Update(command())
-		model = updated.(Model)
+		model = driveCommand(model, command)
 	}
 	model.editor.setValue("")
 	model.Focus, model.Tab = focusWorkspace, tabSQL
@@ -542,8 +539,7 @@ func TestExecute_history_recall_cycles_executed_statements_merged_2(t *testing.T
 		model.editor.setValue(statement)
 		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 		model = updated.(Model)
-		updated, _ = model.Update(command())
-		model = updated.(Model)
+		model = driveCommand(model, command)
 	}
 	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
 	model.editor.setValue("")
@@ -574,8 +570,7 @@ func TestExecute_history_recall_cycles_executed_statements_merged_3(t *testing.T
 		model.editor.setValue(statement)
 		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 		model = updated.(Model)
-		updated, _ = model.Update(command())
-		model = updated.(Model)
+		model = driveCommand(model, command)
 	}
 	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
 	model.editor.setValue("")
@@ -640,8 +635,9 @@ func TestExecute_ctrlC_waits_for_matching_cancellation_before_quitting(t *testin
 	model = updated.(Model)
 
 	// Then
-	if command != nil || !model.Running() {
-		t.Fatalf("ctrl+c did not defer quit and cancel: command=%v running=%t", command != nil, model.Running())
+	assertOnlyNotificationTick(t, command)
+	if !model.Running() {
+		t.Fatalf("ctrl+c did not defer quit and cancel: running=%t", model.Running())
 	}
 
 	// When

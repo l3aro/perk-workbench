@@ -57,9 +57,7 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 	model.chat.activeRun().loading = false
 	updated, cmd = model.Update(chatSpinnerTickMsg{})
 	model = updated.(Model)
-	if cmd != nil {
-		t.Fatal("tick after loading should not re-arm")
-	}
+	assertOnlyNotificationTick(t, cmd)
 	if got := model.chatModeBadge(); strings.Contains(got, "⠋") {
 		t.Fatalf("badge = %q, spinner shown after loading finished", got)
 	}
@@ -285,9 +283,7 @@ func TestChat_slashNewStartsNewConversation(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	if command != nil {
-		t.Fatal("/new must not send a request")
-	}
+	assertOnlyNotificationTick(t, command)
 	if model.chat.activeID != "" {
 		t.Fatalf("conversation ID = %q, want cleared", model.chat.activeID)
 	}
@@ -338,9 +334,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	model.chat.input.SetValue("/new")
 	updated, cmdNew := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if cmdNew != nil {
-		t.Fatal("/new must not send a request")
-	}
+	assertOnlyNotificationTick(t, cmdNew)
 	if model.chat.activeID != "" {
 		t.Fatalf("active conversation = %q, want fresh view", model.chat.activeID)
 	}
@@ -525,9 +519,7 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	// Enter runs the /new command: no request, messages cleared.
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command != nil {
-		t.Fatal("Enter after /new must not send a request")
-	}
+	assertOnlyNotificationTick(t, command)
 	if len(model.chat.activeRun().messages) != 0 {
 		t.Fatalf("messages = %#v, want cleared", model.chat.activeRun().messages)
 	}
@@ -674,9 +666,7 @@ func TestChat_yoloCommandsToggleWrites(t *testing.T) {
 	}
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command != nil {
-		t.Fatal("YOLO command must not send a request")
-	}
+	assertOnlyNotificationTick(t, command)
 	if !model.chat.yoloWrites {
 		t.Fatal("yoloWrites = false, want true")
 	}
@@ -694,9 +684,7 @@ func TestChat_yoloCommandsToggleWrites(t *testing.T) {
 	model = updated.(Model)
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command != nil {
-		t.Fatal("YOLO command must not send a request")
-	}
+	assertOnlyNotificationTick(t, command)
 	if model.chat.yoloWrites {
 		t.Fatal("yoloWrites = true, want false")
 	}
@@ -764,15 +752,25 @@ func resolveChatCommand(model Model, command tea.Cmd) (Model, tea.Cmd) {
 func resolveChatMessage(model Model, message tea.Msg) (Model, tea.Cmd) {
 	switch msg := message.(type) {
 	case tea.BatchMsg:
-		var last tea.Cmd
+		// The real runtime runs batch children concurrently and follows
+		// every returned command, so preserve all of them (e.g. the stream
+		// continuation plus a notification dismiss tick).
+		var nexts []tea.Cmd
 		for _, child := range msg {
 			var next tea.Cmd
 			model, next = resolveChatCommand(model, child)
 			if next != nil {
-				last = next
+				nexts = append(nexts, next)
 			}
 		}
-		return model, last
+		switch len(nexts) {
+		case 0:
+			return model, nil
+		case 1:
+			return model, nexts[0]
+		default:
+			return model, tea.Batch(nexts...)
+		}
 	case chatSpinnerTickMsg:
 		return model, nil
 	default:
@@ -785,19 +783,12 @@ func resolveChatMessage(model Model, message tea.Msg) (Model, tea.Cmd) {
 // tea.BatchMsg children (the real runtime runs them concurrently), and reports
 // the first non-tick message on ch.
 func runChatCommand(command tea.Cmd, ch chan<- tea.Msg) {
-	message := command()
-	if batch, ok := message.(tea.BatchMsg); ok {
-		for _, child := range batch {
-			if result := child(); result != nil {
-				if _, tick := result.(chatSpinnerTickMsg); !tick {
-					ch <- result
-					return
-				}
-			}
+	for _, message := range executeCommandAll(command) {
+		if _, tick := message.(chatSpinnerTickMsg); !tick {
+			ch <- message
+			return
 		}
-		return
 	}
-	ch <- message
 }
 
 // driveStreamToCompletion feeds streaming events until the stream completes.
@@ -1002,9 +993,7 @@ func TestChat_shareResultsTool(t *testing.T) {
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command != nil {
-		t.Fatal("share command must not send a request")
-	}
+	assertOnlyNotificationTick(t, command)
 	if !model.chat.shareResults {
 		t.Fatal("shareResults should be true after command")
 	}
@@ -1085,9 +1074,7 @@ func TestChat_shareResultsToollessProvider(t *testing.T) {
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command != nil {
-		t.Fatal("share command must not send a request")
-	}
+	assertOnlyNotificationTick(t, command)
 
 	model.chat.input.SetValue("what do the results say?")
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -1686,9 +1673,7 @@ func TestAssistant_fullScreenEscapeExitsInsertModeThenCancels(t *testing.T) {
 	// First Escape: must exit insert mode, not cancel.
 	modelI, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
-	if cmd != nil {
-		t.Fatal("Escape from insert mode should not produce a cmd")
-	}
+	assertOnlyNotificationTick(t, cmd)
 	if model.chat.chatMode != formModeNormal {
 		t.Fatal("first Escape should exit insert mode")
 	}
@@ -1866,8 +1851,10 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 	model.chat.input.SetValue("/new")
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if command != nil {
-		t.Fatal("/new must not send a request")
+	for _, message := range executeCommandAll(command) {
+		if _, tick := message.(notificationDismissMsg); !tick {
+			t.Fatalf("/new sent an unexpected message %T", message)
+		}
 	}
 
 	press := func(code rune, text string) {

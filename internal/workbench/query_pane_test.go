@@ -180,12 +180,5 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 }
 
 func resolveYankCommand(model Model, command tea.Cmd) Model {
-	for range 4 {
-		if command == nil {
-			return model
-		}
-		updated, next := model.Update(command())
-		model, command = updated.(Model), next
-	}
-	return model
+	return driveCommand(model, command)
 }

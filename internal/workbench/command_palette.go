@@ -61,6 +61,7 @@ func newCommandPalette(m Model) *commandPalette {
 			scope:    def.scope,
 		})
 	}
+	items = append(items, commandPaletteItem{id: "notifications.show", label: "notifications", scope: scopeGlobal})
 	items = append(items, commandPaletteItem{id: "theme.select", label: "theme", scope: scopeGlobal})
 
 	vimLabel := "vim mode: off"

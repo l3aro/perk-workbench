@@ -94,7 +94,7 @@ func (f *browseFilterForm) reset() {
 
 func (m *Model) openBrowseFilterForm() tea.Cmd {
 	if len(m.structureColumns) == 0 {
-		m.Status = "table columns are loading"
+		m.setStatus("table columns are loading")
 		return nil
 	}
 	m.browseFilterForm = newBrowseFilterForm(m.structureColumns, m.browseSettings, m.browsePageSize, m.tableViewportWidth, m.formViewportHeight())

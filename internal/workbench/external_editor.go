@@ -48,7 +48,7 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 	m.editorEditTag++
 	command, err := externalEditorCommand(target.externalEditorValue(), m.editorEditTag, location)
 	if err != nil {
-		m.Status = safeText(fmt.Sprintf("opening editor: %v", err))
+		m.setStatus(safeText(fmt.Sprintf("opening editor: %v", err)))
 		return nil, true
 	}
 	return command, true
@@ -149,11 +149,11 @@ func externalEditorProcess(value string, tag uint64, location externalEditorLoca
 func (m Model) updateExternalEditor(message sqlEditorFinishedMsg) (tea.Model, tea.Cmd) {
 	target, location, ok := m.focusedExternalEditor()
 	if message.tag != m.editorEditTag || !ok || message.location != location {
-		m.Status = "editor target is no longer focused"
+		m.setStatus("editor target is no longer focused")
 		return m, nil
 	}
 	if message.err != nil {
-		m.Status = safeText(fmt.Sprintf("editor failed: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("editor failed: %v", message.err)))
 		return m, nil
 	}
 	target.setExternalEditorValue(message.value)

@@ -304,6 +304,15 @@ func readyModel(t *testing.T) Model {
 	return model
 }
 
+func firstQuerySucceeded(messages []tea.Msg) (querySucceededMsg, bool) {
+	for _, message := range messages {
+		if typed, ok := message.(querySucceededMsg); ok {
+			return typed, true
+		}
+	}
+	return querySucceededMsg{}, false
+}
+
 func stringPointer(value string) *string { return &value }
 
 func assertOneUUIDv7Profile(t *testing.T, loaded []recentConnection) {
@@ -369,8 +378,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if command == nil {
 			t.Fatal("picker selection sent no open command")
 		}
-		updated, _ = model.Update(command())
-		model = updated.(Model)
+		model = driveCommand(model, command)
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}

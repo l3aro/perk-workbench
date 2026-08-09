@@ -25,6 +25,13 @@ type Config struct {
 	// all, set PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS=0 (config cannot
 	// express it, since 0 means unset).
 	QueryLogRetentionDays int `json:"query_log_retention_days"`
+	// NotificationRetentionDays keeps notification entries for this many
+	// days. Omitted or 0 keeps the built-in default (30).
+	NotificationRetentionDays int `json:"notification_retention_days"`
+	// NotificationTimeoutSeconds is how long a notification popup stays
+	// visible. Omitted or 0 keeps the built-in default (10); values above
+	// one day are rejected.
+	NotificationTimeoutSeconds int `json:"notification_timeout_seconds"`
 	// ReadOnly opens every connection read-only by default. The
 	// per-connection form toggle still opts a connection back to read-write.
 	ReadOnly bool `json:"read_only"`
@@ -96,6 +103,12 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("config %q: query_log_page_size must be between 1 and %d, got %d", path, queryLogLimit, config.QueryLogPageSize)
 	case config.QueryLogRetentionDays < 0:
 		return Config{}, fmt.Errorf("config %q: query_log_retention_days must be non-negative, got %d", path, config.QueryLogRetentionDays)
+	case config.NotificationRetentionDays < 0:
+		return Config{}, fmt.Errorf("config %q: notification_retention_days must be non-negative, got %d", path, config.NotificationRetentionDays)
+	case config.NotificationTimeoutSeconds < 0:
+		return Config{}, fmt.Errorf("config %q: notification_timeout_seconds must be non-negative, got %d", path, config.NotificationTimeoutSeconds)
+	case config.NotificationTimeoutSeconds > maxNotificationTimeoutSeconds:
+		return Config{}, fmt.Errorf("config %q: notification_timeout_seconds must be at most %d, got %d", path, maxNotificationTimeoutSeconds, config.NotificationTimeoutSeconds)
 	case config.Theme != "" && !validTheme(config.Theme):
 		return Config{}, fmt.Errorf("config %q: theme %q is not one of %v", path, config.Theme, themeNames())
 	}
@@ -195,14 +208,14 @@ func (m *Model) toggleVimMode() tea.Cmd {
 		state = "on"
 	}
 	if m.configPath == "" {
-		m.Status = "vim mode: " + state
+		m.setStatus("vim mode: " + state)
 		return command
 	}
 	if err := SaveVimMode(m.configPath, m.vimMode); err != nil {
-		m.Status = "vim mode: " + state + " (not saved: " + err.Error() + ")"
+		m.setStatus("vim mode: " + state + " (not saved: " + err.Error() + ")")
 		return command
 	}
-	m.Status = "vim mode: " + state
+	m.setStatus("vim mode: " + state)
 	return command
 }
 
@@ -210,12 +223,14 @@ func (m *Model) toggleVimMode() tea.Cmd {
 // materializing a missing config file.
 func defaultConfigValues() map[string]json.RawMessage {
 	data, err := json.Marshal(Config{
-		BrowsePageSize:        core.BrowsePageSize,
-		QueryLogPageSize:      defaultQueryLogPageSize,
-		QueryLogRetentionDays: defaultQueryLogRetentionDays,
-		Theme:                 string(themeOcean),
-		VimMode:               boolPtr(true),
-		NerdFont:              boolPtr(true),
+		BrowsePageSize:             core.BrowsePageSize,
+		QueryLogPageSize:           defaultQueryLogPageSize,
+		QueryLogRetentionDays:      defaultQueryLogRetentionDays,
+		NotificationRetentionDays:  defaultNotificationRetentionDays,
+		NotificationTimeoutSeconds: defaultNotificationTimeoutSeconds,
+		Theme:                      string(themeOcean),
+		VimMode:                    boolPtr(true),
+		NerdFont:                   boolPtr(true),
 	})
 	if err != nil {
 		panic(err) // plain struct: cannot fail

@@ -14,7 +14,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		log.Error("open database", message.err)
 		if m.connection.focus == connectionFocusForm {
 			m.State = stateConnection
-			m.Status = safeText(fmt.Sprintf("database unavailable: %v", message.err))
+			m.setStatus(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
 			m.formMode.mode = formModeNormal
 			return m, nil
 		}
@@ -30,16 +30,17 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	if !message.reconnect {
 		if err := m.recordConnection(message.target); err != nil {
 			m.connectionID = ""
-			m.Status = safeText("saving connection profile: " + err.Error())
+			m.setStatus(safeText("saving connection profile: " + err.Error()))
 		}
 	}
 	m.queryLogEntries = loadQueryLog(m.queryLogPath, m.connectionID)
 	m.queryLogPage = 0
 	m.renderQueryLog()
+	m.notificationEntries = loadNotifications(m.notificationPath, m.connectionID)
 	name := filepath.Base(message.target)
 	if configured := strings.TrimSpace(m.connection.values.name); configured != "" {
 		name = configured
 	}
-	m.Status = safeText("ready: " + name)
+	m.setStatus(safeText("ready: " + name))
 	return m, m.setSchemaObjects(message.objects)
 }

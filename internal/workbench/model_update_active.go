@@ -31,7 +31,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateConnection(message)
 	case statePicking:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.reload", []scope{scopeView, scopeGlobal}) {
-			m.Status = "reloading picker"
+			m.setStatus("reloading picker")
 			return m, readDirectory(m.pickerDir)
 		}
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.select", []scope{scopeView, scopeGlobal}) {
@@ -195,7 +195,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					case browseFilterApply:
 						settings, err := m.browseFilterForm.apply()
 						if err != nil {
-							m.Status = safeText(err.Error())
+							m.setStatus(safeText(err.Error()))
 							return m, nil
 						}
 						m.browseSettings = settings
@@ -479,7 +479,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					if !ok {
 						return m, nil
 					}
-					m.Status = "copied to clipboard"
+					m.setStatus("copied to clipboard")
 					return m, copyQueryLogStatement(queryLogCell(entry, m.queryLogColumn))
 				case m.keybindings.Match(keyPress, "query_log.explain", []scope{scopeView, scopeGlobal}):
 					entry, ok := m.queryLogSelectedEntry()

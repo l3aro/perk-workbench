@@ -33,7 +33,7 @@ func (m *Model) startChat() tea.Cmd {
 	switch strings.ToLower(prompt) {
 	case "/new":
 		m.newChatConversation()
-		m.Status = "new conversation"
+		m.setStatus("new conversation")
 		return nil
 	case "/history":
 		return m.loadChatHistory()
@@ -41,29 +41,29 @@ func (m *Model) startChat() tea.Cmd {
 		m.chat.yoloWrites = true
 		m.chat.input.Reset()
 		m.chat.completion = completion{}
-		m.Status = "AI writes: on"
+		m.setStatus("AI writes: on")
 		return nil
 	case "/yolo-off":
 		m.chat.yoloWrites = false
 		m.chat.input.Reset()
 		m.chat.completion = completion{}
-		m.Status = "AI writes: off"
+		m.setStatus("AI writes: off")
 		return nil
 	case "/share-results":
 		m.chat.shareResults = true
 		m.chat.input.Reset()
 		m.chat.completion = completion{}
-		m.Status = "AI result sharing: on"
+		m.setStatus("AI result sharing: on")
 		return nil
 	case "/unshare-results":
 		m.chat.shareResults = false
 		m.chat.input.Reset()
 		m.chat.completion = completion{}
-		m.Status = "AI result sharing: off"
+		m.setStatus("AI result sharing: off")
 		return nil
 	}
 	if m.chat.client == nil {
-		m.Status = "AI is not configured"
+		m.setStatus("AI is not configured")
 		return nil
 	}
 	// A chat already running in the visible conversation swallows new input;
@@ -82,12 +82,12 @@ func (m *Model) startChat() tea.Cmd {
 	// is nothing safe to write, so the chat stays usable in memory only.
 	historyAvailable := m.chat.history != nil && connectionID != ""
 	if m.chat.history != nil && !historyAvailable {
-		m.Status = "AI conversation history is unavailable"
+		m.setStatus("AI conversation history is unavailable")
 	}
 	if fresh && historyAvailable {
 		conversation, err := m.chat.history.NewConversation(m.appContext, connectionID, truncateChatTitle(prompt))
 		if err != nil {
-			m.Status = safeText("AI history: " + err.Error())
+			m.setStatus(safeText("AI history: " + err.Error()))
 			return nil
 		}
 		conversationID = conversation.ID
@@ -241,7 +241,7 @@ func readStreamEvent(ch <-chan ai.StreamEvent, conversationID string) tea.Msg {
 
 func (m *Model) loadChatHistory() tea.Cmd {
 	if m.chat.history == nil {
-		m.Status = "AI conversation history is unavailable"
+		m.setStatus("AI conversation history is unavailable")
 		return nil
 	}
 	history := m.chat.history
@@ -307,11 +307,11 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // stale: started before a disconnect/reconnect
 		}
 		if message.err != nil {
-			m.Status = safeText("AI history: " + message.err.Error())
+			m.setStatus(safeText("AI history: " + message.err.Error()))
 			return m, nil
 		}
 		if len(message.conversations) == 0 {
-			m.Status = "no saved AI conversations"
+			m.setStatus("no saved AI conversations")
 			return m, nil
 		}
 		choices := make([]huh.Option[string], len(message.conversations))
@@ -329,7 +329,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // stale selection load
 		}
 		if message.err != nil {
-			m.Status = safeText("AI history: " + message.err.Error())
+			m.setStatus(safeText("AI history: " + message.err.Error()))
 			return m, nil
 		}
 		m.chat.activeID = message.conversationID
@@ -345,7 +345,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // stale: started before a disconnect/reconnect
 		}
 		if message.err != nil {
-			m.Status = safeText("AI history: " + message.err.Error())
+			m.setStatus(safeText("AI history: " + message.err.Error()))
 			return m, nil
 		}
 		if message.clear {
@@ -370,11 +370,11 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.clear || m.chat.activeID == message.conversationID {
 			m.newChatConversation()
 		}
-		m.Status = "AI conversation history cleared"
+		m.setStatus("AI conversation history cleared")
 		return m, nil
 	case chatPersistMsg:
 		if message.err != nil {
-			m.Status = safeText("AI history: " + message.err.Error())
+			m.setStatus(safeText("AI history: " + message.err.Error()))
 		}
 		return m, nil
 	case chatTitleMsg:
@@ -383,7 +383,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if message.err != nil {
 			if run := m.chat.runs[message.conversationID]; run != nil && m.chat.isActive(run) {
-				m.Status = safeText("AI title: " + message.err.Error())
+				m.setStatus(safeText("AI title: " + message.err.Error()))
 			}
 		}
 		return m, nil
@@ -410,12 +410,12 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if canceled {
 				if m.chat.isActive(run) {
-					m.Status = "AI request canceled"
+					m.setStatus("AI request canceled")
 				}
 				return m, nil
 			}
 			if m.chat.isActive(run) {
-				m.Status = safeText("AI: " + message.err.Error())
+				m.setStatus(safeText("AI: " + message.err.Error()))
 			}
 			return m, nil
 		}
@@ -435,7 +435,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 				run.streamBuffer = ""
 				if m.chat.isActive(run) {
 					m.refreshChatView()
-					m.Status = "AI request canceled"
+					m.setStatus("AI request canceled")
 				}
 				return m, nil
 			}
@@ -456,7 +456,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			if content == "" {
 				if m.chat.isActive(run) {
 					m.refreshChatView()
-					m.Status = "AI returned empty response"
+					m.setStatus("AI returned empty response")
 				}
 				return m, nil
 			}
@@ -470,7 +470,7 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.refreshChatView()
 			}
 			if wasFinalizing && m.chat.isActive(run) {
-				m.Status = "Assistant response complete"
+				m.setStatus("Assistant response complete")
 			}
 			// Persist to history asynchronously; report errors regardless of
 			// which conversation is visible. The run keeps its captured scope
@@ -513,9 +513,9 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.err != nil {
 			if m.chat.isActive(run) {
 				if canceled {
-					m.Status = "AI request canceled"
+					m.setStatus("AI request canceled")
 				} else {
-					m.Status = safeText("AI: " + message.err.Error())
+					m.setStatus(safeText("AI: " + message.err.Error()))
 				}
 			}
 			return m, nil
@@ -682,7 +682,7 @@ func (m *Model) applyChatSQL() tea.Cmd {
 	}
 	m.editor.setValue(statement)
 	m.Focus, m.Tab = focusWorkspace, tabSQL
-	m.Status = "AI SQL added to editor"
+	m.setStatus("AI SQL added to editor")
 	m.editorValidity = sqlValidityPending
 	return m.scheduleSQLValidation()
 }
@@ -945,7 +945,7 @@ func (m Model) startToolFinalization(run *chatRun, reason string) (tea.Model, te
 	rs.chatContext, rs.finalizationCancel = context.WithTimeout(rs.rootContext, assistantFinalizationTimeout)
 	run.messages = rs.messages
 	if m.chat.isActive(run) {
-		m.Status = "Assistant finalizing: " + reason
+		m.setStatus("Assistant finalizing: " + reason)
 	}
 	return m.startNextToolRound(run)
 }
@@ -1002,7 +1002,7 @@ func (m Model) stopToolRound(run *chatRun, status string) (tea.Model, tea.Cmd) {
 	run.pendingWrite = nil
 	if m.chat.isActive(run) {
 		m.refreshChatView()
-		m.Status = status
+		m.setStatus(status)
 	}
 	return m, nil
 }

@@ -28,10 +28,32 @@ type browseDebounceMsg struct {
 }
 
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	previousStatus := m.Status
+	previousCoreRevision := m.StatusRevision()
+	previousRevision := m.statusRevision
+	updated, cmd := m.updateCore(message)
+	model := updated.(Model)
+	statusWritten := model.Status != previousStatus ||
+		model.StatusRevision() != previousCoreRevision ||
+		model.statusRevision != previousRevision
+	if statusWritten && model.Status != "" {
+		notifyCmd := model.notify(model.Status)
+		if cmd == nil {
+			return model, notifyCmd
+		}
+		return model, tea.Batch(cmd, notifyCmd)
+	}
+	return model, cmd
+}
+
+func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, ok := message.(tea.WindowSizeMsg); ok {
 		m.layout(window.Width, window.Height)
 		if m.cellViewer != nil {
 			m.cellViewer.resize(max(m.width-8, 1), max(m.height-10, 1))
+		}
+		if m.notificationHistory != nil {
+			m.notificationHistory.resize(window.Width, window.Height)
 		}
 		return m, nil
 	}
@@ -59,6 +81,51 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if _, ok := message.(assistantToolResultMsg); ok {
 		return m.updateChat(message)
+	}
+	if dismiss, ok := message.(notificationDismissMsg); ok {
+		if dismiss.generation == m.notificationGeneration {
+			m.notificationPopup = nil
+		}
+		return m, nil
+	}
+	// Consume the release trailing a popup click before the modal branches
+	// swallow it; otherwise the flag stays armed and eats a later release.
+	if _, ok := message.(tea.MouseReleaseMsg); ok && m.notificationPopupSwallowRelease {
+		m.notificationPopupSwallowRelease = false
+		return m, nil
+	}
+	// A click on the popup opens the notification history (or, without a
+	// connection scope, a single-entry detail view) and swallows the
+	// trailing release so it cannot click the pane underneath.
+	if click, ok := message.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+		if bounds, hit := m.notificationPopupBounds(); hit && click.X >= bounds.Min.X && click.X < bounds.Max.X && click.Y >= bounds.Min.Y && click.Y < bounds.Max.Y {
+			m.notificationPopupSwallowRelease = true
+			if m.connectionID != "" && m.notificationPopup.id != 0 {
+				m.notificationHistory = newNotificationHistory(m.notificationEntries, m.notificationPopup.id, m.width, m.height)
+			} else {
+				m.notificationDetail = m.notificationPopup
+			}
+			return m, nil
+		}
+	}
+	if m.notificationHistory != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok {
+			// The filter's first Escape only blurs the filter; a second
+			// Escape closes the modal.
+			if keyPress.Key().Code == tea.KeyEscape && !m.notificationHistory.filterFocused {
+				m.notificationHistory = nil
+				return m, nil
+			}
+			m.notificationHistory.handleKey(keyPress)
+		}
+		return m, nil
+	}
+	if m.notificationDetail != nil {
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+			m.notificationDetail = nil
+			return m, nil
+		}
+		return m, nil
 	}
 
 	if m.themePicker != nil {
@@ -558,6 +625,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleMouseWheel(message)
 		}
 	case tea.MouseReleaseMsg:
+		if m.notificationPopupSwallowRelease {
+			m.notificationPopupSwallowRelease = false
+			return m, nil
+		}
 		if m.commandPalette != nil && m.commandPalette.swallowRelease {
 			m.commandPalette.swallowRelease = false
 			return m, nil
@@ -626,10 +697,10 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.pickerDir = message.dir
 		if message.err != nil {
 			log.Error("reading directory", message.err)
-			m.Status = safeText(fmt.Sprintf("unable to read directory: %v", message.err))
+			m.setStatus(safeText(fmt.Sprintf("unable to read directory: %v", message.err)))
 			return m, nil
 		}
-		m.Status = "choose a database"
+		m.setStatus("choose a database")
 		items := make([]list.Item, len(message.items))
 		for index, item := range message.items {
 			items[index] = item
@@ -638,7 +709,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case pickerSelectionMsg:
 		if message.err != nil {
 			log.Error("opening selection", message.err)
-			m.Status = safeText(fmt.Sprintf("unable to open selection: %v", message.err))
+			m.setStatus(safeText(fmt.Sprintf("unable to open selection: %v", message.err)))
 			return m, nil
 		}
 		if message.dir {

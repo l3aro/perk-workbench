@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -304,21 +303,7 @@ func updateBrowseForm(model Model, message tea.Msg) Model {
 func resolveBrowseCommand(model Model, message tea.Msg) Model {
 	updated, command := model.Update(message)
 	model = updated.(Model)
-	for range 4 {
-		if command == nil {
-			return model
-		}
-		message = command()
-		if batch, ok := message.(tea.BatchMsg); ok {
-			for _, next := range batch {
-				model = resolveBrowseCommand(model, next())
-			}
-			return model
-		}
-		updated, command = model.Update(message)
-		model = updated.(Model)
-	}
-	return model
+	return driveCommand(model, command)
 }
 
 func readyBrowseModel(t *testing.T) Model {
@@ -387,15 +372,12 @@ func TestBrowse_y_yanks_full_value_not_display_trimmed(t *testing.T) {
 
 // copiedText runs a copy command and returns the clipboard text it carries.
 func copiedText(command tea.Cmd) string {
-	if command == nil {
-		return ""
-	}
-	seq := reflect.ValueOf(command())
-	for i := 0; i < seq.Len(); i++ {
-		if msg := seq.Index(i).Interface().(tea.Cmd)(); msg != nil {
-			if text := fmt.Sprint(msg); text != "<nil>" {
-				return text
-			}
+	for _, message := range executeCommandAll(command) {
+		if _, tick := message.(notificationDismissMsg); tick {
+			continue
+		}
+		if text := fmt.Sprint(message); text != "<nil>" {
+			return text
 		}
 	}
 	return ""

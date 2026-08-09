@@ -70,7 +70,7 @@ func (e *cellEditor) updateStatement() string {
 func (m *Model) openCellEditor() tea.Cmd {
 	row := m.browse.Cursor()
 	if row < 0 || row >= len(m.browseResult.Rows) {
-		m.Status = "select a row"
+		m.setStatus("select a row")
 		return nil
 	}
 	col := m.browseColumn
@@ -93,7 +93,7 @@ func (m *Model) openCellEditor() tea.Cmd {
 		}
 	}
 	if len(primaryKeys) == 0 {
-		m.Status = "cannot edit: no primary key"
+		m.setStatus("cannot edit: no primary key")
 		return nil
 	}
 
@@ -187,11 +187,11 @@ func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea
 		m.appendQueryLog(actionLogEntry(msg.statement, msg.startedAt, msg.err, "updated 1 row"))
 	}
 	if msg.err != nil {
-		m.Status = safeText(fmt.Sprintf("updating cell: %v", msg.err))
+		m.setStatus(safeText(fmt.Sprintf("updating cell: %v", msg.err)))
 		return m, nil
 	}
 	m.cellEditor = nil
-	m.Status = "cell updated"
+	m.setStatus("cell updated")
 	return m, m.loadBrowse()
 }
 

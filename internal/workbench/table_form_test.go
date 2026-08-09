@@ -779,7 +779,7 @@ func TestPostgresTree_enterOnUnconnectedRootReconnects(t *testing.T) {
 	if command == nil {
 		t.Fatal("Enter on an unconnected root returned no command")
 	}
-	command()
+	executeCommandAll(command)
 	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
 		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
 	}
@@ -821,7 +821,7 @@ func TestPostgresTree_doubleClickOnUnconnectedRootReconnects(t *testing.T) {
 	if command == nil {
 		t.Fatal("double-click on an unconnected root returned no command")
 	}
-	command()
+	executeCommandAll(command)
 	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
 		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
 	}
@@ -879,7 +879,7 @@ func TestPostgresTree_contextMenuConnectSwitchesDatabase(t *testing.T) {
 	if command == nil {
 		t.Fatal("Connect returned no command")
 	}
-	command()
+	executeCommandAll(command)
 	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
 		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
 	}
@@ -896,9 +896,7 @@ func TestPostgresTree_reconnectDoesNotRecordProfile(t *testing.T) {
 	if command == nil {
 		t.Fatal("Enter on an unconnected root returned no command")
 	}
-	message := command()
-	updated, _ = model.Update(message)
-	model = updated.(Model)
+	model = driveCommand(model, command)
 
 	if len(model.recentConnections) != 0 {
 		t.Fatalf("reconnect recorded %d profiles, want none", len(model.recentConnections))

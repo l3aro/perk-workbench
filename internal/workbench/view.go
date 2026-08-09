@@ -34,6 +34,25 @@ func (m Model) View() tea.View {
 		} else {
 			m.commandPalette.paletteDraw(canvas, m.width, m.height)
 		}
+		m.drawNotificationPopup(canvas)
+		view.SetContent(canvas.Render())
+		return view
+	}
+	if m.notificationHistory != nil {
+		canvas := uv.NewScreenBuffer(m.width, m.height)
+		screen.Clear(canvas)
+		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
+		m.drawNotificationHistory(canvas)
+		m.drawNotificationPopup(canvas)
+		view.SetContent(canvas.Render())
+		return view
+	}
+	if m.notificationDetail != nil {
+		canvas := uv.NewScreenBuffer(m.width, m.height)
+		screen.Clear(canvas)
+		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
+		m.drawNotificationDetail(canvas)
+		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -41,6 +60,7 @@ func (m Model) View() tea.View {
 		canvas := uv.NewScreenBuffer(m.width, m.height)
 		screen.Clear(canvas)
 		m.drawQueryLogDetail(canvas)
+		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -59,6 +79,15 @@ func (m Model) View() tea.View {
 		} else if m.cellViewer != nil {
 			m.drawCellViewer(canvas)
 		}
+		m.drawNotificationPopup(canvas)
+		view.SetContent(canvas.Render())
+		return view
+	}
+	if m.notificationPopup != nil {
+		canvas := uv.NewScreenBuffer(m.width, m.height)
+		screen.Clear(canvas)
+		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
+		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -155,7 +184,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.queryLogDetail != nil || m.notificationHistory != nil || m.notificationDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -692,15 +721,12 @@ func (m Model) footer() string {
 	if m.State == stateConnection {
 		quitKey := m.keybindings.DisplayKey("app.quit")
 		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
-		return safeText(m.Status + " | 1 profiles | 2 form | tab controls | " + quitHint)
+		return safeText("1 profiles | 2 form | tab controls | " + quitHint)
 	}
 	if m.State == stateReady {
 		quitKey := m.keybindings.DisplayKey("app.quit_dialog")
 		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
 		parts := []string{}
-		if m.Status != "" {
-			parts = append(parts, m.Status)
-		}
 		if m.ReadOnly {
 			parts = append(parts, "READONLY")
 		}
@@ -709,12 +735,11 @@ func (m Model) footer() string {
 		}
 		parts = append(parts, "f fullscreen", "^p palette")
 		parts = append(parts, quitHint)
-		result := safeText(strings.Join(parts, " | "))
-		return result
+		return safeText(strings.Join(parts, " | "))
 	}
 	quitKey := m.keybindings.DisplayKey("app.quit")
 	quitHint := chrome.FormatFooterKey(quitKey) + " quit"
-	return safeText(m.Status + " | " + quitHint)
+	return safeText(quitHint)
 }
 
 func (m Model) modeBadge() string {

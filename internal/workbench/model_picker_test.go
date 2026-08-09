@@ -104,15 +104,15 @@ func TestPicker_r_reloads_failed_directory(t *testing.T) {
 	if command == nil {
 		t.Fatal("r did not return a directory reload command")
 	}
-	message := command()
+	messages := executeCommandAll(command)
 
 	// Then
 	if model.Status == "" {
 		t.Fatal("recoverable read failure did not retain a status")
 	}
-	directoryMessage, ok := message.(directoryReadMsg)
+	directoryMessage, ok := firstDirectoryRead(messages)
 	if !ok {
-		t.Fatalf("reload message = %T, want directoryReadMsg", message)
+		t.Fatalf("reload messages = %#v, want a directoryReadMsg", messages)
 	}
 	if directoryMessage.err != nil {
 		t.Fatalf("reload directory error: %v", directoryMessage.err)
@@ -120,4 +120,13 @@ func TestPicker_r_reloads_failed_directory(t *testing.T) {
 	if directoryMessage.dir != directory {
 		t.Fatalf("reload directory = %q, want %q", directoryMessage.dir, directory)
 	}
+}
+
+func firstDirectoryRead(messages []tea.Msg) (directoryReadMsg, bool) {
+	for _, message := range messages {
+		if typed, ok := message.(directoryReadMsg); ok {
+			return typed, true
+		}
+	}
+	return directoryReadMsg{}, false
 }

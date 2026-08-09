@@ -424,9 +424,9 @@ func TestConnectionForm_recentAddAndEditInitializeUsableHuhForms(t *testing.T) {
 				t.Fatal("recent route returned no Huh initialization command")
 			}
 			message := command()
-			if _, ok := message.(tea.BatchMsg); ok {
-				t.Fatal("recent route returned redundant focus batching instead of the Huh init sequence")
-			}
+			// The open-form action also shows a notification popup, so the
+			// returned command may batch the form init with the popup tick;
+			// resolveConnectionMessage flattens batches recursively.
 			model = resolveConnectionMessage(model, message, 16)
 			updated, _ = model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 			model = updated.(Model)

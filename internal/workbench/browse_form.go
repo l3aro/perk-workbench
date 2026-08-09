@@ -41,12 +41,12 @@ type browseFormValues struct {
 func (m *Model) openBrowseForm() tea.Cmd {
 	row := m.browse.Cursor()
 	if row < 0 || row >= len(m.browseResult.Rows) {
-		m.Status = "select a row"
+		m.setStatus("select a row")
 		return nil
 	}
 	form, err := newBrowseForm(m.browseResult.Columns, m.browseResult.Rows[row], m.structureColumns)
 	if err != nil {
-		m.Status = safeText(err.Error())
+		m.setStatus(safeText(err.Error()))
 		return nil
 	}
 	m.browseForm = form

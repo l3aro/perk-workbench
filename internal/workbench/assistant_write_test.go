@@ -364,9 +364,7 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	// First Escape: exit insert mode, keep confirmation and agent run.
 	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if cmd != nil {
-		t.Fatal("first Escape should not produce a cmd")
-	}
+	assertOnlyNotificationTick(t, cmd)
 	if model.chat.chatMode != formModeNormal {
 		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
 	}
@@ -522,9 +520,7 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 	model = updated2.(Model)
 	updated2, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated2.(Model)
-	if cmd != nil {
-		t.Fatal("YOLO command must not send a request")
-	}
+	assertOnlyNotificationTick(t, cmd)
 	if !model.chat.yoloWrites {
 		t.Fatal("yoloWrites should be true after command")
 	}

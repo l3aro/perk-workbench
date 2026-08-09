@@ -140,20 +140,20 @@ func (m *Model) loadRecentConnectionValues(connection recentConnection) {
 func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
-		m.Status = "select a connection profile"
+		m.setStatus("select a connection profile")
 		return nil
 	}
 	m.loadRecentConnectionValues(connection)
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
-	m.Status = "editing " + safeText(connection.Name)
+	m.setStatus("editing " + safeText(connection.Name))
 	return m.openForm(command, m.connection.focusForm)
 }
 
 func (m *Model) deleteSelectedRecentConnection() {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
-		m.Status = "select a connection profile"
+		m.setStatus("select a connection profile")
 		return
 	}
 	connections := make([]recentConnection, 0, len(m.recentConnections)-1)
@@ -164,7 +164,7 @@ func (m *Model) deleteSelectedRecentConnection() {
 		connections = append(connections, existing)
 	}
 	m.setRecentConnections(connections)
-	m.Status = "deleted " + safeText(connection.Name)
+	m.setStatus("deleted " + safeText(connection.Name))
 }
 
 func (m *Model) newConnection() tea.Cmd {
@@ -172,7 +172,7 @@ func (m *Model) newConnection() tea.Cmd {
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.formMode.mode = formModeNormal
-	m.Status = "new connection"
+	m.setStatus("new connection")
 	return m.openForm(command, m.connection.focusForm)
 }
 
@@ -206,7 +206,7 @@ func (m Model) connectionTarget() string {
 
 func (m Model) openConnection() (tea.Model, tea.Cmd) {
 	if err := m.connection.validate(); err != nil {
-		m.Status = safeText(err.Error())
+		m.setStatus(safeText(err.Error()))
 		return m, nil
 	}
 	m.ReadOnly = m.connection.values.readOnly
@@ -235,16 +235,16 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	if test, ok := message.(connectionTestMsg); ok {
 		if test.err != nil {
 			log.Error("connection test", test.err)
-			m.Status = "connection test failed"
+			m.setStatus("connection test failed")
 			return m, nil
 		}
 		// A successful test stands in for the removed Save button: the form's
 		// current credentials become the saved profile.
 		if err := m.recordConnection(test.target); err != nil {
-			m.Status = safeText("saving connection profile: " + err.Error())
+			m.setStatus(safeText("saving connection profile: " + err.Error()))
 			return m, nil
 		}
-		m.Status = "connection test succeeded: " + safeText(m.connection.connectionName())
+		m.setStatus("connection test succeeded: " + safeText(m.connection.connectionName()))
 		return m, nil
 	}
 	if m.connection.focus == connectionFocusRecent {
@@ -291,7 +291,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if isKeyPress && m.connection.confirmation == nil && m.keybindings.Match(keyPress, "connection.execute", []scope{scopeView, scopeGlobal}) {
 		if err := m.connection.validate(); err != nil {
-			m.Status = safeText(err.Error())
+			m.setStatus(safeText(err.Error()))
 			return m, m.connection.showValidationError()
 		}
 		m.formMode.beginConfirm()

@@ -144,7 +144,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		// name so the user can adjust or discard it.
 		m.tableFormRunning = false
 		m.formMode.mode = formModeNormal
-		m.Status = safeText("table action failed: " + message.err.Error())
+		m.setStatus(safeText("table action failed: " + message.err.Error()))
 	}
 	return m, nil
 }
@@ -184,7 +184,7 @@ func (m Model) loadSchema() tea.Cmd {
 func (m Model) updateSchemaLoaded(message schemaLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil {
 		// Keep the previous sidebar; report the refresh failure.
-		m.Status = safeText("refreshing schema: " + message.err.Error())
+		m.setStatus(safeText("refreshing schema: " + message.err.Error()))
 		return m, nil
 	}
 	return m, m.setSchemaObjects(message.objects)

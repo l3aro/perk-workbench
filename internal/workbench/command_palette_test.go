@@ -176,10 +176,10 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 func TestCommandPalette_connectionShowsExecutableCommands(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 
-	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "theme.select", "vim.toggle")
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "notifications.show", "theme.select", "vim.toggle")
 
 	model.connection.focus = connectionFocusForm
-	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "theme.select", "vim.toggle")
+	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "notifications.show", "theme.select", "vim.toggle")
 }
 
 func assertCommandIDs(t *testing.T, palette *commandPalette, want ...CommandID) {

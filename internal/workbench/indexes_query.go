@@ -69,7 +69,7 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
 			log.Error("loading indexes", message.err)
-			m.Status = safeText(fmt.Sprintf("loading indexes: %v", message.err))
+			m.setStatus(safeText(fmt.Sprintf("loading indexes: %v", message.err)))
 		}
 		return m, nil
 	}
@@ -97,11 +97,11 @@ func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) 
 	}
 	if message.err != nil {
 		m.indexForm.saving = false
-		m.Status = safeText(fmt.Sprintf("updating index: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("updating index: %v", message.err)))
 		return m, nil
 	}
 	m.indexForm.close()
-	m.Status = "index updated"
+	m.setStatus("index updated")
 	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
 }
 func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) {
@@ -110,11 +110,11 @@ func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) 
 	}
 	if message.err != nil {
 		m.indexForm.saving = false
-		m.Status = safeText(fmt.Sprintf("deleting index: %v", message.err))
+		m.setStatus(safeText(fmt.Sprintf("deleting index: %v", message.err)))
 		return m, nil
 	}
 	m.indexForm.close()
-	m.Status = "index deleted"
+	m.setStatus("index deleted")
 	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
 }
 func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {

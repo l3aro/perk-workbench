@@ -98,8 +98,16 @@ type Model struct {
 	themePicker                                                                                    *themePicker
 	quitDialog                                                                                     *confirmationDialog
 	queryConfirmation                                                                              *queryConfirmation
-	recentPath, queryLogPath, configPath                                                           string
+	recentPath, queryLogPath, configPath, notificationPath                                         string
 	queryLogDatabase                                                                               *sql.DB
+	notificationDatabase                                                                           *sql.DB
+	notificationEntries                                                                            []notificationEntry
+	notificationPopup                                                                              *notificationEntry
+	notificationDetail                                                                             *notificationEntry
+	notificationHistory                                                                            *notificationHistory
+	notificationGeneration                                                                         uint64
+	notificationPopupSwallowRelease                                                                bool
+	statusRevision                                                                                 uint64
 	keybindings                                                                                    Keybindings
 	tableFilterInput                                                                               textinput.Model
 	width, height, schemaWidth, editorWidth, chatWidth                                             int
@@ -237,6 +245,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	model.focusActiveTable()
 	model.queryLogPath, _ = queryLogPath()
 	model.queryLogEntries = loadQueryLog(model.queryLogPath, "")
+	model.notificationPath, _ = notificationPath()
 	model.renderQueryLog()
 	model.recentPath, _ = recentConnectionsPath()
 	model.configPath = ConfigPath()
@@ -279,7 +288,7 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 func (m Model) reconnectDatabase(database string) (tea.Model, tea.Cmd) {
 	target := m.postgresTargetFor(database)
 	if target == "" {
-		m.Status = safeText("cannot reconnect to " + database)
+		m.setStatus(safeText("cannot reconnect to " + database))
 		return m, nil
 	}
 	m.BeginOpening(target, "opening "+safeText(database))
@@ -342,12 +351,20 @@ func (m *Model) disconnect() {
 	if m.Database != nil {
 		_ = m.Database.Close()
 	}
+	if m.notificationDatabase != nil {
+		_ = m.notificationDatabase.Close()
+		m.notificationDatabase = nil
+	}
+	m.notificationEntries = nil
+	m.notificationPopup = nil
+	m.notificationDetail = nil
+	m.notificationHistory = nil
 	m.State = stateConnection
 	m.layout(m.width, m.height)
 	m.Database = nil
 	m.SelectedTable = ""
 	m.BrowsePage = 0
-	m.Status = ""
+	m.setStatus("")
 	m.queryLogEntries = nil
 	m.queryLogPage = 0
 	m.queryHistory = nil

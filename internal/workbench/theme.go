@@ -243,14 +243,14 @@ func indexIcons(indexes []sharedsql.IndexKind) string {
 func (m *Model) commitTheme(name appTheme) {
 	m.applyTheme(name)
 	if m.configPath == "" {
-		m.Status = "theme: " + string(name)
+		m.setStatus("theme: " + string(name))
 		return
 	}
 	if err := SaveTheme(m.configPath, string(name)); err != nil {
-		m.Status = "theme: " + string(name) + " (not saved: " + err.Error() + ")"
+		m.setStatus("theme: " + string(name) + " (not saved: " + err.Error() + ")")
 		return
 	}
-	m.Status = "theme: " + string(name)
+	m.setStatus("theme: " + string(name))
 }
 
 func (m *Model) applyTheme(name appTheme) {

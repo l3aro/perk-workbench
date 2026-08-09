@@ -229,19 +229,5 @@ func updateIndexForm(model Model, message tea.Msg) Model {
 func resolveIndexCommand(model Model, message tea.Msg) Model {
 	updated, command := model.Update(message)
 	model = updated.(Model)
-	for range 4 {
-		if command == nil {
-			return model
-		}
-		message = command()
-		if batch, ok := message.(tea.BatchMsg); ok {
-			for _, next := range batch {
-				model = resolveIndexCommand(model, next())
-			}
-			return model
-		}
-		updated, command = model.Update(message)
-		model = updated.(Model)
-	}
-	return model
+	return driveCommand(model, command)
 }

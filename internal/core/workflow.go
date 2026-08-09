@@ -62,7 +62,13 @@ type Workflow struct {
 	cancelRequested bool
 	pendingQuit     bool
 	cancel          context.CancelFunc
+	statusRevision  uint64
 }
+
+// StatusRevision returns a counter incremented on every Status write through
+// the workflow methods, so callers can observe a status event even when the
+// text is identical to the previous one.
+func (w *Workflow) StatusRevision() uint64 { return w.statusRevision }
 
 func New(target string) Workflow {
 	workflow := Workflow{Target: target, Focus: FocusWorkspace, Tab: TabSQL}
@@ -85,6 +91,7 @@ func (w *Workflow) StartQuery(ctx context.Context, statement string) (Query, boo
 	queryContext, cancel := context.WithCancel(ctx)
 	w.cancel = cancel
 	w.Status = "running query"
+	w.statusRevision++
 	return Query{RequestID: w.activeRequestID, Context: queryContext, Service: w.Database, Statement: statement}, true
 }
 
@@ -104,6 +111,7 @@ func (w *Workflow) CancelQuery() {
 	}
 	w.cancelRequested = true
 	w.Status = "canceling query"
+	w.statusRevision++
 	w.cancel()
 }
 
@@ -124,18 +132,22 @@ func (w *Workflow) FinishQuery() (canceled, quit bool) {
 
 func (w *Workflow) BeginOpening(target, status string) {
 	w.Target, w.State, w.Status = target, StateOpening, status
+	w.statusRevision++
 }
 
 func (w *Workflow) Opened(target string, service sharedsql.Service, status string) {
 	w.Target, w.Database, w.State, w.Status = target, service, StateReady, status
+	w.statusRevision++
 }
 
 func (w *Workflow) Fail(status string) {
 	w.State, w.Status = StateFailure, status
+	w.statusRevision++
 }
 
 func (w *Workflow) RecoverToPicker(status string) {
 	w.State, w.Status = StatePicking, status
+	w.statusRevision++
 }
 
 func (w *Workflow) SelectTable(table string) {
