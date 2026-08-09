@@ -803,6 +803,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	case chatResponseMsg, chatStreamMsg, chatPersistMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg,
 		assistantToolStartMsg, assistantToolContinueMsg, assistantWriteResultMsg, chatSpinnerTickMsg:
 		return m.updateChat(message)
+	case treeAnimTickMsg:
+		return m.updateTreeAnim(message)
 	}
 
 	// Route the table popup before ordinary active dispatch; like the other

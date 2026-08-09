@@ -13,6 +13,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
+	"github.com/go-sql-driver/mysql"
 	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
@@ -49,6 +50,7 @@ type Model struct {
 	appContext                                                                                     context.Context
 	openDatabase                                                                                   OpenDatabase
 	browseLoading, browsePending                                                                   bool
+	treeAnim                                                                                       *treeAnim
 	browsePageTag, editorEditTag, completionRequestTag                                             uint64
 	editorValidity                                                                                 sqlValidity
 	sqlValidationTag                                                                               uint64
@@ -302,6 +304,7 @@ func (m Model) reconnectDatabase(database string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.BeginOpening(target, "opening "+safeText(database))
+	m.treeAnim = nil
 	return m, m.reopenTarget(target)
 }
 
@@ -370,6 +373,7 @@ func (m *Model) disconnect() {
 	m.notificationDetail = nil
 	m.notificationHistory = nil
 	m.State = stateConnection
+	m.treeAnim = nil
 	m.layout(m.width, m.height)
 	m.Database = nil
 	m.SelectedTable = ""
@@ -431,20 +435,20 @@ func (m Model) Init() tea.Cmd {
 
 func (m *Model) setSchemaObjects(objects []sharedsql.SchemaObject) tea.Cmd {
 	m.schemaObjects = objects
+	m.treeAnim = nil // the tree changed wholesale; no accordion to continue
 	if m.expandedDatabases == nil {
 		m.expandedDatabases = map[string]bool{}
 	}
 	if m.expandedSchemas == nil {
 		m.expandedSchemas = map[string]bool{}
 	}
-	for _, object := range objects {
-		switch object.Type {
-		case "database":
-			m.expandedDatabases[object.Database] = true
-		case "schema":
-			m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] = true
-		}
-	}
+	// Default expansion mirrors the toggle rule: server products open
+	// exactly one database root (the connected one, else the first) and
+	// PostgreSQL exactly one schema, so a fresh tree never shows every
+	// database's or schema's children at once. Single-root products
+	// (SQLite, MongoDB) have nothing to collapse.
+	m.expandedDatabases = m.initialDatabaseExpansion(objects)
+	m.expandedSchemas = m.initialSchemaExpansion(objects)
 	cmd := m.rebuildSchemaTree()
 	// Keep the cursor on the connected root: switching databases rebuilds
 	// the tree, and with roots in stable alphabetical order the selection
@@ -468,9 +472,146 @@ func (m Model) schemaExpansionKey(database, schema string) string {
 	return database + "\x00" + schema
 }
 
+// toggleDatabase expands database when collapsed and collapses it when
+// expanded; expanding one root collapses every other, so at most one
+// database shows children at a time. It returns the accordion tick command.
+func (m *Model) toggleDatabase(database string) tea.Cmd {
+	expanding := !m.expandedDatabases[database]
+	total := m.schemaChildRowCount(database, "", expanding)
+	if m.expandedDatabases[database] {
+		m.expandedDatabases[database] = false
+	} else {
+		for db := range m.expandedDatabases {
+			m.expandedDatabases[db] = false
+		}
+		m.expandedDatabases[database] = true
+	}
+	return m.startTreeAnim(database, "", expanding, total)
+}
+
+// toggleSchema expands schema when collapsed and collapses it when
+// expanded; expanding one schema collapses every other, so at most one
+// schema shows its tables at a time. It returns the accordion tick command.
+func (m *Model) toggleSchema(database, schema string) tea.Cmd {
+	key := m.schemaExpansionKey(database, schema)
+	expanding := !m.expandedSchemas[key]
+	total := m.schemaChildRowCount(database, schema, expanding)
+	if m.expandedSchemas[key] {
+		m.expandedSchemas[key] = false
+	} else {
+		for k := range m.expandedSchemas {
+			m.expandedSchemas[k] = false
+		}
+		m.expandedSchemas[key] = true
+	}
+	return m.startTreeAnim(database, schema, expanding, total)
+}
+
+// initialDatabaseExpansion returns the load-time database expansion: the
+// root holding the open table, else the connected database, else the
+// first root. Server products expand exactly one root so a fresh session
+// never shows every database's tables at once; single-root products
+// expand everything (their only root).
+func (m Model) initialDatabaseExpansion(objects []sharedsql.SchemaObject) map[string]bool {
+	expanded := map[string]bool{}
+	if m.databaseInfo.Product != "MySQL" && m.databaseInfo.Product != "PostgreSQL" {
+		for _, object := range objects {
+			if object.Type == "database" {
+				expanded[object.Database] = true
+			}
+		}
+		return expanded
+	}
+	preferred := m.preferredDatabase()
+	if m.SelectedTable != "" {
+		switch m.databaseInfo.Product {
+		case "MySQL":
+			// MySQL qualifies tables as database.table.
+			if database, _, ok := strings.Cut(m.SelectedTable, "."); ok {
+				preferred = database
+			}
+		case "PostgreSQL":
+			if connected := m.connectedDatabase(); connected != "" {
+				preferred = connected
+			}
+		}
+	}
+	first := ""
+	for _, object := range objects {
+		if object.Type != "database" {
+			continue
+		}
+		if first == "" {
+			first = object.Database
+		}
+		if preferred != "" && object.Database == preferred {
+			expanded[preferred] = true
+			return expanded
+		}
+	}
+	if first != "" {
+		expanded[first] = true
+	}
+	return expanded
+}
+
+// preferredDatabase is the database the session is connected to when the
+// product tracks one: PostgreSQL names it in the target URL, MySQL in the
+// DSN's database field.
+func (m Model) preferredDatabase() string {
+	switch m.databaseInfo.Product {
+	case "PostgreSQL":
+		return m.connectedDatabase()
+	case "MySQL":
+		return m.mysqlDatabase()
+	}
+	return ""
+}
+
+// mysqlDatabase extracts the database name from the MySQL DSN target.
+func (m Model) mysqlDatabase() string {
+	dsn, ok := strings.CutPrefix(m.Target, "mysql:")
+	if !ok {
+		return ""
+	}
+	config, err := mysql.ParseDSN(dsn)
+	if err != nil {
+		return ""
+	}
+	return config.DBName
+}
+
+// initialSchemaExpansion returns the load-time PostgreSQL schema
+// expansion: the schema holding the open table, else the first schema of
+// the expanded database. Exactly one schema is expanded so a fresh
+// session never shows every schema's tables at once.
+func (m Model) initialSchemaExpansion(objects []sharedsql.SchemaObject) map[string]bool {
+	expanded := map[string]bool{}
+	preferred := ""
+	if m.SelectedTable != "" {
+		// PostgreSQL qualifies tables as schema.table.
+		preferred, _, _ = strings.Cut(m.SelectedTable, ".")
+	}
+	for _, object := range objects {
+		if object.Type == "schema" && object.Name == preferred {
+			expanded[m.schemaExpansionKey(object.Database, object.Name)] = true
+			return expanded
+		}
+	}
+	for _, object := range objects {
+		if object.Type == "schema" && m.expandedDatabases[object.Database] {
+			expanded[m.schemaExpansionKey(object.Database, object.Name)] = true
+			break
+		}
+	}
+	return expanded
+}
+
 func (m *Model) rebuildSchemaTree() tea.Cmd {
 	items := make([]list.Item, 0, len(m.schemaObjects))
 	schemaCounts, databaseCounts := m.schemaChildCounts()
+	animDatabase, animSchema, revealBudget := m.schemaReveal()
+	revealUsed := 0
 	for _, object := range m.schemaObjects {
 		switch object.Type {
 		case "database":
@@ -491,7 +632,17 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			// PostgreSQL only: schemas nest under the connected
 			// database's root.
 			if !m.expandedDatabases[object.Database] {
-				continue
+				// A closing subtree keeps rendering during its collapse.
+				if animDatabase != object.Database || animSchema != "" {
+					continue
+				}
+			}
+			// A database-scope accordion counts schema rows as children.
+			if animDatabase == object.Database && animSchema == "" {
+				revealUsed++
+				if revealUsed > revealBudget {
+					continue
+				}
 			}
 			description := ""
 			if !m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
@@ -502,7 +653,9 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			items = append(items, item)
 		default: // table or view
 			if !m.expandedDatabases[object.Database] {
-				continue
+				if animDatabase != object.Database || animSchema != "" {
+					continue
+				}
 			}
 			table := object.Name
 			schema := ""
@@ -515,6 +668,18 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 					continue
 				}
 				if !m.expandedSchemas[m.schemaExpansionKey(object.Database, schema)] {
+					// A closing schema keeps rendering its tables during
+					// the collapse; other schemas stay hidden.
+					if animDatabase != object.Database || animSchema != schema {
+						continue
+					}
+				}
+			}
+			// The accordion budgets the animated subtree's rows: all rows
+			// of a database-scope reveal, or just the schema's tables.
+			if animDatabase == object.Database && (animSchema == "" || animSchema == schema) {
+				revealUsed++
+				if revealUsed > revealBudget {
 					continue
 				}
 			}

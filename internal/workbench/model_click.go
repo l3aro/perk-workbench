@@ -460,16 +460,13 @@ func (m Model) schemaClick(x, contentY int) (tea.Model, tea.Cmd) {
 	// Item clicks leave filter editing so navigation keys work again.
 	m.schemaFilter.Blur()
 	if item.kind == "schema" {
-		key := m.schemaExpansionKey(item.database, item.schema)
-		m.expandedSchemas[key] = !m.expandedSchemas[key]
-		return m, m.rebuildSchemaTree()
+		return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
 	}
 	if item.root {
 		if m.recordFormClick(x, contentY+1) && m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
 			return m.reconnectDatabase(item.database)
 		}
-		m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
-		return m, m.rebuildSchemaTree()
+		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
 	}
 	return m, m.selectSchemaTable(item)
 }

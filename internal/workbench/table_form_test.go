@@ -727,6 +727,7 @@ func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
 	schemaY := findRenderedRow(t, model, "  ▤ public")
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: schemaY, Button: tea.MouseLeft})
 	model = updated.(Model)
+	model = completeTreeAnim(model)
 	view := ansi.Strip(model.View().Content)
 	if !strings.Contains(view, "  ▤ public") || strings.Contains(view, "    ▪ accounts") {
 		t.Fatalf("collapsed postgres sidebar = %q, want ▤ public without tables", view)
@@ -736,6 +737,7 @@ func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
 	model.schema.Select(1)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
+	model = completeTreeAnim(model)
 	view = ansi.Strip(model.View().Content)
 	if !strings.Contains(view, "  ▤ public") || !strings.Contains(view, "    ▪ accounts") {
 		t.Fatalf("re-expanded postgres sidebar = %q, want public with tables", view)
@@ -793,6 +795,7 @@ func TestPostgresTree_enterOnConnectedRootToggles(t *testing.T) {
 	model.schema.Select(0)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
+	model = completeTreeAnim(model)
 
 	if model.State != stateReady || len(*opened) != 0 {
 		t.Fatalf("connected root Enter = state %v, opens %v, want ready and no reopen", model.State, *opened)

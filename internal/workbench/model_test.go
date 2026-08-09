@@ -131,6 +131,7 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	expanded := ansi.Strip(model.schema.View())
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
+	model = completeTreeAnim(model)
 	collapsed := ansi.Strip(model.schema.View())
 
 	// Then
@@ -146,6 +147,104 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 	}
 	if strings.Contains(collapsed, "  ▪ events") {
 		t.Fatalf("collapsed schema tree = %q, want analytics root without child tables", collapsed)
+	}
+}
+
+func TestSchemaTree_mysqlLoadExpandsConnectedDatabase(t *testing.T) {
+	// Given — a MySQL session connected to app; the tree loads with app
+	// expanded and analytics collapsed, not every database at once.
+	model := serverProductModel(t, "MySQL", &createDatabaseStub{})
+	model.Target = "mysql:alice:secret@tcp(db.example.test:3306)/app"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "analytics", Type: "database", Name: "analytics"},
+		{Database: "analytics", Type: "table", Name: "events"},
+		{Database: "app", Type: "database", Name: "app"},
+		{Database: "app", Type: "table", Name: "users"},
+	})
+	model.schema.SetSize(30, 8)
+
+	// Then
+	view := ansi.Strip(model.schema.View())
+	if !strings.Contains(view, "  ▪ users") {
+		t.Fatalf("loaded tree = %q, want app expanded with users", view)
+	}
+	if strings.Contains(view, "  ▪ events") {
+		t.Fatalf("loaded tree = %q, want analytics collapsed", view)
+	}
+}
+
+func TestSchemaTree_mysqlExpandsOneDatabaseAtATime(t *testing.T) {
+	// Given — two MySQL databases with tables; only the first root is
+	// expanded at load.
+	model := serverProductModel(t, "MySQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "app", Type: "database", Name: "app"},
+		{Database: "app", Type: "table", Name: "users"},
+		{Database: "analytics", Type: "database", Name: "analytics"},
+		{Database: "analytics", Type: "table", Name: "events"},
+	})
+	model.schema.SetSize(30, 8)
+
+	// When — Enter on the analytics root.
+	model.schema.Select(2)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = completeTreeAnim(model)
+
+	// Then — analytics is expanded and app collapsed: one at a time.
+	view := ansi.Strip(model.schema.View())
+	for _, label := range []string{"▣ analytics", "  ▪ events"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expanded analytics tree = %q, want %q", view, label)
+		}
+	}
+	if strings.Contains(view, "  ▪ users") {
+		t.Fatalf("expanded analytics tree = %q, want app tables collapsed", view)
+	}
+
+	// When — Enter again on the analytics root (the rebuild moved the
+	// selection; the root now sits at index 1).
+	model.schema.Select(1)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = completeTreeAnim(model)
+
+	// Then — everything is collapsed; app tables stay hidden until app is
+	// expanded again.
+	view = ansi.Strip(model.schema.View())
+	if strings.Contains(view, "  ▪ events") || strings.Contains(view, "  ▪ users") {
+		t.Fatalf("collapsed tree = %q, want no database tables", view)
+	}
+}
+
+func TestSchemaTree_postgresExpandsOneSchemaAtATime(t *testing.T) {
+	// Given — a PostgreSQL database with two schemas; only the first
+	// schema is expanded at load.
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+		{Database: "main", Type: "schema", Name: "audit"},
+		{Database: "main", Type: "table", Name: "audit.events"},
+	})
+	model.schema.SetSize(30, 8)
+
+	// When — Enter on the audit schema row.
+	model.schema.Select(3)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = completeTreeAnim(model)
+
+	// Then — audit is expanded and public collapsed: one at a time.
+	view := ansi.Strip(model.schema.View())
+	for _, label := range []string{"  ▤ audit", "    ▪ events"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("expanded audit tree = %q, want %q", view, label)
+		}
+	}
+	if strings.Contains(view, "    ▪ accounts") {
+		t.Fatalf("expanded audit tree = %q, want public tables collapsed", view)
 	}
 }
 

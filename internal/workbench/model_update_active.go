@@ -104,16 +104,13 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				case m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}):
 					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
 						if item.kind == "schema" {
-							key := m.schemaExpansionKey(item.database, item.schema)
-							m.expandedSchemas[key] = !m.expandedSchemas[key]
-							return m, m.rebuildSchemaTree()
+							return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
 						}
 						if item.root {
 							if m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
 								return m.reconnectDatabase(item.database)
 							}
-							m.expandedDatabases[item.database] = !m.expandedDatabases[item.database]
-							return m, m.rebuildSchemaTree()
+							return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
 						}
 						return m, m.selectSchemaTable(item)
 					}
