@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const doubleClickTimeout = 500 * time.Millisecond
@@ -645,6 +646,33 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil {
 		return m, nil
 	}
+
+	contentY := absY - 1
+	if contentY < 0 {
+		return m, nil
+	}
+
+	// The button row under the browse status line hosts the Prev/Next
+	// pager buttons. The browse view starts at contentY=3 (table header),
+	// so the status line sits at Height()+4, the gap at Height()+5, and
+	// the button row at Height()+6, just below it. This runs before the
+	// table's rows-empty guard: on an empty page (e.g. the last page after
+	// deletions) Prev is still enabled and must page back. Disabled
+	// buttons share the row but ignore clicks.
+	if m.Tab == tabBrowse && contentY == m.browse.Height()+6 && !m.browseForm.active() && m.browseFilterForm == nil {
+		pager := m.browsePager()
+		browseX := absX - 1
+		if !m.compact {
+			browseX = max(absX-m.schemaWidth, 0) - 1
+		}
+		if pager.prevEnabled && browseX >= pager.prevStart && browseX < pager.prevStart+ansi.StringWidth(pager.prev) {
+			return m.pagerBrowseCommand(-1)
+		}
+		if pager.nextEnabled && browseX >= pager.nextStart && browseX < pager.nextStart+ansi.StringWidth(pager.next) {
+			return m.pagerBrowseCommand(1)
+		}
+	}
+
 	// Determine which table tab we're on and which table to target.
 	switch m.Tab {
 	case tabBrowse:
@@ -656,11 +684,6 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	default:
-		return m, nil
-	}
-
-	contentY := absY - 1
-	if contentY < 0 {
 		return m, nil
 	}
 

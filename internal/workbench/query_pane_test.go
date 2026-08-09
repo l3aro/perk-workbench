@@ -60,7 +60,8 @@ func TestWideLayout_sizes_browse_table_inside_upper_pane(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.browse.Height(), max(model.workspaceHeight-6, 2); got != want {
+	// SetHeight(workspaceHeight-8) minus the header row, clamped to one.
+	if got, want := model.browse.Height(), max(model.workspaceHeight-9, 1); got != want {
 		t.Fatalf("browse table height = %d, want %d within upper pane", got, want)
 	}
 }

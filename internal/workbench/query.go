@@ -445,7 +445,9 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 	}
 	m.browse.SetRows(nil)
 	m.browse.SetColumns(tableColumns(titles, rows))
-	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-5, 2))
+	// Must mirror layout()'s sizing: the browse table yields two rows to
+	// the footer gap and the pager button row.
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-8, 2))
 	m.browse.SetRows(rows)
 	if cursor >= 0 && len(rows) > 0 {
 		m.browse.SetCursor(min(cursor, len(rows)-1))

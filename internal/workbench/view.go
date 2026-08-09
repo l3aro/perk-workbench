@@ -630,7 +630,10 @@ func (m Model) workspaceView() string {
 	if m.formTabActive() {
 		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.formMode.buttonsFocused, m.formMode.buttonChoice), "", footer)
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, footer)
+	// A blank line separates the tab's status line from the mode/tab-hint
+	// footer; the browse tab renders that gap again between its status
+	// line and the pager button row (see browseView).
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, "", footer)
 }
 
 func (m Model) sqlPaneView() string {
@@ -689,7 +692,81 @@ func (m Model) browseView() string {
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + chrome.PaneStatus("/ filter | r reset | s sort column | n/p page", m.browseStatus, m.tableViewportWidth)
+	view := tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + m.browseStatusLine() + "\n\n" + m.browsePagerLine()
+	return view
+}
+
+// browseStatusLine renders the browse status line: the keyboard hints on
+// the left, the row-range summary on the right. Both segments are
+// truncated so the line always fits the viewport width: PaneStatus wraps
+// overflowing text, which would push the pager button row below the fixed
+// row the click handler tests. The n/p page hint is not offered because
+// the pager button row below always renders that affordance.
+func (m Model) browseStatusLine() string {
+	width := m.tableViewportWidth
+	left := "/ filter | r reset | s sort column"
+	if ansi.StringWidth(left)+2 > width {
+		left = ansi.Truncate(left, max(width-2, 0), "…")
+	}
+	right := m.browseStatus
+	remaining := width - ansi.StringWidth(left) - 2
+	if remaining < 2 {
+		// Fewer than two cells left: even the styled empty segment would
+		// overflow, so drop the summary entirely.
+		return statusStyle.Render(left)
+	}
+	if ansi.StringWidth(right)+2 > remaining {
+		right = ansi.Truncate(right, remaining-2, "…")
+	}
+	return chrome.PaneStatus(statusStyle.Render(left), statusStyle.Render(right), width)
+}
+
+// browsePrevLabel and browseNextLabel are the pager button labels on the
+// browse button row.
+const (
+	browsePrevLabel = "◀ Prev"
+	browseNextLabel = "Next ▶"
+)
+
+// browsePager describes the pager button row under the browse status line:
+// the rendered row, each button's content-x span (pane content coordinates,
+// including the row's single-cell left padding), and whether each button is
+// enabled. Prev is pinned to the left edge and Next to the right edge of
+// the row, so enabling or disabling a button never moves the other. A
+// disabled button renders in the secondary color and ignores clicks; an
+// enabled one renders in the primary color and pages on click. The view
+// and the click hit-test share this one source of truth.
+type browsePager struct {
+	line                 string
+	prev, next           string
+	prevStart, nextStart int
+	prevEnabled          bool
+	nextEnabled          bool
+}
+
+func (m Model) browsePager() browsePager {
+	pager := browsePager{
+		prev:        formCancelButtonStyle.Render(browsePrevLabel),
+		next:        formCancelButtonStyle.Render(browseNextLabel),
+		prevEnabled: m.BrowsePage > 0,
+		nextEnabled: m.browseResult.HasMore,
+	}
+	if pager.prevEnabled {
+		pager.prev = formSaveButtonStyle.Render(browsePrevLabel)
+	}
+	if pager.nextEnabled {
+		pager.next = formSaveButtonStyle.Render(browseNextLabel)
+	}
+	gap := max(m.tableViewportWidth-2-ansi.StringWidth(pager.prev)-ansi.StringWidth(pager.next), 0)
+	pager.prevStart = 1 // statusStyle pads the row by one cell on each side
+	pager.nextStart = 1 + ansi.StringWidth(pager.prev) + gap
+	pager.line = statusStyle.Render(pager.prev + strings.Repeat(" ", gap) + pager.next)
+	return pager
+}
+
+// browsePagerLine returns the pager button row.
+func (m Model) browsePagerLine() string {
+	return m.browsePager().line
 }
 
 func (m Model) formViewport(view string, offset int) string {
