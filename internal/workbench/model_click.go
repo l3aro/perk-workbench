@@ -455,13 +455,29 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	if m.height < 4 || m.width < 1 {
 		return m, nil
 	}
-	// Forward wheel events to the focused area's table.
+	// Forward wheel events to the focused area's table. Plain vertical
+	// wheel moves rows; horizontal trackpad scroll (WheelLeft/Right) and
+	// shift+vertical wheel travel columns on cell-based tables and pan
+	// row-based ones.
 	step := 0
+	hStep := 0
 	switch wheel.Button {
 	case tea.MouseWheelDown:
-		step = 1
+		if wheel.Mod.Contains(tea.ModShift) {
+			hStep = 1
+		} else {
+			step = 1
+		}
 	case tea.MouseWheelUp:
-		step = -1
+		if wheel.Mod.Contains(tea.ModShift) {
+			hStep = -1
+		} else {
+			step = -1
+		}
+	case tea.MouseWheelLeft:
+		hStep = -1
+	case tea.MouseWheelRight:
+		hStep = 1
 	default:
 		return m, nil
 	}
@@ -474,8 +490,16 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	case focusSchema:
 		return m, nil
 	case focusWorkspace:
-		m.scrollActiveWorkspaceTable(step)
+		if hStep != 0 {
+			m.scrollActiveWorkspaceTableHorizontal(hStep)
+		} else {
+			m.scrollActiveWorkspaceTable(step)
+		}
 	case focusQueryLog:
+		if hStep != 0 {
+			moveTableColumn(&m.queryLog, &m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth, hStep)
+			return m, nil
+		}
 		rows := m.queryLog.Rows()
 		rowCount := len(rows)
 		if rowCount == 0 {

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
@@ -374,6 +375,164 @@ func TestBrowsePager_clickNextWorksWithSplitStatus(t *testing.T) {
 	// Then — the debounced load advanced to page 1.
 	if model.BrowsePage != 1 {
 		t.Fatalf("page = %d, want 1", model.BrowsePage)
+	}
+}
+
+func TestBrowse_horizontalWheelTravelsCells(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = resizeModel(model, 100, 24)
+	// Widen the table beyond the viewport so travel has room: content
+	// width 4+40+40 plus per-cell padding.
+	model.browse.SetColumns([]table.Column{
+		{Title: "ID", Width: 4},
+		{Title: "Left", Width: 40},
+		{Title: "Right", Width: 40},
+	})
+	model.browse.SetRows([]table.Row{
+		{"1", strings.Repeat("a", 40), strings.Repeat("b", 40)},
+		{"2", strings.Repeat("c", 40), strings.Repeat("d", 40)},
+	})
+	resizeResultsTable(&model.browse, model.tableViewportWidth, 5)
+	model.browseOffset, model.browseColumn = 0, 0
+
+	// Horizontal trackpad wheel travels the selected column right, and the
+	// viewport reveals it.
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 1; got != want {
+		t.Fatalf("column after wheel right = %d, want %d", got, want)
+	}
+	if view := ansi.Strip(model.browseView()); !strings.Contains(view, "Left") {
+		t.Fatalf("browse view after wheel right = %q, want the selected Left column visible", view)
+	}
+	// A second tick reaches the last column; the offset pins to the
+	// content edge.
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 2; got != want {
+		t.Fatalf("column after two wheel rights = %d, want %d", got, want)
+	}
+	if view := ansi.Strip(model.browseView()); !strings.Contains(view, "Right") {
+		t.Fatalf("browse view after two wheel rights = %q, want the Right column visible", view)
+	}
+
+	// Wheel left travels back; the first tick returns to the middle
+	// column, the second home.
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 1; got != want {
+		t.Fatalf("column after wheel left = %d, want %d", got, want)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 0; got != want {
+		t.Fatalf("column after two wheel lefts = %d, want %d", got, want)
+	}
+	if got, want := model.browseOffset, 0; got != want {
+		t.Fatalf("offset after two wheel lefts = %d, want %d", got, want)
+	}
+
+	// Shift+vertical wheel travels horizontally the same way.
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, Mod: tea.ModShift})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 1; got != want {
+		t.Fatalf("column after shift+wheel down = %d, want %d", got, want)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp, Mod: tea.ModShift})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 0; got != want {
+		t.Fatalf("column after shift+wheel up = %d, want %d", got, want)
+	}
+
+	// The column selection clamps at the table edges.
+	for range 10 {
+		updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
+		model = updated.(Model)
+	}
+	if got, want := model.browseColumn, 2; got != want {
+		t.Fatalf("column after repeated wheel right = %d, want %d", got, want)
+	}
+	if got, want := model.browseOffset, tableOffset(model.browse, 1<<20, model.tableViewportWidth); got != want {
+		t.Fatalf("offset after repeated wheel right = %d, want clamped %d", got, want)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
+	model = updated.(Model)
+	if got, want := model.browseColumn, 1; got != want {
+		t.Fatalf("column after one wheel left from the last = %d, want %d", got, want)
+	}
+
+	// Plain vertical wheel still moves the cursor, not the cell.
+	model.browseOffset, model.browseColumn = 0, 0
+	model.browse.SetCursor(0)
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	model = updated.(Model)
+	if model.browseOffset != 0 || model.browseColumn != 0 {
+		t.Fatalf("plain wheel down moved cell to offset=%d column=%d, want 0/0", model.browseOffset, model.browseColumn)
+	}
+	if got, want := model.browse.Cursor(), 1; got != want {
+		t.Fatalf("cursor after plain wheel down = %d, want %d", got, want)
+	}
+}
+
+func TestStructure_horizontalWheelPansViewport(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = resizeModel(model, 100, 24)
+	// Row-based tables have no column selection: the wheel pans.
+	resizeResultsTable(&model.structure, model.tableViewportWidth, 5)
+	model.structure.SetRows(nil) // drop the fixture's 6-cell rows first
+	model.structure.SetColumns([]table.Column{
+		{Title: "ID", Width: 4},
+		{Title: "Left", Width: 40},
+		{Title: "Right", Width: 40},
+	})
+	model.structure.SetRows([]table.Row{{"1", strings.Repeat("a", 40), strings.Repeat("b", 40)}})
+	resizeResultsTable(&model.structure, model.tableViewportWidth, 5)
+	model.Tab, model.structureOffset = tabStructure, 0
+
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
+	model = updated.(Model)
+	if got, want := model.structureOffset, mouseHorizontalStep; got != want {
+		t.Fatalf("structure offset after wheel right = %d, want %d", got, want)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
+	model = updated.(Model)
+	if got, want := model.structureOffset, 0; got != want {
+		t.Fatalf("structure offset after wheel left = %d, want 0", got)
+	}
+	// Shift+wheel pans too.
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, Mod: tea.ModShift})
+	model = updated.(Model)
+	if got, want := model.structureOffset, mouseHorizontalStep; got != want {
+		t.Fatalf("structure offset after shift+wheel down = %d, want %d", got, want)
+	}
+}
+
+func TestQueryLog_horizontalWheelTravelsCells(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = resizeModel(model, 100, 24)
+	model.queryLog.SetRows(nil) // drop the fixture's rows first
+	model.queryLog.SetColumns([]table.Column{
+		{Title: "A", Width: 4},
+		{Title: "B", Width: 4},
+		{Title: "C", Width: 4},
+	})
+	model.queryLog.SetRows([]table.Row{{"1", "2", "3"}})
+	resizeResultsTable(&model.queryLog, model.tableViewportWidth, 3)
+	model.queryLog.SetCursor(0)
+	model.Focus, model.queryLogColumn = focusQueryLog, 0
+
+	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
+	model = updated.(Model)
+	if got, want := model.queryLogColumn, 1; got != want {
+		t.Fatalf("query log column after wheel right = %d, want %d", got, want)
+	}
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
+	model = updated.(Model)
+	if got, want := model.queryLogColumn, 0; got != want {
+		t.Fatalf("query log column after wheel left = %d, want %d", got, want)
+	}
+	if got, want := model.queryLog.Cursor(), 0; got != want {
+		t.Fatalf("query log cursor after horizontal wheel = %d, want %d untouched", got, want)
 	}
 }
 

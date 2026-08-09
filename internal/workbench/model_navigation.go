@@ -14,23 +14,25 @@ func moveTableCell(resultTable *table.Model, selectedColumn, offset *int, viewpo
 		resultTable.SetCursor(min(resultTable.Cursor()+1, max(len(resultTable.Rows())-1, 0)))
 		return true
 	case tea.KeyLeft, 'h':
-		columns := resultTable.Columns()
-		if len(columns) > 0 {
-			*selectedColumn = min(max(*selectedColumn, 0), len(columns)-1)
-			*selectedColumn = max(*selectedColumn-1, 0)
-			revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
-		}
+		moveTableColumn(resultTable, selectedColumn, offset, viewportWidth, -1)
 	case tea.KeyRight, 'l':
-		columns := resultTable.Columns()
-		if len(columns) > 0 {
-			*selectedColumn = min(max(*selectedColumn, 0), len(columns)-1)
-			*selectedColumn = min(*selectedColumn+1, len(columns)-1)
-			revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
-		}
+		moveTableColumn(resultTable, selectedColumn, offset, viewportWidth, 1)
 	default:
 		return false
 	}
 	return true
+}
+
+// moveTableColumn moves the selected column one step in dir (-1 left, +1
+// right), clamped to the column range, and reveals it in the viewport.
+func moveTableColumn(resultTable *table.Model, selectedColumn, offset *int, viewportWidth, dir int) {
+	columns := resultTable.Columns()
+	if len(columns) == 0 {
+		return
+	}
+	*selectedColumn = clamp(*selectedColumn, 0, len(columns)-1)
+	*selectedColumn = clamp(*selectedColumn+dir, 0, len(columns)-1)
+	revealTableColumn(*resultTable, *selectedColumn, offset, viewportWidth)
 }
 
 func moveTableRow(resultTable *table.Model, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
@@ -175,6 +177,40 @@ func (m *Model) cycleFocus(forward bool) {
 			m.chat.input.Focus()
 		}
 	}
+}
+
+// mouseHorizontalStep is the number of columns a horizontal wheel tick
+// pans on row-based tables, matching the bubbles viewport's default
+// horizontal step.
+const mouseHorizontalStep = 6
+
+// scrollActiveWorkspaceTableHorizontal moves the active tab's table
+// horizontally on a wheel tick: cell-based tables (browse, results) travel
+// the selected column like the h/l keys, while row-based tables (structure,
+// indexes, foreign keys), which have no column selection, pan the viewport.
+func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
+	switch m.Tab {
+	case tabBrowse:
+		moveTableColumn(&m.browse, &m.browseColumn, &m.browseOffset, m.tableViewportWidth, step)
+		m.refreshBrowseStatus()
+		return
+	case tabSQL:
+		moveTableColumn(&m.results, &m.resultsColumn, &m.resultsOffset, m.tableViewportWidth, step)
+		return
+	}
+	var resultTable *table.Model
+	var offset *int
+	switch m.Tab {
+	case tabStructure:
+		resultTable, offset = &m.structure, &m.structureOffset
+	case tabIndexes:
+		resultTable, offset = &m.indexes, &m.indexesOffset
+	case tabForeignKeys:
+		resultTable, offset = &m.foreignKeys, &m.foreignKeysOffset
+	default:
+		return
+	}
+	*offset = tableOffset(*resultTable, *offset+step*mouseHorizontalStep, m.tableViewportWidth)
 }
 
 func (m *Model) scrollActiveWorkspaceTable(step int) {
