@@ -294,9 +294,11 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.browse, &m.browseColumn, &m.browseOffset, m.tableViewportWidth, keyPress) {
+					m.refreshBrowseStatus()
 					return m, nil
 				}
 				m.browse, command = m.browse.Update(message)
+				m.refreshBrowseStatus()
 			case tabSQL:
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && m.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.results.Cursor()

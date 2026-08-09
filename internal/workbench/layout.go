@@ -96,10 +96,10 @@ func (m *Model) layout(width, height int) {
 	// The tab tables yield one row to the blank line that separates their
 	// status line from the mode/tab-hint footer.
 	resizeResultsTable(&m.structure, m.tableViewportWidth, max(m.workspaceHeight-6, 2))
-	// The browse table yields two rows: one for that footer gap and one
-	// for the always-present pager button row below its status line,
-	// keeping the pane exactly full.
-	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-8, 2))
+	// The browse table yields the footer rows below its data rows
+	// (browseFooterRows: the status line, the footer gap, and the pager
+	// button row, plus pane chrome), keeping the pane exactly full.
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-m.browseFooterRows(), 2))
 	resizeResultsTable(&m.indexes, m.tableViewportWidth, max(m.workspaceHeight-6, 2))
 	resizeResultsTable(&m.foreignKeys, m.tableViewportWidth, max(m.workspaceHeight-6, 2))
 	m.structureOffset = tableOffset(m.structure, m.structureOffset, m.tableViewportWidth)

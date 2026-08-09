@@ -88,44 +88,88 @@ func TestBrowsePager_buttonsStayPinnedToTheirEdges(t *testing.T) {
 	}
 }
 
-func TestBrowsePager_statusLineNeverWraps(t *testing.T) {
+func TestBrowsePager_statusLineFitsViewport(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.BrowsePage = 1
 	model.browseResult.HasMore = true
 
-	for _, width := range []int{90, 100, 101, 102, 103, 120, 160} {
+	// Wide viewports keep the single-line layout with the full summary.
+	for _, width := range []int{118, 120, 130, 160} {
 		model = resizeModel(model, width, 24)
 		status := model.browseStatusLine()
+		if model.browseStatusSplit() {
+			t.Fatalf("width %d: browseStatusSplit = true, want single-line layout", width)
+		}
 		if strings.Contains(status, "\n") {
 			t.Fatalf("status line at width %d = %q, want a single line", width, status)
 		}
 		if got := ansi.StringWidth(status); got > model.tableViewportWidth {
 			t.Fatalf("status line at width %d is %d cells wide, viewport %d", width, got, model.tableViewportWidth)
 		}
+		if !strings.Contains(ansi.Strip(status), "items | 1-2 | 1/2 | page 1") {
+			t.Fatalf("status line at width %d = %q, want the full page summary", width, status)
+		}
+	}
+
+	// Narrow viewports split the hints and the summary onto two lines,
+	// each still inside the viewport.
+	for _, width := range []int{90, 100, 110, 116} {
+		model = resizeModel(model, width, 24)
+		status := model.browseStatusLine()
+		if !model.browseStatusSplit() {
+			t.Fatalf("width %d: browseStatusSplit = false, want the two-line layout", width)
+		}
+		lines := strings.Split(status, "\n")
+		if len(lines) != 2 {
+			t.Fatalf("status line at width %d = %q, want two lines", width, status)
+		}
+		for i, line := range lines {
+			if got := ansi.StringWidth(line); got > model.tableViewportWidth {
+				t.Fatalf("status line %d at width %d is %d cells wide, viewport %d", i, width, got, model.tableViewportWidth)
+			}
+		}
+		if !strings.Contains(ansi.Strip(lines[0]), "/ filter | r reset | s sort column") {
+			t.Fatalf("first line at width %d = %q, want the keyboard hints", width, ansi.Strip(lines[0]))
+		}
+		if !strings.Contains(ansi.Strip(lines[1]), "items | 1-2 | 1/2 | page 1") {
+			t.Fatalf("second line at width %d = %q, want the full page summary", width, ansi.Strip(lines[1]))
+		}
 	}
 }
 
 func TestBrowsePager_rowIsLastBrowseViewLine(t *testing.T) {
-	model := readyBrowseModel(t)
-	model = resizeModel(model, 100, 24)
-	model.BrowsePage = 1
-	model.browseResult.HasMore = true
+	for _, test := range []struct {
+		width    int
+		splits   bool
+		footerLn int // status rows + footer gap + pager row
+	}{
+		{width: 120, splits: false, footerLn: 4},
+		{width: 110, splits: true, footerLn: 5},
+	} {
+		model := readyBrowseModel(t)
+		model = resizeModel(model, test.width, 24)
+		model.BrowsePage = 1
+		model.browseResult.HasMore = true
 
-	// The browse view is header + Height() rows + status line + gap +
-	// pager row.
-	lines := strings.Split(ansi.Strip(model.browseView()), "\n")
-	if want := model.browse.Height() + 4; len(lines) != want {
-		t.Fatalf("browse view height = %d, want %d", len(lines), want)
-	}
-	last := strings.TrimSpace(lines[len(lines)-1])
-	if !strings.HasPrefix(last, "◀ Prev") || !strings.HasSuffix(last, "Next ▶") {
-		t.Fatalf("last browse view line = %q, want the pinned pager row", last)
+		if got := model.browseStatusSplit(); got != test.splits {
+			t.Fatalf("width %d: browseStatusSplit = %t, want %t", test.width, got, test.splits)
+		}
+		// The browse view is header + Height() rows + status rows + gap +
+		// pager row.
+		lines := strings.Split(ansi.Strip(model.browseView()), "\n")
+		if want := model.browse.Height() + test.footerLn; len(lines) != want {
+			t.Fatalf("browse view height at width %d = %d, want %d", test.width, len(lines), want)
+		}
+		last := strings.TrimSpace(lines[len(lines)-1])
+		if !strings.HasPrefix(last, "◀ Prev") || !strings.HasSuffix(last, "Next ▶") {
+			t.Fatalf("last browse view line = %q, want the pinned pager row", last)
+		}
 	}
 }
 
 func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 	model := readyBrowseModel(t)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 	model.browseResult.HasMore = true
 	model.focusActiveTable()
 
@@ -158,7 +202,7 @@ func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 
 func TestBrowsePager_clickPrevLoadsPreviousPage(t *testing.T) {
 	model := readyBrowseModel(t)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 	model.BrowsePage = 1
 	model.browseResult.HasMore = false
 	model.focusActiveTable()
@@ -202,7 +246,7 @@ func TestBrowsePager_clickDisabledButtonDoesNothing(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			model := readyBrowseModel(t)
-			model = resizeModel(model, 100, 24)
+			model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 			model.BrowsePage = test.page
 			model.browseResult.HasMore = test.hasMore
 			model.focusActiveTable()
@@ -232,7 +276,7 @@ func TestBrowsePager_clickDisabledButtonDoesNothing(t *testing.T) {
 
 func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	model := readyBrowseModel(t)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 	model.BrowsePage = 1
 	model.focusActiveTable()
 	// The last page loaded no rows (e.g. rows were deleted since the
@@ -271,7 +315,7 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 
 func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 	model := readyBrowseModel(t)
-	model = resizeModel(model, 100, 24)
+	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 	model.browseResult.HasMore = true
 	model.focusActiveTable()
 	cursor := model.browse.Cursor()
@@ -297,5 +341,99 @@ func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 	}
 	if model.browse.Cursor() != cursor {
 		t.Fatalf("cursor = %d, want %d unchanged", model.browse.Cursor(), cursor)
+	}
+}
+
+func TestBrowsePager_clickNextWorksWithSplitStatus(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = resizeModel(model, 100, 24) // narrow: the status line splits onto two rows
+	model.browseResult.HasMore = true
+	model.focusActiveTable()
+
+	if !model.browseStatusSplit() {
+		t.Fatal("fixture: status line should be split at width 100")
+	}
+	pager := model.browsePager()
+	if !pager.nextEnabled {
+		t.Fatal("Next should be enabled at page 0 with HasMore")
+	}
+
+	// Two status rows push the button row down one: screen row
+	// Height()+8 (contentY = Height()+7).
+	updated, command := model.Update(tea.MouseClickMsg{
+		X:      model.schemaWidth + 1 + pager.nextStart,
+		Y:      model.browse.Height() + 8,
+		Button: tea.MouseLeft,
+	})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("clicking Next on the split layout returned no command")
+	}
+	model = driveCommand(model, command)
+
+	// Then — the debounced load advanced to page 1.
+	if model.BrowsePage != 1 {
+		t.Fatalf("page = %d, want 1", model.BrowsePage)
+	}
+}
+
+func TestBrowse_status_followsCursorMoves(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = resizeModel(model, 140, 24) // wheel handling needs a sized model
+	if got, want := model.browseStatus, "items | 1-2 | 1/2 | page 1"; got != want {
+		t.Fatalf("browse status = %q, want %q", got, want)
+	}
+
+	// j moves down: the position in the status follows the cursor.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updated.(Model)
+	if got, want := model.browseStatus, "items | 1-2 | 2/2 | page 1"; got != want {
+		t.Fatalf("browse status after j = %q, want %q", got, want)
+	}
+
+	// Mouse wheel up moves back.
+	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	model = updated.(Model)
+	if got, want := model.browseStatus, "items | 1-2 | 1/2 | page 1"; got != want {
+		t.Fatalf("browse status after wheel = %q, want %q", got, want)
+	}
+}
+
+func TestBrowsePager_longSummarySplitsUntilWideEnough(t *testing.T) {
+	model := readyBrowseModel(t)
+	model.BrowsePage = 1
+	model.browseResult.HasMore = true
+	model.browseStatus = "orderdetails | 2,996-3,020 | 7/25 | page 9"
+
+	// A long summary never fits beside the hints until the viewport is
+	// wide enough for both in full.
+	for _, width := range []int{100, 110, 120} {
+		model = resizeModel(model, width, 24)
+		if !model.browseStatusSplit() {
+			t.Fatalf("width %d: browseStatusSplit = false, want two lines", width)
+		}
+		lines := strings.Split(model.browseStatusLine(), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("status at width %d = %q, want two lines", width, model.browseStatusLine())
+		}
+		if stripped := ansi.Strip(lines[1]); !strings.Contains(stripped, "orderdetails | 2,996-3,020 | 7/25 | page 9") {
+			t.Fatalf("second line at width %d = %q, want the full summary", width, stripped)
+		}
+	}
+
+	// Wide enough: single line with the full summary, like before the
+	// change.
+	for _, width := range []int{134, 140} {
+		model = resizeModel(model, width, 24)
+		if model.browseStatusSplit() {
+			t.Fatalf("width %d: browseStatusSplit = true, want single line", width)
+		}
+		status := model.browseStatusLine()
+		if strings.Contains(status, "\n") {
+			t.Fatalf("status at width %d = %q, want a single line", width, status)
+		}
+		if !strings.Contains(ansi.Strip(status), "orderdetails | 2,996-3,020 | 7/25 | page 9") {
+			t.Fatalf("status at width %d = %q, want the full summary", width, status)
+		}
 	}
 }

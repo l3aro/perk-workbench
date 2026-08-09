@@ -387,6 +387,16 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		m.setStatus(safeText(fmt.Sprintf("loading browse: %v", message.err)))
 		return m, nil
 	}
+	// Set the status before setBrowse so its split-aware table sizing
+	// (browseStatusSplit) sees the summary it will render. The position
+	// mirrors the cursor setBrowse will leave, so it never exceeds the
+	// loaded rows.
+	rows := len(message.result.Rows)
+	start, end := message.page*pageSize+1, message.page*pageSize+rows
+	if rows == 0 {
+		start = 0
+	}
+	m.browseStatus = browseStatusText(message.table, start, end, browsePosition(m.browse.Cursor(), rows), rows, message.page)
 	m.setBrowse(message.result)
 	duration := message.result.Duration
 	if !message.startedAt.IsZero() {
@@ -398,13 +408,55 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		duration:  duration,
 		message:   queryLogMessage(statement, message.result.RowsAffected, len(message.result.Rows)),
 	})
-	start, end := message.page*pageSize+1, message.page*pageSize+len(message.result.Rows)
-	if len(message.result.Rows) == 0 {
-		start = 0
-	}
-	m.browseStatus = fmt.Sprintf("%s | %s-%s", safeText(message.table), humanize.Comma(int64(start)), humanize.Comma(int64(end)))
 	m.setStatus("")
 	return m, nil
+}
+
+// browseStatusText formats the browse page summary: the table name, the
+// record range shown on the page, the selected row's position within the
+// page, and the page number.
+func browseStatusText(table string, start, end, position, rows, page int) string {
+	return fmt.Sprintf("%s | %s-%s | %s/%s | page %s",
+		safeText(table),
+		humanize.Comma(int64(start)),
+		humanize.Comma(int64(end)),
+		humanize.Comma(int64(position)),
+		humanize.Comma(int64(rows)),
+		humanize.Comma(int64(page+1)))
+}
+
+// browsePosition returns the 1-based row position of the browse cursor
+// within the loaded page, or 0 when the page has no rows. The cursor is
+// clamped so a fresh table (cursor -1) reports position 1 on a nonempty
+// page, matching the row setBrowse will select.
+func browsePosition(cursor, rows int) int {
+	if rows <= 0 {
+		return 0
+	}
+	return clamp(cursor, 0, rows-1) + 1
+}
+
+// refreshBrowseStatus recomputes the browse status from the current
+// cursor, page, and loaded rows. Every browse cursor move must call it so
+// the "index/total | page N" position stays accurate.
+func (m *Model) refreshBrowseStatus() {
+	rows := len(m.browseResult.Rows)
+	pageSize := m.browseSettings.pageSize(m.browsePageSize)
+	start, end := m.BrowsePage*pageSize+1, m.BrowsePage*pageSize+rows
+	if rows == 0 {
+		start = 0
+	}
+	status := browseStatusText(m.SelectedTable, start, end, browsePosition(m.browse.Cursor(), rows), rows, m.BrowsePage)
+	if status == m.browseStatus {
+		return
+	}
+	m.browseStatus = status
+	// The split decision depends on the status width; if it flipped, keep
+	// the table height consistent with the rendered footer.
+	footerRows := m.browseFooterRows()
+	if m.browse.Height() != max(m.workspaceHeight-footerRows, 2) {
+		resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-footerRows, 2))
+	}
 }
 
 func (m *Model) setBrowse(result sharedsql.Result) {
@@ -445,9 +497,9 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 	}
 	m.browse.SetRows(nil)
 	m.browse.SetColumns(tableColumns(titles, rows))
-	// Must mirror layout()'s sizing: the browse table yields two rows to
-	// the footer gap and the pager button row.
-	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-8, 2))
+	// Must mirror layout()'s sizing: the browse table yields the footer
+	// rows below its data rows (browseFooterRows).
+	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-m.browseFooterRows(), 2))
 	m.browse.SetRows(rows)
 	if cursor >= 0 && len(rows) > 0 {
 		m.browse.SetCursor(min(cursor, len(rows)-1))

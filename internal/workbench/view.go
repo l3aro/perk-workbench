@@ -696,19 +696,57 @@ func (m Model) browseView() string {
 	return view
 }
 
+// browseStatusHints is the keyboard-hint segment of the browse status
+// line; the row-range summary (browseStatus) is the other segment.
+const browseStatusHints = "/ filter | r reset | s sort column"
+
+// browseStatusSplit reports whether the browse status line renders on two
+// lines: the keyboard hints on the first, the row-range summary
+// right-aligned on the second. It splits exactly when the single-line
+// layout would truncate the summary (left + 4 = the two segments plus the
+// two cells each reserves for its padding). The browse table height, the
+// pager row's y position, and the pager click hit-test all mirror this
+// choice, so it is the single source of truth.
+func (m Model) browseStatusSplit() bool {
+	return m.browseStatus != "" && ansi.StringWidth(browseStatusHints)+4+ansi.StringWidth(m.browseStatus) > m.tableViewportWidth
+}
+
+// browseFooterRows is the number of workspace rows the browse view
+// reserves below its data rows: the status line, the footer gap, the
+// pager button row, plus the pane chrome. A narrow viewport splits the
+// status line onto two rows (browseStatusSplit), reserving one more.
+func (m Model) browseFooterRows() int {
+	if m.browseStatusSplit() {
+		return 9
+	}
+	return 8
+}
+
 // browseStatusLine renders the browse status line: the keyboard hints on
 // the left, the row-range summary on the right. Both segments are
 // truncated so the line always fits the viewport width: PaneStatus wraps
 // overflowing text, which would push the pager button row below the fixed
 // row the click handler tests. The n/p page hint is not offered because
 // the pager button row below always renders that affordance.
+//
+// On narrow viewports where the segments would collide (browseStatusSplit)
+// they move onto two lines, each keeping as much width as the viewport
+// allows; large screens keep the single-line layout unchanged.
 func (m Model) browseStatusLine() string {
 	width := m.tableViewportWidth
-	left := "/ filter | r reset | s sort column"
+	left, right := browseStatusHints, m.browseStatus
+	if m.browseStatusSplit() {
+		if ansi.StringWidth(left) > max(width-2, 0) {
+			left = ansi.Truncate(left, max(width-2, 0), "…")
+		}
+		if ansi.StringWidth(right) > max(width-2, 0) {
+			right = ansi.Truncate(right, max(width-2, 0), "…")
+		}
+		return statusStyle.Render(left) + "\n" + chrome.PaneStatus("", statusStyle.Render(right), width)
+	}
 	if ansi.StringWidth(left)+2 > width {
 		left = ansi.Truncate(left, max(width-2, 0), "…")
 	}
-	right := m.browseStatus
 	remaining := width - ansi.StringWidth(left) - 2
 	if remaining < 2 {
 		// Fewer than two cells left: even the styled empty segment would

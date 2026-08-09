@@ -187,6 +187,7 @@ func (m *Model) scrollActiveWorkspaceTable(step int) {
 		rows := m.browse.Rows()
 		newCursor := clamp(m.browse.Cursor()+step, 0, max(len(rows)-1, 0))
 		m.browse.SetCursor(newCursor)
+		m.refreshBrowseStatus()
 	case tabSQL:
 		rows := m.results.Rows()
 		newCursor := clamp(m.results.Cursor()+step, 0, max(len(rows)-1, 0))

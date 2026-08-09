@@ -214,18 +214,53 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 	})
 }
 
-func TestBrowse_status_shows_current_batch_without_total(t *testing.T) {
+func TestBrowse_status_shows_position_within_page(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.BrowsePage = "projects", 1
 	rows := make([][]*string, defaultBrowsePageSize)
+	// Give the table rows first so the cursor lands on row 7 of the page.
+	model.browse.SetRows(make([]table.Row, defaultBrowsePageSize))
+	model.browse.SetCursor(6)
 
 	// When
 	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, HasMore: true}})
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.browseStatus, "projects | 26-50"; got != want {
+	if got, want := model.browseStatus, "projects | 26-50 | 7/25 | page 2"; got != want {
+		t.Fatalf("browse status = %q, want %q", got, want)
+	}
+}
+
+func TestBrowse_status_fresh_load_reports_first_position(t *testing.T) {
+	// Given — a fresh table with no rows yet (cursor -1) loading a
+	// nonempty first page.
+	model := readyModel(t)
+	model.SelectedTable, model.BrowsePage = "projects", 0
+	rows := make([][]*string, defaultBrowsePageSize)
+
+	// When
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{Rows: rows, HasMore: true}})
+	model = updated.(Model)
+
+	// Then — the position never reads 0 of N on a nonempty page.
+	if got, want := model.browseStatus, "projects | 1-25 | 1/25 | page 1"; got != want {
+		t.Fatalf("browse status = %q, want %q", got, want)
+	}
+}
+
+func TestBrowse_status_empty_page_reports_zero_position(t *testing.T) {
+	// Given
+	model := readyModel(t)
+	model.SelectedTable, model.BrowsePage = "projects", 2
+
+	// When
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 2, result: sqlite.Result{Rows: nil, HasMore: false}})
+	model = updated.(Model)
+
+	// Then
+	if got, want := model.browseStatus, "projects | 0-50 | 0/0 | page 3"; got != want {
 		t.Fatalf("browse status = %q, want %q", got, want)
 	}
 }
