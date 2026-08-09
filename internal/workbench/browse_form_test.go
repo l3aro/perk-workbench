@@ -563,6 +563,58 @@ func TestBrowse_loadUsesFiltersAndLimit(t *testing.T) {
 	}
 }
 
+func TestBrowse_headerClickSortsColumnLikeS(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
+	model.focusActiveTable()
+
+	columns := model.browse.Columns()
+	nameX := model.schemaWidth + 1
+	for _, column := range columns[:1] {
+		nameX += column.Width + 2*spaceCompact
+	}
+	headerY := 4 // contentY=3 = the browse table header row
+
+	// When — click the name column header.
+	updated, command := model.Update(tea.MouseClickMsg{X: nameX, Y: headerY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	model = resolveBrowseCommand(model, command())
+
+	// Then — name sorts ascending, the column is selected, marker shows.
+	if got := model.browseSettings.sorts; !slices.Equal(got, []browseSort{{column: "name"}}) {
+		t.Fatalf("browse sorts = %#v, want name ascending", got)
+	}
+	if got := model.browseColumn; got != 1 {
+		t.Fatalf("browse column = %d, want 1", got)
+	}
+	if got := model.browse.Columns()[1].Title; got != "⌃ name" {
+		t.Fatalf("sort title = %q, want %q", got, "⌃ name")
+	}
+
+	// When — click the same header again.
+	updated, command = model.Update(tea.MouseClickMsg{X: nameX, Y: headerY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	model = resolveBrowseCommand(model, command())
+
+	// Then — it flips to descending.
+	if got := model.browseSettings.sorts; !slices.Equal(got, []browseSort{{column: "name", desc: true}}) {
+		t.Fatalf("browse sorts = %#v, want name descending", got)
+	}
+
+	// When — click the id header.
+	updated, command = model.Update(tea.MouseClickMsg{X: model.schemaWidth + 1, Y: headerY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	model = resolveBrowseCommand(model, command())
+
+	// Then — id joins the sort chain after name, selection moves to it.
+	if got := model.browseSettings.sorts; !slices.Equal(got, []browseSort{{column: "name", desc: true}, {column: "id"}}) {
+		t.Fatalf("browse sorts = %#v, want name desc then id asc", got)
+	}
+	if got := model.browseColumn; got != 0 {
+		t.Fatalf("browse column = %d, want 0", got)
+	}
+}
+
 func TestBrowse_sCyclesSelectedColumnSort(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.browseColumn = 1

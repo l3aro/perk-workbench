@@ -665,7 +665,9 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 }
 
 // handleBrowseClick handles left-click on the browse or results table.
-// It selects the cell and detects double-click for inline editing.
+// A click on the browse header sorts by that column (like the s
+// keybinding); a click on a data row selects the cell and detects
+// double-click for inline editing.
 func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil {
 		return m, nil
@@ -719,9 +721,6 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	// The workspace pane has a 1-char border on each side.
 	// Inside the pane: contentY=0 is border top, contentY=1 = tab row, contentY=2 = blank, contentY=3+ = browseView.
 	browseLine := contentY - 3 // 0=header, 1..N=data rows
-	if browseLine < 1 {
-		return m, nil // Clicked on header or above data rows.
-	}
 
 	var targetTable *table.Model
 	var targetCol *int
@@ -738,13 +737,6 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		targetCol = &m.resultsColumn
 		targetOffset = &m.resultsOffset
 		rows = m.results.Rows()
-	}
-
-	rowHeight := targetTable.Height()
-	start := min(max(targetTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
-	dataRow := start + browseLine - 1
-	if dataRow < 0 || dataRow >= len(rows) {
-		return m, nil
 	}
 
 	browseX := absX - 1 // Skip pane left border.
@@ -771,6 +763,27 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		colStart = colEnd
 	}
 	if col >= len(columns) {
+		return m, nil
+	}
+
+	if browseLine == 0 {
+		// Header click: sort by the clicked column, cycling exactly like
+		// the s keybinding. Only the browse tab sorts; the results table
+		// has no sort behavior.
+		if m.Tab != tabBrowse {
+			return m, nil
+		}
+		m.browseColumn = col
+		return m, m.cycleBrowseSort()
+	}
+	if browseLine < 1 {
+		return m, nil // Clicked above the table header.
+	}
+
+	rowHeight := targetTable.Height()
+	start := min(max(targetTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	dataRow := start + browseLine - 1
+	if dataRow < 0 || dataRow >= len(rows) {
 		return m, nil
 	}
 
