@@ -150,12 +150,21 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	return m.openForm(command, m.connection.focusForm)
 }
 
-func (m *Model) deleteSelectedRecentConnection() {
+// confirmDeleteRecentConnection opens the Delete connection? confirmation for
+// the selected profile; the actual removal runs on confirm.
+func (m *Model) confirmDeleteRecentConnection() {
 	connection, ok := m.selectedRecentConnection()
 	if !ok {
 		m.setStatus("select a connection profile")
 		return
 	}
+	m.deletePending = "connection"
+	m.deletePendingConnection = &connection
+	m.deleteConfirm = yesNoConfirmation("Delete connection?", safeText(connection.Name), "delete")
+}
+
+// deleteRecentConnection removes the given profile from the recent list.
+func (m *Model) deleteRecentConnection(connection recentConnection) {
 	connections := make([]recentConnection, 0, len(m.recentConnections)-1)
 	for _, existing := range m.recentConnections {
 		if sameRecentConnection(existing, connection) {
@@ -259,7 +268,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			case m.keybindings.Match(keyPress, "connection.edit", []scope{scopeView, scopeGlobal}):
 				return m, m.editSelectedRecentConnection()
 			case m.keybindings.Match(keyPress, "connection.delete", []scope{scopeView, scopeGlobal}):
-				m.deleteSelectedRecentConnection()
+				m.confirmDeleteRecentConnection()
 				return m, nil
 			}
 		}

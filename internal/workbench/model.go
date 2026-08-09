@@ -133,6 +133,7 @@ type Model struct {
 	deletePending                                                                                  string
 	deletePendingName                                                                              string
 	deletePendingDatabase                                                                          string
+	deletePendingConnection                                                                        *recentConnection
 }
 
 type pickerItem struct{ raw, title, description string }

@@ -363,7 +363,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "connection.delete":
 		if m.State == stateConnection && m.connection.focus == connectionFocusRecent {
-			m.deleteSelectedRecentConnection()
+			m.confirmDeleteRecentConnection()
 			return m, nil
 		}
 		return m, nil

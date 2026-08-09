@@ -198,6 +198,28 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model.connection.setFocus(connectionFocusRecent)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = updated.(Model)
+	if model.deleteConfirm == nil {
+		t.Fatal("d did not open the delete confirmation")
+	}
+	if len(model.recentConnections) != 2 {
+		t.Fatalf("d deleted before confirmation: %#v", model.recentConnections)
+	}
+
+	// Decline: nothing is deleted.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+	if model.deleteConfirm != nil || len(model.recentConnections) != 2 {
+		t.Fatalf("decline changed connections: %#v", model.recentConnections)
+	}
+
+	// Confirm: Alpha is removed, Beta stays.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	if model.deleteConfirm == nil {
+		t.Fatal("d did not reopen the delete confirmation")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
 	if len(model.recentConnections) != 1 || model.recentConnections[0].Name != "Beta" {
 		t.Fatalf("recent connections = %#v, want only Beta", model.recentConnections)
 	}

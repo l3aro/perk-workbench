@@ -685,6 +685,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if action != "delete" && action != "delete_table" {
 			m.deletePendingName = ""
 			m.deletePendingDatabase = ""
+			m.deletePendingConnection = nil
 			return m, nil
 		}
 		switch pending {
@@ -713,6 +714,13 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			database := m.deletePendingDatabase
 			m.deletePendingDatabase, m.deletePendingName = "", ""
 			return m.startQueryStatement("DROP DATABASE "+m.quoteIdentifier(database), true)
+		case "connection":
+			connection := m.deletePendingConnection
+			m.deletePendingConnection = nil
+			if connection != nil {
+				m.deleteRecentConnection(*connection)
+			}
+			return m, nil
 		default:
 			m.deletePendingName = ""
 			return m, m.deleteRow()
