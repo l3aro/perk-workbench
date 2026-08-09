@@ -303,6 +303,11 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			case m.keybindings.Match(keyPress, "connection.delete", []scope{scopeView, scopeGlobal}):
 				m.confirmDeleteRecentConnection()
 				return m, nil
+			case m.keybindings.Match(keyPress, "connection.context_menu", []scope{scopeView, scopeGlobal}):
+				if _, ok := m.selectedRecentConnection(); ok {
+					m.openRecentConnectionMenu(m.schemaWidth/2, m.recentRowY(m.recent.Index())+1)
+				}
+				return m, nil
 			}
 		}
 		var command tea.Cmd

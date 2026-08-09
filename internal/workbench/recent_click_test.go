@@ -76,3 +76,124 @@ func TestRecentClick_doubleClickLoadsProfileIntoForm(t *testing.T) {
 		t.Fatalf("form = %q %q, want beta /tmp/beta.db", model.connection.values.name, model.connection.values.target)
 	}
 }
+
+// TestConnectionForm_contextMenuEditAndDelete: comma opens the profile
+// context menu with Edit/Delete on the selected profile; e loads it into the
+// form, d opens the delete confirmation.
+func TestConnectionForm_contextMenuEditAndDelete(t *testing.T) {
+	model := recentClickModel(t)
+	model.connection.setFocus(connectionFocusRecent)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	menu := model.contextMenu
+	if menu == nil || !menu.visible {
+		t.Fatal("comma did not open the profile context menu")
+	}
+	if got, want := len(menu.options), 2; got != want {
+		t.Fatalf("context menu options = %d, want %d", got, want)
+	}
+	if menu.options[0].action != "edit_profile" || menu.options[0].keys != "e" ||
+		menu.options[1].action != "delete_profile" || menu.options[1].keys != "d" {
+		t.Fatalf("profile menu options = %+v, want Edit e / Delete d", menu.options)
+	}
+
+	// e edits the selected profile (alpha) into the connection form.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+	if model.contextMenu != nil {
+		t.Fatal("context menu stayed open after e")
+	}
+	if model.connection.focus != connectionFocusForm || model.connection.values.name != "alpha" || model.connection.values.target != "/tmp/alpha.db" {
+		t.Fatalf("edit did not load alpha: focus=%d values=%q %q", model.connection.focus, model.connection.values.name, model.connection.values.target)
+	}
+
+	// Comma again, then d closes the menu and opens the confirmation.
+	model.connection.setFocus(connectionFocusRecent)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	if model.contextMenu == nil {
+		t.Fatal("comma did not reopen the profile context menu")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	if model.contextMenu != nil || model.deleteConfirm == nil {
+		t.Fatal("d did not close the menu and open the delete confirmation")
+	}
+	if len(model.recentConnections) != 2 {
+		t.Fatalf("d deleted before confirmation: %#v", model.recentConnections)
+	}
+
+	// Esc closes the reopened menu without acting.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.contextMenu != nil {
+		t.Fatal("esc did not close the profile context menu")
+	}
+}
+
+// TestRecentClick_rightClickOpensMenuOnProfile: a right-click on a rendered
+// profile selects it and opens the context menu, so the menu acts on the
+// clicked profile even when another one was selected.
+func TestRecentClick_rightClickOpensMenuOnProfile(t *testing.T) {
+	model := recentClickModel(t)
+	model.connection.setFocus(connectionFocusRecent)
+
+	itemY := renderedItemY(t, model, "beta")
+	if itemY < 0 {
+		t.Fatal("rendered profiles do not contain beta")
+	}
+
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: itemY, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.contextMenu == nil || !model.contextMenu.visible {
+		t.Fatal("right-click did not open the profile context menu")
+	}
+	selected, ok := model.recent.SelectedItem().(recentConnection)
+	if !ok || selected.Name != "beta" {
+		t.Fatalf("right-click selected %#v, want beta", selected)
+	}
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+	if model.connection.focus != connectionFocusForm || model.connection.values.name != "beta" || model.connection.values.target != "/tmp/beta.db" {
+		t.Fatalf("edit did not load beta: focus=%d values=%q %q", model.connection.focus, model.connection.values.name, model.connection.values.target)
+	}
+}
+
+// TestRecentClick_rightClickFilterBoxIgnored: right-clicks on the filter
+// input row do not open a profile menu.
+func TestRecentClick_rightClickFilterBoxIgnored(t *testing.T) {
+	model := recentClickModel(t)
+	model.connection.setFocus(connectionFocusRecent)
+
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 3, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.contextMenu != nil {
+		t.Fatal("right-click on the filter row opened a profile menu")
+	}
+}
+
+// TestRecentClick_rightClickCompactFormFocusedIgnored: in the compact
+// connection layout, right-clicks are ignored while the form pane is
+// focused.
+func TestRecentClick_rightClickCompactFormFocusedIgnored(t *testing.T) {
+	model := resizeModel(recentClickModel(t), 60, 20)
+	model.connection.setFocus(connectionFocusForm)
+
+	updated, _ := model.Update(tea.MouseClickMsg{X: 30, Y: 10, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.contextMenu != nil {
+		t.Fatal("right-click while the form is focused opened a profile menu")
+	}
+
+	// Focus the profiles pane: the same right-click opens the menu.
+	model.connection.setFocus(connectionFocusRecent)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 30, Y: 10, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.contextMenu == nil {
+		t.Fatal("right-click on the compact profiles pane did not open a menu")
+	}
+}

@@ -40,6 +40,10 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.reconnectDatabase(menu.database)
 		case "delete_table":
 			m.confirmTableDelete(menu.database, menu.table)
+		case "edit_profile":
+			return m, m.editSelectedRecentConnection()
+		case "delete_profile":
+			m.confirmDeleteRecentConnection()
 		case "query_log_yank":
 			entry, ok := m.queryLogSelectedEntry()
 			if !ok {

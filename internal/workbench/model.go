@@ -156,6 +156,7 @@ type contextMenuModel struct {
 	database string
 	schema   string
 	table    string
+	title    string // menu title; empty renders the default "Row actions"
 	visible  bool
 }
 

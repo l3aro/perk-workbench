@@ -369,7 +369,10 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 			maxKeys = len(opt.keys)
 		}
 	}
-	const title = "Row actions"
+	title := menu.title
+	if title == "" {
+		title = "Row actions"
+	}
 	pad := 2
 	keyGap := 2
 	optWidth := maxLabel + pad

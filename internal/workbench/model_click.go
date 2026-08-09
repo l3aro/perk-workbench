@@ -131,6 +131,56 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// recentItemOnPage maps a profiles-pane content Y to the list index of the
+// profile rendered there: the pane top border at contentY=0, the filter box
+// (3 rows, when the pane is wide enough) and the list's status bar sit above
+// the items, and every item spans 3 lines (Height 2 + Spacing 1).
+func (m Model) recentItemOnPage(contentY int) (int, bool) {
+	itemOffset := 4
+	if m.schemaFilterShown() {
+		itemOffset = 6
+	}
+	itemLine := contentY - itemOffset
+	if itemLine < 0 {
+		return 0, false
+	}
+	itemOnPage := itemLine / 3
+	items := m.recent.VisibleItems()
+	start, end := m.recent.Paginator.GetSliceBounds(len(items))
+	if start+itemOnPage >= end {
+		return 0, false
+	}
+	return start + itemOnPage, true
+}
+
+// recentRowY returns the screen Y of the recent list item at the given
+// index, clamped to the visible window.
+func (m Model) recentRowY(index int) int {
+	itemOffset := 4
+	if m.schemaFilterShown() {
+		itemOffset = 6
+	}
+	items := m.recent.VisibleItems()
+	start, _ := m.recent.Paginator.GetSliceBounds(len(items))
+	return max(itemOffset+(index-start)*3, itemOffset)
+}
+
+// openRecentConnectionMenu opens the profile context menu: Edit loads the
+// selected profile into the connection form, Delete asks for confirmation.
+func (m *Model) openRecentConnectionMenu(x, y int) {
+	m.contextMenu = &contextMenuModel{
+		options: []menuOption{
+			{label: "Edit", action: "edit_profile", keys: "e"},
+			{label: "Delete", action: "delete_profile", keys: "d"},
+		},
+		selected: 0,
+		visible:  true,
+		x:        x,
+		y:        y,
+		title:    "Profile actions",
+	}
+}
+
 // handleRecentClick maps a click on the recent-connections list to its item:
 // a single click selects the profile, a double click loads it into the
 // connection form (matching the Enter keybinding). Presses only — the
@@ -147,28 +197,39 @@ func (m Model) handleRecentClick(x, y int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.recentFilter.Blur()
-	// The list's status bar renders 2 lines (content plus bottom padding);
-	// the filter box adds 3 more rows when the pane is wide enough.
-	itemOffset := 4
-	if m.schemaFilterShown() {
-		itemOffset = 6
-	}
-	itemLine := contentY - itemOffset
-	if itemLine < 0 {
+	index, ok := m.recentItemOnPage(contentY)
+	if !ok {
 		return m, nil
 	}
-	itemOnPage := itemLine / 3 // DefaultDelegate: Height 2 + Spacing 1
-	items := m.recent.VisibleItems()
-	start, end := m.recent.Paginator.GetSliceBounds(len(items))
-	if start+itemOnPage >= end {
-		return m, nil
-	}
-	m.recent.Select(start + itemOnPage)
+	m.recent.Select(index)
 	if !m.recordFormClick(x, y) {
 		return m, nil
 	}
 	// Double-click: load the profile into the form, matching Enter.
 	return m, m.editSelectedRecentConnection()
+}
+
+// handleRecentRightClick maps a right-click on the profiles list to its item
+// and opens the profile context menu; the item is selected first so Edit and
+// Delete act on the clicked profile, like the browse table.
+func (m Model) handleRecentRightClick(absX, absY int) (tea.Model, tea.Cmd) {
+	contentY := absY - 1
+	if contentY < 0 {
+		return m, nil
+	}
+	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
+		// The filter box is not a profile row.
+		return m, nil
+	}
+	index, ok := m.recentItemOnPage(contentY)
+	if !ok {
+		return m, nil
+	}
+	m.recent.Select(index)
+	m.recentFilter.Blur()
+	m.connection.focus = connectionFocusRecent
+	m.openRecentConnectionMenu(absX, absY+1)
+	return m, nil
 }
 
 func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
@@ -830,6 +891,17 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
+	if m.State == stateConnection {
+		// Profiles pane: the left pane in the wide layout, the focused
+		// pane in compact. Right-clicking a profile opens its menu.
+		if !m.compact && absX >= m.schemaWidth {
+			return m, nil
+		}
+		if m.compact && m.connection.focus != connectionFocusRecent {
+			return m, nil
+		}
+		return m.handleRecentRightClick(absX, absY)
+	}
 	if m.State != stateReady {
 		return m, nil
 	}

@@ -107,6 +107,7 @@ var defaultDefs = []commandDef{
 	{id: "connection.add", scope: scopeView, keys: []string{"a"}, label: "add"},
 	{id: "connection.edit", scope: scopeView, keys: []string{"e", "enter"}, label: "edit"},
 	{id: "connection.delete", scope: scopeView, keys: []string{"d"}, label: "delete"},
+	{id: "connection.context_menu", scope: scopeView, keys: []string{","}, label: "context menu"},
 
 	// ── Connection: form (view) ─────────────────────────────────
 	{id: "connection.execute", scope: scopeView, keys: []string{"f5", "ctrl+enter", "ctrl+s"}, label: "connect"},
