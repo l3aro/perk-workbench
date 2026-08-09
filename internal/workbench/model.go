@@ -50,6 +50,8 @@ type Model struct {
 	appContext                                                                                     context.Context
 	openDatabase                                                                                   OpenDatabase
 	browseLoading, browsePending                                                                   bool
+	reconnectPending                                                                               bool
+	openTag                                                                                        uint64
 	treeAnim                                                                                       *treeAnim
 	browsePageTag, editorEditTag, completionRequestTag                                             uint64
 	editorValidity                                                                                 sqlValidity
@@ -193,6 +195,7 @@ type databaseOpenedMsg struct {
 	info      sharedsql.DatabaseInfo
 	objects   []sharedsql.SchemaObject
 	reconnect bool // sidebar database switch: no new connection profile
+	openTag   uint64
 	err       error
 }
 
@@ -278,10 +281,11 @@ func (m Model) openTarget(target string) tea.Cmd { return m.openTargetWith(targe
 func (m Model) reopenTarget(target string) tea.Cmd { return m.openTargetWith(target, true) }
 
 func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
+	tag := m.openTag
 	return func() tea.Msg {
 		opened, err := m.openDatabase(m.appContext, target)
 		if err != nil {
-			return databaseOpenedMsg{err: err, reconnect: reconnect}
+			return databaseOpenedMsg{err: err, reconnect: reconnect, openTag: tag}
 		}
 		return databaseOpenedMsg{
 			target:    opened.Target,
@@ -289,6 +293,7 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 			info:      opened.Info,
 			objects:   opened.Objects,
 			reconnect: reconnect,
+			openTag:   tag,
 		}
 	}
 }
@@ -298,13 +303,20 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 // database. PostgreSQL cannot address objects outside the connected
 // database, so opening the root is the only way to reach it.
 func (m Model) reconnectDatabase(database string) (tea.Model, tea.Cmd) {
+	if m.reconnectPending {
+		return m, nil // a switch is already in flight
+	}
 	target := m.postgresTargetFor(database)
 	if target == "" {
 		m.setStatus(safeText("cannot reconnect to " + database))
 		return m, nil
 	}
-	m.BeginOpening(target, "opening "+safeText(database))
+	// Stay in stateReady so the current view keeps rendering while the
+	// switch loads; the previous database stays usable until the swap.
+	m.reconnectPending = true
+	m.openTag++
 	m.treeAnim = nil
+	m.setStatus(safeText("switching to " + database))
 	return m, m.reopenTarget(target)
 }
 
@@ -373,7 +385,9 @@ func (m *Model) disconnect() {
 	m.notificationDetail = nil
 	m.notificationHistory = nil
 	m.State = stateConnection
+	m.reconnectPending = false
 	m.treeAnim = nil
+	m.openTag++ // supersede any open still in flight
 	m.layout(m.width, m.height)
 	m.Database = nil
 	m.SelectedTable = ""

@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -441,6 +442,18 @@ type createDatabaseStub struct {
 
 func (s *createDatabaseStub) Close() error { return nil }
 
+// closeTrackingService records whether Close was called, for tests that
+// assert superseded connections are released.
+type closeTrackingService struct {
+	sharedsql.Service
+	closed bool
+}
+
+func (s *closeTrackingService) Close() error {
+	s.closed = true
+	return nil
+}
+
 func (s *createDatabaseStub) Execute(_ context.Context, statement string) (sharedsql.Result, error) {
 	s.statements = append(s.statements, statement)
 	return sharedsql.Result{}, nil
@@ -774,9 +787,10 @@ func TestPostgresTree_enterOnUnconnectedRootReconnects(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	// Then — the session reopens against employers.
-	if model.State != stateOpening {
-		t.Fatalf("state = %v, want opening", model.State)
+	// Then — the session reopens against employers while the current
+	// view stays rendered: no stateOpening blank-out.
+	if model.State != stateReady || !model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with a pending switch", model.State, model.reconnectPending)
 	}
 	if command == nil {
 		t.Fatal("Enter on an unconnected root returned no command")
@@ -818,8 +832,8 @@ func TestPostgresTree_doubleClickOnUnconnectedRootReconnects(t *testing.T) {
 	updated, command = model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
 	model = updated.(Model)
 
-	if model.State != stateOpening {
-		t.Fatalf("state = %v, want opening after double-click", model.State)
+	if model.State != stateReady || !model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with a pending switch after double-click", model.State, model.reconnectPending)
 	}
 	if command == nil {
 		t.Fatal("double-click on an unconnected root returned no command")
@@ -876,8 +890,8 @@ func TestPostgresTree_contextMenuConnectSwitchesDatabase(t *testing.T) {
 	// Enter activates Connect: the session reopens against employers.
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.State != stateOpening {
-		t.Fatalf("state = %v, want opening", model.State)
+	if model.State != stateReady || !model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with a pending switch", model.State, model.reconnectPending)
 	}
 	if command == nil {
 		t.Fatal("Connect returned no command")
@@ -906,6 +920,141 @@ func TestPostgresTree_reconnectDoesNotRecordProfile(t *testing.T) {
 	}
 	if len(*opened) != 1 {
 		t.Fatalf("reopened %v targets, want 1", *opened)
+	}
+}
+
+func TestPostgresTree_failedSwitchKeepsCurrentSession(t *testing.T) {
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{}, errors.New("boom")
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+
+	// Enter on the employers root; the switch fails.
+	model.schema.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model = driveCommand(model, command)
+
+	// The previous session survives and the failure is reported inline.
+	if model.State != stateReady || model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with no pending switch", model.State, model.reconnectPending)
+	}
+	if model.Target != "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable" {
+		t.Fatalf("target = %q, want the original employees session kept", model.Target)
+	}
+	if !strings.Contains(ansi.Strip(model.Status), "database switch failed: boom") {
+		t.Fatalf("status = %q, want the switch failure reported", model.Status)
+	}
+}
+
+func TestPostgresTree_secondSwitchWhilePendingIsIgnored(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// First switch is in flight; a second Enter must not start another.
+	model.schema.Select(2)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("first Enter returned no command")
+	}
+	updated, second := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if second != nil {
+		t.Fatal("second Enter while a switch is pending returned a command")
+	}
+	executeCommandAll(command)
+	if len(*opened) != 1 {
+		t.Fatalf("reopened %v targets, want only the first switch", *opened)
+	}
+}
+
+func TestPostgresTree_disconnectWhileSwitchPendingDropsCompletion(t *testing.T) {
+	service := &closeTrackingService{Service: &createDatabaseStub{}}
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{Service: service, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+
+	// Start a switch, then disconnect before it completes.
+	model.schema.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model.disconnect()
+	model = driveCommand(model, command)
+
+	// The late completion must not yank the user back into a database.
+	if model.State != stateConnection {
+		t.Fatalf("state = %v, want connection after disconnect", model.State)
+	}
+	if model.Database != nil {
+		t.Fatal("disconnect was undone by a stale switch completion")
+	}
+	if !service.closed {
+		t.Fatal("superseded switch service was not closed")
+	}
+}
+
+func TestPostgresTree_successfulSwitchClosesPreviousSession(t *testing.T) {
+	oldService := &closeTrackingService{Service: &createDatabaseStub{}}
+	newService := &closeTrackingService{Service: &createDatabaseStub{}}
+	opens := 1
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		opens++
+		if opens == 1 {
+			return sharedsql.Opened{Service: oldService, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+		}
+		return sharedsql.Opened{Service: newService, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+	model.Database = oldService
+
+	// Switch to employers; the completed open replaces the session.
+	model.schema.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model = driveCommand(model, command)
+
+	if model.Database != newService {
+		t.Fatal("switch did not install the new service")
+	}
+	if !oldService.closed {
+		t.Fatal("previous session was not closed after a successful switch")
+	}
+	if newService.closed {
+		t.Fatal("the new session was closed immediately")
+	}
+	if model.State != stateReady || model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want a settled ready session", model.State, model.reconnectPending)
 	}
 }
 
