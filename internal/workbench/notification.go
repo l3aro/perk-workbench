@@ -5,21 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/chrome"
 	"github.com/l3aro/perk-workbench/internal/log"
 )
 
@@ -440,216 +438,460 @@ func (m Model) notificationPopupBounds() (image.Rectangle, bool) {
 	return image.Rect(x, y, x+cardW, y+cardH), true
 }
 
-// notificationHistoryPane identifies the active column of the split modal.
-type notificationHistoryPane uint8
+// notificationColumnTitles are the modal table's columns in display
+// order; entryRow and the sort column index both rely on this order.
+var notificationColumnTitles = []string{"Time", "Level", "Title", "Description"}
 
-const (
-	notificationHistoryListPane notificationHistoryPane = iota
-	notificationHistoryDetailPane
-)
-
-// notificationListItem adapts a notificationEntry for the bubbles list.
-type notificationListItem struct {
-	entry notificationEntry
-}
-
-func (i notificationListItem) FilterValue() string {
-	return i.entry.title + " " + i.entry.description
-}
-
-func (i notificationListItem) Title() string {
-	return i.entry.createdAt.Format("2006-01-02 15:04:05")
-}
-
-func (i notificationListItem) Description() string {
-	return i.entry.title
-}
-
-// notificationItemDelegate renders one notification list row: timestamp and
-// title, primary when selected.
-type notificationItemDelegate struct{}
-
-func (notificationItemDelegate) Height() int                         { return 1 }
-func (notificationItemDelegate) Spacing() int                        { return 0 }
-func (notificationItemDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
-func (notificationItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
-	entry, ok := item.(notificationListItem)
-	if !ok {
-		return
-	}
-	label := entry.Title() + "  " + entry.Description()
-	if width := model.Width(); width > 0 {
-		label = ansi.Truncate(label, width, "…")
-	}
-	color := colorMuted
-	if index == model.Index() {
-		color = colorPrimary
-	}
-	fmt.Fprint(writer, lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(label))
-}
-
-// notificationHistory is the split modal: a narrow filterable list on the
-// left and a full detail viewport on the right.
+// notificationHistory is a full-width modal table of retained
+// notifications. It mirrors the Browse pane's table: cell travel with
+// h/j/k/l and the arrow keys, y copies the selected cell, / filters, s
+// (or a header click) sorts, n/p page, and v opens the cell in the
+// viewer overlay.
 type notificationHistory struct {
-	entries       []notificationEntry
-	filtered      []notificationEntry
-	list          list.Model
+	entries       []notificationEntry // all retained entries, newest first
+	filtered      []notificationEntry // entries after filter + sort
+	page          int                 // current page
+	pageSize      int                 // rows per page, derived from the modal height
+	table         table.Model         // rows of the current page
+	pageEntries   []notificationEntry // entries behind the table rows
+	width, height int                 // modal size, for click hit-testing
+	selectedCol   int                 // cell column under the cursor
+	offset        int                 // horizontal scroll offset
 	filter        textinput.Model
-	detail        viewport.Model
-	pane          notificationHistoryPane
 	filterFocused bool
+	sortCol       int // -1 = default (newest first) order
+	sortDesc      bool
+	viewer        *cellViewer // view-cell overlay, nil when closed
 }
 
-// newNotificationHistory builds the split modal. selectedID selects the
-// entry with that SQLite row ID, falling back to the newest entry when 0 or
+// newNotificationHistory builds the modal. selectedID selects the entry
+// with that SQLite row ID, falling back to the newest entry when 0 or
 // absent.
 func newNotificationHistory(entries []notificationEntry, selectedID int64, width, height int) *notificationHistory {
 	h := &notificationHistory{
-		entries:  entries,
+		entries:  append([]notificationEntry{}, entries...),
 		filtered: append([]notificationEntry{}, entries...),
-		list:     newSchemaList(),
 		filter:   newFilterInput(),
-		pane:     notificationHistoryListPane,
+		sortCol:  -1,
 	}
-	h.list.SetDelegate(notificationItemDelegate{})
 	h.filter.Placeholder = "filter notifications"
-	h.setItems()
-	selected := 0
-	for index, entry := range entries {
+	h.table = table.New(table.WithStyles(table.Styles{
+		Header:   headerStyle,
+		Cell:     lipgloss.NewStyle().Padding(0, spaceCompact),
+		Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe)),
+	}))
+	h.resize(width, height)
+	for index, entry := range h.filtered {
 		if entry.id == selectedID {
-			selected = index
+			h.page = index / h.pageSize
+			h.table.SetCursor(index % h.pageSize)
 			break
 		}
 	}
-	if len(h.filtered) > 0 && selected >= len(h.filtered) {
-		selected = len(h.filtered) - 1
-	}
-	if len(h.filtered) > 0 {
-		h.list.Select(selected)
-		h.syncDetail()
-	}
-	h.resize(width, height)
+	h.syncPage()
 	return h
 }
 
+// resize updates the modal geometry: page size and table follow the
+// height, and the page is clamped back into range.
 func (h *notificationHistory) resize(width, height int) {
-	if width < 40 || height < 8 {
-		// Keep a usable viewport for rendering while the small-terminal
-		// guard message is shown.
-		h.detail = viewport.New(viewport.WithWidth(20), viewport.WithHeight(2))
-		h.detail.SoftWrap = true
-		h.detail.MouseWheelEnabled = true
-		return
+	h.width, h.height = width, height
+	h.pageSize = max(height-12, 1)
+	h.page = clamp(h.page, 0, max(h.pageCount()-1, 0))
+	if h.viewer != nil {
+		h.viewer.resize(max(width-8, 1), max(height-10, 1))
 	}
-	leftWidth := clamp(width/3, 24, 40)
-	rightWidth := width - leftWidth - 3
-	h.detail = viewport.New(viewport.WithWidth(rightWidth-4), viewport.WithHeight(height-6))
-	h.detail.SoftWrap = true
-	h.detail.MouseWheelEnabled = true
-	h.list.SetSize(leftWidth-2, height-7)
-	h.filter.SetWidth(leftWidth - 6)
-	h.syncDetail()
+	h.syncPage()
 }
 
-// setItems refreshes the list rows from the filtered slice.
-func (h *notificationHistory) setItems() {
-	items := make([]list.Item, len(h.filtered))
-	for index, entry := range h.filtered {
-		items[index] = notificationListItem{entry: entry}
+// pageCount returns the number of pages the filtered entries span.
+func (h *notificationHistory) pageCount() int {
+	return (len(h.filtered) + h.pageSize - 1) / h.pageSize
+}
+
+// viewportWidth returns the modal's inner content width, the width the
+// table and the pager row are laid out to.
+func (h *notificationHistory) viewportWidth() int {
+	return max(h.width-6, 1)
+}
+
+// syncPage rebuilds the current page rows and column widths (sort markers
+// included) from filtered, preserving the selected cell.
+func (h *notificationHistory) syncPage() {
+	row, col := h.table.Cursor(), h.selectedCol
+	h.page = clamp(h.page, 0, max(h.pageCount()-1, 0))
+	start := h.page * h.pageSize
+	end := min(start+h.pageSize, len(h.filtered))
+	h.pageEntries = append([]notificationEntry{}, h.filtered[start:end]...)
+	rows := make([]table.Row, len(h.pageEntries))
+	for index, entry := range h.pageEntries {
+		rows[index] = h.entryRow(entry)
 	}
-	_ = h.list.SetItems(items)
+	h.table.SetCursor(clamp(row, 0, max(len(rows)-1, 0)))
+	h.selectedCol = clamp(col, 0, len(notificationColumnTitles)-1)
+	titles := append([]string{}, notificationColumnTitles...)
+	if h.sortCol >= 0 && h.sortCol < len(titles) {
+		if h.sortDesc {
+			titles[h.sortCol] += " ▼"
+		} else {
+			titles[h.sortCol] += " ▲"
+		}
+	}
+	// Columns first: bubbles renders rows against the current columns, so
+	// SetRows after a column change would index out of range otherwise.
+	h.table.SetColumns(tableColumns(titles, rows))
+	h.table.SetRows(rows)
+	h.table.SetCursor(clamp(row, 0, max(len(rows)-1, 0)))
+	h.table.SetWidth(max(h.viewportWidth(), tableContentWidth(h.table.Columns())))
+	h.table.SetHeight(h.pageSize)
+}
+
+// entryRow renders one entry as a table row: time, level, title,
+// description. Copy and view use the raw entry, not these display cells.
+func (h *notificationHistory) entryRow(entry notificationEntry) table.Row {
+	return table.Row{
+		entry.createdAt.Format("2006-01-02 15:04:05"),
+		h.levelText(entry),
+		entry.title,
+		entry.description,
+	}
+}
+
+// levelText returns the display text of an entry's level column: the
+// severity title for logged events, empty for plain status messages.
+func (h *notificationHistory) levelText(entry notificationEntry) string {
+	if level, ok := logLevelOf(entry.level); ok {
+		return level.Title()
+	}
+	return ""
 }
 
 // applyFilter re-filters by the filter input (case-insensitive substring
-// match across title and description) and clamps the selection.
+// match across time, level, title, and description), re-sorts, and resets
+// to the first page.
 func (h *notificationHistory) applyFilter() {
 	query := strings.ToLower(strings.TrimSpace(h.filter.Value()))
 	h.filtered = h.filtered[:0]
 	for _, entry := range h.entries {
-		if strings.Contains(strings.ToLower(entry.title+" "+entry.description), query) {
+		if strings.Contains(strings.ToLower(h.searchText(entry)), query) {
 			h.filtered = append(h.filtered, entry)
 		}
 	}
-	h.setItems()
-	if len(h.filtered) > 0 && h.list.Index() >= len(h.filtered) {
-		h.list.Select(len(h.filtered) - 1)
-	}
-	h.syncDetail()
+	h.sortFiltered()
+	h.page = 0
+	h.table.SetCursor(0)
+	h.syncPage()
 }
 
-// selected returns the filtered entry under the list cursor.
+// searchText joins every searchable field of one entry.
+func (h *notificationHistory) searchText(entry notificationEntry) string {
+	return entry.createdAt.Format("2006-01-02 15:04:05") + " " + h.levelText(entry) + " " + entry.title + " " + entry.description
+}
+
+// sortFiltered applies the current sort to filtered. The default order
+// (sortCol < 0) is the entry order: newest first.
+func (h *notificationHistory) sortFiltered() {
+	if h.sortCol < 0 || h.sortCol >= len(notificationColumnTitles) || len(h.filtered) < 2 {
+		return
+	}
+	col, desc := h.sortCol, h.sortDesc
+	slices.SortStableFunc(h.filtered, func(a, b notificationEntry) int {
+		var cmp int
+		switch col {
+		case 0:
+			cmp = a.createdAt.Compare(b.createdAt)
+		case 1:
+			cmp = strings.Compare(strings.ToLower(h.levelText(a)), strings.ToLower(h.levelText(b)))
+		case 2:
+			cmp = strings.Compare(strings.ToLower(a.title), strings.ToLower(b.title))
+		default:
+			cmp = strings.Compare(strings.ToLower(a.description), strings.ToLower(b.description))
+		}
+		if desc {
+			return -cmp
+		}
+		return cmp
+	})
+}
+
+// cycleSort advances the sort on the selected column like the Browse
+// pane's s key: ascending, descending, then back to the default order.
+// The selected entry stays under the cursor.
+func (h *notificationHistory) cycleSort() {
+	var anchor notificationEntry
+	anchored := false
+	if row := h.table.Cursor(); row >= 0 && row < len(h.pageEntries) {
+		anchor, anchored = h.pageEntries[row], true
+	}
+	if h.selectedCol == h.sortCol {
+		if !h.sortDesc {
+			h.sortDesc = true
+		} else {
+			h.sortCol, h.sortDesc = -1, false
+		}
+	} else {
+		h.sortCol, h.sortDesc = h.selectedCol, false
+	}
+	h.sortFiltered()
+	h.page = 0
+	h.table.SetCursor(0)
+	if anchored {
+		for index, entry := range h.filtered {
+			if entry.id == anchor.id && entry.createdAt.Equal(anchor.createdAt) {
+				h.page = index / h.pageSize
+				h.table.SetCursor(index % h.pageSize)
+				break
+			}
+		}
+	}
+	h.syncPage()
+}
+
+// selected returns the filtered entry under the table cursor.
 func (h *notificationHistory) selected() (notificationEntry, bool) {
-	index := h.list.Index()
-	if index < 0 || index >= len(h.filtered) {
+	row := h.table.Cursor()
+	if row < 0 || row >= len(h.pageEntries) {
 		return notificationEntry{}, false
 	}
-	return h.filtered[index], true
+	return h.pageEntries[row], true
 }
 
-// syncDetail renders the selected entry into the right detail viewport.
-func (h *notificationHistory) syncDetail() {
-	entry, ok := h.selected()
-	if !ok {
-		h.detail.SetContent("")
-	} else {
-		var b strings.Builder
-		b.WriteString("Title:\n  ")
-		b.WriteString(entry.title)
-		b.WriteString("\n\nDescription:\n  ")
-		b.WriteString(chrome.DetailValue(entry.description))
-		b.WriteString("\n\nTime:\n  ")
-		b.WriteString(entry.createdAt.Format("2006-01-02 15:04:05"))
-		h.detail.SetContent(b.String())
+// cellValue returns the raw value of one table cell: the formatted time,
+// level title, notification title, or the full description.
+func (h *notificationHistory) cellValue(row, col int) string {
+	if row < 0 || row >= len(h.pageEntries) {
+		return ""
 	}
-	// SetContent only stores lines; sizing and scroll range are computed by
-	// setInitialValues, which runs on Init. Initialize after every content
-	// change so programmatic scrolls (j/k) work without a tea lifecycle.
-	h.detail.Init()
+	entry := h.pageEntries[row]
+	switch col {
+	case 0:
+		return entry.createdAt.Format("2006-01-02 15:04:05")
+	case 1:
+		return h.levelText(entry)
+	case 2:
+		return entry.title
+	default:
+		return entry.description
+	}
 }
 
-// handleKey routes one key press through the modal's pane-specific behavior.
-func (h *notificationHistory) handleKey(msg tea.KeyPressMsg) bool {
+// copyCell returns a command copying the selected cell's raw value.
+func (h *notificationHistory) copyCell() tea.Cmd {
+	row := h.table.Cursor()
+	if row < 0 || row >= len(h.pageEntries) || h.selectedCol < 0 || h.selectedCol >= len(notificationColumnTitles) {
+		return nil
+	}
+	return copyQueryLogStatement(h.cellValue(row, h.selectedCol))
+}
+
+// openViewer opens the selected cell in the viewer overlay, showing the
+// untruncated value with wrap toggling.
+func (h *notificationHistory) openViewer() {
+	row := h.table.Cursor()
+	if row < 0 || row >= len(h.pageEntries) || h.selectedCol < 0 || h.selectedCol >= len(notificationColumnTitles) {
+		return
+	}
+	col := h.selectedCol
+	h.viewer = newCellViewer(notificationColumnTitles[col], h.cellValue(row, col), max(h.width-8, 1), max(h.height-10, 1))
+}
+
+// nextPage advances to the next page, keeping the cursor row.
+func (h *notificationHistory) nextPage() {
+	if h.page >= h.pageCount()-1 {
+		return
+	}
+	h.page++
+	h.syncPage()
+}
+
+// prevPage steps back a page, keeping the cursor row.
+func (h *notificationHistory) prevPage() {
+	if h.page <= 0 {
+		return
+	}
+	h.page--
+	h.syncPage()
+}
+
+// statusText renders the modal's row-range summary: "1-12 of 25 | page
+// 1/3", like the browse status line.
+func (h *notificationHistory) statusText() string {
+	total := len(h.filtered)
+	if total == 0 {
+		return "No notifications"
+	}
+	start := h.page*h.pageSize + 1
+	end := min(start+h.pageSize-1, total)
+	return fmt.Sprintf("%d-%d of %d | page %d/%d", start, end, total, h.page+1, h.pageCount())
+}
+
+// pager describes the modal's Prev/Next button row: Prev and Next pinned
+// to the row's ends around the status text, sharing the browse pane's
+// button styling and placement. The rendered line and the click hit-test
+// both read this one source of truth.
+func (h *notificationHistory) pager() browsePager {
+	pager := browsePager{
+		prev:        formCancelButtonStyle.Render(browsePrevLabel),
+		next:        formCancelButtonStyle.Render(browseNextLabel),
+		prevEnabled: h.page > 0,
+		nextEnabled: h.page < h.pageCount()-1,
+	}
+	if pager.prevEnabled {
+		pager.prev = formSaveButtonStyle.Render(browsePrevLabel)
+	}
+	if pager.nextEnabled {
+		pager.next = formSaveButtonStyle.Render(browseNextLabel)
+	}
+	status := ansi.Truncate(h.statusText(), max(h.viewportWidth()-2-ansi.StringWidth(pager.prev)-ansi.StringWidth(pager.next)-2, 1), "…")
+	gap := max(h.viewportWidth()-2-ansi.StringWidth(status)-ansi.StringWidth(pager.prev)-ansi.StringWidth(pager.next), 0)
+	pager.prevStart = 3 + ansi.StringWidth(status) + gap
+	pager.nextStart = pager.prevStart + ansi.StringWidth(pager.prev)
+	pager.line = statusStyle.Render(status + strings.Repeat(" ", gap) + pager.prev + pager.next)
+	return pager
+}
+
+// handleClick routes a left click inside the modal: the table header
+// cycles the sort, the pager buttons page, a data row selects the cell.
+func (h *notificationHistory) handleClick(x, y int) {
+	if h.viewer != nil || h.filterFocused || x < 1 || x >= h.width-1 || y < 1 || y >= h.height-1 {
+		return
+	}
+	if y == h.height-4 {
+		pager := h.pager()
+		if pager.prevEnabled && x >= pager.prevStart && x < pager.prevStart+ansi.StringWidth(pager.prev) {
+			h.prevPage()
+			return
+		}
+		if pager.nextEnabled && x >= pager.nextStart && x < pager.nextStart+ansi.StringWidth(pager.next) {
+			h.nextPage()
+			return
+		}
+		return
+	}
+	if y == 6 {
+		if col := h.columnAt(x); col >= 0 {
+			h.selectedCol = col
+			h.cycleSort()
+		}
+		return
+	}
+	if y >= 7 && y < 7+h.pageSize {
+		row := y - 7
+		if row >= 0 && row < len(h.table.Rows()) {
+			h.table.SetCursor(row)
+			if col := h.columnAt(x); col >= 0 {
+				h.selectedCol = col
+				revealTableColumn(h.table, h.selectedCol, &h.offset, h.viewportWidth())
+			}
+		}
+	}
+}
+
+// columnAt returns the table column under an absolute click x, or -1 when
+// the click misses every column.
+func (h *notificationHistory) columnAt(x int) int {
+	clickOffset := x - 2 + h.offset
+	if clickOffset < 0 {
+		return -1
+	}
+	start := 0
+	for index, column := range h.table.Columns() {
+		end := start + column.Width + 2*spaceCompact
+		if clickOffset >= start && clickOffset < end {
+			return index
+		}
+		start = end
+	}
+	return -1
+}
+
+// handleWheel routes wheel events: vertical ticks move the cursor row,
+// horizontal (or shift+vertical) ticks travel the selected column, and
+// ticks over an open viewer scroll it.
+func (h *notificationHistory) handleWheel(msg tea.MouseWheelMsg) {
+	if h.viewer != nil {
+		h.viewer.update(msg)
+		return
+	}
+	step, hStep := 0, 0
+	switch msg.Button {
+	case tea.MouseWheelDown:
+		if msg.Mod.Contains(tea.ModShift) {
+			hStep = 1
+		} else {
+			step = 1
+		}
+	case tea.MouseWheelUp:
+		if msg.Mod.Contains(tea.ModShift) {
+			hStep = -1
+		} else {
+			step = -1
+		}
+	case tea.MouseWheelLeft:
+		hStep = -1
+	case tea.MouseWheelRight:
+		hStep = 1
+	default:
+		return
+	}
+	if step != 0 {
+		rows := h.table.Rows()
+		h.table.SetCursor(clamp(h.table.Cursor()+step, 0, max(len(rows)-1, 0)))
+	}
+	if hStep != 0 {
+		moveTableColumn(&h.table, &h.selectedCol, &h.offset, h.viewportWidth(), hStep)
+	}
+}
+
+// handleKey routes one key press through the modal. It returns false only
+// when the press should close the modal (Escape outside the filter and
+// the viewer); every other press is swallowed so no key reaches the panes
+// underneath.
+func (h *notificationHistory) handleKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
+	if h.viewer != nil {
+		if msg.Key().Code == tea.KeyEscape {
+			h.viewer = nil
+			return true, nil
+		}
+		h.viewer.update(msg)
+		return true, nil
+	}
 	if h.filterFocused {
 		switch msg.Key().Code {
 		case tea.KeyEscape:
 			h.filterFocused = false
 			h.filter.Blur()
-			return true
+			return true, nil
 		}
 		h.filter, _ = h.filter.Update(msg)
 		h.applyFilter()
-		return true
+		return true, nil
 	}
 	switch msg.Key().Code {
 	case '/':
 		h.filterFocused = true
 		h.filter.Focus()
-		return true
+		return true, nil
 	case tea.KeyEscape:
-		return false // caller closes the modal
-	case tea.KeyLeft, 'h':
-		h.pane = notificationHistoryListPane
-		return true
-	case tea.KeyRight, 'l':
-		h.pane = notificationHistoryDetailPane
-		return true
-	case tea.KeyUp, 'k':
-		if h.pane == notificationHistoryDetailPane {
-			h.detail.ScrollUp(1)
-		} else {
-			h.list.CursorUp()
-		}
-		h.syncDetail()
-		return true
-	case tea.KeyDown, 'j':
-		if h.pane == notificationHistoryDetailPane {
-			h.detail.ScrollDown(1)
-		} else {
-			h.list.CursorDown()
-		}
-		h.syncDetail()
-		return true
+		return false, nil // caller closes the modal
+	case 's':
+		h.cycleSort()
+		return true, nil
+	case 'v':
+		h.openViewer()
+		return true, nil
+	case 'y':
+		return true, h.copyCell()
+	case 'n', tea.KeyPgDown:
+		h.nextPage()
+		return true, nil
+	case 'p', tea.KeyPgUp:
+		h.prevPage()
+		return true, nil
+	}
+	if moveTableCell(&h.table, &h.selectedCol, &h.offset, h.viewportWidth(), msg) {
+		return true, nil
 	}
 	// Swallow everything else so no key reaches the panes underneath.
-	return true
+	return true, nil
 }

@@ -99,60 +99,51 @@ func (m Model) drawNotificationDetail(canvas uv.ScreenBuffer) {
 	drawCard(canvas, m.width, m.height, " Notification ", body, innerW)
 }
 
-// drawNotificationHistory draws the split modal: a narrow filterable list on
-// the left, a full detail viewport on the right.
+// drawNotificationHistory draws the modal: a filter input, a sortable
+// table with cell travel, and a status row with Prev/Next pager buttons.
+// An open cell viewer overlays the modal.
 func (m Model) drawNotificationHistory(canvas uv.ScreenBuffer) {
 	h := m.notificationHistory
 	if h == nil {
 		return
 	}
-	if m.width < 40 || m.height < 8 {
+	if m.width < 40 || m.height < 14 {
 		drawCard(canvas, m.width, m.height, " Notifications ", "terminal too small", m.width-8)
 		return
 	}
-	leftWidth := clamp(m.width/3, 24, 40)
-	rightWidth := m.width - leftWidth - 3
+	boxW := m.width - 2
+	innerW := max(boxW-4, 1)
 
-	drawPaneBox(canvas, 1, 1, leftWidth, m.height-2, " Notifications ", h.pane == notificationHistoryListPane)
+	// Panel background so the modal reads above the panes underneath.
+	panelBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
+	canvas.FillArea(&panelBg, image.Rect(1, 1, m.width-1, m.height-1))
+
 	filter := h.filter.View()
 	filterBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorBorder)).
 		Padding(0, 1).
-		Width(max(leftWidth-6, 0))
-	filterLines := strings.Split(filterBox.Render(ansi.Truncate(filter, max(leftWidth-8, 0), "")), "\n")
-	for row, line := range filterLines {
-		drawLabel(canvas, 2, 3+row, safeText(line), colorInk, colorCanvas)
-	}
-	listView := h.list.View()
-	listLines := strings.Split(listView, "\n")
-	innerLeft := leftWidth - 4
-	if len(h.filtered) == 0 {
-		drawLabel(canvas, 2, 4, "No notifications", colorMuted, colorCanvas)
-	}
-	for row, line := range listLines {
-		if row >= m.height-6 {
-			break
-		}
-		drawLabel(canvas, 2, 4+row, ansi.Truncate(safeText(line), innerLeft, ""), colorInk, colorCanvas)
-	}
+		Width(max(innerW-4, 1))
+	tableLines := strings.Split(tableViewportViewWithAlignment(h.table, nil, h.offset, innerW, h.selectedCol), "\n")
+	pager := h.pager()
+	var b strings.Builder
+	b.WriteString(filterBox.Render(ansi.Truncate(filter, max(innerW-6, 1), "")))
+	b.WriteString("\n\n")
+	b.WriteString(strings.Join(tableLines, "\n"))
+	b.WriteString("\n\n")
+	b.WriteString(pager.line)
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorPrimary)).
+		Padding(0, 1).
+		Width(boxW).
+		Render(b.String())
+	uv.NewStyledString(box).Draw(canvas, image.Rect(1, 1, m.width-1, m.height-1))
 
-	rightX := leftWidth + 3
-	drawPaneBox(canvas, rightX, 1, rightWidth, m.height-2, " Details ", h.pane == notificationHistoryDetailPane)
-	innerRight := rightWidth - 4
-	if _, ok := h.selected(); !ok {
-		drawLabel(canvas, rightX+2, 3, "No notification selected", colorMuted, colorCanvas)
-	} else {
-		content := h.detail.View()
-		detailLines := strings.Split(content, "\n")
-		for row, line := range detailLines {
-			if row >= m.height-4 {
-				break
-			}
-			drawLabel(canvas, rightX+2, 3+row, ansi.Truncate(safeText(line), innerRight, ""), colorInk, colorCanvas)
-		}
+	drawLabel(canvas, 2, m.height-2, "h/j/k/l move | s sort | / filter | y copy | v view | n/p page | esc close", colorMuted, colorCanvas)
+	if h.viewer != nil {
+		drawCellViewerBox(canvas, h.viewer)
 	}
-	drawLabel(canvas, rightX+2, m.height-2, "h/l panes | j/k move or scroll | / filter | esc close", colorMuted, colorCanvas)
 }
 
 // drawPaneBox draws a titled bordered box on the canvas.

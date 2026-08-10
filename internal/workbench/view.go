@@ -233,7 +233,14 @@ func (m Model) confirmContent() string {
 }
 
 func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
-	cv := m.cellViewer
+	if m.cellViewer != nil {
+		drawCellViewerBox(canvas, m.cellViewer)
+	}
+}
+
+// drawCellViewerBox draws one cell viewer card on the canvas. Shared by
+// the workspace overlay and the notification history modal.
+func drawCellViewerBox(canvas uv.ScreenBuffer, cv *cellViewer) {
 	if cv == nil {
 		return
 	}

@@ -127,14 +127,25 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.notificationHistory != nil {
+		if click, ok := message.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+			m.notificationHistory.handleClick(click.X, click.Y)
+			return m, nil
+		}
+		if wheel, ok := message.(tea.MouseWheelMsg); ok {
+			m.notificationHistory.handleWheel(wheel)
+			return m, nil
+		}
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
-			// The filter's first Escape only blurs the filter; a second
-			// Escape closes the modal.
-			if keyPress.Key().Code == tea.KeyEscape && !m.notificationHistory.filterFocused {
+			// The filter's first Escape only blurs the filter and the
+			// viewer's Escape closes the viewer; a further Escape closes
+			// the modal.
+			if keyPress.Key().Code == tea.KeyEscape && !m.notificationHistory.filterFocused && m.notificationHistory.viewer == nil {
 				m.notificationHistory = nil
 				return m, nil
 			}
-			m.notificationHistory.handleKey(keyPress)
+			if handled, cmd := m.notificationHistory.handleKey(keyPress); handled {
+				return m, cmd
+			}
 		}
 		return m, nil
 	}

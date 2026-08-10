@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/log"
 )
 
 func TestNotifications_persistInSQLiteAndExpire(t *testing.T) {
@@ -287,41 +288,227 @@ func TestNotificationHistory_escapeExitsFilteringFirst(t *testing.T) {
 	}
 }
 
-func TestNotificationHistory_paneNavigationAndScrolling(t *testing.T) {
+func TestNotificationHistory_cellTravelAndViewer(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	long := strings.Repeat("word ", 200)
+	long := strings.Repeat("word ", 600)
 	model.notificationEntries = []notificationEntry{
 		{id: 2, createdAt: time.Now(), title: notificationTitle, description: long},
 		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "short"},
 	}
 	model.notificationHistory = newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
 
-	if model.notificationHistory.pane != notificationHistoryListPane {
-		t.Fatal("modal does not start on the list pane")
+	if col := model.notificationHistory.selectedCol; col != 0 {
+		t.Fatalf("modal does not start on the first column, got %d", col)
 	}
-	// j moves the list selection down.
+	// j moves the row cursor down.
 	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if selected, _ := model.notificationHistory.selected(); selected.id != 1 {
-		t.Fatalf("list selection after j = %#v, want id 1", selected)
+		t.Fatalf("selection after j = %#v, want id 1", selected)
 	}
-	// Back up to the long entry so the detail pane has something to scroll.
+	// Back up to the long entry.
 	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	if selected, _ := model.notificationHistory.selected(); selected.id != 2 {
-		t.Fatalf("list selection after k = %#v, want id 2", selected)
+		t.Fatalf("selection after k = %#v, want id 2", selected)
 	}
-	// l activates the detail pane; j now scrolls the detail viewport.
+	// l travels to the next column, h back to the first.
 	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if model.notificationHistory.pane != notificationHistoryDetailPane {
-		t.Fatal("l did not activate the detail pane")
+	if model.notificationHistory.selectedCol != 1 {
+		t.Fatalf("selectedCol after l = %d, want 1", model.notificationHistory.selectedCol)
 	}
-	before := model.notificationHistory.detail.YOffset()
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if got := model.notificationHistory.detail.YOffset(); got <= before {
-		t.Fatalf("detail scroll offset = %d, want it to grow past %d", got, before)
-	}
-	// h returns to the list pane.
 	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
-	if model.notificationHistory.pane != notificationHistoryListPane {
-		t.Fatal("h did not return to the list pane")
+	if model.notificationHistory.selectedCol != 0 {
+		t.Fatalf("selectedCol after h = %d, want 0", model.notificationHistory.selectedCol)
+	}
+
+	// v opens the viewer with the untruncated description; Escape closes it.
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	if model.notificationHistory.viewer == nil {
+		t.Fatal("v did not open the viewer")
+	}
+	if got := model.notificationHistory.viewer.column; got != "Description" {
+		t.Fatalf("viewer column = %q, want Description", got)
+	}
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.notificationHistory.viewer != nil {
+		t.Fatal("escape did not close the viewer")
+	}
+	// A key press over the open viewer scrolls it, not the table.
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	before := model.notificationHistory.viewer.viewport.YOffset()
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if got := model.notificationHistory.viewer.viewport.YOffset(); got <= before {
+		t.Fatalf("viewer scroll offset = %d, want it to grow past %d", got, before)
+	}
+	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.notificationHistory.viewer != nil {
+		t.Fatal("escape did not close the viewer")
+	}
+}
+
+func TestNotificationHistory_sortCyclesAndHeaderClick(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	base := time.Now()
+	model.notificationEntries = []notificationEntry{
+		{id: 3, createdAt: base, title: "zeta", description: "third"},
+		{id: 2, createdAt: base.Add(-2 * time.Minute), title: "alpha", description: "second"},
+		{id: 1, createdAt: base.Add(-3 * time.Minute), title: "mid", description: "first"},
+	}
+	model.notificationHistory = newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+	h := model.notificationHistory
+
+	// s on the Time column cycles ascending, descending, then back to the
+	// default entry order.
+	h.handleKey(tea.KeyPressMsg{Code: 's', Text: "s"})
+	if h.sortCol != 0 || h.sortDesc || h.filtered[0].id != 1 {
+		t.Fatalf("after first s: sort = col %d desc %t, first = %d, want Time ascending with id 1", h.sortCol, h.sortDesc, h.filtered[0].id)
+	}
+	if title := h.table.Columns()[0].Title; title != "Time ▲" {
+		t.Fatalf("sorted header = %q, want the ascending marker", title)
+	}
+	h.handleKey(tea.KeyPressMsg{Code: 's', Text: "s"})
+	if h.sortCol != 0 || !h.sortDesc || h.filtered[0].id != 3 {
+		t.Fatalf("after second s: sort = col %d desc %t, first = %d, want Time descending with id 3", h.sortCol, h.sortDesc, h.filtered[0].id)
+	}
+	h.handleKey(tea.KeyPressMsg{Code: 's', Text: "s"})
+	if h.sortCol != -1 || h.filtered[0].id != 3 {
+		t.Fatalf("after third s: sort = col %d, first = %d, want the default order with id 3", h.sortCol, h.filtered[0].id)
+	}
+
+	// A header click on the Title column sorts by title ascending; the
+	// selected column follows the clicked column.
+	columns := h.table.Columns()
+	titleStart := 2 + (columns[0].Width + 2*spaceCompact) + (columns[1].Width + 2*spaceCompact)
+	updated, _ := model.Update(tea.MouseClickMsg{X: titleStart + 2, Y: 6, Button: tea.MouseLeft})
+	model = updated.(Model)
+	h = model.notificationHistory
+	if h.sortCol != 2 || h.sortDesc || h.selectedCol != 2 || h.filtered[0].id != 2 {
+		t.Fatalf("after header click: sort = col %d desc %t selected %d first %d, want Title ascending, selected col 2, first id 2", h.sortCol, h.sortDesc, h.selectedCol, h.filtered[0].id)
+	}
+	// Clicking the same header again descends.
+	updated, _ = model.Update(tea.MouseClickMsg{X: titleStart + 2, Y: 6, Button: tea.MouseLeft})
+	model = updated.(Model)
+	h = model.notificationHistory
+	if h.sortCol != 2 || !h.sortDesc || h.filtered[0].id != 3 {
+		t.Fatalf("after second header click: sort = col %d desc %t, first = %d, want Title descending with id 3", h.sortCol, h.sortDesc, h.filtered[0].id)
+	}
+}
+
+func TestNotificationHistory_paginationAndButtons(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	entries := make([]notificationEntry, 25)
+	for i := range entries {
+		entries[i] = notificationEntry{id: int64(25 - i), createdAt: time.Now(), title: notificationTitle, description: "entry"}
+	}
+	model.notificationEntries = entries
+	h := newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+	model.notificationHistory = h
+
+	if h.pageSize != 12 {
+		t.Fatalf("page size = %d, want 12 at height 24", h.pageSize)
+	}
+	if got := h.statusText(); got != "1-12 of 25 | page 1/3" {
+		t.Fatalf("status = %q, want the first page summary", got)
+	}
+	if pager := h.pager(); pager.prevEnabled || !pager.nextEnabled {
+		t.Fatalf("pager = prev %t next %t, want only Next on page 0", pager.prevEnabled, pager.nextEnabled)
+	}
+
+	// n pages forward, p back, both keeping the cursor row.
+	h.handleKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if h.page != 1 || h.statusText() != "13-24 of 25 | page 2/3" {
+		t.Fatalf("after n: page = %d, status = %q", h.page, h.statusText())
+	}
+	h.handleKey(tea.KeyPressMsg{Code: 'p', Text: "p"})
+	if h.page != 0 {
+		t.Fatalf("after p: page = %d, want 0", h.page)
+	}
+
+	// The Next button pages forward; Prev pages back.
+	pager := h.pager()
+	h.handleClick(pager.nextStart+1, h.height-4)
+	if h.page != 1 {
+		t.Fatalf("after Next click: page = %d, want 1", h.page)
+	}
+	pager = h.pager()
+	h.handleClick(pager.prevStart+1, h.height-4)
+	if h.page != 0 {
+		t.Fatalf("after Prev click: page = %d, want 0", h.page)
+	}
+
+	// The last page shows the remainder and disables Next.
+	h.handleKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	h.handleKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if h.page != 2 || h.statusText() != "25-25 of 25 | page 3/3" {
+		t.Fatalf("on last page: page = %d, status = %q", h.page, h.statusText())
+	}
+	if pager := h.pager(); !pager.prevEnabled || pager.nextEnabled {
+		t.Fatalf("pager = prev %t next %t, want only Prev on the last page", pager.prevEnabled, pager.nextEnabled)
+	}
+	h.handleKey(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	if h.page != 2 {
+		t.Fatalf("n on the last page moved to page %d", h.page)
+	}
+}
+
+func TestNotificationHistory_copyCell(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.notificationEntries = []notificationEntry{
+		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "copy me"},
+	}
+	h := newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+
+	// Travel to the Description column and copy the raw cell value.
+	for range 3 {
+		h.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	}
+	handled, cmd := h.handleKey(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	if !handled {
+		t.Fatal("y was not handled")
+	}
+	if cmd == nil {
+		t.Fatal("y returned no copy command")
+	}
+	// The command chain must run cleanly (OSC 52 message + native no-op).
+	for _, message := range executeCommandAll(cmd) {
+		_ = message
+	}
+
+	// Time and Level cells copy too.
+	h.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	h.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	if _, cmd := h.handleKey(tea.KeyPressMsg{Code: 'y', Text: "y"}); cmd == nil {
+		t.Fatal("y on the Level cell returned no copy command")
+	}
+}
+
+func TestNotificationHistory_filterSearchesAllColumns(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.notificationEntries = []notificationEntry{
+		{id: 3, createdAt: time.Now(), title: notificationTitle, description: "row updated", level: storedLogLevel(log.LevelError)},
+		{id: 2, createdAt: time.Now(), title: notificationTitle, description: "column deleted"},
+		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "ready: chinook"},
+	}
+	h := newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+
+	h.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
+	h.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	if len(h.filtered) != 1 || h.filtered[0].id != 3 {
+		t.Fatalf("filtered = %#v, want only the error entry", h.filtered)
+	}
+	// The level column is searchable: "error" matches the same entry.
+	h.filter.SetValue("")
+	h.applyFilter()
+	h.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	h.handleKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	if len(h.filtered) != 1 || h.filtered[0].id != 3 {
+		t.Fatalf("level search filtered = %#v, want only the error entry", h.filtered)
 	}
 }
