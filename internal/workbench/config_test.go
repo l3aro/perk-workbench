@@ -25,7 +25,7 @@ func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default config file not written: %v", err)
 	}
-	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"table_open_target": "structure"`} {
+	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`} {
 		if !strings.Contains(string(contents), want) {
 			t.Fatalf("default config = %q, want it to contain %q", contents, want)
 		}
@@ -34,7 +34,7 @@ func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
 
 func TestLoadConfig_reads_values(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	contents := `{"browse_page_size": 100, "query_log_page_size": 7, "query_log_retention_days": 90, "notification_retention_days": 45, "notification_timeout_seconds": 20, "read_only": true, "theme": "nord"}`
+	contents := `{"browse_page_size": 100, "query_log_page_size": 7, "query_log_retention_days": 90, "notification_retention_days": 45, "notification_timeout_seconds": 20, "read_only": true, "theme": "nord", "log_level": "warn"}`
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestLoadConfig_reads_values(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig = %v, want nil error", err)
 	}
-	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, Theme: "nord"}
+	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, Theme: "nord", LogLevel: "warn"}
 	if config != want {
 		t.Fatalf("LoadConfig = %#v, want %#v", config, want)
 	}
@@ -59,6 +59,7 @@ func TestLoadConfig_rejects_invalid(t *testing.T) {
 		`{"notification_timeout_seconds": -1}`,
 		`{"notification_timeout_seconds": 86401}`,
 		`{"theme": "vaporwave"}`,
+		`{"log_level": "verbose"}`,
 		`{"table_open_target": "columns"}`,
 		`not json`,
 	} {

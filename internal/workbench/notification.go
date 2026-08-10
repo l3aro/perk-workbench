@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"charm.land/bubbles/v2/list"
@@ -19,6 +20,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/chrome"
+	"github.com/l3aro/perk-workbench/internal/log"
 )
 
 const (
@@ -33,15 +35,158 @@ const (
 	maxNotificationTimeoutSeconds = 86_400
 	// notificationTitle is the fixed title of every captured status.
 	notificationTitle = "Notification"
+	// notificationLevelNone marks an entry that is not a logged event (a
+	// status message). Positive level values are log.Level + 1, matching
+	// the persisted column so older rows keep the neutral appearance.
+	notificationLevelNone = 0
 )
 
 // notificationEntry is one captured status message. id is the SQLite row ID
-// when the entry was persisted for a connection scope, 0 otherwise.
+// when the entry was persisted for a connection scope, 0 otherwise. level is
+// notificationLevelNone for status messages, or log.Level + 1 for entries
+// captured from the event log.
 type notificationEntry struct {
 	id          int64
 	createdAt   time.Time
 	title       string
 	description string
+	level       int
+}
+
+// storedLogLevel converts a log level to the persisted notification level.
+func storedLogLevel(level log.Level) int { return int(level) + 1 }
+
+// logLevelOf resolves the log level of a stored notification level, if any.
+func logLevelOf(level int) (log.Level, bool) {
+	if level <= notificationLevelNone || level > int(log.LevelError)+1 {
+		return log.LevelInfo, false
+	}
+	return log.Level(level - 1), true
+}
+
+// notificationLevelColor returns the theme color for a stored level: the
+// level's severity color for log entries, the neutral secondary otherwise.
+func notificationLevelColor(level int) string {
+	switch l, ok := logLevelOf(level); l {
+	case log.LevelDebug:
+		return colorMuted
+	case log.LevelWarn:
+		return colorWarn
+	case log.LevelError:
+		return colorDanger
+	case log.LevelInfo:
+		if ok {
+			return colorPrimary
+		}
+		return colorSecondary
+	default:
+		return colorSecondary
+	}
+}
+
+// notificationBorderColor returns the popup border color: the level's
+// severity color for logged events, the neutral border otherwise.
+func notificationBorderColor(level int) string {
+	if _, ok := logLevelOf(level); ok {
+		return notificationLevelColor(level)
+	}
+	return colorBorder
+}
+
+// logLevelIcon returns the icon glyph for a log level: Nerd Font icons when
+// enabled (config.json "nerd_font"), geometric symbols otherwise.
+func logLevelIcon(level log.Level) string {
+	if appConfig.NerdFont == nil || *appConfig.NerdFont {
+		switch level {
+		case log.LevelDebug:
+			return "\uf188" // nf-fa-bug
+		case log.LevelWarn:
+			return "\uf071" // nf-fa-exclamation-triangle
+		case log.LevelError:
+			return "\uf057" // nf-fa-times-circle
+		default:
+			return "\uf05a" // nf-fa-info-circle
+		}
+	}
+	switch level {
+	case log.LevelDebug:
+		return "◌"
+	case log.LevelWarn:
+		return "⚠"
+	case log.LevelError:
+		return "✖"
+	default:
+		return "ℹ"
+	}
+}
+
+// notificationIconIndent returns the horizontal space reserved on the
+// title/body rows for the level symbol plus the gap after it, or 0 for
+// plain status notifications (no symbol).
+func notificationIconIndent(level int) int {
+	if l, ok := logLevelOf(level); ok {
+		return max(ansi.StringWidth(logLevelIcon(l)), 1) + 1
+	}
+	return 0
+}
+
+// logWakeupMsg wakes the idle program loop when a log entry arrives from an
+// async command; the outer Update wrapper drains the queue into a popup.
+type logWakeupMsg struct{}
+
+// logProgramSender is the wakeup sink of the running program, an interface
+// so tests can inject a recording stub.
+type logProgramSender interface {
+	Send(tea.Msg)
+}
+
+// logProgram is the attached program, if any. It receives a logWakeupMsg
+// whenever an entry is enqueued outside an update handler so the idle loop
+// wakes and drains the queue. Guarded by logNotificationMu.
+var logProgram logProgramSender
+
+// AttachLogProgram wires the running program into the log notification
+// pipeline so entries logged by async commands surface as popups even when
+// the UI is idle. Call once with the program returned by tea.NewProgram,
+// before program.Run. Attaching nil detaches.
+func AttachLogProgram(program *tea.Program) {
+	logNotificationMu.Lock()
+	logProgram = program
+	logNotificationMu.Unlock()
+}
+
+// Logged events enqueued by the log package notifier between Updates.
+// Draining happens in Model.Update so every log call made inside an update
+// handler surfaces as a popup in the same message cycle.
+var (
+	logNotificationMu    sync.Mutex
+	logNotificationQueue []log.Entry
+)
+
+// enqueueLogNotification is the log package notifier: it queues entries for
+// the next Update drain and wakes the attached program so an entry from an
+// async command surfaces even when the UI is idle. Safe for concurrent
+// callers (async Bubble Tea commands). The wakeup is sent on its own
+// goroutine: the program's message channel is unbuffered, so sending from
+// inside an Update handler (where every current log call happens) would
+// deadlock on the loop waiting for that same Update to return.
+func enqueueLogNotification(entry log.Entry) {
+	logNotificationMu.Lock()
+	logNotificationQueue = append(logNotificationQueue, entry)
+	program := logProgram
+	logNotificationMu.Unlock()
+	if program != nil {
+		go program.Send(logWakeupMsg{})
+	}
+}
+
+// drainLogNotifications returns and clears the queued log entries.
+func drainLogNotifications() []log.Entry {
+	logNotificationMu.Lock()
+	defer logNotificationMu.Unlock()
+	entries := logNotificationQueue
+	logNotificationQueue = nil
+	return entries
 }
 
 // notificationDismissMsg closes the visible popup when its generation still
@@ -108,7 +253,7 @@ func loadNotificationsDB(db *sql.DB, connectionID string) []notificationEntry {
 	if pruneNotifications(db, time.Now(), connectionID) != nil {
 		return nil
 	}
-	rows, err := db.Query(`SELECT id, created_at, title, description FROM notifications WHERE connection_id = ? ORDER BY created_at DESC, id DESC`, connectionID)
+	rows, err := db.Query(`SELECT id, created_at, title, description, level FROM notifications WHERE connection_id = ? ORDER BY created_at DESC, id DESC`, connectionID)
 	if err != nil {
 		return nil
 	}
@@ -117,7 +262,7 @@ func loadNotificationsDB(db *sql.DB, connectionID string) []notificationEntry {
 	for rows.Next() {
 		var createdAt int64
 		var entry notificationEntry
-		if rows.Scan(&entry.id, &createdAt, &entry.title, &entry.description) != nil {
+		if rows.Scan(&entry.id, &createdAt, &entry.title, &entry.description, &entry.level) != nil {
 			continue
 		}
 		entry.createdAt = time.Unix(0, createdAt)
@@ -148,8 +293,8 @@ func saveNotificationDB(db *sql.DB, connectionID string, entry notificationEntry
 	if err := pruneNotifications(db, time.Now(), connectionID); err != nil {
 		return 0, err
 	}
-	result, err := db.Exec(`INSERT INTO notifications(connection_id, created_at, title, description) VALUES (?, ?, ?, ?)`,
-		connectionID, entry.createdAt.UnixNano(), entry.title, entry.description)
+	result, err := db.Exec(`INSERT INTO notifications(connection_id, created_at, title, description, level) VALUES (?, ?, ?, ?, ?)`,
+		connectionID, entry.createdAt.UnixNano(), entry.title, entry.description, entry.level)
 	if err != nil {
 		return 0, err
 	}
@@ -176,10 +321,34 @@ func openNotificationStore(path string) (*sql.DB, error) {
 		connection_id TEXT NOT NULL,
 		created_at INTEGER NOT NULL,
 		title TEXT NOT NULL,
-		description TEXT NOT NULL
+		description TEXT NOT NULL,
+		level INTEGER NOT NULL DEFAULT 0
 	)`); err != nil {
 		db.Close()
 		return nil, err
+	}
+	// Older databases predate the level column; add it so history keeps the
+	// severity of logged events. Pre-existing rows stay neutral (0).
+	rows, err := db.Query(`PRAGMA table_info(notifications)`)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	hasLevel := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt any
+		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil && name == "level" {
+			hasLevel = true
+		}
+	}
+	rows.Close()
+	if !hasLevel {
+		if _, err = db.Exec(`ALTER TABLE notifications ADD COLUMN level INTEGER NOT NULL DEFAULT 0`); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS notifications_connection_created ON notifications (connection_id, created_at DESC, id DESC)`); err != nil {
 		db.Close()
@@ -214,11 +383,28 @@ var notificationDismissTick = func(generation uint64) tea.Cmd {
 // notify captures a status transition as the visible popup and, when a
 // connection profile is active, persists it to history.
 func (m *Model) notify(message string) tea.Cmd {
-	entry := notificationEntry{
+	return m.showNotification(notificationEntry{
 		createdAt:   time.Now(),
 		title:       notificationTitle,
 		description: safeText(message),
-	}
+	})
+}
+
+// notifyLog captures a logged event as the visible popup and, when a
+// connection profile is active, persists it to history. The popup carries
+// the level's icon, title, and severity color.
+func (m *Model) notifyLog(entry log.Entry) tea.Cmd {
+	return m.showNotification(notificationEntry{
+		createdAt:   entry.Time,
+		title:       logLevelIcon(entry.Level) + " " + entry.Level.Title(),
+		description: safeText(entry.Message),
+		level:       storedLogLevel(entry.Level),
+	})
+}
+
+// showNotification surfaces one entry as the visible popup and, when a
+// connection profile is active, persists it to history.
+func (m *Model) showNotification(entry notificationEntry) tea.Cmd {
 	if m.connectionID != "" {
 		if db := m.notificationDB(); db != nil {
 			if id, err := saveNotificationDB(db, m.connectionID, entry); err == nil {
@@ -243,9 +429,9 @@ func (m Model) notificationPopupBounds() (image.Rectangle, bool) {
 	if width < 4 || m.height < 4 {
 		return image.Rectangle{}, false
 	}
-	lines := strings.Split(ansi.Wordwrap(m.notificationPopup.description, width-4, "\n"), "\n")
+	lines := strings.Split(ansi.Wordwrap(m.notificationPopup.description, max(width-4-notificationIconIndent(m.notificationPopup.level), 1), "\n"), "\n")
 	cardW := width + 2
-	cardH := len(lines) + 2
+	cardH := len(lines) + 3 // title row + description + top/bottom border
 	if cardH > m.height-4 {
 		cardH = m.height - 4
 	}

@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
+	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -48,6 +49,10 @@ type Config struct {
 	// default); terminals without a Nerd Font can set false to fall back to
 	// geometric symbols.
 	NerdFont *bool `json:"nerd_font"`
+	// LogLevel is the minimum severity written to the event log and
+	// surfaced as notifications: debug, info, warn, or error. Omitted
+	// keeps the built-in default (info).
+	LogLevel string `json:"log_level"`
 	// TableOpenTarget is the workspace tab focused after selecting a table
 	// in the schema tree: structure (columns), browse, sql, indexes, or
 	// foreign_keys. Omitted keeps the built-in default (structure).
@@ -65,11 +70,27 @@ var appConfig Config
 // config values at their read sites.
 func SetAppConfig(config Config) {
 	appConfig = config
+	log.SetLevel(logLevelFromConfig(config.LogLevel))
 	for _, choice := range themeChoices {
 		if appTheme(config.Theme) == choice {
 			setTheme(choice)
 			return
 		}
+	}
+}
+
+// logLevelFromConfig maps the config log_level value to the log package
+// severity. Unknown and omitted values keep the built-in default (info).
+func logLevelFromConfig(value string) log.Level {
+	switch value {
+	case "debug":
+		return log.LevelDebug
+	case "warn":
+		return log.LevelWarn
+	case "error":
+		return log.LevelError
+	default:
+		return log.LevelInfo
 	}
 }
 
@@ -115,6 +136,8 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("config %q: notification_timeout_seconds must be at most %d, got %d", path, maxNotificationTimeoutSeconds, config.NotificationTimeoutSeconds)
 	case config.Theme != "" && !validTheme(config.Theme):
 		return Config{}, fmt.Errorf("config %q: theme %q is not one of %v", path, config.Theme, themeNames())
+	case config.LogLevel != "" && !validLogLevel(config.LogLevel):
+		return Config{}, fmt.Errorf("config %q: log_level %q is not one of %v", path, config.LogLevel, logLevelNames())
 	case config.TableOpenTarget != "" && !validTableOpenTarget(config.TableOpenTarget):
 		return Config{}, fmt.Errorf("config %q: table_open_target %q is not one of %v", path, config.TableOpenTarget, tableOpenTargetNames())
 	}
@@ -133,6 +156,20 @@ func tableOpenTargetNames() []string {
 func validTheme(name string) bool {
 	for _, choice := range themeChoices {
 		if appTheme(name) == choice {
+			return true
+		}
+	}
+	return false
+}
+
+// logLevelNames returns the accepted log_level values.
+func logLevelNames() []string {
+	return []string{"debug", "info", "warn", "error"}
+}
+
+func validLogLevel(value string) bool {
+	for _, name := range logLevelNames() {
+		if value == name {
 			return true
 		}
 	}
@@ -300,6 +337,7 @@ func defaultConfigValues() map[string]json.RawMessage {
 		Theme:                      string(themeOcean),
 		VimMode:                    boolPtr(true),
 		NerdFont:                   boolPtr(true),
+		LogLevel:                   "info",
 		TableOpenTarget:            tableTargetKey(tabStructure),
 	})
 	if err != nil {

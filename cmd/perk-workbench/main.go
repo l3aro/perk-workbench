@@ -253,11 +253,14 @@ func run(target string, readOnly bool) error {
 		model.SetAI(client, history)
 	}
 
-	final, runErr := tea.NewProgram(
+	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
 		tea.WithoutSignalHandler(),
-	).Run()
+	)
+	// Logs from async commands must wake the idle loop into a notification.
+	workbench.AttachLogProgram(program)
+	final, runErr := program.Run()
 
 	stop()
 	var closeErr error

@@ -17,15 +17,19 @@ func (m Model) drawNotificationPopup(canvas uv.ScreenBuffer) {
 	if !ok {
 		return
 	}
-	width := bounds.Dx() - 2
+	// The level symbol sits on the title row; title text and description
+	// start after it so the whole body is indented together.
+	iconIndent := notificationIconIndent(m.notificationPopup.level)
+	bodyX := bounds.Min.X + 1 + iconIndent
+	width := max(bounds.Dx()-2-iconIndent, 1)
 	lines := strings.Split(ansi.Wordwrap(m.notificationPopup.description, width, "\n"), "\n")
-	innerH := min(len(lines), bounds.Dy()-2)
+	innerH := min(len(lines), max(bounds.Dy()-3, 0))
 	start := max(len(lines)-innerH, 0)
 
 	panelBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
 	canvas.FillArea(&panelBg, bounds)
 
-	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
+	borderStyle := uv.Style{Fg: chrome.ParseHex(notificationBorderColor(m.notificationPopup.level))}
 	canvas.SetCell(bounds.Min.X, bounds.Min.Y, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
 	canvas.SetCell(bounds.Max.X-1, bounds.Min.Y, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
 	canvas.SetCell(bounds.Min.X, bounds.Max.Y-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
@@ -39,14 +43,43 @@ func (m Model) drawNotificationPopup(canvas uv.ScreenBuffer) {
 		canvas.SetCell(bounds.Max.X-1, cy, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 	}
 
+	// Title row: level symbol then level title, both in the severity color,
+	// bold. The symbol may be a double-width glyph, so advance by measured
+	// width like drawConfirmationText does.
+	titleStyle := uv.Style{
+		Fg:    chrome.ParseHex(notificationLevelColor(m.notificationPopup.level)),
+		Bg:    chrome.ParseHex(colorPanel),
+		Attrs: uv.AttrBold,
+	}
+	tx := bounds.Min.X + 1
+	if level, ok := logLevelOf(m.notificationPopup.level); ok {
+		icon := logLevelIcon(level)
+		canvas.SetCell(tx, bounds.Min.Y+1, &uv.Cell{Content: icon, Width: max(ansi.StringWidth(icon), 1), Style: titleStyle})
+		tx += max(ansi.StringWidth(icon), 1) + 1 // symbol + gap
+	}
+	titleText := m.notificationPopup.title
+	if level, ok := logLevelOf(m.notificationPopup.level); ok {
+		titleText = level.Title()
+	}
+	for _, r := range titleText {
+		runeWidth := max(ansi.StringWidth(string(r)), 1)
+		if tx+runeWidth > bounds.Max.X-1 {
+			break
+		}
+		canvas.SetCell(tx, bounds.Min.Y+1, &uv.Cell{Content: string(r), Width: runeWidth, Style: titleStyle})
+		tx += runeWidth
+	}
+
 	ink := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorPanel)}
 	for row := 0; row < innerH; row++ {
-		line := lines[start+row]
-		for col, r := range line {
-			if bounds.Min.X+1+col >= bounds.Max.X-1 {
+		cx := bodyX
+		for _, r := range lines[start+row] {
+			runeWidth := max(ansi.StringWidth(string(r)), 1)
+			if cx+runeWidth > bounds.Max.X-1 {
 				break
 			}
-			canvas.SetCell(bounds.Min.X+1+col, bounds.Min.Y+1+row, &uv.Cell{Content: string(r), Width: 1, Style: ink})
+			canvas.SetCell(cx, bounds.Min.Y+2+row, &uv.Cell{Content: string(r), Width: runeWidth, Style: ink})
+			cx += runeWidth
 		}
 	}
 }

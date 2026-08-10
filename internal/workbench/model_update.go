@@ -33,17 +33,29 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	previousRevision := m.statusRevision
 	updated, cmd := m.updateCore(message)
 	model := updated.(Model)
+	var cmds []tea.Cmd
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	statusWritten := model.Status != previousStatus ||
 		model.StatusRevision() != previousCoreRevision ||
 		model.statusRevision != previousRevision
-	if statusWritten && model.Status != "" {
-		notifyCmd := model.notify(model.Status)
-		if cmd == nil {
-			return model, notifyCmd
-		}
-		return model, tea.Batch(cmd, notifyCmd)
+	if statusWritten && model.Status != "" && !model.skipStatusPopup {
+		cmds = append(cmds, model.notify(model.Status))
 	}
-	return model, cmd
+	model.skipStatusPopup = false
+	// Logged events surface as popups after the status one so the level
+	// title, icon, and color win the visible slot.
+	for _, entry := range drainLogNotifications() {
+		cmds = append(cmds, model.notifyLog(entry))
+	}
+	if len(cmds) == 0 {
+		return model, nil
+	}
+	if len(cmds) == 1 {
+		return model, cmds[0]
+	}
+	return model, tea.Batch(cmds...)
 }
 
 func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -55,6 +67,12 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.notificationHistory != nil {
 			m.notificationHistory.resize(window.Width, window.Height)
 		}
+		return m, nil
+	}
+
+	// A log entry arrived from outside an update handler (an async
+	// command): the outer Update wrapper drains the queue into a popup.
+	if _, ok := message.(logWakeupMsg); ok {
 		return m, nil
 	}
 

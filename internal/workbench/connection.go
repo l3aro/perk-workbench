@@ -158,6 +158,10 @@ func (m *Model) editSelectedRecentConnection() tea.Cmd {
 	command := m.connection.rebuildForm()
 	m.connection.focus = connectionFocusForm
 	m.setStatus("editing " + safeText(connection.Name))
+	// The editing transition surfaces as a Debug log notification, not a
+	// plain status popup.
+	m.skipStatusPopup = true
+	log.Debug("editing " + safeText(connection.Name))
 	return m.openForm(command, m.connection.focusForm)
 }
 

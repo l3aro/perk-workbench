@@ -28,7 +28,7 @@ internal/database -- target routing --> sqlite | mysql | postgres | mongodb
 internal/core      query lifecycle, focus, and tab state
 internal/chrome    stateless terminal rendering
 internal/clipboard optional native clipboard support
-internal/log       event types
+internal/log       event log with debug/info/warn/error levels
 ```
 
 `cmd/perk-workbench` owns process setup: command-line parsing, signal context, optional clipboard and AI initialization, Bubble Tea startup, and closing the database service and AI history.
@@ -73,6 +73,7 @@ Keybindings load from the XDG config path. If no file exists, defaults are writt
 App defaults load from `$XDG_CONFIG_HOME/perk-workbench/config.json` (also written on first run). Supported fields, all optional (0/omitted = built-in default):
 
 - `browse_page_size` — default row limit for table browsing, within `[1, 500]`
+- `log_level` — minimum severity written to `event.log` and surfaced as notifications: `debug`, `info`, `warn`, or `error` (default `info`; `debug` opts the database-ready notice back in)
 - `query_log_page_size` — query-log pane page size, within `[1, 100]`
 - `query_log_retention_days` — days of query-log history kept (default 30; set `PERK_WORKBENCH_QUERY_LOG_RETENTION_DAYS=0` to keep none)
 - `read_only` — open every connection read-only by default; the per-connection form toggle still opts out

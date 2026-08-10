@@ -66,5 +66,9 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		name = configured
 	}
 	m.setStatus(safeText("ready: " + name))
+	// The ready transition surfaces as a Debug log notification (visible
+	// only when log_level allows it), not as a plain status popup.
+	m.skipStatusPopup = true
+	log.Debug("ready: " + name)
 	return m, m.setSchemaObjects(message.objects)
 }

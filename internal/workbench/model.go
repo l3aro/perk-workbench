@@ -15,6 +15,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/go-sql-driver/mysql"
 	"github.com/l3aro/perk-workbench/internal/core"
+	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -46,74 +47,77 @@ const (
 
 type Model struct {
 	core.Workflow
-	pickerDir                                                                                      string
-	appContext                                                                                     context.Context
-	openDatabase                                                                                   OpenDatabase
-	browseLoading, browsePending                                                                   bool
-	reconnectPending                                                                               bool
-	openTag                                                                                        uint64
-	treeAnim                                                                                       *treeAnim
-	browsePageTag, editorEditTag, completionRequestTag                                             uint64
-	editorValidity                                                                                 sqlValidity
-	sqlValidationTag                                                                               uint64
-	schema, picker, recent                                                                         list.Model
-	schemaFilter, recentFilter                                                                     textinput.Model
-	structure, browse, results, indexes, foreignKeys, queryLog                                     table.Model
-	structureRows, indexRows, foreignKeyRows                                                       []table.Row
-	structureColumns                                                                               []sharedsql.ColumnInfo
-	completionColumns                                                                              map[string][]string
-	completionTable                                                                                string
-	indexInfo                                                                                      []sharedsql.IndexInfo
-	foreignKeyInfo                                                                                 []sharedsql.ForeignKeyInfo
-	referencingForeignKeyInfo                                                                      []sharedsql.ReferencingForeignKeyInfo
-	browseNumericColumns, resultsNumericColumns                                                    []bool
-	databaseInfo                                                                                   sharedsql.DatabaseInfo
-	browseResult                                                                                   sharedsql.Result
-	resultsRaw                                                                                     [][]*string
-	resultsStatus, browseStatus                                                                    string
-	queryLogEntries                                                                                []queryLogEntry
-	queryLogDetail                                                                                 *queryLogEntry
-	queryLogPage, queryLogPageSize                                                                 int
-	queryLogPendingG                                                                               bool
-	queryHistory                                                                                   []string
-	historyIndex                                                                                   int
-	editor                                                                                         *editor
-	chat                                                                                           chatModel
-	explainPicker                                                                                  *explainPicker
-	chatHistoryPicker                                                                              *huh.Form
-	formMode                                                                                       *formModeController
-	columnForm                                                                                     columnForm
-	tableForm                                                                                      tableForm
-	tableFormRunning                                                                               bool
-	browseForm                                                                                     browseForm
-	browseFilterForm                                                                               *browseFilterForm
-	browseSettings                                                                                 browseSettings
-	browsePageSize                                                                                 int
-	indexForm                                                                                      indexForm
-	foreignKeyForm                                                                                 foreignKeyForm
-	cellEditor                                                                                     *cellEditor
-	cellViewer                                                                                     *cellViewer
-	connection                                                                                     connectionForm
-	connectionID                                                                                   string
-	recentConnections                                                                              []recentConnection
-	schemaObjects                                                                                  []sharedsql.SchemaObject
-	expandedDatabases                                                                              map[string]bool
-	expandedSchemas                                                                                map[string]bool
-	commandPalette                                                                                 *commandPalette
-	themePicker                                                                                    *themePicker
-	tableTargetPicker                                                                              *tableTargetPicker
-	quitDialog                                                                                     *confirmationDialog
-	queryConfirmation                                                                              *queryConfirmation
-	recentPath, queryLogPath, configPath, notificationPath                                         string
-	queryLogDatabase                                                                               *sql.DB
-	notificationDatabase                                                                           *sql.DB
-	notificationEntries                                                                            []notificationEntry
-	notificationPopup                                                                              *notificationEntry
-	notificationDetail                                                                             *notificationEntry
-	notificationHistory                                                                            *notificationHistory
-	notificationGeneration                                                                         uint64
-	notificationPopupSwallowRelease                                                                bool
-	statusRevision                                                                                 uint64
+	pickerDir                                                  string
+	appContext                                                 context.Context
+	openDatabase                                               OpenDatabase
+	browseLoading, browsePending                               bool
+	reconnectPending                                           bool
+	openTag                                                    uint64
+	treeAnim                                                   *treeAnim
+	browsePageTag, editorEditTag, completionRequestTag         uint64
+	editorValidity                                             sqlValidity
+	sqlValidationTag                                           uint64
+	schema, picker, recent                                     list.Model
+	schemaFilter, recentFilter                                 textinput.Model
+	structure, browse, results, indexes, foreignKeys, queryLog table.Model
+	structureRows, indexRows, foreignKeyRows                   []table.Row
+	structureColumns                                           []sharedsql.ColumnInfo
+	completionColumns                                          map[string][]string
+	completionTable                                            string
+	indexInfo                                                  []sharedsql.IndexInfo
+	foreignKeyInfo                                             []sharedsql.ForeignKeyInfo
+	referencingForeignKeyInfo                                  []sharedsql.ReferencingForeignKeyInfo
+	browseNumericColumns, resultsNumericColumns                []bool
+	databaseInfo                                               sharedsql.DatabaseInfo
+	browseResult                                               sharedsql.Result
+	resultsRaw                                                 [][]*string
+	resultsStatus, browseStatus                                string
+	queryLogEntries                                            []queryLogEntry
+	queryLogDetail                                             *queryLogEntry
+	queryLogPage, queryLogPageSize                             int
+	queryLogPendingG                                           bool
+	queryHistory                                               []string
+	historyIndex                                               int
+	editor                                                     *editor
+	chat                                                       chatModel
+	explainPicker                                              *explainPicker
+	chatHistoryPicker                                          *huh.Form
+	formMode                                                   *formModeController
+	columnForm                                                 columnForm
+	tableForm                                                  tableForm
+	tableFormRunning                                           bool
+	browseForm                                                 browseForm
+	browseFilterForm                                           *browseFilterForm
+	browseSettings                                             browseSettings
+	browsePageSize                                             int
+	indexForm                                                  indexForm
+	foreignKeyForm                                             foreignKeyForm
+	cellEditor                                                 *cellEditor
+	cellViewer                                                 *cellViewer
+	connection                                                 connectionForm
+	connectionID                                               string
+	recentConnections                                          []recentConnection
+	schemaObjects                                              []sharedsql.SchemaObject
+	expandedDatabases                                          map[string]bool
+	expandedSchemas                                            map[string]bool
+	commandPalette                                             *commandPalette
+	themePicker                                                *themePicker
+	tableTargetPicker                                          *tableTargetPicker
+	quitDialog                                                 *confirmationDialog
+	queryConfirmation                                          *queryConfirmation
+	recentPath, queryLogPath, configPath, notificationPath     string
+	queryLogDatabase                                           *sql.DB
+	notificationDatabase                                       *sql.DB
+	notificationEntries                                        []notificationEntry
+	notificationPopup                                          *notificationEntry
+	notificationDetail                                         *notificationEntry
+	notificationHistory                                        *notificationHistory
+	notificationGeneration                                     uint64
+	notificationPopupSwallowRelease                            bool
+	statusRevision                                             uint64
+	// skipStatusPopup suppresses the plain status popup for the current
+	// update; the status change is surfaced as a log notification instead.
+	skipStatusPopup                                                                                bool
 	keybindings                                                                                    Keybindings
 	tableFilterInput                                                                               textinput.Model
 	width, height, schemaWidth, editorWidth, chatWidth                                             int
@@ -270,6 +274,8 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		// Best-effort: persist the assigned legacy profile IDs immediately.
 		_ = saveRecentConnections(model.recentPath, model.recentConnections)
 	}
+	// Route every logged event into the notification popup pipeline.
+	log.SetNotifier(enqueueLogNotification)
 	_ = model.recent.SetItems(recentListItems(model.recentConnections))
 	return model
 }
