@@ -573,6 +573,18 @@ func (h *notificationHistory) levelText(entry notificationEntry) string {
 // match across time, level, title, and description), re-sorts, and resets
 // to the first page.
 func (h *notificationHistory) applyFilter() {
+	h.refilter()
+	h.page = 0
+	h.table.SetCursor(0)
+	h.syncPage()
+}
+
+// refilter rebuilds filtered from entries under the current filter query
+// (case-insensitive substring match across time, level, title, and
+// description), then applies the active sort. Called whenever the filter
+// or the sort state changes, so removing a sort restores the default
+// newest-first order instead of keeping the last sorted order.
+func (h *notificationHistory) refilter() {
 	query := strings.ToLower(strings.TrimSpace(h.filter.Value()))
 	h.filtered = h.filtered[:0]
 	for _, entry := range h.entries {
@@ -581,9 +593,6 @@ func (h *notificationHistory) applyFilter() {
 		}
 	}
 	h.sortFiltered()
-	h.page = 0
-	h.table.SetCursor(0)
-	h.syncPage()
 }
 
 // searchText joins every searchable field of one entry.
@@ -635,7 +644,7 @@ func (h *notificationHistory) cycleSort() {
 	} else {
 		h.sortCol, h.sortDesc = h.selectedCol, false
 	}
-	h.sortFiltered()
+	h.refilter()
 	h.page = 0
 	h.table.SetCursor(0)
 	if anchored {

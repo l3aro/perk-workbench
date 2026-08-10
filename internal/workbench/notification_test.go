@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -393,6 +394,16 @@ func TestNotificationHistory_sortCyclesAndHeaderClick(t *testing.T) {
 	h = model.notificationHistory
 	if h.sortCol != 2 || !h.sortDesc || h.filtered[0].id != 3 {
 		t.Fatalf("after second header click: sort = col %d desc %t, first = %d, want Title descending with id 3", h.sortCol, h.sortDesc, h.filtered[0].id)
+	}
+	// A third s restores the default entry order, not the Title-desc
+	// order: Title asc, desc, then newest-first (id 3, 2, 1).
+	h.handleKey(tea.KeyPressMsg{Code: 's', Text: "s"})
+	got := make([]int64, len(h.filtered))
+	for index, entry := range h.filtered {
+		got[index] = entry.id
+	}
+	if h.sortCol != -1 || !slices.Equal(got, []int64{3, 2, 1}) {
+		t.Fatalf("after third s on Title: sort = col %d, order = %v, want default newest-first 3 2 1", h.sortCol, got)
 	}
 }
 
