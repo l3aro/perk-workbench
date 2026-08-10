@@ -498,6 +498,9 @@ func (h *notificationHistory) resize(width, height int) {
 	h.width, h.height = width, height
 	h.pageSize = max(height-12, 1)
 	h.page = clamp(h.page, 0, max(h.pageCount()-1, 0))
+	// The input's View is one cell wider than its Width, so leave one cell
+	// of slack against the filter box's content width.
+	h.filter.SetWidth(max(h.viewportWidth()-7, 1))
 	if h.viewer != nil {
 		h.viewer.resize(max(width-8, 1), max(height-10, 1))
 	}

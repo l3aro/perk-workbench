@@ -123,7 +123,7 @@ func (m Model) drawNotificationHistory(canvas uv.ScreenBuffer) {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorBorder)).
 		Padding(0, 1).
-		Width(max(innerW-4, 1))
+		Width(innerW)
 	tableLines := strings.Split(tableViewportViewWithAlignment(h.table, nil, h.offset, innerW, h.selectedCol), "\n")
 	pager := h.pager()
 	var b strings.Builder
@@ -132,6 +132,9 @@ func (m Model) drawNotificationHistory(canvas uv.ScreenBuffer) {
 	b.WriteString(strings.Join(tableLines, "\n"))
 	b.WriteString("\n\n")
 	b.WriteString(pager.line)
+	// Width is the physical box width in lipgloss v2 (content is wrapped
+	// at Width-frame), so Width(boxW) leaves exactly innerW cells for the
+	// content lines.
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorPrimary)).
