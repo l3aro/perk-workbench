@@ -117,7 +117,7 @@ type Model struct {
 	statusRevision                                             uint64
 	// skipStatusPopup suppresses the plain status popup for the current
 	// update; the status change is surfaced as a log notification instead.
-	skipStatusPopup                                                                                bool
+	skipStatusPopup bool
 	// skipNotificationPersist keeps the next drained log notification
 	// transient: the popup and event.log stay, but history persistence is
 	// skipped. The opening transition logs before the connection profile
