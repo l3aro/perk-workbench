@@ -45,9 +45,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	model.skipStatusPopup = false
 	// Logged events surface as popups after the status one so the level
-	// title, icon, and color win the visible slot.
+	// title, icon, and color win the visible slot. A transition that logs
+	// before its profile scope exists marks its entries transient so they
+	// never bind history to the wrong connection.
+	transient := model.skipNotificationPersist
+	model.skipNotificationPersist = false
 	for _, entry := range drainLogNotifications() {
-		cmds = append(cmds, model.notifyLog(entry))
+		if transient {
+			cmds = append(cmds, model.notifyLogTransient(entry))
+		} else {
+			cmds = append(cmds, model.notifyLog(entry))
+		}
 	}
 	if len(cmds) == 0 {
 		return model, nil
@@ -782,6 +790,13 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, readDirectory(message.target)
 		}
 		m.BeginOpening(message.target, "opening database")
+		// The opening transition surfaces as a Debug log notification
+		// (visible only when log_level allows it), not as a plain status
+		// popup. It is also transient: it logs before the connection
+		// profile exists, so it never binds history to a scope.
+		m.skipStatusPopup = true
+		m.skipNotificationPersist = true
+		log.Debug("opening database")
 		return m, m.openTarget(message.target)
 	case querySucceededMsg:
 		return m.updateQuerySuccess(message)

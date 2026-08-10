@@ -385,7 +385,7 @@ func (m *Model) notify(message string) tea.Cmd {
 		createdAt:   time.Now(),
 		title:       notificationTitle,
 		description: safeText(message),
-	})
+	}, true)
 }
 
 // notifyLog captures a logged event as the visible popup and, when a
@@ -397,13 +397,26 @@ func (m *Model) notifyLog(entry log.Entry) tea.Cmd {
 		title:       logLevelIcon(entry.Level) + " " + entry.Level.Title(),
 		description: safeText(entry.Message),
 		level:       storedLogLevel(entry.Level),
-	})
+	}, true)
+}
+
+// notifyLogTransient captures a logged event as the visible popup without
+// persisting it to history. Transitions that log before a connection
+// profile exists (the opening notice) use it, so the entry is never bound
+// to the wrong scope.
+func (m *Model) notifyLogTransient(entry log.Entry) tea.Cmd {
+	return m.showNotification(notificationEntry{
+		createdAt:   entry.Time,
+		title:       logLevelIcon(entry.Level) + " " + entry.Level.Title(),
+		description: safeText(entry.Message),
+		level:       storedLogLevel(entry.Level),
+	}, false)
 }
 
 // showNotification surfaces one entry as the visible popup and, when a
-// connection profile is active, persists it to history.
-func (m *Model) showNotification(entry notificationEntry) tea.Cmd {
-	if m.connectionID != "" {
+// connection profile is active and persist is set, saves it to history.
+func (m *Model) showNotification(entry notificationEntry, persist bool) tea.Cmd {
+	if persist && m.connectionID != "" {
 		if db := m.notificationDB(); db != nil {
 			if id, err := saveNotificationDB(db, m.connectionID, entry); err == nil {
 				entry.id = id

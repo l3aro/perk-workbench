@@ -236,6 +236,13 @@ func (m Model) openConnection() (tea.Model, tea.Cmd) {
 	m.ReadOnly = m.connection.values.readOnly
 	target := m.connectionTarget()
 	m.BeginOpening(target, "opening "+safeText(m.connection.connectionName()))
+	// The opening transition surfaces as a Debug log notification (visible
+	// only when log_level allows it), not as a plain status popup. It is
+	// also transient: it logs before the connection profile exists, so it
+	// never binds history to a scope.
+	m.skipStatusPopup = true
+	m.skipNotificationPersist = true
+	log.Debug("opening " + safeText(m.connection.connectionName()))
 	return m, m.openTarget(target)
 }
 

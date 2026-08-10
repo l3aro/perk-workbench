@@ -254,6 +254,203 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	}
 }
 
+// TestLogNotification_openingStatusIsDebugLog pins the connection-form
+// opening transition: it keeps the opening status text but surfaces as a
+// Debug log notification instead of a plain status popup, so the default
+// info level silences it while log_level "debug" opts it back in.
+func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	previous := appConfig
+	t.Cleanup(func() {
+		appConfig = previous
+		log.SetNotifier(nil)
+		log.SetLevel(log.LevelInfo)
+	})
+
+	// Default level (info): the form keeps the opening status text but the
+	// debug entry is dropped, so nothing pops up and nothing reaches
+	// event.log.
+	SetAppConfig(Config{})
+	model := New("", context.Background(), testOpen, false)
+	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+	updated, _ := model.Update(connectionActionMsg{action: connectionActionConnect})
+	model = updated.(Model)
+	if model.Status != "opening Scratch" {
+		t.Fatalf("status = %q, want the opening status kept", model.Status)
+	}
+	if popup := model.notificationPopup; popup != nil {
+		t.Fatalf("default level surfaced a popup: %#v", popup)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "perk-workbench", "event.log")); err == nil {
+		t.Fatal("event.log created for a debug-only open at the default level")
+	}
+
+	// Debug level: the same open surfaces a Debug-typed popup and writes
+	// the DEBUG line. The opening entry is transient: completing the open
+	// persists the ready entry under the new profile scope, never the
+	// opening one.
+	SetAppConfig(Config{LogLevel: "debug"})
+	model = New("", context.Background(), testOpen, false)
+	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+	updated, _ = model.Update(connectionActionMsg{action: connectionActionConnect})
+	model = updated.(Model)
+	popup := model.notificationPopup
+	if popup == nil {
+		t.Fatal("debug level did not surface the opening popup")
+	}
+	if popup.level != storedLogLevel(log.LevelDebug) {
+		t.Fatalf("popup level = %d, want %d", popup.level, storedLogLevel(log.LevelDebug))
+	}
+	if !strings.Contains(popup.title, "Debug") || !strings.Contains(popup.description, "opening Scratch") {
+		t.Fatalf("popup = %#v, want the Debug opening popup", popup)
+	}
+	// The returned command is a batch with the dismiss tick; drive the
+	// open target directly so the open completes deterministically.
+	updated, _ = model.Update(model.openTarget(":memory:")())
+	model = updated.(Model)
+	history := loadNotifications(filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
+	if len(history) == 0 {
+		t.Fatal("history has no retained entries after the open")
+	}
+	for _, entry := range history {
+		if strings.Contains(entry.description, "opening") {
+			t.Fatalf("history retained the transient opening entry: %#v", entry)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "perk-workbench", "event.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "DEBUG: opening Scratch") {
+		t.Fatalf("event.log = %q, want the DEBUG opening line", b)
+	}
+}
+
+// TestLogNotification_openingPickerStatusIsDebugLog pins the picker's
+// opening transition: same Debug log treatment as the connection form, so
+// the default info level silences it while log_level "debug" opts it back
+// in.
+func TestLogNotification_openingPickerStatusIsDebugLog(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	previous := appConfig
+	t.Cleanup(func() {
+		appConfig = previous
+		log.SetNotifier(nil)
+		log.SetLevel(log.LevelInfo)
+	})
+
+	// Default level (info): the picker keeps the opening status text but
+	// the debug entry is dropped, so nothing pops up.
+	SetAppConfig(Config{})
+	model := New("", context.Background(), testOpen, false)
+	updated, _ := model.Update(pickerSelectionMsg{target: ":memory:"})
+	model = updated.(Model)
+	if model.Status != "opening database" {
+		t.Fatalf("status = %q, want the opening status kept", model.Status)
+	}
+	if popup := model.notificationPopup; popup != nil {
+		t.Fatalf("default level surfaced a popup: %#v", popup)
+	}
+
+	// Debug level: the same selection surfaces a Debug-typed popup and
+	// writes the DEBUG line. The opening entry is transient: completing
+	// the open persists the ready entry under the new profile scope,
+	// never the opening one.
+	SetAppConfig(Config{LogLevel: "debug"})
+	model = New("", context.Background(), testOpen, false)
+	updated, _ = model.Update(pickerSelectionMsg{target: ":memory:"})
+	model = updated.(Model)
+	popup := model.notificationPopup
+	if popup == nil {
+		t.Fatal("debug level did not surface the opening popup")
+	}
+	if popup.level != storedLogLevel(log.LevelDebug) {
+		t.Fatalf("popup level = %d, want %d", popup.level, storedLogLevel(log.LevelDebug))
+	}
+	if !strings.Contains(popup.title, "Debug") || !strings.Contains(popup.description, "opening database") {
+		t.Fatalf("popup = %#v, want the Debug opening popup", popup)
+	}
+	// The returned command is a batch with the dismiss tick; drive the
+	// open target directly so the open completes deterministically.
+	updated, _ = model.Update(model.openTarget(":memory:")())
+	model = updated.(Model)
+	history := loadNotifications(filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
+	if len(history) == 0 {
+		t.Fatal("history has no retained entries after the open")
+	}
+	for _, entry := range history {
+		if strings.Contains(entry.description, "opening") {
+			t.Fatalf("history retained the transient opening entry: %#v", entry)
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "perk-workbench", "event.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "DEBUG: opening database") {
+		t.Fatalf("event.log = %q, want the DEBUG opening line", b)
+	}
+}
+
+// TestLogNotification_openingDoesNotBindPreviousScope pins the transient
+// rule: the opening notice logs before the new connection profile exists,
+// so it must never persist under a scope that is still live. (Today's UI
+// clears the scope when leaving a session, but any future connect path
+// that skips that reset would otherwise mis-scope the entry.)
+func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	previous := appConfig
+	t.Cleanup(func() {
+		appConfig = previous
+		log.SetNotifier(nil)
+		log.SetLevel(log.LevelInfo)
+	})
+	SetAppConfig(Config{LogLevel: "debug"})
+	historyPath := filepath.Join(dir, "perk-workbench", "data.db")
+
+	model := New("", context.Background(), testOpen, false)
+	// A live connection's scope is still assigned while the next open is
+	// in flight.
+	model.connectionID = "live-scope"
+	model.connection.values.name, model.connection.values.target = "Second", ":memory:"
+
+	// The Debug opening popup shows while the scope is still the live
+	// connection's.
+	updated, _ := model.Update(connectionActionMsg{action: connectionActionConnect})
+	model = updated.(Model)
+	popup := model.notificationPopup
+	if popup == nil || !strings.Contains(popup.title, "Debug") || !strings.Contains(popup.description, "opening Second") {
+		t.Fatalf("popup = %#v, want the Debug opening Second popup", popup)
+	}
+	if got := loadNotifications(historyPath, "live-scope"); len(got) != 0 {
+		t.Fatalf("opening entry bound to the live scope: %#v", got)
+	}
+
+	// Completing the open assigns the new scope and persists only its
+	// ready entry.
+	updated, _ = model.Update(model.openTarget(":memory:")())
+	model = updated.(Model)
+	if model.connectionID == "live-scope" {
+		t.Fatal("open did not assign a new profile scope")
+	}
+	for _, entries := range [][]notificationEntry{
+		loadNotifications(historyPath, "live-scope"),
+		loadNotifications(historyPath, model.connectionID),
+	} {
+		for _, entry := range entries {
+			if strings.Contains(entry.description, "opening") {
+				t.Fatalf("opening entry retained in history: %#v", entry)
+			}
+		}
+	}
+	if got := loadNotifications(historyPath, model.connectionID); len(got) == 0 {
+		t.Fatal("new scope has no retained entries after the open")
+	}
+}
+
 func TestLogNotification_endToEndFileAndPopup(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)

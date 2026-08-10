@@ -118,6 +118,11 @@ type Model struct {
 	// skipStatusPopup suppresses the plain status popup for the current
 	// update; the status change is surfaced as a log notification instead.
 	skipStatusPopup                                                                                bool
+	// skipNotificationPersist keeps the next drained log notification
+	// transient: the popup and event.log stay, but history persistence is
+	// skipped. The opening transition logs before the connection profile
+	// exists, so persisting it would bind it to the wrong scope.
+	skipNotificationPersist                                                                        bool
 	keybindings                                                                                    Keybindings
 	tableFilterInput                                                                               textinput.Model
 	width, height, schemaWidth, editorWidth, chatWidth                                             int
