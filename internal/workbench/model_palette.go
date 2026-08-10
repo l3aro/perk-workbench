@@ -160,6 +160,16 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+	case "schema.expand":
+		if m.State == stateReady && m.Focus == focusSchema {
+			return m.expandSchemaLevel()
+		}
+		return m, nil
+	case "schema.collapse":
+		if m.State == stateReady && m.Focus == focusSchema {
+			return m.collapseSchemaLevel()
+		}
+		return m, nil
 	case "schema.add_table":
 		if m.State == stateReady && m.Focus == focusSchema {
 			if item, ok := m.schema.SelectedItem().(schemaItem); ok {

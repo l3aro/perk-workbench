@@ -5,6 +5,99 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// expandSchemaLevel expands the selected node when collapsed (with the
+// accordion animation) or moves the cursor to its first child when already
+// expanded. Leaves are a no-op.
+func (m Model) expandSchemaLevel() (tea.Model, tea.Cmd) {
+	item, ok := m.schema.SelectedItem().(schemaItem)
+	if !ok {
+		return m, nil
+	}
+	switch {
+	case item.root:
+		if m.expandedDatabases[item.database] {
+			return m.schemaSelectFirstChild(item)
+		}
+		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
+	case item.kind == "schema":
+		if m.expandedSchemas[m.schemaExpansionKey(item.database, item.schema)] {
+			return m.schemaSelectFirstChild(item)
+		}
+		return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
+	default:
+		return m, nil // table/view leaf
+	}
+}
+
+// collapseSchemaLevel collapses the selected node when expanded (with the
+// accordion animation) or moves the cursor up to its parent row: the schema
+// for a PostgreSQL table, the database root for anything else. Roots that
+// are already collapsed are a no-op.
+func (m Model) collapseSchemaLevel() (tea.Model, tea.Cmd) {
+	item, ok := m.schema.SelectedItem().(schemaItem)
+	if !ok {
+		return m, nil
+	}
+	switch {
+	case item.root:
+		if !m.expandedDatabases[item.database] {
+			return m, nil
+		}
+		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
+	case item.kind == "schema":
+		key := m.schemaExpansionKey(item.database, item.schema)
+		if m.expandedSchemas[key] {
+			return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
+		}
+		return m.schemaSelectParent(item)
+	default:
+		return m.schemaSelectParent(item)
+	}
+}
+
+// schemaSelectFirstChild moves the cursor to the first visible child row of
+// an expanded node: the next row when it belongs to the node's subtree.
+func (m Model) schemaSelectFirstChild(item schemaItem) (tea.Model, tea.Cmd) {
+	items := m.schema.Items()
+	index := m.schema.Index()
+	if index+1 >= len(items) {
+		return m, nil
+	}
+	next, ok := items[index+1].(schemaItem)
+	if !ok || next.database != item.database {
+		return m, nil
+	}
+	if item.kind == "schema" && next.schema != item.schema {
+		return m, nil
+	}
+	m.schema.Select(index + 1)
+	return m, nil
+}
+
+// schemaSelectParent moves the cursor to the parent row of the selected
+// item: the schema row for a PostgreSQL table, the database root otherwise.
+func (m Model) schemaSelectParent(item schemaItem) (tea.Model, tea.Cmd) {
+	items := m.schema.Items()
+	for index := m.schema.Index() - 1; index >= 0; index-- {
+		parent, ok := items[index].(schemaItem)
+		if !ok || parent.database != item.database {
+			continue
+		}
+		if m.databaseInfo.Product == "PostgreSQL" && (item.kind == "table" || item.kind == "view") {
+			if parent.kind == "schema" && parent.schema == item.schema {
+				m.schema.Select(index)
+				return m, nil
+			}
+			continue
+		}
+		if parent.root {
+			m.schema.Select(index)
+			return m, nil
+		}
+	}
+	return m, nil
+}
+
 func moveTableCell(resultTable *table.Model, selectedColumn, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
 	switch keyPress.Key().Code {
 	case tea.KeyUp, 'k':

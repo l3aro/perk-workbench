@@ -114,6 +114,10 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return m, m.selectSchemaTable(item)
 					}
+				case m.keybindings.Match(keyPress, "schema.expand", []scope{scopeView, scopeGlobal}):
+					return m.expandSchemaLevel()
+				case m.keybindings.Match(keyPress, "schema.collapse", []scope{scopeView, scopeGlobal}):
+					return m.collapseSchemaLevel()
 				}
 			}
 			m.schema, command = m.schema.Update(message)
