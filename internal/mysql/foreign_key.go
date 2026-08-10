@@ -16,9 +16,9 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 			referential_constraints.update_rule, referential_constraints.delete_rule
 		FROM information_schema.key_column_usage
 		JOIN information_schema.referential_constraints
-			ON referential_constraints.constraint_schema = key_column_usage.constraint_schema
-			AND referential_constraints.table_name = key_column_usage.table_name
-			AND referential_constraints.constraint_name = key_column_usage.constraint_name
+			ON BINARY referential_constraints.constraint_schema = BINARY key_column_usage.constraint_schema
+			AND BINARY referential_constraints.table_name = BINARY key_column_usage.table_name
+			AND BINARY referential_constraints.constraint_name = BINARY key_column_usage.constraint_name
 		WHERE key_column_usage.table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND key_column_usage.table_name = ?
 			AND key_column_usage.referenced_table_name IS NOT NULL
 		ORDER BY key_column_usage.constraint_name, key_column_usage.ordinal_position`, database, name)
@@ -55,9 +55,9 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 			referential_constraints.update_rule, referential_constraints.delete_rule
 		FROM information_schema.key_column_usage
 		JOIN information_schema.referential_constraints
-			ON referential_constraints.constraint_schema = key_column_usage.constraint_schema
-			AND referential_constraints.table_name = key_column_usage.table_name
-			AND referential_constraints.constraint_name = key_column_usage.constraint_name
+			ON BINARY referential_constraints.constraint_schema = BINARY key_column_usage.constraint_schema
+			AND BINARY referential_constraints.table_name = BINARY key_column_usage.table_name
+			AND BINARY referential_constraints.constraint_name = BINARY key_column_usage.constraint_name
 		WHERE key_column_usage.table_schema = COALESCE(NULLIF(?, ''), DATABASE())
 			AND key_column_usage.referenced_table_schema = COALESCE(NULLIF(?, ''), DATABASE())
 			AND key_column_usage.referenced_table_name = ?
