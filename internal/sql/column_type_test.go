@@ -58,6 +58,20 @@ func TestColumnTypes_attributeOptionsPerDriverAndType(t *testing.T) {
 	}
 }
 
+func TestColumnTypes_everyTypeHasFriendlyLabel(t *testing.T) {
+	for _, product := range []string{"MySQL", "PostgreSQL", "SQLite"} {
+		for _, typeDefinition := range ColumnTypes(DatabaseInfo{Product: product}) {
+			if typeDefinition.Label == "" {
+				t.Errorf("%s %s has no picker label", product, typeDefinition.Name)
+				continue
+			}
+			if !strings.HasPrefix(typeDefinition.Label, typeDefinition.Name+" — ") {
+				t.Errorf("%s %s label = %q, want %q prefix", product, typeDefinition.Name, typeDefinition.Label, typeDefinition.Name+" — ")
+			}
+		}
+	}
+}
+
 func TestColumnTypeDeclaration_buildsParameterizedType(t *testing.T) {
 	// Given
 	typeDefinition := ColumnType{Name: "DECIMAL", Parameters: []ColumnTypeParameter{{Name: "Precision", Default: "10"}, {Name: "Scale", Default: "2"}}}

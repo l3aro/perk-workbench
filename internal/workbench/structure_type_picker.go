@@ -43,7 +43,11 @@ func (f columnForm) typeIndex() int {
 func (f columnForm) typeChoices() []huh.Option[string] {
 	choices := make([]huh.Option[string], len(f.typeOptions))
 	for index, option := range f.typeOptions {
-		choices[index] = huh.NewOption(option.Name, option.Name)
+		label := option.Label
+		if label == "" {
+			label = option.Name
+		}
+		choices[index] = huh.NewOption(label, option.Name)
 	}
 	return choices
 }

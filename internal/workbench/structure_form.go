@@ -423,7 +423,14 @@ func (f *columnForm) rebuildForm() {
 		newEditableInput(huh.NewInput().Key("default").Title("Default").Value(&f.values.defaultValue), &f.values.defaultValue),
 		f.attributesField(),
 	)
-	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1)).WithHeight(max(f.height, 1))
+	f.form = newForm(huh.NewGroup(fields...)).WithShowHelp(f.width >= 40).WithWidth(max(f.width, 1))
+	if f.height > 0 {
+		// The pane height is unknown while the form is being constructed;
+		// capping then would freeze every field at that tiny height (huh's
+		// group only shrinks fields, never grows them). Apply the height
+		// once the real pane size is known, like the connection form does.
+		f.form.WithHeight(f.height)
+	}
 }
 
 // attributesField returns the attributes form field: a select of the
