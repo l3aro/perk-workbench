@@ -162,6 +162,7 @@ func newSchemaList() list.Model {
 	// The sidebar renders its own persistent filter input; the list's
 	// built-in filter bar and keybinding are unused.
 	model.KeyMap.Filter = key.NewBinding(key.WithDisabled())
+	model.Filter = schemaListFilter
 	model.SetDelegate(schemaItemDelegate{})
 	return model
 }

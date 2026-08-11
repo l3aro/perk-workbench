@@ -302,7 +302,7 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	if !model.schema.IsFiltered() {
 		t.Fatal("schema list is not filtered")
 	}
-	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].FilterValue() != "queue_1" {
+	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 
@@ -315,7 +315,7 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	if got := model.schemaFilter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want preserved q1", got)
 	}
-	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].FilterValue() != "queue_1" {
+	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 

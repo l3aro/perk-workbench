@@ -185,14 +185,12 @@ type schemaItem struct {
 }
 
 func (i schemaItem) FilterValue() string {
-	parts := []string{i.database, i.title}
-	if i.schema != "" {
-		parts = append(parts, i.schema)
-	}
-	if i.kind != "" {
-		parts = append(parts, i.kind)
-	}
-	return strings.TrimSpace(strings.Join(parts, " "))
+	// Positional fields joined with a unit separator: database, title,
+	// schema, kind. The schema sidebar filter glob-matches the title,
+	// schema, and kind fields (skipping the containing database); fuzzy
+	// matching replaces the separator with a space to keep the historical
+	// behavior.
+	return strings.Join([]string{i.database, i.title, i.schema, i.kind}, "\x00")
 }
 
 func (i schemaItem) Title() string       { return i.title }
