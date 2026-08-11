@@ -469,6 +469,10 @@ func browseFilter(filters []sharedsql.BrowseFilter) bson.M {
 			query[column] = bson.M{"$regex": likeRegex(filter.Value)}
 		case sharedsql.BrowseFilterNotLike:
 			query[column] = bson.M{"$not": bson.M{"$regex": likeRegex(filter.Value)}}
+		case sharedsql.BrowseFilterPattern:
+			query[column] = bson.M{"$regex": sharedsql.GlobToRegex(filter.Value)}
+		case sharedsql.BrowseFilterNotPattern:
+			query[column] = bson.M{"$not": bson.M{"$regex": sharedsql.GlobToRegex(filter.Value)}}
 		}
 	}
 	return query

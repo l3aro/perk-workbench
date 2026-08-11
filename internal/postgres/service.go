@@ -320,6 +320,13 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options sharedsq
 			case sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike:
 				terms = append(terms, column+" "+string(filter.Operator)+" $"+fmt.Sprint(len(args)+1))
 				args = append(args, filter.Value)
+			case sharedsql.BrowseFilterPattern, sharedsql.BrowseFilterNotPattern:
+				like := "LIKE"
+				if filter.Operator == sharedsql.BrowseFilterNotPattern {
+					like = "NOT LIKE"
+				}
+				terms = append(terms, column+" "+like+" $"+fmt.Sprint(len(args)+1)+" ESCAPE '\\'")
+				args = append(args, sharedsql.GlobToLike(filter.Value))
 			case sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterLess, sharedsql.BrowseFilterLessEqual, sharedsql.BrowseFilterGreater, sharedsql.BrowseFilterGreaterEqual:
 				terms = append(terms, column+" "+string(filter.Operator)+" $"+fmt.Sprint(len(args)+1))
 				args = append(args, filter.Value)

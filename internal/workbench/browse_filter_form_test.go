@@ -63,6 +63,43 @@ func TestBrowseFilterGrid_editsAndAppliesFilters(t *testing.T) {
 	}
 }
 
+func TestBrowseFilterGrid_patternOperator(t *testing.T) {
+	model := readyBrowseModel(t)
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
+
+	// name: choose PATTERN (index 3 after None, LIKE, NOT LIKE) and enter
+	// a shell-style wildcard value.
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'h', Text: "h"})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	for range 3 {
+		model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'j', Text: "j"})
+	}
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+	for _, key := range []rune{'*', 's', 'e', 'c', 'o', 'n', 'd', '*'} {
+		model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: key, Text: string(key)})
+	}
+	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	model.browseFilterForm.setSize(120, 8)
+	if view := ansi.Strip(model.browseFilterForm.View()); !strings.Contains(view, "* any, ? one char") {
+		t.Fatalf("filter form = %q, want the PATTERN wildcard hint", view)
+	}
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
+	model = updated.(Model)
+	model = resolveBrowseCommand(model, command())
+	want := []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterPattern, Value: "*second*"}}
+	if got := model.browseSettings.filters; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("filters = %#v, want %#v", got, want)
+	}
+	if rows := model.browse.Rows(); len(rows) != 1 || rows[0][1] != "second" {
+		t.Fatalf("browse rows = %#v, want second", rows)
+	}
+}
+
 func TestBrowseFilterGrid_escapePreservesInlineValue(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})

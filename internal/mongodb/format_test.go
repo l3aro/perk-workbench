@@ -213,6 +213,8 @@ func TestBrowseFilter(t *testing.T) {
 		{Column: "score", Operator: sharedsql.BrowseFilterGreaterEqual, Value: "7"},
 		{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "Morris%"},
 		{Column: "cuisine", Operator: sharedsql.BrowseFilterIsNull},
+		{Column: "owner", Operator: sharedsql.BrowseFilterPattern, Value: "rez_*_"},
+		{Column: "style", Operator: sharedsql.BrowseFilterNotPattern, Value: "x?"},
 	})
 	if query["borough"] != "Bronx" {
 		t.Errorf("borough = %#v", query["borough"])
@@ -225,6 +227,12 @@ func TestBrowseFilter(t *testing.T) {
 	}
 	if query["cuisine"] != nil {
 		t.Errorf("cuisine = %#v, want null", query["cuisine"])
+	}
+	if query["owner"].(bson.M)["$regex"] != "^rez_.*_$" {
+		t.Errorf("owner = %#v, want anchored glob regex", query["owner"])
+	}
+	if query["style"].(bson.M)["$not"].(bson.M)["$regex"] != "^x.$" {
+		t.Errorf("style = %#v, want negated glob regex", query["style"])
 	}
 }
 

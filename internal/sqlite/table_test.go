@@ -155,6 +155,89 @@ func TestServiceBrowseTable_filters_sorts_and_limits(t *testing.T) {
 	}
 }
 
+func TestServiceBrowseTable_patternFilters(t *testing.T) {
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, "CREATE TABLE pets (name TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, values := range []string{
+		"('rez_abc_')",
+		"('rez_ab')",
+		"('rez_abc')",
+		"('dog_1')",
+		"('dog2')",
+	} {
+		if _, err := service.Execute(ctx, "INSERT INTO pets (name) VALUES "+values); err != nil {
+			t.Fatal(err)
+		}
+	}
+	columns := []string{"name"}
+
+	// PATTERN is shell-wildcard semantics: * any run, ? one char, and _ is
+	// literal. rez_*_ must not match rez_ab or rez_abc.
+	result, err := service.BrowseTable(ctx, "pets", sharedsql.BrowseOptions{
+		Columns: columns,
+		Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterPattern, Value: "rez_*_"}},
+		Limit:   4,
+	})
+	if err != nil {
+		t.Fatalf("browsing PATTERN filter: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][0] == nil || *result.Rows[0][0] != "rez_abc_" {
+		t.Fatalf("PATTERN rez_*_ result = %#v, want only rez_abc_", result)
+	}
+
+	// ? matches exactly one character: dog? fits dog2, not dog_1.
+	result, err = service.BrowseTable(ctx, "pets", sharedsql.BrowseOptions{
+		Columns: columns,
+		Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterPattern, Value: "dog?"}},
+		Limit:   4,
+	})
+	if err != nil {
+		t.Fatalf("browsing PATTERN dog?: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][0] == nil || *result.Rows[0][0] != "dog2" {
+		t.Fatalf("PATTERN dog? result = %#v, want only dog2", result)
+	}
+
+	// % and _ are literal in PATTERN: 100% must not act as a LIKE wildcard.
+	if _, err := service.Execute(ctx, "INSERT INTO pets (name) VALUES ('100%')"); err != nil {
+		t.Fatal(err)
+	}
+	result, err = service.BrowseTable(ctx, "pets", sharedsql.BrowseOptions{
+		Columns: columns,
+		Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterPattern, Value: "100%"}},
+		Limit:   4,
+	})
+	if err != nil {
+		t.Fatalf("browsing PATTERN 100%%: %v", err)
+	}
+	if len(result.Rows) != 1 || result.Rows[0][0] == nil || *result.Rows[0][0] != "100%" {
+		t.Fatalf("PATTERN 100%% result = %#v, want only the literal 100%% row", result)
+	}
+
+	result, err = service.BrowseTable(ctx, "pets", sharedsql.BrowseOptions{
+		Columns: columns,
+		Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterNotPattern, Value: "rez*"}},
+		Limit:   4,
+	})
+	if err != nil {
+		t.Fatalf("browsing NOT PATTERN filter: %v", err)
+	}
+	if len(result.Rows) != 3 {
+		t.Fatalf("NOT PATTERN rez* result = %#v, want the three non-rez rows", result)
+	}
+
+	for _, filter := range []sharedsql.BrowseFilter{
+		{Column: "name", Operator: sharedsql.BrowseFilterOperator("DROP TABLE"), Value: "x"},
+	} {
+		if _, err := service.BrowseTable(ctx, "pets", sharedsql.BrowseOptions{Columns: columns, Filters: []sharedsql.BrowseFilter{filter}, Limit: 4}); err == nil {
+			t.Fatalf("BrowseTable(%#v) error = nil, want validation error", filter)
+		}
+	}
+}
+
 func TestServiceTableInfo_reportsGeneratedColumnAttribute(t *testing.T) {
 	service := newMemoryService(t)
 	ctx := context.Background()

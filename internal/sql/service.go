@@ -45,6 +45,8 @@ const (
 	BrowseFilterNone         BrowseFilterOperator = ""
 	BrowseFilterLike         BrowseFilterOperator = "LIKE"
 	BrowseFilterNotLike      BrowseFilterOperator = "NOT LIKE"
+	BrowseFilterPattern      BrowseFilterOperator = "PATTERN"
+	BrowseFilterNotPattern   BrowseFilterOperator = "NOT PATTERN"
 	BrowseFilterEqual        BrowseFilterOperator = "="
 	BrowseFilterNotEqual     BrowseFilterOperator = "!="
 	BrowseFilterLess         BrowseFilterOperator = "<"

@@ -121,7 +121,7 @@ func (f *browseFilterForm) columns() []table.Column {
 	}
 	columnWidth = min(columnWidth, 20)
 	typeWidth = min(typeWidth, 16)
-	operatorWidth := ansi.StringWidth("IS NOT NULL")
+	operatorWidth := max(ansi.StringWidth("IS NOT NULL"), ansi.StringWidth("NOT PATTERN"))
 	valueWidth := max(f.width-(columnWidth+typeWidth+operatorWidth+8*spaceCompact), 12)
 	return []table.Column{
 		{Title: "Column", Width: columnWidth},
@@ -146,7 +146,7 @@ func (f *browseFilterForm) operatorOptions() []sharedsql.BrowseFilterOperator {
 	case sharedsql.IsNumericColumnType(typeName), isBrowseTemporalType(typeName):
 		return append(options, sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterLess, sharedsql.BrowseFilterLessEqual, sharedsql.BrowseFilterGreater, sharedsql.BrowseFilterGreaterEqual, sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull)
 	case isBrowseTextType(typeName):
-		return append(options, sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike, sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull)
+		return append(options, sharedsql.BrowseFilterLike, sharedsql.BrowseFilterNotLike, sharedsql.BrowseFilterPattern, sharedsql.BrowseFilterNotPattern, sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull)
 	default:
 		return append(options, sharedsql.BrowseFilterEqual, sharedsql.BrowseFilterNotEqual, sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull)
 	}
@@ -373,6 +373,16 @@ func (f browseFilterForm) View() string {
 	if f.editing {
 		mode = "INSERT"
 	}
-	lines = append(lines, cropTableLine(fmt.Sprintf("%s | i edit | r reset | F5/Ctrl+S apply | Esc cancel", mode), 0, f.width))
+	hint := ""
+	if f.row < len(f.fields) {
+		operator := f.fields[f.row].operator
+		if f.editing && f.cell == browseFilterOperatorCell {
+			operator = f.operatorOptions()[f.operatorIndex]
+		}
+		if operator == sharedsql.BrowseFilterPattern || operator == sharedsql.BrowseFilterNotPattern {
+			hint = " | PATTERN: * any, ? one char"
+		}
+	}
+	lines = append(lines, cropTableLine(fmt.Sprintf("%s | i edit | r reset | F5/Ctrl+S apply | Esc cancel%s", mode, hint), 0, f.width))
 	return strings.Join(lines, "\n")
 }
