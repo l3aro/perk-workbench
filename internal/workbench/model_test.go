@@ -14,6 +14,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/database"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
 var testOpen OpenDatabase = database.Open
@@ -414,12 +415,12 @@ func firstQuerySucceeded(messages []tea.Msg) (querySucceededMsg, bool) {
 
 func stringPointer(value string) *string { return &value }
 
-func assertOneUUIDv7Profile(t *testing.T, loaded []recentConnection) {
+func assertOneUUIDv7Profile(t *testing.T, loaded []profile.Profile) {
 	t.Helper()
 	if len(loaded) != 1 {
 		t.Fatalf("saved profiles = %#v, want exactly one", loaded)
 	}
-	if !validConnectionID(loaded[0].ID) {
+	if !profile.ValidID(loaded[0].ID) {
 		t.Fatalf("profile ID = %q, want a UUIDv7", loaded[0].ID)
 	}
 }
@@ -464,7 +465,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := loadRecentConnections(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.recentPath)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -481,7 +482,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := loadRecentConnections(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.recentPath)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -500,7 +501,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := loadRecentConnections(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.recentPath)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -517,7 +518,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.connectionID != "" {
 			t.Fatalf("failed open set connection ID %q", model.connectionID)
 		}
-		loaded, _ := loadRecentConnections(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.recentPath)
 		if len(loaded) != 0 {
 			t.Fatalf("failed open saved profiles = %#v, want none", loaded)
 		}
@@ -560,7 +561,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	if model.connectionID == "" {
 		t.Fatal("A open did not set a connection ID")
 	}
-	model.appendQueryLog(queryLogEntry{statement: "SELECT broken FROM nope", status: "failed", message: "no such table: nope"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT broken FROM nope", Status: "failed", Message: "no such table: nope"})
 	if ctx := model.chatContext(); !strings.Contains(ctx, "Last failed query") || !strings.Contains(ctx, "no such table: nope") {
 		t.Fatalf("A chat context = %q, want the failed query", ctx)
 	}

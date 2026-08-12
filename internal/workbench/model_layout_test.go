@@ -784,8 +784,8 @@ func TestCompactClick_browseRowSelectsClickedCell(t *testing.T) {
 func TestCompactClick_queryLogSelectsRenderedRow(t *testing.T) {
 	model := resizeModel(readyModel(t), 80, 24)
 	model.Focus = focusQueryLog
-	model.appendQueryLog(queryLogEntry{statement: "SELECT first"})
-	model.appendQueryLog(queryLogEntry{statement: "SELECT second"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT first"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT second"})
 	// The query log renders newest first, so the newest entry is row 0.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
 	model = updated.(Model)

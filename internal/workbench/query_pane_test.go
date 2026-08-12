@@ -92,7 +92,7 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	for index := 0; index < 3; index++ {
-		model.appendQueryLog(queryLogEntry{statement: "SELECT " + string(rune('1'+index))})
+		model.appendQueryLog(queryLogEntry{Statement: "SELECT " + string(rune('1'+index))})
 	}
 
 	// When
@@ -126,7 +126,7 @@ func TestQueryLog_n_and_p_change_pages(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	for index := range defaultQueryLogPageSize + 1 {
-		model.appendQueryLog(queryLogEntry{statement: fmt.Sprintf("SELECT %d", index)})
+		model.appendQueryLog(queryLogEntry{Statement: fmt.Sprintf("SELECT %d", index)})
 	}
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
@@ -159,7 +159,7 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	message := strings.Repeat("query message ", 4)
-	model.appendQueryLog(queryLogEntry{statement: "SELECT 42", message: message})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT 42", Message: message})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 	model.layout.queryLogColumn = 4

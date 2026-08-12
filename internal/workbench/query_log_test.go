@@ -32,7 +32,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	model = updated.(Model)
 
 	for index := range queryLogLimit - 2 {
-		model.appendQueryLog(queryLogEntry{startedAt: started.Add(time.Duration(index+3) * time.Second), statement: "SELECT many", duration: time.Millisecond})
+		model.appendQueryLog(queryLogEntry{StartedAt: started.Add(time.Duration(index+3) * time.Second), Statement: "SELECT many", Duration: time.Millisecond})
 	}
 
 	// Then
@@ -46,7 +46,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	if got, want := rows[0][2], "SELECT many"; got != want {
 		t.Fatalf("latest query log statement = %q, want %q", got, want)
 	}
-	if got := model.queryLog.entries[len(model.queryLog.entries)-1].statement; got != "bad SQL" {
+	if got := model.queryLog.entries[len(model.queryLog.entries)-1].Statement; got != "bad SQL" {
 		t.Fatalf("oldest retained query = %q, want failed query after capped entries", got)
 	}
 }
@@ -73,7 +73,7 @@ func TestQueryLogDetail_shows_statement(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	statement := "SELECT id, name FROM projects WHERE active = 1"
-	model.queryLog.detail = &queryLogEntry{statement: statement}
+	model.queryLog.detail = &queryLogEntry{Statement: statement}
 
 	// When
 	view := ansi.Strip(model.View().Content)
@@ -91,7 +91,7 @@ func TestQueryLogDetail_prettyPrintsJSON(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	value := `{"customer":{"name":"Ada"},"ids":[1,2]}`
-	model.queryLog.detail = &queryLogEntry{message: value}
+	model.queryLog.detail = &queryLogEntry{Message: value}
 
 	// When
 	view := ansi.Strip(model.View().Content)
@@ -122,7 +122,7 @@ func TestWorkspaceTabs_labelSchemaInspectionViews(t *testing.T) {
 func TestQueryLogDetail_y_doesNotOpenCopyDialog(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.queryLog.detail = &queryLogEntry{statement: "SELECT 1"}
+	model.queryLog.detail = &queryLogEntry{Statement: "SELECT 1"}
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -144,7 +144,7 @@ func TestQueryLog_displayTruncatesLongStatementAndMessage(t *testing.T) {
 	message := strings.Repeat("m", 41)
 
 	// When
-	model.appendQueryLog(queryLogEntry{statement: statement, message: message})
+	model.appendQueryLog(queryLogEntry{Statement: statement, Message: message})
 
 	// Then
 	if got, want := model.queryLog.table.Rows()[0][2], cellText(statement); got != want {
@@ -163,10 +163,10 @@ func TestQueryLog_displayTruncatesLongStatementAndMessage(t *testing.T) {
 	if got := model.queryLog.table.Columns()[2].Width; got > 50 {
 		t.Fatalf("statement column width after resize = %d, want at most 50", got)
 	}
-	if got, want := model.queryLog.entries[0].statement, statement; got != want {
+	if got, want := model.queryLog.entries[0].Statement, statement; got != want {
 		t.Fatalf("stored statement = %q, want full value", got)
 	}
-	if got, want := model.queryLog.entries[0].message, message; got != want {
+	if got, want := model.queryLog.entries[0].Message, message; got != want {
 		t.Fatalf("stored message = %q, want full value", got)
 	}
 }
@@ -175,7 +175,7 @@ func TestQueryLogDetail_e_opens_explain_picker(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	model.databaseInfo.Product = "SQLite"
-	model.queryLog.detail = &queryLogEntry{statement: "SELECT 1"}
+	model.queryLog.detail = &queryLogEntry{Statement: "SELECT 1"}
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -232,7 +232,7 @@ func TestQueryLog_contextMenuExposesAndExecutesShortcuts(t *testing.T) {
 			model := resizeModel(readyModel(t), 100, 24)
 			model.Focus = focusQueryLog
 			model.queryLog.table.Focus()
-			model.appendQueryLog(queryLogEntry{statement: "SELECT 1", status: "success"})
+			model.appendQueryLog(queryLogEntry{Statement: "SELECT 1", Status: "success"})
 			model.queryLog.table.SetCursor(0)
 			model.databaseInfo.Product = "SQLite"
 			updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
@@ -261,7 +261,7 @@ func TestQueryLog_contextMenuMouseSelectsRenderedDetail(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusQueryLog
 	model.queryLog.table.Focus()
-	model.appendQueryLog(queryLogEntry{statement: "SELECT 1", status: "success"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT 1", Status: "success"})
 	model.queryLog.table.SetCursor(0)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
@@ -451,7 +451,7 @@ func TestQueryLog_uses_elapsed_duration_for_live_browse_load(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.entries[0].duration; got <= 0 {
+	if got := model.queryLog.entries[0].Duration; got <= 0 {
 		t.Fatalf("browse log duration = %s, want elapsed duration", got)
 	}
 }
@@ -460,9 +460,9 @@ func TestQueryLog_summary_reports_session_extrema(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.queryLog.entries = []queryLogEntry{
-		{duration: 8 * time.Millisecond},
-		{duration: 2 * time.Millisecond},
-		{duration: 15 * time.Millisecond},
+		{Duration: 8 * time.Millisecond},
+		{Duration: 2 * time.Millisecond},
+		{Duration: 15 * time.Millisecond},
 	}
 
 	// When

@@ -9,9 +9,14 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
+	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
 
 const queryLogLimit = 100
+
+// queryLogEntry is the query-log record type shared with the persistence
+// store.
+type queryLogEntry = querylog.Entry
 
 // copyQueryLogStatement writes a statement through both OSC 52 and the native
 // system clipboard, covering terminals and desktop clipboard clients.
@@ -25,45 +30,37 @@ func copyQueryLogStatement(statement string) tea.Cmd {
 	)
 }
 
-type queryLogEntry struct {
-	startedAt time.Time
-	statement string
-	duration  time.Duration
-	message   string
-	status    string // "success", "failed", "canceled"
-}
-
 func actionLogEntry(statement string, startedAt time.Time, err error, message string) queryLogEntry {
 	entry := queryLogEntry{
-		startedAt: startedAt,
-		statement: statement,
-		duration:  time.Since(startedAt),
-		message:   message,
+		StartedAt: startedAt,
+		Statement: statement,
+		Duration:  time.Since(startedAt),
+		Message:   message,
 	}
 	if err != nil {
-		entry.status = "failed"
-		entry.message = err.Error()
+		entry.Status = "failed"
+		entry.Message = err.Error()
 	}
 	return entry
 }
 
 func (m *Model) appendQueryLog(entry queryLogEntry) {
-	if entry.message == "" {
-		switch entry.status {
+	if entry.Message == "" {
+		switch entry.Status {
 		case "failed":
-			entry.message = "failed"
+			entry.Message = "failed"
 		case "canceled":
-			entry.message = "canceled"
+			entry.Message = "canceled"
 		default:
-			entry.message = "completed"
+			entry.Message = "completed"
 		}
 	}
 	m.queryLog.entries = append([]queryLogEntry{entry}, m.queryLog.entries...)
 	if len(m.queryLog.entries) > queryLogLimit {
 		m.queryLog.entries = m.queryLog.entries[:queryLogLimit]
 	}
-	if db := m.queryLogDB(); db != nil {
-		_ = saveQueryLogDB(db, m.connectionID, entry)
+	if store := m.queryLogStore(); store != nil {
+		_ = store.Append(m.connectionID, entry, queryLogLimit)
 	}
 	m.renderQueryLog()
 }
@@ -96,7 +93,7 @@ func (m *Model) renderQueryLog() {
 	rows := make([]table.Row, len(entries))
 	for index, item := range entries {
 		var statusStr string
-		switch item.status {
+		switch item.Status {
 		case "failed":
 			statusStr = statusFailedStyle.Render(iconFailed)
 		case "canceled":
@@ -105,11 +102,11 @@ func (m *Model) renderQueryLog() {
 			statusStr = statusSuccessStyle.Render(iconSuccess)
 		}
 		rows[index] = table.Row{
-			item.startedAt.Format("15:04:05"),
+			item.StartedAt.Format("15:04:05"),
 			statusStr,
-			cellText(item.statement),
-			item.duration.Round(time.Microsecond).String(),
-			cellText(item.message),
+			cellText(item.Statement),
+			item.Duration.Round(time.Microsecond).String(),
+			cellText(item.Message),
 		}
 	}
 	statusColWidth := ansi.StringWidth("Status")
@@ -135,15 +132,15 @@ func (m *Model) renderQueryLog() {
 func queryLogCell(entry queryLogEntry, column int) string {
 	switch column {
 	case 0:
-		return entry.startedAt.Format("15:04:05")
+		return entry.StartedAt.Format("15:04:05")
 	case 1:
-		return entry.status
+		return entry.Status
 	case 2:
-		return entry.statement
+		return entry.Statement
 	case 3:
-		return entry.duration.Round(time.Microsecond).String()
+		return entry.Duration.Round(time.Microsecond).String()
 	case 4:
-		return entry.message
+		return entry.Message
 	default:
 		return ""
 	}
@@ -153,10 +150,10 @@ func (m Model) queryLogSummary() string {
 	if len(m.queryLog.entries) == 0 {
 		return ""
 	}
-	fastest, slowest := m.queryLog.entries[0].duration, m.queryLog.entries[0].duration
+	fastest, slowest := m.queryLog.entries[0].Duration, m.queryLog.entries[0].Duration
 	for _, entry := range m.queryLog.entries[1:] {
-		fastest = min(fastest, entry.duration)
-		slowest = max(slowest, entry.duration)
+		fastest = min(fastest, entry.Duration)
+		slowest = max(slowest, entry.Duration)
 	}
 	return fmt.Sprintf("page %d/%d | fastest %s | slowest %s", m.queryLog.page+1, m.queryLogPageCount(), fastest.Round(time.Microsecond), slowest.Round(time.Microsecond))
 }

@@ -108,13 +108,13 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 	}
 	canceled, quit := m.Workflow.FinishQuery()
 	if canceled {
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: "canceled", status: "canceled"})
+		m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: "canceled", Status: "canceled"})
 	} else {
 		m.setResults(message.result)
 		if message.statement != "" && len(message.result.Rows) > 0 {
 			m.queryLog.results.SetCursor(0)
 		}
-		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), status: "success"})
+		m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: message.result.Duration, Message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), Status: "success"})
 	}
 	if quit {
 		return m, tea.Quit
@@ -135,7 +135,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: message.err.Error(), status: "failed"})
+	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: message.err.Error(), Status: "failed"})
 	if quit {
 		return m, tea.Quit
 	}
@@ -154,7 +154,7 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: time.Since(message.startedAt), message: "canceled", status: "canceled"})
+	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: "canceled", Status: "canceled"})
 	if quit {
 		return m, tea.Quit
 	}

@@ -2,7 +2,6 @@ package workbench
 
 import (
 	"context"
-	"database/sql"
 	"net/url"
 	"strings"
 	"time"
@@ -16,6 +15,9 @@ import (
 	"github.com/l3aro/perk-workbench/internal/core"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
+	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
 
 const compactWidth = 90
@@ -79,7 +81,7 @@ type connectionState struct {
 	pickerDir         string
 	recent            list.Model
 	recentFilter      textinput.Model
-	recentConnections []recentConnection
+	recentConnections []profile.Profile
 	recentPath        string
 }
 
@@ -103,7 +105,7 @@ type queryState struct {
 	page, pageSize        int
 	pendingG              bool
 	path                  string
-	database              *sql.DB
+	store                 *querylog.Store
 	history               []string
 	historyIndex          int
 	editor                *editor
@@ -168,7 +170,7 @@ type structureState struct {
 // popup/detail state, filter/sort/page behavior, and status-popup
 // suppression.
 type notificationState struct {
-	database                *sql.DB
+	store                   *notification.Store
 	entries                 []notificationEntry
 	popup                   *notificationEntry
 	detail                  *notificationEntry
@@ -196,7 +198,7 @@ type overlayState struct {
 	deletePending           string
 	deletePendingName       string
 	deletePendingDatabase   string
-	deletePendingConnection *recentConnection
+	deletePendingConnection *profile.Profile
 	formMode                *formModeController
 }
 
@@ -348,16 +350,16 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	model.queryLog.table.Blur()
 	model.focusActiveTable()
 	model.queryLog.path, _ = queryLogPath()
-	model.queryLog.entries = loadQueryLog(model.queryLog.path, "")
+	model.queryLog.entries = nil // no connection scope yet; scoped loads happen after open
 	model.notifications.path, _ = notificationPath()
 	model.renderQueryLog()
-	model.connection.recentPath, _ = recentConnectionsPath()
+	model.connection.recentPath, _ = profile.Path()
 	model.configPath = ConfigPath()
 	var migrated bool
-	model.connection.recentConnections, migrated = loadRecentConnections(model.connection.recentPath)
+	model.connection.recentConnections, migrated = profile.Load(model.connection.recentPath)
 	if migrated {
 		// Best-effort: persist the assigned legacy profile IDs immediately.
-		_ = saveRecentConnections(model.connection.recentPath, model.connection.recentConnections)
+		_ = profile.Save(model.connection.recentPath, model.connection.recentConnections)
 	}
 	// Route every logged event into the notification popup pipeline.
 	log.SetNotifier(enqueueLogNotification)
@@ -501,8 +503,13 @@ func (m *Model) disconnect() {
 }
 
 // reset clears query workspace state: the editor, result table, raw
-// result, completion data, validation tag, and query-log history.
+// result, completion data, validation tag, and query-log history, and
+// closes the query-log store.
 func (s *queryState) reset() {
+	if s.store != nil {
+		_ = s.store.Close()
+		s.store = nil
+	}
 	s.entries = nil
 	s.page = 0
 	s.history = nil
@@ -546,20 +553,20 @@ func (s *browseState) reset() {
 // reset reloads the persisted profile list and clears the profile list
 // and filter inputs.
 func (s *connectionState) reset() {
-	s.recentPath, _ = recentConnectionsPath()
-	s.recentConnections, _ = loadRecentConnections(s.recentPath)
+	s.recentPath, _ = profile.Path()
+	s.recentConnections, _ = profile.Load(s.recentPath)
 	_ = s.recent.SetItems(recentListItems(s.recentConnections))
 	s.recent.ResetFilter()
 	s.recentFilter.SetValue("")
 	s.recentFilter.Blur()
 }
 
-// reset closes the notification history database and clears popup,
-// detail, and history state.
+// reset closes the notification history store and clears popup, detail,
+// and history state.
 func (s *notificationState) reset() {
-	if s.database != nil {
-		_ = s.database.Close()
-		s.database = nil
+	if s.store != nil {
+		_ = s.store.Close()
+		s.store = nil
 	}
 	s.entries = nil
 	s.popup = nil

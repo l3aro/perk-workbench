@@ -815,8 +815,8 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.appendQueryLog(queryLogEntry{statement: strings.Repeat("select a very long query ", 20)})
-	model.appendQueryLog(queryLogEntry{statement: "select 2"})
+	model.appendQueryLog(queryLogEntry{Statement: strings.Repeat("select a very long query ", 20)})
+	model.appendQueryLog(queryLogEntry{Statement: "select 2"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 	model.queryLog.table.SetCursor(1)

@@ -39,7 +39,7 @@ func TestExplainShortcut_prefillsSelectedCommandAndFocusesSQLEditor(t *testing.T
 	model := readyModel(t)
 	model.databaseInfo.Product = "SQLite"
 	model.queryLog.editor.setValue("SELECT current editor")
-	model.appendQueryLog(queryLogEntry{statement: "SELECT 1"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT 1"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -80,7 +80,7 @@ func TestExplainShortcut_discardsUnsupportedStatements(t *testing.T) {
 	model := readyModel(t)
 	model.databaseInfo.Product, model.databaseInfo.Version = "MySQL", "8.0.36"
 	model.queryLog.editor.setValue("SELECT current editor")
-	model.appendQueryLog(queryLogEntry{statement: "CREATE TABLE projects (id INTEGER)"})
+	model.appendQueryLog(queryLogEntry{Statement: "CREATE TABLE projects (id INTEGER)"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})

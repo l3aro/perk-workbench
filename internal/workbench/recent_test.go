@@ -11,27 +11,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
-
-func TestRecentConnections_persistsSQLiteOnly(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
-	connections := []recentConnection{
-		{Driver: driverSQLite, Name: "Local", Target: "/tmp/local.db"},
-		{Driver: driverMySQL, Name: "Remote", Target: "user:password@tcp(host:3306)/app"},
-	}
-
-	if err := saveRecentConnections(path, connections); err != nil {
-		t.Fatalf("saving recent connections: %v", err)
-	}
-
-	loaded, _ := loadRecentConnections(path)
-	if len(loaded) != 1 {
-		t.Fatalf("loaded connections = %d, want 1", len(loaded))
-	}
-	if loaded[0].Driver != connections[0].Driver || loaded[0].Name != connections[0].Name || loaded[0].Target != connections[0].Target {
-		t.Fatalf("loaded connection = %#v, want %#v", loaded[0], connections[0])
-	}
-}
 
 func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 	// Given
@@ -44,7 +25,7 @@ func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 
 	// When
 	model.recordConnection("")
-	loaded, _ := loadRecentConnections(model.connection.recentPath)
+	loaded, _ := profile.Load(model.connection.recentPath)
 
 	// Then
 	if len(loaded) != 2 {
@@ -80,10 +61,10 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	model.recordConnection("")
 
 	// When
-	if err := saveRecentConnections(path, model.connection.recentConnections); err != nil {
+	if err := profile.Save(path, model.connection.recentConnections); err != nil {
 		t.Fatalf("saving connection profiles: %v", err)
 	}
-	loaded, _ := loadRecentConnections(path)
+	loaded, _ := profile.Load(path)
 
 	// Then — verify password is encrypted (not plaintext) in the JSON file
 	var stored []struct{ Pass string }
@@ -92,7 +73,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	if len(stored) != 1 || stored[0].Pass == "secret" {
 		t.Fatalf("password stored in plaintext")
 	}
-	if !strings.HasPrefix(stored[0].Pass, encPrefix) {
+	if !strings.HasPrefix(stored[0].Pass, "enc:") {
 		t.Fatalf("password not encrypted, prefix=%q", stored[0].Pass[:min(5, len(stored[0].Pass))])
 	}
 	if !reflect.DeepEqual(loaded, model.connection.recentConnections) {
@@ -100,80 +81,10 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	}
 }
 
-func TestConnectionProfiles_encryptAndDecryptPassword(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	path := filepath.Join(dir, "perk-workbench", "connections.json")
-	password := "my-secret-password!"
-	connections := []recentConnection{{
-		Driver: driverPostgreSQL, Name: "Test",
-		Target: "db", Host: "localhost", Port: "5432", User: "admin", Pass: password,
-	}}
-
-	if err := saveRecentConnections(path, connections); err != nil {
-		t.Fatalf("saving: %v", err)
-	}
-
-	var stored []struct{ Pass string }
-	contents, _ := os.ReadFile(path)
-	json.Unmarshal(contents, &stored)
-	if len(stored) != 1 || stored[0].Pass == password {
-		t.Fatalf("password stored in plaintext or missing")
-	}
-	if !strings.HasPrefix(stored[0].Pass, encPrefix) {
-		t.Fatalf("password not encrypted, prefix=%q", stored[0].Pass[:min(5, len(stored[0].Pass))])
-	}
-
-	loaded, _ := loadRecentConnections(path)
-	if len(loaded) != 1 || loaded[0].Pass != password {
-		t.Fatalf("loaded password = %q, want %q", loaded[0].Pass, password)
-	}
-}
-
-func TestConnectionProfiles_encryptDecryptRoundTrip_merged_2(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	path := filepath.Join(dir, "perk-workbench", "connections.json")
-	password := "my-secret-password!"
-	connections := []recentConnection{{
-		Driver: driverPostgreSQL, Name: "Test",
-		Target: "db", Host: "localhost", Port: "5432", User: "admin", Pass: password,
-	}}
-
-	if err := saveRecentConnections(path, connections); err != nil {
-		t.Fatalf("saving: %v", err)
-	}
-
-	loaded, _ := loadRecentConnections(path)
-	if len(loaded) != 1 || loaded[0].Pass != password {
-		t.Fatalf("loaded password = %q, want %q", loaded[0].Pass, password)
-	}
-}
-
-func TestConnectionProfiles_encryptDecryptRoundTrip_merged_3(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	path := filepath.Join(dir, "perk-workbench", "connections.json")
-	password := "my-secret-password!"
-	connections := []recentConnection{{
-		Driver: driverPostgreSQL, Name: "Test",
-		Target: "db", Host: "localhost", Port: "5432", User: "admin", Pass: password,
-	}}
-
-	if err := saveRecentConnections(path, connections); err != nil {
-		t.Fatalf("saving: %v", err)
-	}
-
-	loaded, _ := loadRecentConnections(path)
-	if len(loaded) != 1 || loaded[0].Pass != password {
-		t.Fatalf("loaded password = %q, want %q", loaded[0].Pass, password)
-	}
-}
-
 func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.recentPath = filepath.Join(t.TempDir(), "connections.json")
-	model.setRecentConnections([]recentConnection{
+	model.setRecentConnections([]profile.Profile{
 		{Driver: driverSQLite, Name: "Alpha", Target: "/tmp/alpha.db"},
 		{Driver: driverSQLite, Name: "Beta", Target: "/tmp/beta.db"},
 	})
@@ -261,7 +172,7 @@ func TestConnectionForm_recentFilterInput(t *testing.T) {
 		t.Fatal("paste did not filter the recent list")
 	}
 	visible := model.connection.recent.VisibleItems()
-	if len(visible) != 1 || visible[0].(recentConnection).Name != "beta" {
+	if len(visible) != 1 || visible[0].(recentProfile).Profile.Name != "beta" {
 		t.Fatalf("visible profiles = %#v, want only beta", visible)
 	}
 
@@ -337,7 +248,7 @@ func TestRecentClick_filterRowFocusesInput(t *testing.T) {
 	if model.connection.recentFilter.Focused() {
 		t.Fatal("click on a profile left the filter input focused")
 	}
-	selected, ok := model.connection.recent.SelectedItem().(recentConnection)
+	selected, ok := model.selectedRecentConnection()
 	if !ok || selected.Name != "beta" {
 		t.Fatalf("selected profile = %#v, want beta", selected)
 	}
@@ -346,7 +257,7 @@ func TestRecentClick_filterRowFocusesInput(t *testing.T) {
 func TestConnectionForm_editWithEmptyPassword(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -375,7 +286,7 @@ func TestConnectionForm_editWithEmptyPassword(t *testing.T) {
 func TestConnectionForm_editWithEmptyPassword_merged_2(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -404,7 +315,7 @@ func TestConnectionForm_editWithEmptyPassword_merged_2(t *testing.T) {
 func TestConnectionForm_editWithEmptyPassword_merged_3(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -433,7 +344,7 @@ func TestConnectionForm_editWithEmptyPassword_merged_3(t *testing.T) {
 func TestConnectionForm_editPopulatesStoredPassword(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -463,7 +374,7 @@ func TestConnectionForm_editPopulatesStoredPassword(t *testing.T) {
 func TestConnectionForm_editPopulatesStoredPassword_merged_2(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -493,7 +404,7 @@ func TestConnectionForm_editPopulatesStoredPassword_merged_2(t *testing.T) {
 func TestConnectionForm_editPopulatesStoredPassword_merged_3(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -547,7 +458,7 @@ func TestConnectionForm_recentAddAndEditInitializeUsableHuhForms(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
-			model.connection.recentConnections = []recentConnection{{Driver: driverSQLite, Name: "Alpha", Target: ":memory:"}}
+			model.connection.recentConnections = []profile.Profile{{Driver: driverSQLite, Name: "Alpha", Target: ":memory:"}}
 			_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
 			model.connection.form.setFocus(connectionFocusRecent)
 
@@ -623,47 +534,47 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	model.recordConnection("")
 
 	// Then — it carries a fresh UUIDv7 scope
-	profile := model.connection.recentConnections[0]
-	if !validConnectionID(profile.ID) {
-		t.Fatalf("new profile ID = %q, want a UUIDv7", profile.ID)
+	prof := model.connection.recentConnections[0]
+	if !profile.ValidID(prof.ID) {
+		t.Fatalf("new profile ID = %q, want a UUIDv7", prof.ID)
 	}
 
 	// Save/load preserves the ID.
-	if err := saveRecentConnections(model.connection.recentPath, model.connection.recentConnections); err != nil {
+	if err := profile.Save(model.connection.recentPath, model.connection.recentConnections); err != nil {
 		t.Fatalf("saving profiles: %v", err)
 	}
-	loaded, _ := loadRecentConnections(model.connection.recentPath)
-	if len(loaded) != 1 || loaded[0].ID != profile.ID {
+	loaded, _ := profile.Load(model.connection.recentPath)
+	if len(loaded) != 1 || loaded[0].ID != prof.ID {
 		t.Fatalf("loaded profiles = %#v, want the saved ID preserved", loaded)
 	}
 
 	// Editing an existing profile carries its ID into the form and re-record
 	// preserves it (simulating an edited-and-saved profile).
 	model2 := New("", context.Background(), testOpen, false)
-	model2.connection.recentConnections, _ = loadRecentConnections(model2.connection.recentPath)
+	model2.connection.recentConnections, _ = profile.Load(model2.connection.recentPath)
 	_ = model2.connection.recent.SetItems(recentListItems(model2.connection.recentConnections))
 	command := model2.editSelectedRecentConnection()
 	model2 = resolveConnectionCommand(model2, command)
-	if model2.connection.form.values.id != profile.ID {
-		t.Fatalf("form ID = %q, want selected profile ID %q", model2.connection.form.values.id, profile.ID)
+	if model2.connection.form.values.id != prof.ID {
+		t.Fatalf("form ID = %q, want selected profile ID %q", model2.connection.form.values.id, prof.ID)
 	}
 	model2.connection.form.values.name = "Renamed"
 	model2.recordConnection("")
-	if model2.connection.recentConnections[0].ID != profile.ID {
-		t.Fatalf("edited profile ID = %q, want preserved %q", model2.connection.recentConnections[0].ID, profile.ID)
+	if model2.connection.recentConnections[0].ID != prof.ID {
+		t.Fatalf("edited profile ID = %q, want preserved %q", model2.connection.recentConnections[0].ID, prof.ID)
 	}
 
 	// A brand-new profile must mint a distinct ID, and the saved file keeps it.
 	model2.connection.form.values.id = ""
 	model2.connection.form.values.name, model2.connection.form.values.target = "Other", "/tmp/other.db"
 	model2.recordConnection("")
-	if model2.connection.recentConnections[0].ID == profile.ID {
+	if model2.connection.recentConnections[0].ID == prof.ID {
 		t.Fatal("new profile reused the previous profile's ID")
 	}
-	if err := saveRecentConnections(model2.connection.recentPath, model2.connection.recentConnections); err != nil {
+	if err := profile.Save(model2.connection.recentPath, model2.connection.recentConnections); err != nil {
 		t.Fatalf("saving profiles: %v", err)
 	}
-	persisted, _ := loadRecentConnections(model2.connection.recentPath)
+	persisted, _ := profile.Load(model2.connection.recentPath)
 	if len(persisted) != 2 || persisted[0].ID != model2.connection.recentConnections[0].ID {
 		t.Fatalf("persisted profiles = %#v, want two with the new ID first", persisted)
 	}
@@ -672,7 +583,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 func TestConnectionProfiles_legacyJSONProfileReceivesPersistedID(t *testing.T) {
 	// Given — a pre-scope connections.json without any id field
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	path, err := recentConnectionsPath()
+	path, err := profile.Path()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -684,50 +595,18 @@ func TestConnectionProfiles_legacyJSONProfileReceivesPersistedID(t *testing.T) {
 	}
 
 	// When — loaded and rebuilt through New
-	loaded, migrated := loadRecentConnections(path)
+	loaded, migrated := profile.Load(path)
 	if !migrated {
 		t.Fatal("legacy profile load reported no migration")
 	}
-	if len(loaded) != 1 || !validConnectionID(loaded[0].ID) {
+	if len(loaded) != 1 || !profile.ValidID(loaded[0].ID) {
 		t.Fatalf("migrated profiles = %#v, want one UUIDv7-scoped profile", loaded)
 	}
 	model := New("", context.Background(), testOpen, false)
 
 	// Then — New persisted the assigned ID immediately
-	persisted, _ := loadRecentConnections(model.connection.recentPath)
+	persisted, _ := profile.Load(model.connection.recentPath)
 	if len(persisted) != 1 || persisted[0].ID != model.connection.recentConnections[0].ID {
 		t.Fatalf("persisted profiles = %#v, want the migrated ID %q on disk", persisted, model.connection.recentConnections[0].ID)
-	}
-}
-
-func TestConnectionProfiles_duplicateIDsAreReassigned(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	path, err := recentConnectionsPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`[
-		{"id":"not-a-uuid","driver":"sqlite","name":"Alpha","target":"/tmp/alpha.db"},
-		{"id":"not-a-uuid","driver":"sqlite","name":"Beta","target":"/tmp/beta.db"},
-		{"id":"not-a-uuid","driver":"sqlite","name":"Gamma","target":"/tmp/gamma.db"}
-	]`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	loaded, migrated := loadRecentConnections(path)
-	if !migrated {
-		t.Fatal("invalid legacy IDs reported no migration")
-	}
-	if len(loaded) != 3 {
-		t.Fatalf("loaded profiles = %d, want 3", len(loaded))
-	}
-	seen := map[string]bool{}
-	for _, profile := range loaded {
-		if !validConnectionID(profile.ID) || seen[profile.ID] {
-			t.Fatalf("profile %q has invalid or duplicate ID %q", profile.Name, profile.ID)
-		}
-		seen[profile.ID] = true
 	}
 }

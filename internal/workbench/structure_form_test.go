@@ -793,7 +793,7 @@ func TestAddColumnFlow_fullEndToEnd(t *testing.T) {
 	// Query log should contain an ADD COLUMN entry
 	foundLog := false
 	for _, entry := range model.queryLog.entries {
-		if strings.Contains(entry.statement, "ADD COLUMN") {
+		if strings.Contains(entry.Statement, "ADD COLUMN") {
 			foundLog = true
 			break
 		}

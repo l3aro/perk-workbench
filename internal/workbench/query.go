@@ -493,11 +493,11 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 			duration = time.Since(message.startedAt)
 		}
 		m.appendQueryLog(queryLogEntry{
-			startedAt: message.startedAt,
-			statement: statement,
-			duration:  duration,
-			message:   message.err.Error(),
-			status:    "failed",
+			StartedAt: message.startedAt,
+			Statement: statement,
+			Duration:  duration,
+			Message:   message.err.Error(),
+			Status:    "failed",
 		})
 		m.setStatus(safeText(fmt.Sprintf("loading browse: %v", message.err)))
 		return m, nil
@@ -518,10 +518,10 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		duration = time.Since(message.startedAt)
 	}
 	m.appendQueryLog(queryLogEntry{
-		startedAt: message.startedAt,
-		statement: statement,
-		duration:  duration,
-		message:   queryLogMessage(statement, message.result.RowsAffected, len(message.result.Rows)),
+		StartedAt: message.startedAt,
+		Statement: statement,
+		Duration:  duration,
+		Message:   queryLogMessage(statement, message.result.RowsAffected, len(message.result.Rows)),
 	})
 	m.setStatus("")
 	return m, nil

@@ -10,6 +10,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/chrome"
 	"github.com/l3aro/perk-workbench/internal/log"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
 type connectionActionMsg struct{ action string }
@@ -30,11 +31,11 @@ func (m *Model) applyRecentFilter() {
 	m.connection.recent.ResetFilter()
 }
 
-func (m *Model) setRecentConnections(connections []recentConnection) {
+func (m *Model) setRecentConnections(connections []profile.Profile) {
 	m.connection.recentConnections = connections
 	_ = m.connection.recent.SetItems(recentListItems(connections))
 	if m.connection.recentPath != "" {
-		_ = saveRecentConnections(m.connection.recentPath, connections)
+		_ = profile.Save(m.connection.recentPath, connections)
 	}
 }
 
@@ -60,7 +61,7 @@ func (m *Model) recordConnection(openedTarget string) error {
 	} else if name == "" {
 		name = m.connection.form.connectionName()
 	}
-	connection := recentConnection{
+	connection := profile.Profile{
 		Driver:   driver,
 		Name:     name,
 		Target:   target,
@@ -83,29 +84,29 @@ func (m *Model) recordConnection(openedTarget string) error {
 	// scoped chat/query history survives; otherwise mint a UUIDv7. Never
 	// write a profile without a valid scope.
 	id := strings.TrimSpace(m.connection.form.values.id)
-	if !validConnectionID(id) {
+	if !profile.ValidID(id) {
 		for _, existing := range m.connection.recentConnections {
-			if sameRecentConnection(existing, connection) && validConnectionID(existing.ID) {
+			if sameRecentConnection(existing, connection) && profile.ValidID(existing.ID) {
 				id = existing.ID
 				break
 			}
 		}
 	}
-	if !validConnectionID(id) {
-		generated, err := newConnectionID()
+	if !profile.ValidID(id) {
+		generated, err := profile.NewID()
 		if err != nil {
 			return err
 		}
 		id = generated
 	}
 	connection.ID = id
-	connections := make([]recentConnection, 0, min(len(m.connection.recentConnections)+1, maxRecentConnections))
+	connections := make([]profile.Profile, 0, min(len(m.connection.recentConnections)+1, profile.MaxProfiles))
 	connections = append(connections, connection)
 	for _, existing := range m.connection.recentConnections {
 		if sameRecentConnection(existing, connection) {
 			continue
 		}
-		if len(connections) == maxRecentConnections {
+		if len(connections) == profile.MaxProfiles {
 			break
 		}
 		connections = append(connections, existing)
@@ -115,7 +116,7 @@ func (m *Model) recordConnection(openedTarget string) error {
 	return nil
 }
 
-func sameRecentConnection(left, right recentConnection) bool {
+func sameRecentConnection(left, right profile.Profile) bool {
 	if left.Driver != right.Driver {
 		return false
 	}
@@ -125,14 +126,14 @@ func sameRecentConnection(left, right recentConnection) bool {
 	return left.Name == right.Name
 }
 
-func (m *Model) selectedRecentConnection() (recentConnection, bool) {
-	connection, ok := m.connection.recent.SelectedItem().(recentConnection)
-	return connection, ok
+func (m *Model) selectedRecentConnection() (profile.Profile, bool) {
+	item, ok := m.connection.recent.SelectedItem().(recentProfile)
+	return item.Profile, ok
 }
 
 // loadRecentConnectionValues copies a saved profile into the connection
 // form's values, normalizing empty TLS modes to the disabled defaults.
-func (m *Model) loadRecentConnectionValues(connection recentConnection) {
+func (m *Model) loadRecentConnectionValues(connection profile.Profile) {
 	m.connection.form.values.driver, m.connection.form.values.name, m.connection.form.values.target = connection.Driver, connection.Name, connection.Target
 	m.connection.form.values.id = connection.ID
 	m.connection.form.values.host, m.connection.form.values.port, m.connection.form.values.user = connection.Host, connection.Port, connection.User
@@ -179,8 +180,8 @@ func (m *Model) confirmDeleteRecentConnection() {
 }
 
 // deleteRecentConnection removes the given profile from the recent list.
-func (m *Model) deleteRecentConnection(connection recentConnection) {
-	connections := make([]recentConnection, 0, len(m.connection.recentConnections)-1)
+func (m *Model) deleteRecentConnection(connection profile.Profile) {
+	connections := make([]profile.Profile, 0, len(m.connection.recentConnections)-1)
 	for _, existing := range m.connection.recentConnections {
 		if sameRecentConnection(existing, connection) {
 			continue

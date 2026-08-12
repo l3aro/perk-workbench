@@ -13,16 +13,19 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/go-sql-driver/mysql"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
-type connectionDriver string
-type mysqlTLSMode string
-type postgresTLSMode string
+// Driver and TLS mode types are the persisted profile types; the form
+// aliases them so form values and profiles share one representation.
+type connectionDriver = profile.Driver
+type mysqlTLSMode = profile.MySQLTLS
+type postgresTLSMode = profile.PostgreSQLTLS
 
 const (
-	driverSQLite     connectionDriver = "sqlite"
-	driverMySQL      connectionDriver = "mysql"
-	driverPostgreSQL connectionDriver = "postgres"
+	driverSQLite     = profile.DriverSQLite
+	driverMySQL      = profile.DriverMySQL
+	driverPostgreSQL = profile.DriverPostgreSQL
 
 	mysqlTLSVerify     mysqlTLSMode = "true"
 	mysqlTLSSkipVerify mysqlTLSMode = "skip-verify"
@@ -389,7 +392,7 @@ func (f connectionForm) portValue() string {
 }
 
 func (f connectionForm) targetValue() string {
-	pass := resolveSecretRef(f.values.pass)
+	pass := profile.ResolveSecretRef(f.values.pass)
 	if f.values.driver == driverMySQL {
 		config := mysql.NewConfig()
 		config.User = strings.TrimSpace(f.values.user)

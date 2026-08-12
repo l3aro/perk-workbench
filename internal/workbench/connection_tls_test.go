@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
 func TestConnectionForm_rendersMySQLTLSChoices(t *testing.T) {
@@ -51,7 +53,7 @@ func TestConnectionForm_defaultsPostgreSQLTLSToDisabled(t *testing.T) {
 
 func TestConnectionForm_restoresPostgreSQLTLSFromRecentProfile(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver:        driverPostgreSQL,
 		Name:          "Local Docker",
 		Host:          "127.0.0.1",
@@ -73,7 +75,7 @@ func TestConnectionForm_restoresPostgreSQLTLSFromRecentProfile(t *testing.T) {
 func TestConnectionForm_restoresMySQLTLSFromRecentProfile(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []profile.Profile{{
 		Driver:   driverMySQL,
 		Name:     "Local Docker",
 		Host:     "127.0.0.1",
@@ -97,7 +99,7 @@ func TestConnectionForm_restoresMySQLTLSFromRecentProfile(t *testing.T) {
 func TestRecentConnections_persistMySQLTLSMode(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "connections.json")
-	connections := []recentConnection{{
+	connections := []profile.Profile{{
 		Driver:   driverMySQL,
 		Name:     "Local Docker",
 		Host:     "127.0.0.1",
@@ -107,10 +109,10 @@ func TestRecentConnections_persistMySQLTLSMode(t *testing.T) {
 	}}
 
 	// When
-	if err := saveRecentConnections(path, connections); err != nil {
+	if err := profile.Save(path, connections); err != nil {
 		t.Fatalf("saving recent connections: %v", err)
 	}
-	loaded, _ := loadRecentConnections(path)
+	loaded, _ := profile.Load(path)
 
 	// Then
 	if len(loaded) != 1 || loaded[0].MySQLTLS != mysqlTLSSkipVerify {
@@ -119,7 +121,7 @@ func TestRecentConnections_persistMySQLTLSMode(t *testing.T) {
 }
 func TestRecentConnections_persistPostgreSQLTLSMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "connections.json")
-	connections := []recentConnection{{
+	connections := []profile.Profile{{
 		Driver:        driverPostgreSQL,
 		Name:          "Local Docker",
 		Host:          "127.0.0.1",
@@ -128,10 +130,10 @@ func TestRecentConnections_persistPostgreSQLTLSMode(t *testing.T) {
 		PostgreSQLTLS: postgresTLSEncrypt,
 	}}
 
-	if err := saveRecentConnections(path, connections); err != nil {
+	if err := profile.Save(path, connections); err != nil {
 		t.Fatalf("saving recent connections: %v", err)
 	}
-	loaded, _ := loadRecentConnections(path)
+	loaded, _ := profile.Load(path)
 
 	if len(loaded) != 1 || loaded[0].PostgreSQLTLS != postgresTLSEncrypt {
 		t.Fatalf("loaded connections = %#v, want persisted PostgreSQL TLS mode", loaded)

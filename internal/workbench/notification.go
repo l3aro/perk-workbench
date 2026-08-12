@@ -1,11 +1,8 @@
 package workbench
 
 import (
-	"database/sql"
-	"errors"
 	"fmt"
 	"image"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,6 +16,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/log"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
 const (
@@ -219,147 +217,30 @@ func notificationPath() (string, error) {
 	return filepath.Join(dir, "perk-workbench", "data.db"), nil
 }
 
-// notificationDB returns the model's persistent notification database,
+// notificationStore returns the model's persistent notification store,
 // opened lazily on first use and reused for every save.
-func (m *Model) notificationDB() *sql.DB {
-	if m.notifications.database == nil && m.notifications.path != "" {
-		if db, err := openNotificationStore(m.notifications.path); err == nil {
-			m.notifications.database = db
+func (m *Model) notificationStore() *notification.Store {
+	if m.notifications.store == nil && m.notifications.path != "" {
+		if store, err := notification.Open(m.notifications.path, notificationRetentionDays()); err == nil {
+			m.notifications.store = store
 		}
 	}
-	return m.notifications.database
+	return m.notifications.store
 }
 
-// loadNotifications returns the retained entries for one connection scope,
-// newest first. An empty scope never reads unscoped rows.
-func loadNotifications(path, connectionID string) []notificationEntry {
-	if connectionID == "" {
-		return nil
+// notificationEntriesOf converts store entries into the UI entry type.
+func notificationEntriesOf(entries []notification.Entry) []notificationEntry {
+	result := make([]notificationEntry, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, notificationEntry{
+			id:          entry.ID,
+			createdAt:   entry.CreatedAt,
+			title:       entry.Title,
+			description: entry.Description,
+			level:       entry.Level,
+		})
 	}
-	db, err := openNotificationStore(path)
-	if err != nil {
-		return nil
-	}
-	defer db.Close()
-	return loadNotificationsDB(db, connectionID)
-}
-
-func loadNotificationsDB(db *sql.DB, connectionID string) []notificationEntry {
-	if connectionID == "" {
-		return nil
-	}
-	if pruneNotifications(db, time.Now(), connectionID) != nil {
-		return nil
-	}
-	rows, err := db.Query(`SELECT id, created_at, title, description, level FROM notifications WHERE connection_id = ? ORDER BY created_at DESC, id DESC`, connectionID)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var entries []notificationEntry
-	for rows.Next() {
-		var createdAt int64
-		var entry notificationEntry
-		if rows.Scan(&entry.id, &createdAt, &entry.title, &entry.description, &entry.level) != nil {
-			continue
-		}
-		entry.createdAt = time.Unix(0, createdAt)
-		entries = append(entries, entry)
-	}
-	return entries
-}
-
-// saveNotification persists one entry for a connection scope and returns the
-// inserted row ID.
-func saveNotification(path, connectionID string, entry notificationEntry) (int64, error) {
-	db, err := openNotificationStore(path)
-	if err != nil {
-		return 0, err
-	}
-	defer db.Close()
-	return saveNotificationDB(db, connectionID, entry)
-}
-
-// saveNotificationDB persists one entry through an already-open database:
-// prune by retention, then insert.
-func saveNotificationDB(db *sql.DB, connectionID string, entry notificationEntry) (int64, error) {
-	// Never persist notifications without a profile scope; the caller keeps
-	// the entry in memory only.
-	if connectionID == "" {
-		return 0, errors.New("notifications require a connection scope")
-	}
-	if err := pruneNotifications(db, time.Now(), connectionID); err != nil {
-		return 0, err
-	}
-	result, err := db.Exec(`INSERT INTO notifications(connection_id, created_at, title, description, level) VALUES (?, ?, ?, ?, ?)`,
-		connectionID, entry.createdAt.UnixNano(), entry.title, entry.description, entry.level)
-	if err != nil {
-		return 0, err
-	}
-	return result.LastInsertId()
-}
-
-func openNotificationStore(path string) (*sql.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if err := file.Close(); err != nil {
-		return nil, err
-	}
-	db, err := sql.Open("sqlite", (&url.URL{Scheme: "file", Path: path, RawQuery: "_pragma=busy_timeout(5000)"}).String())
-	if err != nil {
-		return nil, err
-	}
-	if _, err = db.Exec(`CREATE TABLE IF NOT EXISTS notifications (
-		id INTEGER PRIMARY KEY,
-		connection_id TEXT NOT NULL,
-		created_at INTEGER NOT NULL,
-		title TEXT NOT NULL,
-		description TEXT NOT NULL,
-		level INTEGER NOT NULL DEFAULT 0
-	)`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	// Older databases predate the level column; add it so history keeps the
-	// severity of logged events. Pre-existing rows stay neutral (0).
-	rows, err := db.Query(`PRAGMA table_info(notifications)`)
-	if err != nil {
-		db.Close()
-		return nil, err
-	}
-	hasLevel := false
-	for rows.Next() {
-		var cid, notnull, pk int
-		var name, ctype string
-		var dflt any
-		if rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk) == nil && name == "level" {
-			hasLevel = true
-		}
-	}
-	rows.Close()
-	if !hasLevel {
-		if _, err = db.Exec(`ALTER TABLE notifications ADD COLUMN level INTEGER NOT NULL DEFAULT 0`); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	if _, err = db.Exec(`CREATE INDEX IF NOT EXISTS notifications_connection_created ON notifications (connection_id, created_at DESC, id DESC)`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
-}
-
-// pruneNotifications deletes expired entries for one connection scope.
-func pruneNotifications(db *sql.DB, now time.Time, connectionID string) error {
-	_, err := db.Exec(`DELETE FROM notifications WHERE created_at < ? AND connection_id = ?`,
-		now.AddDate(0, 0, -notificationRetentionDays()).UnixNano(), connectionID)
-	return err
+	return result
 }
 
 // setStatus records a status transition, bumping the workbench-side revision
@@ -417,8 +298,14 @@ func (m *Model) notifyLogTransient(entry log.Entry) tea.Cmd {
 // connection profile is active and persist is set, saves it to history.
 func (m *Model) showNotification(entry notificationEntry, persist bool) tea.Cmd {
 	if persist && m.connectionID != "" {
-		if db := m.notificationDB(); db != nil {
-			if id, err := saveNotificationDB(db, m.connectionID, entry); err == nil {
+		if store := m.notificationStore(); store != nil {
+			if id, err := store.Append(m.connectionID, notification.Entry{
+				ID:          entry.id,
+				CreatedAt:   entry.createdAt,
+				Title:       entry.title,
+				Description: entry.description,
+				Level:       entry.level,
+			}, 0); err == nil {
 				entry.id = id
 			}
 		}

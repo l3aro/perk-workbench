@@ -11,7 +11,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			switch {
 			case m.keybindings.Match(keyPress, "detail.explain", []scope{scopeView, scopeGlobal}):
-				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLog.detail.statement, m.layout.tableViewportWidth)
+				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLog.detail.Statement, m.layout.tableViewportWidth)
 				if explain == nil {
 					return m, nil
 				}
@@ -496,7 +496,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					if !ok {
 						return m, nil
 					}
-					m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.layout.tableViewportWidth)
+					m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.Statement, m.layout.tableViewportWidth)
 					if m.overlay.explainPicker == nil {
 						return m, nil
 					}

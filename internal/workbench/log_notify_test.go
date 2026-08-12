@@ -18,7 +18,44 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/log"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
+
+// loadNotificationHistory opens the shared data.db through the store and
+// returns the retained entries for one connection scope.
+func loadNotificationHistory(t *testing.T, path, connectionID string) []notificationEntry {
+	t.Helper()
+	store, err := notification.Open(path, notificationRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	entries, err := store.Load(connectionID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return notificationEntriesOf(entries)
+}
+
+// saveNotificationHistory persists one entry through the store.
+func saveNotificationHistory(t *testing.T, path, connectionID string, entry notificationEntry) {
+	t.Helper()
+	store, err := notification.Open(path, notificationRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.Append(connectionID, notification.Entry{
+		ID:          entry.id,
+		CreatedAt:   entry.createdAt,
+		Title:       entry.title,
+		Description: entry.description,
+		Level:       entry.level,
+	}, 0); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestLogNotification_popupRendersLevelTitleIcon(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
@@ -212,7 +249,7 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	// entry is dropped, so nothing pops up.
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{Name: "Scratch", Target: ":memory:"}}
+	model.connection.recentConnections = []profile.Profile{{Name: "Scratch", Target: ":memory:"}}
 	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
 	model.connection.form.setFocus(connectionFocusRecent)
 	drainLogNotifications()
@@ -229,7 +266,7 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	// the DEBUG line.
 	SetAppConfig(Config{LogLevel: "debug"})
 	model = New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{{Name: "Scratch", Target: ":memory:"}}
+	model.connection.recentConnections = []profile.Profile{{Name: "Scratch", Target: ":memory:"}}
 	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
 	model.connection.form.setFocus(connectionFocusRecent)
 	drainLogNotifications()
@@ -309,7 +346,7 @@ func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
 	// open target directly so the open completes deterministically.
 	updated, _ = model.Update(model.openTarget(":memory:")())
 	model = updated.(Model)
-	history := loadNotifications(filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
+	history := loadNotificationHistory(t, filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
 	if len(history) == 0 {
 		t.Fatal("history has no retained entries after the open")
 	}
@@ -376,7 +413,7 @@ func TestLogNotification_openingPickerStatusIsDebugLog(t *testing.T) {
 	// open target directly so the open completes deterministically.
 	updated, _ = model.Update(model.openTarget(":memory:")())
 	model = updated.(Model)
-	history := loadNotifications(filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
+	history := loadNotificationHistory(t, filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
 	if len(history) == 0 {
 		t.Fatal("history has no retained entries after the open")
 	}
@@ -425,7 +462,7 @@ func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
 	if popup == nil || !strings.Contains(popup.title, "Debug") || !strings.Contains(popup.description, "opening Second") {
 		t.Fatalf("popup = %#v, want the Debug opening Second popup", popup)
 	}
-	if got := loadNotifications(historyPath, "live-scope"); len(got) != 0 {
+	if got := loadNotificationHistory(t, historyPath, "live-scope"); len(got) != 0 {
 		t.Fatalf("opening entry bound to the live scope: %#v", got)
 	}
 
@@ -437,8 +474,8 @@ func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
 		t.Fatal("open did not assign a new profile scope")
 	}
 	for _, entries := range [][]notificationEntry{
-		loadNotifications(historyPath, "live-scope"),
-		loadNotifications(historyPath, model.connectionID),
+		loadNotificationHistory(t, historyPath, "live-scope"),
+		loadNotificationHistory(t, historyPath, model.connectionID),
 	} {
 		for _, entry := range entries {
 			if strings.Contains(entry.description, "opening") {
@@ -446,7 +483,7 @@ func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
 			}
 		}
 	}
-	if got := loadNotifications(historyPath, model.connectionID); len(got) == 0 {
+	if got := loadNotificationHistory(t, historyPath, model.connectionID); len(got) == 0 {
 		t.Fatal("new scope has no retained entries after the open")
 	}
 }
@@ -486,11 +523,9 @@ func TestLogNotification_endToEndFileAndPopup(t *testing.T) {
 func TestNotifications_persistLevel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.db")
 	entry := notificationEntry{createdAt: time.Now(), title: logLevelIcon(log.LevelError) + " Error", description: "boom", level: storedLogLevel(log.LevelError)}
-	if _, err := saveNotification(path, "conn-a", entry); err != nil {
-		t.Fatal(err)
-	}
+	saveNotificationHistory(t, path, "conn-a", entry)
 
-	got := loadNotifications(path, "conn-a")
+	got := loadNotificationHistory(t, path, "conn-a")
 	if len(got) != 1 || got[0].level != entry.level {
 		t.Fatalf("notifications = %#v, want the entry with level %d", got, entry.level)
 	}
@@ -521,13 +556,17 @@ func TestNotifications_migrateOldSchemaAddsLevel(t *testing.T) {
 	}
 
 	// Opening through the store migrates the schema.
-	store, err := openNotificationStore(path)
+	store, err := notification.Open(path, notificationRetentionDays())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	legacy := loadNotificationsDB(store, "conn-a")
+	loaded, err := store.Load("conn-a", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := notificationEntriesOf(loaded)
 	if len(legacy) != 1 || legacy[0].level != notificationLevelNone {
 		t.Fatalf("legacy notifications = %#v, want one neutral-level entry", legacy)
 	}
@@ -537,10 +576,14 @@ func TestNotifications_migrateOldSchemaAddsLevel(t *testing.T) {
 
 	// New entries keep their severity through the migrated schema.
 	entry := notificationEntry{createdAt: time.Now(), title: "ℹ Info", description: "fresh", level: storedLogLevel(log.LevelInfo)}
-	if _, err = saveNotificationDB(store, "conn-a", entry); err != nil {
+	if _, err = store.Append("conn-a", notification.Entry{ID: entry.id, CreatedAt: entry.createdAt, Title: entry.title, Description: entry.description, Level: entry.level}, 0); err != nil {
 		t.Fatal(err)
 	}
-	got := loadNotificationsDB(store, "conn-a")
+	loaded, err = store.Load("conn-a", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := notificationEntriesOf(loaded)
 	if len(got) != 2 || got[0].level != entry.level {
 		t.Fatalf("notifications = %#v, want the fresh entry with level %d", got, entry.level)
 	}

@@ -57,10 +57,16 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 			m.setStatus(safeText("saving connection profile: " + err.Error()))
 		}
 	}
-	m.queryLog.entries = loadQueryLog(m.queryLog.path, m.connectionID)
+	if store := m.queryLogStore(); store != nil {
+		m.queryLog.entries = loadQueryLogEntries(store, m.connectionID)
+	}
 	m.queryLog.page = 0
 	m.renderQueryLog()
-	m.notifications.entries = loadNotifications(m.notifications.path, m.connectionID)
+	if store := m.notificationStore(); store != nil {
+		if entries, err := store.Load(m.connectionID, 0); err == nil {
+			m.notifications.entries = notificationEntriesOf(entries)
+		}
+	}
 	name := filepath.Base(message.target)
 	if configured := strings.TrimSpace(m.connection.form.values.name); configured != "" {
 		name = configured

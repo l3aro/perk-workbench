@@ -13,64 +13,6 @@ import (
 	"github.com/l3aro/perk-workbench/internal/log"
 )
 
-func TestNotifications_persistInSQLiteAndExpire(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "data.db")
-	previous := appConfig
-	t.Cleanup(func() { appConfig = previous })
-	SetAppConfig(Config{NotificationRetentionDays: 1})
-
-	entry := notificationEntry{createdAt: time.Now(), title: notificationTitle, description: "ready"}
-	if _, err := saveNotification(path, "conn-a", entry); err != nil {
-		t.Fatal(err)
-	}
-	db, err := openNotificationStore(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO notifications(connection_id, created_at, title, description) VALUES (?, ?, ?, ?)`,
-		"conn-a", time.Now().AddDate(0, 0, -2).UnixNano(), notificationTitle, "expired"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	got := loadNotifications(path, "conn-a")
-	if len(got) != 1 || got[0].description != entry.description {
-		t.Fatalf("notifications = %#v, want only the fresh entry", got)
-	}
-	if got[0].id == 0 {
-		t.Fatal("persisted notification has no SQLite row ID")
-	}
-}
-
-func TestNotifications_scopeEntriesByConnection(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "data.db")
-	aEntry := notificationEntry{createdAt: time.Now(), title: notificationTitle, description: "for A"}
-	bEntry := notificationEntry{createdAt: time.Now(), title: notificationTitle, description: "for B"}
-	if _, err := saveNotification(path, "conn-a", aEntry); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := saveNotification(path, "conn-b", bEntry); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := saveNotification(path, "conn-a", notificationEntry{createdAt: time.Now(), title: notificationTitle, description: "for A again"}); err != nil {
-		t.Fatal(err)
-	}
-
-	gotA := loadNotifications(path, "conn-a")
-	if len(gotA) != 2 || gotA[0].description != "for A again" || gotA[1].description != "for A" {
-		t.Fatalf("scope conn-a notifications = %#v, want the two A entries newest first", gotA)
-	}
-	gotB := loadNotifications(path, "conn-b")
-	if len(gotB) != 1 || gotB[0].description != "for B" {
-		t.Fatalf("scope conn-b notifications = %#v, want only B's entry", gotB)
-	}
-	if got := loadNotifications(path, ""); len(got) != 0 {
-		t.Fatalf("empty scope notifications = %#v, want none", got)
-	}
-}
-
 func TestNotificationRetentionAndTimeout_defaults(t *testing.T) {
 	previous := appConfig
 	t.Cleanup(func() { appConfig = previous })
@@ -100,9 +42,7 @@ func TestNew_loadsPersistedNotifications(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := notificationEntry{createdAt: time.Now(), title: notificationTitle, description: "persisted"}
-	if _, err := saveNotification(path, "conn-a", entry); err != nil {
-		t.Fatal(err)
-	}
+	saveNotificationHistory(t, path, "conn-a", entry)
 
 	model := New("", context.Background(), testOpen, false)
 	// No connection is open yet, so persisted entries must not surface.
@@ -111,7 +51,7 @@ func TestNew_loadsPersistedNotifications(t *testing.T) {
 	}
 	// The scoped load (what updateOpen runs after recordConnection).
 	model.connectionID = "conn-a"
-	model.notifications.entries = loadNotifications(model.notifications.path, model.connectionID)
+	model.notifications.entries = loadNotificationHistory(t, model.notifications.path, model.connectionID)
 	if got := model.notifications.entries; len(got) != 1 || got[0].description != entry.description {
 		t.Fatalf("loaded notifications = %#v, want %#v", got, []notificationEntry{entry})
 	}

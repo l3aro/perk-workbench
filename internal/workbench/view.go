@@ -470,7 +470,7 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 		return
 	}
 	var statusStr, iconStr string
-	switch d.status {
+	switch d.Status {
 	case "failed":
 		statusStr = "Failed"
 		iconStr = statusFailedStyle.Render(iconFailed)
@@ -488,7 +488,7 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString(headerStyle.Render("  \uf0ca Query Log Detail  "))
 	b.WriteString("\n\n")
 	b.WriteString("  Time:     ")
-	b.WriteString(d.startedAt.Format("2006-01-02 15:04:05"))
+	b.WriteString(d.StartedAt.Format("2006-01-02 15:04:05"))
 	b.WriteString("\n")
 	b.WriteString("  Status:   ")
 	b.WriteString(iconStr)
@@ -496,13 +496,13 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString(statusStr)
 	b.WriteString("\n")
 	b.WriteString("  Duration: ")
-	b.WriteString(d.duration.Round(time.Microsecond).String())
+	b.WriteString(d.Duration.Round(time.Microsecond).String())
 	b.WriteString("\n")
 	b.WriteString("  Statement:\n    ")
-	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.statement)), innerW-4, "\n    "))
+	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.Statement)), innerW-4, "\n    "))
 	b.WriteString("\n")
 	b.WriteString("  Message:  ")
-	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.message)), innerW-14, " "))
+	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.Message)), innerW-14, " "))
 	b.WriteString("\n\n  y copy | e explain | enter/esc close")
 
 	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}

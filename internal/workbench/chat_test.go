@@ -1788,7 +1788,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 
 	// Add a failed query.
 	model.queryLog.entries = []queryLogEntry{
-		{statement: "SELECT * FROM nonexistent", message: "no such table: nonexistent", status: "failed"},
+		{Statement: "SELECT * FROM nonexistent", Message: "no such table: nonexistent", Status: "failed"},
 	}
 	ctx = model.chatContext()
 	if !strings.Contains(ctx, "no such table: nonexistent") {
@@ -1800,8 +1800,8 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 
 	// Newer successful query does not hide the failure.
 	model.queryLog.entries = []queryLogEntry{
-		{statement: "SELECT 1", status: "success"},
-		{statement: "SELECT * FROM nonexistent", message: "no such table: nonexistent", status: "failed"},
+		{Statement: "SELECT 1", Status: "success"},
+		{Statement: "SELECT * FROM nonexistent", Message: "no such table: nonexistent", Status: "failed"},
 	}
 	ctx = model.chatContext()
 	if !strings.Contains(ctx, "no such table: nonexistent") {
@@ -1810,7 +1810,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 
 	// All successful → no error context.
 	model.queryLog.entries = []queryLogEntry{
-		{statement: "SELECT 1", status: "success"},
+		{Statement: "SELECT 1", Status: "success"},
 	}
 	ctx = model.chatContext()
 	if strings.Contains(ctx, "Last failed query") {

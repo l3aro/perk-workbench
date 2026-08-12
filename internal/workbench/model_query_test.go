@@ -54,7 +54,7 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	if !strings.Contains(model.queryLog.resultsStatus, "1 row affected") || !strings.Contains(model.queryLog.resultsStatus, "truncated") {
 		t.Fatalf("result status = %q, want row count and truncation", model.queryLog.resultsStatus)
 	}
-	if got, want := model.queryLog.entries[0].message, "inserted 1 row"; got != want {
+	if got, want := model.queryLog.entries[0].Message, "inserted 1 row"; got != want {
 		t.Fatalf("query log message = %q, want %q", got, want)
 	}
 }
@@ -288,10 +288,10 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	if len(model.queryLog.entries) == 0 {
 		t.Fatal("no query log entry recorded for failure")
 	}
-	if got, want := model.queryLog.entries[0].status, "failed"; got != want {
+	if got, want := model.queryLog.entries[0].Status, "failed"; got != want {
 		t.Fatalf("query log status = %q, want %q", got, want)
 	}
-	if got, want := model.queryLog.entries[0].message, "near \"bad\": syntax error"; got != want {
+	if got, want := model.queryLog.entries[0].Message, "near \"bad\": syntax error"; got != want {
 		t.Fatalf("query log message = %q, want %q", got, want)
 	}
 }
@@ -323,7 +323,7 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	if len(model.queryLog.entries) == 0 {
 		t.Fatal("no query log entry recorded for cancellation")
 	}
-	if got, want := model.queryLog.entries[0].status, "canceled"; got != want {
+	if got, want := model.queryLog.entries[0].Status, "canceled"; got != want {
 		t.Fatalf("query log status = %q, want %q", got, want)
 	}
 }
@@ -396,7 +396,7 @@ func TestExecute_history_recall_cycles_executed_statements(t *testing.T) {
 		model = updated.(Model)
 		model = driveCommand(model, command)
 	}
-	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT * FROM projects"})
 	model.queryLog.editor.setValue("")
 
 	// When
@@ -608,7 +608,7 @@ func TestExecute_history_recall_cycles_executed_statements_merged_2(t *testing.T
 		model = updated.(Model)
 		model = driveCommand(model, command)
 	}
-	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT * FROM projects"})
 	model.queryLog.editor.setValue("")
 
 	// When
@@ -639,7 +639,7 @@ func TestExecute_history_recall_cycles_executed_statements_merged_3(t *testing.T
 		model = updated.(Model)
 		model = driveCommand(model, command)
 	}
-	model.appendQueryLog(queryLogEntry{statement: "SELECT * FROM projects"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT * FROM projects"})
 	model.queryLog.editor.setValue("")
 
 	// When

@@ -58,7 +58,7 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, nil
 			}
-			m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.layout.tableViewportWidth)
+			m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.Statement, m.layout.tableViewportWidth)
 			if m.overlay.explainPicker == nil {
 				return m, nil
 			}

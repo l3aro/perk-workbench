@@ -330,8 +330,8 @@ func TestTableCellNavigation_consumesMotionKeys_forEmptyResultsPlaceholder(t *te
 func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
-	model.appendQueryLog(queryLogEntry{statement: "SELECT first"})
-	model.appendQueryLog(queryLogEntry{statement: "SELECT second"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT first"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT second"})
 	columns := model.queryLog.table.Columns()
 	clickX := model.layout.schemaWidth + 1
 	for _, column := range columns[:2] {
@@ -358,8 +358,8 @@ func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
 func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
-	model.appendQueryLog(queryLogEntry{statement: "SELECT first"})
-	model.appendQueryLog(queryLogEntry{statement: "SELECT second"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT first"})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT second"})
 	columns := model.queryLog.table.Columns()
 	clickX := model.layout.schemaWidth + 1
 	for _, column := range columns[:2] {

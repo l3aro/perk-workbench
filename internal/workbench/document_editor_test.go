@@ -173,14 +173,14 @@ func TestDocumentEditor_insertConfirmsAndSaves(t *testing.T) {
 	}
 	var insertEntry *queryLogEntry
 	for index := range min(len(model.queryLog.entries), 3) {
-		if model.queryLog.entries[index].message == "inserted 1 row" {
+		if model.queryLog.entries[index].Message == "inserted 1 row" {
 			insertEntry = &model.queryLog.entries[index]
 		}
 	}
 	if insertEntry == nil {
 		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLog.entries)
 	}
-	if got, want := insertEntry.statement, "Table: things\nDocument:\n{\"name\": \"widget\"}"; got != want {
+	if got, want := insertEntry.Statement, "Table: things\nDocument:\n{\"name\": \"widget\"}"; got != want {
 		t.Fatalf("query log statement = %q, want preview %q", got, want)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
 // recentClickModel builds a connection screen with two SQLite profiles.
@@ -14,7 +15,7 @@ func recentClickModel(t *testing.T) Model {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []recentConnection{
+	model.connection.recentConnections = []profile.Profile{
 		{Driver: driverSQLite, Name: "alpha", Target: "/tmp/alpha.db"},
 		{Driver: driverSQLite, Name: "beta", Target: "/tmp/beta.db"},
 	}
@@ -49,7 +50,7 @@ func TestRecentClick_selectsRenderedProfile(t *testing.T) {
 
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: itemY, Button: tea.MouseLeft})
 	model = updated.(Model)
-	selected, ok := model.connection.recent.SelectedItem().(recentConnection)
+	selected, ok := model.selectedRecentConnection()
 	if !ok || selected.Name != "beta" {
 		t.Fatalf("selected profile = %#v, want beta", selected)
 	}
@@ -151,7 +152,7 @@ func TestRecentClick_rightClickOpensMenuOnProfile(t *testing.T) {
 	if model.overlay.contextMenu == nil || !model.overlay.contextMenu.visible {
 		t.Fatal("right-click did not open the profile context menu")
 	}
-	selected, ok := model.connection.recent.SelectedItem().(recentConnection)
+	selected, ok := model.selectedRecentConnection()
 	if !ok || selected.Name != "beta" {
 		t.Fatalf("right-click selected %#v, want beta", selected)
 	}
