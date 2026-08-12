@@ -16,7 +16,7 @@ func (m *Model) applyLayout(width, height int) {
 	m.layout.width, m.layout.height = max(width, 0), max(height, 0)
 	contentHeight := max(m.layout.height-4, 0)
 	minimumWidth := compactWidth
-	if m.State == stateReady && m.chat.visible {
+	if m.State == stateReady && m.chat.component.Visible {
 		minimumWidth = compactWidth + chatPaneWidth
 	}
 	m.layout.compact = m.layout.fullscreen || m.layout.width < minimumWidth || m.layout.height < 24
@@ -27,7 +27,7 @@ func (m *Model) applyLayout(width, height int) {
 	}
 	if !m.layout.compact {
 		m.layout.schemaWidth = 44
-		if m.State == stateReady && m.chat.visible {
+		if m.State == stateReady && m.chat.component.Visible {
 			m.layout.chatWidth = chatPaneWidth
 			m.layout.editorWidth = max(m.layout.width-m.layout.schemaWidth-m.layout.chatWidth-4, 1)
 		} else {

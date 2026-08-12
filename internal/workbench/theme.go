@@ -69,10 +69,7 @@ func resetStyles() {
 	statusStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorMuted)).
 		Padding(0, spaceCompact)
-	thinkingStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorPrimary)).
-		Italic(true).
-		Padding(0, spaceCompact)
+	thinkingStyle = uikit.ThinkingStyle
 	focusStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorPrimary)).
@@ -104,12 +101,8 @@ func resetStyles() {
 		Background(lipgloss.Color(colorFocused)).
 		Bold(true).
 		Padding(0, spaceCompact)
-	userMessageStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorInk)).
-		Background(lipgloss.Color(colorPanel))
-	userMessageAccentStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorPrimary)).
-		Background(lipgloss.Color(colorPanel))
+	userMessageStyle = uikit.UserMessageStyle
+	userMessageAccentStyle = uikit.UserMessageAccentStyle
 	primaryIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#a371f7"))
 	uniqueIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#e3b341"))
 	regularIndexStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
@@ -131,14 +124,12 @@ func resetStyles() {
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorPrimary)).
 		Bold(true)
-	completionItemStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorMuted))
+	completionItemStyle = uikit.CompletionItemStyle
 	completionBoxStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorPrimary)).
 		Padding(0, 1)
-	completionDetailStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorBorder))
+	completionDetailStyle = uikit.CompletionDetailStyle
 }
 
 var formTheme = uikit.FormTheme

@@ -1,6 +1,9 @@
 package workbench
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
+)
 
 type formMode uint8
 
@@ -110,10 +113,10 @@ func (m *Model) openForm(command tea.Cmd, focus func() tea.Cmd) tea.Cmd {
 // without a mode switch or a re-click. Widgets that are already editing are
 // left alone.
 func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
-	if m.State == stateReady && m.Focus == focusChat && m.chat.visible {
-		if m.chat.chatMode != formModeInsert {
-			m.chat.chatMode = formModeInsert
-			return m.chat.input.Focus()
+	if m.State == stateReady && m.Focus == focusChat && m.chat.component.Visible {
+		if m.chat.component.ChatMode != chat.ModeInsert {
+			m.chat.component.ChatMode = chat.ModeInsert
+			return m.chat.component.Input.Focus()
 		}
 		return nil
 	}

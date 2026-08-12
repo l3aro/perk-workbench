@@ -3,6 +3,7 @@ package workbench
 import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // expandSchemaLevel expands the selected node when collapsed (with the
@@ -235,7 +236,7 @@ func (m *Model) blurTables() {
 	m.structure.indexes.Blur()
 	m.structure.foreignKeys.Blur()
 	m.queryLog.component.Blur()
-	m.chat.input.Blur()
+	m.chat.component.Input.Blur()
 }
 
 func (m *Model) cycleFocus(forward bool) {
@@ -244,7 +245,7 @@ func (m *Model) cycleFocus(forward bool) {
 	m.queryLog.component.ClearPendingG()
 
 	focusCount := focus(3)
-	if m.chat.visible {
+	if m.chat.component.Visible {
 		focusCount++
 	}
 	if forward {
@@ -261,11 +262,11 @@ func (m *Model) cycleFocus(forward bool) {
 		m.queryLog.component.Focus()
 		m.queryLog.component.EnsureCursor()
 	case focusChat:
-		m.chat.chatMode = formModeNormal
+		m.chat.component.ChatMode = chat.ModeNormal
 		if !m.vimMode {
 			// Focus is set synchronously; the cursor cmd is dropped.
-			m.chat.chatMode = formModeInsert
-			m.chat.input.Focus()
+			m.chat.component.ChatMode = chat.ModeInsert
+			m.chat.component.Input.Focus()
 		}
 	}
 }

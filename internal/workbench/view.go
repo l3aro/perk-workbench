@@ -64,7 +64,7 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.browse.cellEditor != nil || m.browse.cellViewer != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
+	if m.browse.cellEditor != nil || m.browse.cellViewer != nil || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
 		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() ||
 		m.connection.component.Form.Confirmation != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.overlay.queryConfirmation != nil || m.hasConfirming() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
@@ -154,7 +154,7 @@ func (m Model) hasConfirming() bool {
 		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() || m.connection.component.Form.Confirmation != nil || m.tableFormOpen() ||
 		(m.browse.cellEditor != nil && m.browse.cellEditor.confirming) ||
 		(m.browse.documentEditor != nil && m.browse.documentEditor.confirming) ||
-		(m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil)
+		(m.chat.writeConfirmation != nil)
 }
 
 func (m Model) activeConfirmation() *confirmationDialog {
@@ -181,15 +181,15 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.browse.cellEditor.confirm
 	case m.browse.documentEditor != nil && m.browse.documentEditor.confirming:
 		return m.browse.documentEditor.confirmation
-	case m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil:
-		return m.chat.activeRun().pendingWrite.dialog
+	case m.chat.writeConfirmation != nil:
+		return m.chat.writeConfirmation
 	default:
 		return nil
 	}
 }
 
 func (m Model) hasOverlay() bool {
-	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
+	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -203,8 +203,8 @@ func (m Model) confirmContent() string {
 		raw = m.overlay.explainPicker.form.View()
 	case m.tableFormOpen():
 		raw = m.structure.tableForm.View()
-	case m.chat.historyPicker != nil:
-		raw = m.chat.historyPicker.View()
+	case m.chat.component.HistoryPicker != nil:
+		raw = m.chat.component.HistoryPicker.View()
 	case m.overlay.quitDialog != nil:
 		raw = m.overlay.quitDialog.Content(m.layout.width)
 	case m.structure.columnForm.confirming():
@@ -219,8 +219,8 @@ func (m Model) confirmContent() string {
 		raw = m.connection.component.Form.Confirmation.Content(m.layout.width)
 	case m.overlay.deleteConfirm != nil:
 		raw = m.overlay.deleteConfirm.Content(m.layout.width)
-	case m.chat.activeRun().pendingWrite != nil:
-		return m.chat.activeRun().pendingWrite.dialog.Content(m.layout.width)
+	case m.chat.writeConfirmation != nil:
+		return m.chat.writeConfirmation.Content(m.layout.width)
 	}
 	if raw == "" {
 		return ""
@@ -469,7 +469,7 @@ func (m Model) contentView() string {
 	}
 	left := titledPane("Databases <1>", m.schemaPaneBody(), paneStyle(m.Focus == focusSchema).Width(max(m.layout.schemaWidth-2, 0)).Height(max(m.layout.height-2, 0)))
 	center := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
-	if !m.chat.visible {
+	if !m.chat.component.Visible {
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, center)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, center, m.chatPaneView())
@@ -497,21 +497,12 @@ func (m Model) chatPaneView() string {
 }
 
 func (m Model) chatContentView() string {
-	view := m.chat.viewport.View()
-	if dropdown := m.chatCompletionOverlay(); dropdown != "" {
-		lines := strings.Split(view, "\n")
-		overlayLines := strings.Split(dropdown, "\n")
-		start := len(lines) - len(overlayLines)
-		if start < 0 {
-			overlayLines = overlayLines[len(overlayLines)-len(lines):]
-			start = 0
-		}
-		copy(lines[start:], overlayLines)
-		view = strings.Join(lines, "\n")
-	}
 	return lipgloss.JoinVertical(lipgloss.Left,
-		view,
-		lipgloss.NewStyle().Padding(1, 0).Render(m.chat.input.View()),
+		m.chat.component.View(uikit.Layout{
+			Width:         max(m.layout.chatWidth-6, 1),
+			Height:        max(m.layout.height-4, 1),
+			ViewportWidth: max(m.layout.chatWidth-6, 1),
+		}),
 		m.chatModeBadge(),
 	)
 }
@@ -775,31 +766,4 @@ func (m Model) modeBadge() string {
 		badge += readOnlyStyle.Render("READONLY")
 	}
 	return badge
-}
-
-func (m Model) chatModeBadge() string {
-	left := ""
-	if m.vimMode {
-		// The modal INSERT/NORMAL state only exists in vim mode.
-		if m.chat.chatMode == formModeInsert {
-			left = modeInsertStyle.Render("INSERT")
-		} else {
-			left = modeNormalStyle.Render("NORMAL")
-		}
-	}
-	right := ""
-	run := m.chat.activeRun()
-	if run.loading {
-		right = chatSpinnerFrames[run.spinnerFrame%len(chatSpinnerFrames)]
-	}
-	if m.chat.yoloWrites {
-		if right != "" {
-			right += " "
-		}
-		right += statusFailedStyle.Render("YOLO")
-	}
-	if right == "" {
-		return left
-	}
-	return chrome.PaneStatus(left, right, m.chat.viewport.Width())
 }

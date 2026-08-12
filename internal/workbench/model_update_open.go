@@ -47,6 +47,9 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.databaseInfo = message.info
+	m.chat.component.Executor = chatExecutor{service: message.service}
+	m.chat.component.Target = message.target
+	m.chat.component.ReadOnly = m.ReadOnly
 	m.applyLayout(m.layout.width, m.layout.height)
 	m.Focus = focusSchema
 	m.queryLog.editor.text.Blur()

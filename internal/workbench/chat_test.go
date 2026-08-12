@@ -20,6 +20,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/ai"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
@@ -36,8 +37,8 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 		t.Fatal("spinner shown while idle")
 	}
 
-	model.chat.activeRun().loading = true
-	model.chat.activeRun().spinnerFrame = 1
+	model.chat.component.ActiveRun().Loading = true
+	model.chat.component.ActiveRun().SpinnerFrame = 1
 	badge := model.chatModeBadge()
 	if !strings.Contains(badge, "⠙") {
 		t.Fatalf("badge = %q, want spinner frame while loading", badge)
@@ -46,17 +47,17 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 		t.Fatalf("badge = %q, want NORMAL badge on the left", badge)
 	}
 
-	updated, cmd := model.Update(chatSpinnerTickMsg{})
+	updated, cmd := model.Update(chat.SpinnerTickMsg{})
 	model = updated.(Model)
 	if cmd == nil {
 		t.Fatal("tick while loading should re-arm the spinner")
 	}
-	if model.chat.activeRun().spinnerFrame != 2 {
-		t.Fatalf("spinnerFrame = %d, want 2", model.chat.activeRun().spinnerFrame)
+	if model.chat.component.ActiveRun().SpinnerFrame != 2 {
+		t.Fatalf("spinnerFrame = %d, want 2", model.chat.component.ActiveRun().SpinnerFrame)
 	}
 
-	model.chat.activeRun().loading = false
-	updated, cmd = model.Update(chatSpinnerTickMsg{})
+	model.chat.component.ActiveRun().Loading = false
+	updated, cmd = model.Update(chat.SpinnerTickMsg{})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, cmd)
 	if got := model.chatModeBadge(); strings.Contains(got, "⠋") {
@@ -72,9 +73,9 @@ func TestChat_spinnerWithYOLO(t *testing.T) {
 	model.SetAI(fakeChatClient{}, nil)
 	model.applyLayout(140, 32)
 
-	model.chat.yoloWrites = true
-	model.chat.activeRun().loading = true
-	model.chat.activeRun().spinnerFrame = 2
+	model.chat.component.YoloWrites = true
+	model.chat.component.ActiveRun().Loading = true
+	model.chat.component.ActiveRun().SpinnerFrame = 2
 	badge := model.chatModeBadge()
 	if !strings.Contains(badge, "⠹") {
 		t.Fatalf("badge = %q, want spinner while loading with YOLO on", badge)
@@ -215,7 +216,7 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'})
 	model = updated.(Model)
-	model.chat.input.SetValue("talk like a pirate")
+	model.chat.component.Input.SetValue("talk like a pirate")
 
 	// Send
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -225,7 +226,7 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 
 	// First delta — assert partial content appears
 	model, cmd := resolveChatCommand(model, command)
-	stripped := ansi.Strip(model.chat.viewport.GetContent())
+	stripped := ansi.Strip(model.chat.component.Viewport.GetContent())
 	if !strings.Contains(stripped, "Add ") {
 		t.Fatalf("after first delta = %q, want \"Add \"", stripped)
 	}
@@ -233,16 +234,16 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	if !strings.Contains(stripped, "streaming") {
 		t.Fatalf("viewport = %q, want streaming label", stripped)
 	}
-	if model.chat.activeRun().loading != true {
+	if model.chat.component.ActiveRun().Loading != true {
 		t.Fatal("model should still be loading after first delta")
 	}
-	if model.chat.activeRun().streamBuffer != "Add " {
-		t.Fatalf("streamBuffer = %q", model.chat.activeRun().streamBuffer)
+	if model.chat.component.ActiveRun().StreamBuffer != "Add " {
+		t.Fatalf("streamBuffer = %q", model.chat.component.ActiveRun().StreamBuffer)
 	}
 
 	// Second delta
 	model, cmd = resolveChatCommand(model, cmd)
-	stripped = ansi.Strip(model.chat.viewport.GetContent())
+	stripped = ansi.Strip(model.chat.component.Viewport.GetContent())
 	if !strings.Contains(stripped, "Add an ") {
 		t.Fatalf("after second delta = %q, want \"Add an \"", stripped)
 	}
@@ -253,14 +254,14 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	// Completion
 	model, _ = resolveChatCommand(model, cmd)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading after completion")
 	}
-	if len(model.chat.activeRun().messages) != 2 {
-		t.Fatalf("messages = %#v, want 2", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 2 {
+		t.Fatalf("messages = %#v, want 2", model.chat.component.ActiveRun().Messages)
 	}
-	if model.chat.activeRun().messages[1].Content != "Add an index." {
-		t.Fatalf("response = %q", model.chat.activeRun().messages[1].Content)
+	if model.chat.component.ActiveRun().Messages[1].Content != "Add an index." {
+		t.Fatalf("response = %q", model.chat.component.ActiveRun().Messages[1].Content)
 	}
 }
 
@@ -272,12 +273,12 @@ func TestChat_slashNewStartsNewConversation(t *testing.T) {
 	model.SetAI(fakeChatClient{}, nil)
 	model.applyLayout(140, 32)
 
-	model.chat.activeID = "existing"
-	model.chat.activeRun().messages = []ai.Message{{Role: ai.RoleUser, Content: "old turn"}}
+	model.chat.component.ActiveID = "existing"
+	model.chat.component.ActiveRun().Messages = []ai.Message{{Role: ai.RoleUser, Content: "old turn"}}
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
-	model.chat.input.SetValue("/new")
+	model.chat.component.Input.SetValue("/new")
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
 	model = updated.(Model)
@@ -285,13 +286,13 @@ func TestChat_slashNewStartsNewConversation(t *testing.T) {
 	model = updated.(Model)
 
 	assertOnlyNotificationTick(t, command)
-	if model.chat.activeID != "" {
-		t.Fatalf("conversation ID = %q, want cleared", model.chat.activeID)
+	if model.chat.component.ActiveID != "" {
+		t.Fatalf("conversation ID = %q, want cleared", model.chat.component.ActiveID)
 	}
-	if len(model.chat.activeRun().messages) != 0 {
-		t.Fatalf("messages = %#v, want cleared", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 0 {
+		t.Fatalf("messages = %#v, want cleared", model.chat.component.ActiveRun().Messages)
 	}
-	if got := model.chat.input.Value(); got != "" {
+	if got := model.chat.component.Input.Value(); got != "" {
 		t.Fatalf("input = %q, want cleared", got)
 	}
 }
@@ -315,7 +316,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	model.applyLayout(140, 32)
 
 	// Conversation A: send a prompt whose stream blocks until released.
-	model.chat.input.SetValue("slow question")
+	model.chat.component.Input.SetValue("slow question")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmdA := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -323,7 +324,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	if cmdA == nil {
 		t.Fatal("sending chat A did not return a command")
 	}
-	idA := model.chat.activeID
+	idA := model.chat.component.ActiveID
 	if idA == "" {
 		t.Fatal("conversation A was not created")
 	}
@@ -332,62 +333,62 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	<-client.started // A's stream is blocked and waiting
 
 	// /new while A runs: fresh view, A keeps running in the background.
-	model.chat.input.SetValue("/new")
+	model.chat.component.Input.SetValue("/new")
 	updated, cmdNew := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, cmdNew)
-	if model.chat.activeID != "" {
-		t.Fatalf("active conversation = %q, want fresh view", model.chat.activeID)
+	if model.chat.component.ActiveID != "" {
+		t.Fatalf("active conversation = %q, want fresh view", model.chat.component.ActiveID)
 	}
-	if !model.chat.runs[idA].loading {
+	if !model.chat.component.Runs[idA].Loading {
 		t.Fatal("switching to /new interrupted conversation A")
 	}
 
 	// Conversation B: send and complete while A is still running.
-	model.chat.input.SetValue("fast question")
+	model.chat.component.Input.SetValue("fast question")
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmdB := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	idB := model.chat.activeID
+	idB := model.chat.component.ActiveID
 	if idB == "" || idB == idA {
 		t.Fatalf("conversation B id = %q, want distinct from A %q", idB, idA)
 	}
 	model = driveStreamToCompletion(t, model, cmdB)
 
-	if !model.chat.runs[idA].loading {
+	if !model.chat.component.Runs[idA].Loading {
 		t.Fatal("completing B interrupted conversation A")
 	}
-	if len(model.chat.runs[idB].messages) != 2 || model.chat.runs[idB].messages[1].Content != "fast answer" {
-		t.Fatalf("B messages = %#v", model.chat.runs[idB].messages)
+	if len(model.chat.component.Runs[idB].Messages) != 2 || model.chat.component.Runs[idB].Messages[1].Content != "fast answer" {
+		t.Fatalf("B messages = %#v", model.chat.component.Runs[idB].Messages)
 	}
 
 	// Switch back to A: open the /history picker, then drive the selection
 	// handoff its submit produces (huh's own key handling is library
 	// plumbing; the load command it emits is the product contract).
-	model.chat.input.SetValue("/history")
+	model.chat.component.Input.SetValue("/history")
 	updated, cmdHistory := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	if cmdHistory == nil {
 		t.Fatal("/history sent no command")
 	}
 	model, cmdHistory = resolveChatCommand(model, cmdHistory)
-	if model.chat.historyPicker == nil {
+	if model.chat.component.HistoryPicker == nil {
 		t.Fatal("/history did not open the conversation picker")
 	}
-	model.chat.historyChoice = idA // what a selection in the form binds
-	model.chat.historyPicker = nil // what the submit handler does first
-	cmdLoad := model.loadChatMessages(idA)
+	model.chat.component.HistoryChoice = idA // what a selection in the form binds
+	model.chat.component.HistoryPicker = nil // what the submit handler does first
+	cmdLoad := model.chat.component.LoadMessages(model.chatLayout(), idA)
 	updated, _ = model.Update(cmdLoad())
 	model = updated.(Model)
-	if model.chat.activeID != idA {
-		t.Fatalf("active conversation = %q, want A", model.chat.activeID)
+	if model.chat.component.ActiveID != idA {
+		t.Fatalf("active conversation = %q, want A", model.chat.component.ActiveID)
 	}
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("A should still be loading when switching back")
 	}
-	if model.chat.activeRun().messages[0].Content != "slow question" {
-		t.Fatalf("A view = %#v, want the slow question", model.chat.activeRun().messages)
+	if model.chat.component.ActiveRun().Messages[0].Content != "slow question" {
+		t.Fatalf("A view = %#v, want the slow question", model.chat.component.ActiveRun().Messages)
 	}
 
 	// Release A's stream and drive it to completion.
@@ -396,11 +397,11 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	for cmd != nil {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("A still loading after stream completion")
 	}
-	if len(model.chat.activeRun().messages) != 2 || model.chat.activeRun().messages[1].Content != "slow answer" {
-		t.Fatalf("A messages = %#v", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 2 || model.chat.component.ActiveRun().Messages[1].Content != "slow answer" {
+		t.Fatalf("A messages = %#v", model.chat.component.ActiveRun().Messages)
 	}
 
 	// Both conversations persisted with full histories.
@@ -438,21 +439,21 @@ func TestChat_staleConversationLoadIsDropped(t *testing.T) {
 	model.connectionID = "test-connection"
 	model.applyLayout(140, 32)
 
-	loadA := model.loadChatMessages(a.ID) // seq 1
-	loadB := model.loadChatMessages(b.ID) // seq 2
+	loadA := model.chat.component.LoadMessages(model.chatLayout(), a.ID) // seq 1
+	loadB := model.chat.component.LoadMessages(model.chatLayout(), b.ID) // seq 2
 
 	// B's load lands first and activates B.
 	updated, _ := model.Update(loadB())
 	model = updated.(Model)
-	if model.chat.activeID != b.ID {
-		t.Fatalf("active conversation = %q, want B", model.chat.activeID)
+	if model.chat.component.ActiveID != b.ID {
+		t.Fatalf("active conversation = %q, want B", model.chat.component.ActiveID)
 	}
 
 	// A's stale load lands late and must be dropped.
 	updated, _ = model.Update(loadA())
 	model = updated.(Model)
-	if model.chat.activeID != b.ID {
-		t.Fatalf("stale load switched active conversation to %q, want B", model.chat.activeID)
+	if model.chat.component.ActiveID != b.ID {
+		t.Fatalf("stale load switched active conversation to %q, want B", model.chat.component.ActiveID)
 	}
 }
 
@@ -460,14 +461,14 @@ func TestChat_staleConversationLoadIsDropped(t *testing.T) {
 // picker labels: a conversation whose agent run is active gets a spinner
 // glyph prefix, idle ones do not.
 func TestChat_historyOptionLabelPrefixesRunningConversations(t *testing.T) {
-	if got := chatHistoryOptionLabel(nil, "old chat"); got != "old chat" {
+	if got := chat.HistoryOptionLabel(nil, "old chat"); got != "old chat" {
 		t.Fatalf("idle label = %q", got)
 	}
-	if got := chatHistoryOptionLabel(&chatRun{}, "old chat"); got != "old chat" {
+	if got := chat.HistoryOptionLabel(&chat.Run{}, "old chat"); got != "old chat" {
 		t.Fatalf("idle run label = %q", got)
 	}
-	run := &chatRun{loading: true, spinnerFrame: 1}
-	if got := chatHistoryOptionLabel(run, "old chat"); got != "⠙ old chat" {
+	run := &chat.Run{Loading: true, SpinnerFrame: 1}
+	if got := chat.HistoryOptionLabel(run, "old chat"); got != "⠙ old chat" {
 		t.Fatalf("running label = %q", got)
 	}
 }
@@ -492,10 +493,10 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 		model = updated.(Model)
 	}
 
-	if !model.chat.completion.visible() {
+	if !model.chat.component.Completion.Visible() {
 		t.Fatal("completion should be visible for \"/n\"")
 	}
-	if item := model.chat.completion.accept(); item.Label != "/new" || item.Kind != KindCommand {
+	if item := model.chat.component.Completion.Accept(); item.Label != "/new" || item.Kind != "command" {
 		t.Fatalf("suggestion = %#v, want /new command", item)
 	}
 	if got := ansi.Strip(model.chatContentView()); !strings.Contains(got, "command") {
@@ -506,10 +507,10 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	// Tab accepts: input becomes "/new", completion hides.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	model = updated.(Model)
-	if got := model.chat.input.Value(); got != "/new" {
+	if got := model.chat.component.Input.Value(); got != "/new" {
 		t.Fatalf("input = %q, want /new", got)
 	}
-	if model.chat.completion.visible() {
+	if model.chat.component.Completion.Visible() {
 		t.Fatal("completion should hide after accept")
 	}
 	// The dropdown overlays the viewport: content height must not change.
@@ -521,8 +522,8 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, command)
-	if len(model.chat.activeRun().messages) != 0 {
-		t.Fatalf("messages = %#v, want cleared", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 0 {
+		t.Fatalf("messages = %#v, want cleared", model.chat.component.ActiveRun().Messages)
 	}
 }
 
@@ -541,7 +542,7 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if got := len(model.chat.completion.matches); got != 4 {
+	if got := len(model.chat.component.Completion.Matches); got != 4 {
 		t.Fatalf("matches = %d, want 4", got)
 	}
 
@@ -550,40 +551,40 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 		model = updated.(Model)
 	}
 	move(tea.KeyDown, 0)
-	if got := model.chat.completion.selected; got != 1 {
+	if got := model.chat.component.Completion.Selected; got != 1 {
 		t.Fatalf("selected after Down = %d, want 1", got)
 	}
 	// A no-text event (the terminal's key-release echo) must not reset it.
 	updated, _ = model.Update(tea.KeyReleaseMsg{Code: tea.KeyDown})
 	model = updated.(Model)
-	if got := model.chat.completion.selected; got != 1 {
+	if got := model.chat.component.Completion.Selected; got != 1 {
 		t.Fatalf("selected after key release = %d, want 1", got)
 	}
 	move(tea.KeyDown, 0)
-	if got := model.chat.completion.selected; got != 2 {
+	if got := model.chat.component.Completion.Selected; got != 2 {
 		t.Fatalf("selected after 2x Down = %d, want 2", got)
 	}
 	move(tea.KeyDown, 0)
-	if got := model.chat.completion.selected; got != 3 {
+	if got := model.chat.component.Completion.Selected; got != 3 {
 		t.Fatalf("selected after 3x Down = %d, want 3", got)
 	}
 	// Wraps around the list.
 	move(tea.KeyDown, 0)
-	if got := model.chat.completion.selected; got != 0 {
+	if got := model.chat.component.Completion.Selected; got != 0 {
 		t.Fatalf("selected after wrap = %d, want 0", got)
 	}
 	// Up arrow walks back.
 	move(tea.KeyUp, 0)
-	if got := model.chat.completion.selected; got != 3 {
+	if got := model.chat.component.Completion.Selected; got != 3 {
 		t.Fatalf("selected after Up = %d, want 3", got)
 	}
 	// Ctrl+J / Ctrl+K behave like Down/Up.
 	move('j', tea.ModCtrl)
-	if got := model.chat.completion.selected; got != 0 {
+	if got := model.chat.component.Completion.Selected; got != 0 {
 		t.Fatalf("selected after Ctrl+J = %d, want 0", got)
 	}
 	move('k', tea.ModCtrl)
-	if got := model.chat.completion.selected; got != 3 {
+	if got := model.chat.component.Completion.Selected; got != 3 {
 		t.Fatalf("selected after Ctrl+K = %d, want 3", got)
 	}
 
@@ -591,7 +592,7 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	model = updated.(Model)
 	want := "/share-results"
-	if got := model.chat.input.Value(); got != want {
+	if got := model.chat.component.Input.Value(); got != want {
 		t.Fatalf("input = %q, want %q", got, want)
 	}
 }
@@ -616,7 +617,7 @@ func TestChat_historySlashCommand(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
-	model.chat.input.SetValue("/history")
+	model.chat.component.Input.SetValue("/history")
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -625,12 +626,12 @@ func TestChat_historySlashCommand(t *testing.T) {
 		t.Fatal("/history sent no command")
 	}
 	msg := command()
-	if _, ok := msg.(chatHistoryLoadedMsg); !ok {
-		t.Fatalf("command returned %T, want chatHistoryLoadedMsg", msg)
+	if _, ok := msg.(chat.HistoryLoadedMsg); !ok {
+		t.Fatalf("command returned %T, want chat.HistoryLoadedMsg", msg)
 	}
 	updated, _ = model.Update(msg)
 	model = updated.(Model)
-	if model.chat.historyPicker == nil {
+	if model.chat.component.HistoryPicker == nil {
 		t.Fatal("/history did not open the conversation picker")
 	}
 }
@@ -654,21 +655,21 @@ func TestChat_yoloCommandsToggleWrites(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
-	matches := model.chat.completion.matches
-	if len(matches) != 1 || matches[0].Label != "/yolo-on" || matches[0].Kind != KindCommand {
+	matches := model.chat.component.Completion.Matches
+	if len(matches) != 1 || matches[0].Label != "/yolo-on" || matches[0].Kind != "command" {
 		t.Fatalf("matches = %#v, want only /yolo-on command", matches)
 	}
 
 	// Tab accepts; Enter runs it without sending a request.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	model = updated.(Model)
-	if got := model.chat.input.Value(); got != "/yolo-on" {
+	if got := model.chat.component.Input.Value(); got != "/yolo-on" {
 		t.Fatalf("input = %q, want /yolo-on", got)
 	}
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, command)
-	if !model.chat.yoloWrites {
+	if !model.chat.component.YoloWrites {
 		t.Fatal("yoloWrites = false, want true")
 	}
 
@@ -677,7 +678,7 @@ func TestChat_yoloCommandsToggleWrites(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
-	matches = model.chat.completion.matches
+	matches = model.chat.component.Completion.Matches
 	if len(matches) != 1 || matches[0].Label != "/yolo-off" {
 		t.Fatalf("matches = %#v, want only /yolo-off", matches)
 	}
@@ -686,18 +687,18 @@ func TestChat_yoloCommandsToggleWrites(t *testing.T) {
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, command)
-	if model.chat.yoloWrites {
+	if model.chat.component.YoloWrites {
 		t.Fatal("yoloWrites = true, want false")
 	}
 
 	// Prose mentioning YOLO must be sent to the AI, not executed as a command.
-	model.chat.input.SetValue("turn on YOLO")
+	model.chat.component.Input.SetValue("turn on YOLO")
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	if command == nil {
 		t.Fatal("prose prompt must be sent to the AI")
 	}
-	if model.chat.yoloWrites {
+	if model.chat.component.YoloWrites {
 		t.Fatal("prose prompt toggled yoloWrites")
 	}
 }
@@ -713,7 +714,7 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	if model.Focus != focusChat {
 		t.Fatalf("focus = %v, want chat", model.Focus)
 	}
-	model.chat.input.SetValue("How should I speed this up?")
+	model.chat.component.Input.SetValue("How should I speed this up?")
 
 	// Enter insert mode before sending
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // enter insert
@@ -727,13 +728,13 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	// Drive the streaming protocol through completion.
 	model = driveStreamToCompletion(t, model, command)
 
-	if len(model.chat.activeRun().messages) != 2 {
-		t.Fatalf("messages = %#v, want user and assistant messages", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 2 {
+		t.Fatalf("messages = %#v, want user and assistant messages", model.chat.component.ActiveRun().Messages)
 	}
-	if got := model.chat.activeRun().messages[1].Content; got != "Add an index." {
+	if got := model.chat.component.ActiveRun().Messages[1].Content; got != "Add an index." {
 		t.Fatalf("assistant response = %q", got)
 	}
-	if strings.Contains(model.chat.viewport.GetContent(), "Assistant") {
+	if strings.Contains(model.chat.component.Viewport.GetContent(), "Assistant") {
 		t.Fatal("chat response renders an assistant label")
 	}
 }
@@ -772,7 +773,7 @@ func resolveChatMessage(model Model, message tea.Msg) (Model, tea.Cmd) {
 		default:
 			return model, tea.Batch(nexts...)
 		}
-	case chatSpinnerTickMsg:
+	case chat.SpinnerTickMsg:
 		return model, nil
 	default:
 		updated, next := model.Update(msg)
@@ -785,7 +786,7 @@ func resolveChatMessage(model Model, message tea.Msg) (Model, tea.Cmd) {
 // the first non-tick message on ch.
 func runChatCommand(command tea.Cmd, ch chan<- tea.Msg) {
 	for _, message := range executeCommandAll(command) {
-		if _, tick := message.(chatSpinnerTickMsg); !tick {
+		if _, tick := message.(chat.SpinnerTickMsg); !tick {
 			ch <- message
 			return
 		}
@@ -831,7 +832,7 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	model.SetAI(client, history)
 	model.connectionID = "test-connection"
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("How should I speed this up?")
+	model.chat.component.Input.SetValue("How should I speed this up?")
 
 	// Enter insert mode before sending
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // ensure normal
@@ -847,11 +848,11 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	// Drive streaming through completion (including async persistence).
 	model = driveStreamToCompletion(t, model, command)
 
-	if len(model.chat.activeRun().messages) != 2 || model.chat.activeRun().messages[1].Content != "Use an index." {
-		t.Fatalf("messages = %#v", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 2 || model.chat.component.ActiveRun().Messages[1].Content != "Use an index." {
+		t.Fatalf("messages = %#v", model.chat.component.ActiveRun().Messages)
 	}
 	// Check that the persisted conversation includes both messages.
-	persisted, err := history.Messages(context.Background(), "test-connection", model.chat.activeID)
+	persisted, err := history.Messages(context.Background(), "test-connection", model.chat.component.ActiveID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -871,7 +872,7 @@ func TestChat_generatesTitleForNewConversation(t *testing.T) {
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "test-connection"
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("How do I add an index?")
+	model.chat.component.Input.SetValue("How do I add an index?")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // ensure normal
 	model = updated.(Model)
@@ -903,7 +904,7 @@ func TestChatSQL_returnsLatestFencedSQLBlock(t *testing.T) {
 		{Role: ai.RoleAssistant, Content: "```postgresql\nCREATE TABLE projects (id integer);\n```"},
 	}
 
-	statement := chatSQL(messages)
+	statement := chat.SQL(messages)
 	if statement != "CREATE TABLE projects (id integer);" {
 		t.Fatalf("statement = %q", statement)
 	}
@@ -913,24 +914,24 @@ func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.applyLayout(140, 32)
-	if model.chat.visible {
+	if model.chat.component.Visible {
 		t.Fatal("AI pane is visible without an Assistant")
 	}
 
 	model.SetAI(fakeChatClient{}, nil)
 	model.applyLayout(140, 32)
-	if !model.chat.visible || model.layout.editorWidth != 58 {
-		t.Fatalf("AI pane = visible:%t editorWidth:%d", model.chat.visible, model.layout.editorWidth)
+	if !model.chat.component.Visible || model.layout.editorWidth != 58 {
+		t.Fatalf("AI pane = visible:%t editorWidth:%d", model.chat.component.Visible, model.layout.editorWidth)
 	}
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl, Text: "g"})
 	model = updated.(Model)
-	if model.chat.visible || model.layout.editorWidth != 94 {
-		t.Fatalf("AI pane after toggle = visible:%t editorWidth:%d", model.chat.visible, model.layout.editorWidth)
+	if model.chat.component.Visible || model.layout.editorWidth != 94 {
+		t.Fatalf("AI pane after toggle = visible:%t editorWidth:%d", model.chat.component.Visible, model.layout.editorWidth)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl, Text: "g"})
 	model = updated.(Model)
-	if !model.chat.visible || model.layout.editorWidth != 58 {
-		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.visible, model.layout.editorWidth)
+	if !model.chat.component.Visible || model.layout.editorWidth != 58 {
+		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.component.Visible, model.layout.editorWidth)
 	}
 }
 
@@ -951,24 +952,24 @@ func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
 	model.SetAI(fakeChatClient{}, nil)
 	model.layout.fullscreen = true
 	model.applyLayout(140, 32)
-	if got, want := model.chat.viewport.Width(), model.layout.width-6; got != want {
+	if got, want := model.chat.component.Viewport.Width(), model.layout.width-6; got != want {
 		t.Fatalf("chat viewport width = %d, want pane interior width %d", got, want)
 	}
-	model.chat.activeRun().messages = []ai.Message{{Role: ai.RoleUser, Content: "full width"}}
-	model.refreshChatView()
+	model.chat.component.ActiveRun().Messages = []ai.Message{{Role: ai.RoleUser, Content: "full width"}}
+	model.chat.component.RefreshView()
 
-	content := model.chat.viewport.GetContent()
+	content := model.chat.component.Viewport.GetContent()
 	if strings.Contains(content, "\n") {
 		t.Fatalf("user message content = %q, want one rendered row", content)
 	}
 	line := content
-	if got, want := ansi.StringWidth(line), model.chat.viewport.Width(); got != want {
+	if got, want := ansi.StringWidth(line), model.chat.component.Viewport.Width(); got != want {
 		t.Fatalf("user message width = %d, want viewport width %d", got, want)
 	}
 	if !strings.Contains(line, "\u00a0") {
 		t.Fatal("user message uses clearable ASCII space padding")
 	}
-	viewLine, _, _ := strings.Cut(model.chat.viewport.View(), "\n")
+	viewLine, _, _ := strings.Cut(model.chat.component.Viewport.View(), "\n")
 	if !strings.Contains(viewLine, "full width") {
 		t.Fatalf("user message viewport line = %q, want prompt text beside its accent", viewLine)
 	}
@@ -981,39 +982,39 @@ func TestChat_shareResultsTool(t *testing.T) {
 	model.queryLog.results.SetRows([]table.Row{{"1", "alice"}})
 
 	// Sharing is off by default: no tool, no results block in context.
-	if hasTool(model.databaseTools(), "get_visible_results") {
+	if hasTool(model.chat.component.DatabaseTools(model.chatLayout()), "get_visible_results") {
 		t.Fatal("get_visible_results present while sharing is off")
 	}
-	if context := model.chatContext(); strings.Contains(context, "Visible results:") {
+	if context := model.chat.component.ContextText(model.chatLayout()); strings.Contains(context, "Visible results:") {
 		t.Fatalf("chat context = %q, want no visible results block", context)
 	}
 
 	// Sharing on via the AI slash command: the tool appears and returns the rows.
-	model.chat.input.SetValue("/share-results")
+	model.chat.component.Input.SetValue("/share-results")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, command)
-	if !model.chat.shareResults {
+	if !model.chat.component.ShareResults {
 		t.Fatal("shareResults should be true after command")
 	}
-	if !hasTool(model.databaseTools(), "get_visible_results") {
+	if !hasTool(model.chat.component.DatabaseTools(model.chatLayout()), "get_visible_results") {
 		t.Fatal("get_visible_results missing while sharing is on")
 	}
-	result := model.executeTool(context.Background(), ai.ToolCall{ID: "call_1", Name: "get_visible_results"})
+	result := model.chat.component.ExecuteTool(context.Background(), ai.ToolCall{ID: "call_1", Name: "get_visible_results"}, model.chatLayout())
 	if result.Error != "" || !strings.Contains(result.Content, "id | name") || !strings.Contains(result.Content, "1 | alice") {
 		t.Fatalf("tool result = %#v", result)
 	}
 
 	// Sharing off again: the tool disappears.
-	model.chat.input.SetValue("/unshare-results")
+	model.chat.component.Input.SetValue("/unshare-results")
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.chat.shareResults {
+	if model.chat.component.ShareResults {
 		t.Fatal("shareResults should be false after stop command")
 	}
-	if hasTool(model.databaseTools(), "get_visible_results") {
+	if hasTool(model.chat.component.DatabaseTools(model.chatLayout()), "get_visible_results") {
 		t.Fatal("get_visible_results present while sharing is off")
 	}
 }
@@ -1070,14 +1071,14 @@ func TestChat_shareResultsToollessProvider(t *testing.T) {
 	model.queryLog.results.SetRows([]table.Row{{"1", "alice"}})
 
 	// Enable sharing via the AI slash command.
-	model.chat.input.SetValue("/share-results")
+	model.chat.component.Input.SetValue("/share-results")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, command)
 
-	model.chat.input.SetValue("what do the results say?")
+	model.chat.component.Input.SetValue("what do the results say?")
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	if command == nil {
@@ -1096,7 +1097,7 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(waitingChatClient{started: started}, nil)
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("cancel this request")
+	model.chat.component.Input.SetValue("cancel this request")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
@@ -1113,17 +1114,17 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 
-	if model.chat.chatMode != formModeNormal {
-		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeNormal {
+		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.component.ChatMode)
 	}
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("first escape canceled the chat request")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 	model, _ = resolveChatMessage(model, <-response)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("chat request remains loading after cancellation")
 	}
 	if model.Status != "AI request canceled" {
@@ -1138,7 +1139,7 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	model.layout.fullscreen = true
 	model.SetAI(waitingChatClient{started: started}, nil)
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("cancel this request")
+	model.chat.component.Input.SetValue("cancel this request")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
@@ -1155,10 +1156,10 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	// First Escape: exit insert mode.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.chat.chatMode != formModeNormal {
-		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeNormal {
+		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.component.ChatMode)
 	}
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("first escape canceled the chat request")
 	}
 
@@ -1167,7 +1168,7 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	model = updated.(Model)
 	model, _ = resolveChatMessage(model, <-response)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("chat request remains loading after cancellation")
 	}
 	if model.Status != "AI request canceled" {
@@ -1229,7 +1230,7 @@ func (c *exhaustClient) ChatStream(_ context.Context, _ ai.Request) (<-chan ai.S
 }
 func (c *exhaustClient) Complete(_ context.Context, req ai.Request) (ai.Response, error) {
 	c.round++
-	if c.round <= assistantMaxToolCalls {
+	if c.round <= chat.MaxToolCalls {
 		return ai.Response{Agent: "Assistant", ToolCalls: []ai.ToolCall{{
 			ID: fmt.Sprintf("call_exhaust_%d", c.round), Name: "get_connection_info",
 			Input: map[string]any{"page": c.round},
@@ -1323,7 +1324,7 @@ func (c *toolChatClient) Complete(_ context.Context, req ai.Request) (ai.Respons
 // driveToolRoundToCompletion feeds tool-round messages until loading is cleared.
 func driveToolRoundToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
 	t.Helper()
-	for cmd != nil && model.chat.activeRun().loading {
+	for cmd != nil && model.chat.component.ActiveRun().Loading {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
 	return model
@@ -1341,8 +1342,10 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	tc := &toolChatClient{}
 	model.SetAI(tc, nil)
@@ -1350,7 +1353,7 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	model.applyLayout(140, 32)
 
 	// Send a prompt that triggers databaseTools.
-	model.chat.input.SetValue("count rows")
+	model.chat.component.Input.SetValue("count rows")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 
@@ -1362,19 +1365,19 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	model = driveToolRoundToCompletion(t, model, command)
 
 	// Verify the final answer is displayed.
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading after completion")
 	}
-	stripped := ansi.Strip(model.chat.viewport.GetContent())
+	stripped := ansi.Strip(model.chat.component.Viewport.GetContent())
 	if !strings.Contains(stripped, "There is 1 row.") {
 		t.Fatalf("final viewport content = %q, want %q", stripped, "There is 1 row.")
 	}
 
 	// Verify the assistant message was appended to chat history.
-	if len(model.chat.activeRun().messages) < 2 {
-		t.Fatalf("chat has %d messages, want at least 2", len(model.chat.activeRun().messages))
+	if len(model.chat.component.ActiveRun().Messages) < 2 {
+		t.Fatalf("chat has %d messages, want at least 2", len(model.chat.component.ActiveRun().Messages))
 	}
-	last := model.chat.activeRun().messages[len(model.chat.activeRun().messages)-1]
+	last := model.chat.component.ActiveRun().Messages[len(model.chat.component.ActiveRun().Messages)-1]
 	if last.Role != ai.RoleAssistant || last.Content != "There is 1 row." {
 		t.Fatalf("last message = %#v, want assistant with final content", last)
 	}
@@ -1400,18 +1403,19 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 			t.Cleanup(func() { _ = service.Close() })
 			model.SetAI(fakeChatClient{}, nil)
 			model.Database = service
+			model.chat.component.Executor = chatExecutor{service: service}
 			model.databaseInfo = service.Info()
 			model.applyLayout(terminalWidth, 32)
 
-			model.chat.activeRun().messages = []ai.Message{
+			model.chat.component.ActiveRun().Messages = []ai.Message{
 				{Role: ai.RoleUser, Content: "which tables has most records?"},
 				{Role: ai.RoleAssistant, Content: tableMD},
 			}
-			model.refreshChatView()
+			model.chat.component.RefreshView()
 
-			content := model.chat.viewport.GetContent()
+			content := model.chat.component.Viewport.GetContent()
 			lines := strings.Split(content, "\n")
-			width := model.chat.viewport.Width()
+			width := model.chat.component.Viewport.Width()
 
 			for i, line := range lines {
 				if strings.TrimSpace(ansi.Strip(line)) == "" {
@@ -1467,15 +1471,17 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	ec := &exhaustClient{}
 	model.SetAI(ec, nil)
 	model.Focus = focusChat
 	model.applyLayout(140, 32)
 
-	model.chat.input.SetValue("investigate")
+	model.chat.component.Input.SetValue("investigate")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 
@@ -1485,13 +1491,13 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 	// Drive the message-driven tool round to completion.
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model still loading after all rounds")
 	}
 	if !ec.finalToolsNil {
 		t.Fatal("final round was not reached or Tools was not nil")
 	}
-	stripped := ansi.Strip(model.chat.viewport.GetContent())
+	stripped := ansi.Strip(model.chat.component.Viewport.GetContent())
 	if !strings.Contains(stripped, "final answer") {
 		t.Fatalf("viewport = %q, want final-answer content", stripped)
 	}
@@ -1508,13 +1514,15 @@ func TestChat_toolDeadlineFinalizesOnFreshContext(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	client := &deadlineClient{}
 	model.SetAI(client, nil)
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("investigate")
+	model.chat.component.Input.SetValue("investigate")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -1524,7 +1532,7 @@ func TestChat_toolDeadlineFinalizesOnFreshContext(t *testing.T) {
 	if !client.finalToolsNil {
 		t.Fatal("tool deadline did not start a tools-disabled finalization")
 	}
-	if got := ansi.Strip(model.chat.viewport.GetContent()); !strings.Contains(got, "final answer after tool") || !strings.Contains(got, "deadline") {
+	if got := ansi.Strip(model.chat.component.Viewport.GetContent()); !strings.Contains(got, "final answer after tool") || !strings.Contains(got, "deadline") {
 		t.Fatalf("viewport = %q, want final answer", got)
 	}
 	if model.Status != "Assistant response complete" {
@@ -1533,32 +1541,32 @@ func TestChat_toolDeadlineFinalizesOnFreshContext(t *testing.T) {
 }
 
 func TestToolRoundState_repeatedToolResultTriggersFinalization(t *testing.T) {
-	state := toolRoundState{}
+	state := chat.ToolRoundState{}
 	call := ai.ToolCall{Name: "get_connection_info", Input: map[string]any{"scope": "current"}}
-	for range assistantRepeatedToolResultLimit - 1 {
-		if state.recordToolResult(call, "SQLite") {
+	for range chat.RepeatedToolResultLimit - 1 {
+		if state.RecordToolResult(call, "SQLite") {
 			t.Fatal("repetition detected too early")
 		}
 	}
-	if !state.recordToolResult(call, "SQLite") {
+	if !state.RecordToolResult(call, "SQLite") {
 		t.Fatal("expected repeated tool result detection")
 	}
 }
 
 func TestToolRoundState_skipsUnexecutedCallsBeforeFinalization(t *testing.T) {
-	state := toolRoundState{
-		toolCalls: []ai.ToolCall{
+	state := chat.ToolRoundState{
+		ToolCalls: []ai.ToolCall{
 			{ID: "done", Name: "sql", Input: map[string]any{"query": "SELECT 1"}},
 			{ID: "skip", Name: "sql", Input: map[string]any{"query": "SELECT 2"}},
 		},
-		nextCall: 1,
+		NextCall: 1,
 	}
-	state.skipRemainingToolCalls("tool budget ended")
+	state.SkipRemainingToolCalls("tool budget ended")
 
-	if state.nextCall != len(state.toolCalls) || len(state.messages) != 1 {
+	if state.NextCall != len(state.ToolCalls) || len(state.Messages) != 1 {
 		t.Fatalf("state = %#v, want remaining tool call recorded", state)
 	}
-	if got := state.messages[0]; got.ToolID != "skip" || got.Content != "Skipped: tool budget ended" {
+	if got := state.Messages[0]; got.ToolID != "skip" || got.Content != "Skipped: tool budget ended" {
 		t.Fatalf("tool result = %#v", got)
 	}
 }
@@ -1571,38 +1579,39 @@ func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.Database = db
+	model.chat.component.Executor = chatExecutor{service: db}
 	model.databaseInfo = sharedsql.DatabaseInfo{Product: "SQLite"}
 	model.SetAI(fakeChatClient{}, nil)
 	model.applyLayout(140, 32)
 
 	gen := int64(1)
-	model.chat.activeRun().gen = gen
-	model.chat.activeRun().loading = true
+	model.chat.component.ActiveRun().Gen = gen
+	model.chat.component.ActiveRun().Loading = true
 
 	toolCtx, toolCancel := context.WithCancel(ctx)
-	model.chat.activeRun().roundState = &toolRoundState{
-		gen:         gen,
-		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
-		client:      model.chat.client,
-		chatContext: toolCtx,
-		toolCancel:  toolCancel,
-		toolCalls: []ai.ToolCall{{
+	model.chat.component.ActiveRun().RoundState = &chat.ToolRoundState{
+		Gen:         gen,
+		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
+		Client:      model.chat.component.Client,
+		ChatContext: toolCtx,
+		ToolCancel:  toolCancel,
+		ToolCalls: []ai.ToolCall{{
 			ID: "call_block", Name: "sql_read",
 			Input: map[string]any{"query": "SELECT 1"},
 		}},
-		toolDeadline: time.Now().Add(30 * time.Second),
+		ToolDeadline: time.Now().Add(30 * time.Second),
 	}
 
-	// Send assistantToolContinueMsg — must return immediately with an async cmd.
-	modelI, cmd := model.Update(assistantToolContinueMsg{gen: gen})
+	// Send chat.ToolContinueMsg — must return immediately with an async cmd.
+	modelI, cmd := model.Update(chat.ToolContinueMsg{Gen: gen})
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd for async tool execution")
 	}
 	model = modelI.(Model)
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should still be loading")
 	}
-	if model.chat.activeRun().roundState == nil {
+	if model.chat.component.ActiveRun().RoundState == nil {
 		t.Fatal("roundState should still be present")
 	}
 
@@ -1625,16 +1634,16 @@ func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
 	if escCmd != nil {
 		t.Fatal("Escape should not produce a cmd")
 	}
-	if model.chat.activeRun().roundState != nil {
+	if model.chat.component.ActiveRun().RoundState != nil {
 		t.Fatal("Escape should clear roundState")
 	}
 
 	// The blocking command must unblock via context cancellation.
 	select {
 	case msg := <-done:
-		if result, ok := msg.(assistantToolResultMsg); !ok {
-			t.Fatalf("expected assistantToolResultMsg, got %T", msg)
-		} else if result.err == "" {
+		if result, ok := msg.(chat.ToolResultMsg); !ok {
+			t.Fatalf("expected chat.ToolResultMsg, got %T", msg)
+		} else if result.Err == "" {
 			t.Fatal("expected error from canceled context")
 		}
 	case <-time.After(5 * time.Second):
@@ -1654,44 +1663,44 @@ func TestAssistant_fullScreenEscapeExitsInsertModeThenCancels(t *testing.T) {
 	model.applyLayout(140, 32)
 
 	gen := int64(1)
-	model.chat.activeRun().gen = gen
-	model.chat.activeRun().loading = true
-	model.chat.activeRun().cancel = rootCancel
-	model.chat.chatMode = formModeInsert
-	model.chat.activeRun().roundState = &toolRoundState{
-		gen:         gen,
-		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
-		client:      model.chat.client,
-		chatContext: toolCtx,
-		toolCancel:  toolCancel,
-		toolCalls: []ai.ToolCall{{
+	model.chat.component.ActiveRun().Gen = gen
+	model.chat.component.ActiveRun().Loading = true
+	model.chat.component.ActiveRun().Cancel = rootCancel
+	model.chat.component.ChatMode = chat.ModeInsert
+	model.chat.component.ActiveRun().RoundState = &chat.ToolRoundState{
+		Gen:         gen,
+		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
+		Client:      model.chat.component.Client,
+		ChatContext: toolCtx,
+		ToolCancel:  toolCancel,
+		ToolCalls: []ai.ToolCall{{
 			ID: "call_esc", Name: "sql_read",
 			Input: map[string]any{"query": "SELECT 1"},
 		}},
-		toolDeadline: time.Now().Add(30 * time.Second),
+		ToolDeadline: time.Now().Add(30 * time.Second),
 	}
 
 	// First Escape: must exit insert mode, not cancel.
 	modelI, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
 	assertOnlyNotificationTick(t, cmd)
-	if model.chat.chatMode != formModeNormal {
+	if model.chat.component.ChatMode != chat.ModeNormal {
 		t.Fatal("first Escape should exit insert mode")
 	}
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("first Escape should NOT interrupt loading")
 	}
-	if model.chat.activeRun().roundState == nil {
+	if model.chat.component.ActiveRun().RoundState == nil {
 		t.Fatal("first Escape should NOT clear roundState")
 	}
 
 	// Second Escape: must cancel the agent call.
 	modelI, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
-	if model.chat.activeRun().roundState != nil {
+	if model.chat.component.ActiveRun().RoundState != nil {
 		t.Fatal("second Escape should clear roundState")
 	}
-	if !model.chat.activeRun().canceled {
+	if !model.chat.component.ActiveRun().Canceled {
 		t.Fatal("second Escape should mark canceled")
 	}
 }
@@ -1714,43 +1723,43 @@ func TestAssistant_fullscreenTransitionPreservesEscapeOrder(t *testing.T) {
 	rootCtx, rootCancel := context.WithCancel(ctx)
 	toolCtx, toolCancel := context.WithCancel(rootCtx)
 	gen := int64(1)
-	model.chat.activeRun().gen = gen
-	model.chat.activeRun().loading = true
-	model.chat.activeRun().cancel = rootCancel
-	model.chat.chatMode = formModeInsert
-	model.chat.activeRun().roundState = &toolRoundState{
-		gen:         gen,
-		messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
-		client:      model.chat.client,
-		chatContext: toolCtx,
-		toolCancel:  toolCancel,
-		toolCalls: []ai.ToolCall{{
+	model.chat.component.ActiveRun().Gen = gen
+	model.chat.component.ActiveRun().Loading = true
+	model.chat.component.ActiveRun().Cancel = rootCancel
+	model.chat.component.ChatMode = chat.ModeInsert
+	model.chat.component.ActiveRun().RoundState = &chat.ToolRoundState{
+		Gen:         gen,
+		Messages:    []ai.Message{{Role: ai.RoleUser, Content: "test"}},
+		Client:      model.chat.component.Client,
+		ChatContext: toolCtx,
+		ToolCancel:  toolCancel,
+		ToolCalls: []ai.ToolCall{{
 			ID: "call_t", Name: "sql_read",
 			Input: map[string]any{"query": "SELECT 1"},
 		}},
-		toolDeadline: time.Now().Add(30 * time.Second),
+		ToolDeadline: time.Now().Add(30 * time.Second),
 	}
 
 	// First Escape: exit insert mode, not cancel.
 	modelI, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
-	if model.chat.chatMode != formModeNormal {
+	if model.chat.component.ChatMode != chat.ModeNormal {
 		t.Fatal("first Escape should exit insert mode after fullscreen transition")
 	}
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("first Escape should NOT interrupt loading after fullscreen transition")
 	}
-	if model.chat.activeRun().roundState == nil {
+	if model.chat.component.ActiveRun().RoundState == nil {
 		t.Fatal("first Escape should NOT clear roundState after fullscreen transition")
 	}
 
 	// Second Escape: cancel the agent call.
 	modelI, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = modelI.(Model)
-	if model.chat.activeRun().roundState != nil {
+	if model.chat.component.ActiveRun().RoundState != nil {
 		t.Fatal("second Escape should clear roundState after fullscreen transition")
 	}
-	if !model.chat.activeRun().canceled {
+	if !model.chat.component.ActiveRun().Canceled {
 		t.Fatal("second Escape should mark canceled after fullscreen transition")
 	}
 }
@@ -1782,7 +1791,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 	model.State = stateReady
 
 	// No failed queries → no error context.
-	ctx := model.chatContext()
+	ctx := model.chat.component.ContextText(model.chatLayout())
 	if strings.Contains(ctx, "Last failed query") {
 		t.Fatal("context includes failed query when there are none")
 	}
@@ -1791,7 +1800,9 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 	model.queryLog.component.Entries = []queryLogEntry{
 		{Statement: "SELECT * FROM nonexistent", Message: "no such table: nonexistent", Status: "failed"},
 	}
-	ctx = model.chatContext()
+	model.chat.component.LastFailedQuery = "SELECT * FROM nonexistent"
+	model.chat.component.LastFailedError = "no such table: nonexistent"
+	ctx = model.chat.component.ContextText(model.chatLayout())
 	if !strings.Contains(ctx, "no such table: nonexistent") {
 		t.Fatal("context should include first failed query error")
 	}
@@ -1804,7 +1815,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 		{Statement: "SELECT 1", Status: "success"},
 		{Statement: "SELECT * FROM nonexistent", Message: "no such table: nonexistent", Status: "failed"},
 	}
-	ctx = model.chatContext()
+	ctx = model.chat.component.ContextText(model.chatLayout())
 	if !strings.Contains(ctx, "no such table: nonexistent") {
 		t.Fatal("context should still include failed query even after a successful one")
 	}
@@ -1813,7 +1824,8 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 	model.queryLog.component.Entries = []queryLogEntry{
 		{Statement: "SELECT 1", Status: "success"},
 	}
-	ctx = model.chatContext()
+	model.refreshChatFailedContext()
+	ctx = model.chat.component.ContextText(model.chatLayout())
 	if strings.Contains(ctx, "Last failed query") {
 		t.Fatal("context includes failed query when all succeeded")
 	}
@@ -1837,7 +1849,7 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 
 	submit := func(prompt string) {
 		t.Helper()
-		model.chat.input.SetValue(prompt)
+		model.chat.component.Input.SetValue(prompt)
 		updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		model = updated.(Model)
 		if command == nil {
@@ -1849,7 +1861,7 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 	submit("second question")
 
 	// A slash command is accepted but must never enter recall history.
-	model.chat.input.SetValue("/new")
+	model.chat.component.Input.SetValue("/new")
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	for _, message := range executeCommandAll(command) {
@@ -1866,39 +1878,39 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 
 	// When — Up recalls newest, then older, then stops at the oldest.
 	press(tea.KeyUp, "")
-	if got, want := model.chat.input.Value(), "second question"; got != want {
+	if got, want := model.chat.component.Input.Value(), "second question"; got != want {
 		t.Fatalf("Up from blank = %q, want %q", got, want)
 	}
 	press(tea.KeyUp, "")
-	if got, want := model.chat.input.Value(), "first question"; got != want {
+	if got, want := model.chat.component.Input.Value(), "first question"; got != want {
 		t.Fatalf("second Up = %q, want %q", got, want)
 	}
 	press(tea.KeyUp, "")
-	if got, want := model.chat.input.Value(), "first question"; got != want {
+	if got, want := model.chat.component.Input.Value(), "first question"; got != want {
 		t.Fatalf("third Up = %q, want %q (oldest boundary, no wrap)", got, want)
 	}
 
 	// When — Down recalls newer, then clears.
 	press(tea.KeyDown, "")
-	if got, want := model.chat.input.Value(), "second question"; got != want {
+	if got, want := model.chat.component.Input.Value(), "second question"; got != want {
 		t.Fatalf("first Down = %q, want %q", got, want)
 	}
 	press(tea.KeyDown, "")
-	if got, want := model.chat.input.Value(), ""; got != want {
+	if got, want := model.chat.component.Input.Value(), ""; got != want {
 		t.Fatalf("second Down = %q, want cleared input", got)
 	}
 
 	// When — a value-changing edit after recall exits recall mode.
 	press(tea.KeyUp, "")
-	if got, want := model.chat.input.Value(), "second question"; got != want {
+	if got, want := model.chat.component.Input.Value(), "second question"; got != want {
 		t.Fatalf("recalled prompt = %q, want %q", got, want)
 	}
 	press('?', "?")
-	if got, want := model.chat.input.Value(), "second question?"; got != want {
+	if got, want := model.chat.component.Input.Value(), "second question?"; got != want {
 		t.Fatalf("edited draft = %q, want %q", got, want)
 	}
 	press(tea.KeyDown, "")
-	if got, want := model.chat.input.Value(), "second question?"; got != want {
+	if got, want := model.chat.component.Input.Value(), "second question?"; got != want {
 		t.Fatalf("Down after edit = %q, want %q (recall exited)", got, want)
 	}
 
@@ -1907,24 +1919,24 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i'}) // re-enter insert
 	model = updated.(Model)
-	model.chat.input.SetValue("")
+	model.chat.component.Input.SetValue("")
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.chat.completion.visible() {
+	if !model.chat.component.Completion.Visible() {
 		t.Fatal("completion should be visible for \"/\"")
 	}
 	press(tea.KeyDown, "")
-	if got := model.chat.completion.selected; got != 1 {
+	if got := model.chat.component.Completion.Selected; got != 1 {
 		t.Fatalf("completion selected after Down = %d, want 1", got)
 	}
-	if got, want := model.chat.input.Value(), "/"; got != want {
+	if got, want := model.chat.component.Input.Value(), "/"; got != want {
 		t.Fatalf("input after completion Down = %q, want %q", got, want)
 	}
 	press(tea.KeyUp, "")
-	if got := model.chat.completion.selected; got != 0 {
+	if got := model.chat.component.Completion.Selected; got != 0 {
 		t.Fatalf("completion selected after Up = %d, want 0", got)
 	}
-	if got, want := model.chat.input.Value(), "/"; got != want {
+	if got, want := model.chat.component.Input.Value(), "/"; got != want {
 		t.Fatalf("input after completion Up = %q, want %q", got, want)
 	}
 }
@@ -1942,7 +1954,7 @@ func TestChat_historyPersistenceIsConnectionScoped(t *testing.T) {
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "conn-a"
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("How do I add an index?")
+	model.chat.component.Input.SetValue("How do I add an index?")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
@@ -1959,7 +1971,7 @@ func TestChat_historyPersistenceIsConnectionScoped(t *testing.T) {
 	if conversations, err := history.Conversations(context.Background(), "conn-b"); err != nil || len(conversations) != 0 {
 		t.Fatalf("conn-b conversations = %#v, err %v, want none", conversations, err)
 	}
-	if messages, err := history.Messages(context.Background(), "conn-b", model.chat.activeID); err != nil || len(messages) != 0 {
+	if messages, err := history.Messages(context.Background(), "conn-b", model.chat.component.ActiveID); err != nil || len(messages) != 0 {
 		t.Fatalf("conn-b messages for conn-a conversation = %#v, err %v, want none", messages, err)
 	}
 }
@@ -1977,7 +1989,7 @@ func TestChat_persistenceRequiresConnectionScope(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history) // history present, but no connection scope
 	model.applyLayout(140, 32)
-	model.chat.input.SetValue("How do I add an index?")
+	model.chat.component.Input.SetValue("How do I add an index?")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
@@ -1991,11 +2003,11 @@ func TestChat_persistenceRequiresConnectionScope(t *testing.T) {
 	}
 	model = driveStreamToCompletion(t, model, command)
 
-	if len(model.chat.activeRun().messages) != 2 {
-		t.Fatalf("messages = %#v, want user and assistant in memory", model.chat.activeRun().messages)
+	if len(model.chat.component.ActiveRun().Messages) != 2 {
+		t.Fatalf("messages = %#v, want user and assistant in memory", model.chat.component.ActiveRun().Messages)
 	}
-	if model.chat.activeID != "" {
-		t.Fatalf("active conversation = %q, want fresh unsent view without a scope", model.chat.activeID)
+	if model.chat.component.ActiveID != "" {
+		t.Fatalf("active conversation = %q, want fresh unsent view without a scope", model.chat.component.ActiveID)
 	}
 	if conversations, err := history.Conversations(context.Background(), "any-scope"); err != nil || len(conversations) != 0 {
 		t.Fatalf("persisted conversations = %#v, err %v, want none", conversations, err)
@@ -2019,16 +2031,16 @@ func TestChat_connectionSwitchDropsStaleHistoryResults(t *testing.T) {
 
 	// A history load started on conn-a must not open the picker after conn-b
 	// became active.
-	cmd := model.loadChatHistory()
+	cmd := model.chat.component.LoadHistory(model.chatLayout())
 	model.connectionID = "conn-b"
 	updated, _ := model.Update(cmd())
 	model = updated.(Model)
-	if model.chat.historyPicker != nil {
+	if model.chat.component.HistoryPicker != nil {
 		t.Fatal("stale history load opened the picker on the new connection")
 	}
 
 	// A title failure from the old scope must not surface a status.
-	updated, _ = model.Update(chatTitleMsg{connectionID: "conn-a", conversationID: "c1", err: errors.New("boom")})
+	updated, _ = model.Update(chat.TitleMsg{ConnectionID: "conn-a", ConversationID: "c1", Err: errors.New("boom")})
 	model = updated.(Model)
 	if model.Status != "" {
 		t.Fatalf("stale title error surfaced: %q", model.Status)
@@ -2036,13 +2048,13 @@ func TestChat_connectionSwitchDropsStaleHistoryResults(t *testing.T) {
 
 	// A delete result from the old scope must not clear, cancel runs, or
 	// report anything.
-	model.chat.runs["c1"] = &chatRun{conversationID: "c1"}
-	updated, _ = model.Update(chatHistoryDeletedMsg{connectionID: "conn-a", clear: true})
+	model.chat.component.Runs["c1"] = &chat.Run{ConversationID: "c1"}
+	updated, _ = model.Update(chat.HistoryDeletedMsg{ConnectionID: "conn-a", Clear: true})
 	model = updated.(Model)
 	if model.Status != "" {
 		t.Fatalf("stale delete result surfaced: %q", model.Status)
 	}
-	if model.chat.runs["c1"] == nil {
+	if model.chat.component.Runs["c1"] == nil {
 		t.Fatal("stale clear wiped a live background run")
 	}
 }

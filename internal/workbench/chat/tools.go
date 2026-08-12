@@ -1,4 +1,4 @@
-package workbench
+package chat
 
 import (
 	"context"
@@ -10,16 +10,14 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
-// databaseTools returns tool definitions for AI assistant database introspection.
-// These are read-only tools that let the AI query the database safely.
-// databaseTools returns tool definitions for AI assistant database introspection and writes.
-// Read-only connections expose only read tools.
-func (m Model) databaseTools() []ai.ToolDefinition {
-	if m.Database == nil {
+// DatabaseTools returns tool definitions for AI assistant database
+// introspection and writes. Read-only connections expose only read tools.
+func (cm Model) DatabaseTools(ctx Context) []ai.ToolDefinition {
+	if cm.Executor == nil {
 		return nil
 	}
 
-	product := m.databaseInfo.Product
+	product := ctx.Database.Product
 	tools := []ai.ToolDefinition{
 		{
 			Name: "sql_read",
@@ -50,7 +48,7 @@ func (m Model) databaseTools() []ai.ToolDefinition {
 		},
 	}
 
-	if m.chat.shareResults {
+	if cm.ShareResults {
 		tools = append(tools, ai.ToolDefinition{
 			Name: "get_visible_results",
 			Description: "Return the rows currently displayed in the SQL results table, with column headers. " +
@@ -62,7 +60,7 @@ func (m Model) databaseTools() []ai.ToolDefinition {
 		})
 	}
 
-	if !m.ReadOnly {
+	if !cm.ReadOnly {
 		tools = append(tools, ai.ToolDefinition{
 			Name: "sql_write",
 			Description: "Execute exactly one SQL write/DDL statement against the " + product + " database. " +
@@ -86,8 +84,8 @@ func (m Model) databaseTools() []ai.ToolDefinition {
 	return tools
 }
 
-// executeTool runs one tool call and returns the result.
-func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult {
+// ExecuteTool runs one read-only tool call and returns the result.
+func (cm Model) ExecuteTool(ctx context.Context, call ai.ToolCall, snapshot Context) ai.ToolResult {
 	result := ai.ToolResult{CallID: call.ID, Name: call.Name}
 
 	switch call.Name {
@@ -98,15 +96,15 @@ func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult 
 			result.Error = "query argument is required"
 			return result
 		}
-		res, err := m.Database.ExecuteReadOnly(ctx, query)
+		res, err := cm.Executor.ExecuteReadOnly(ctx, query)
 		if err != nil {
 			result.Error = err.Error()
 			return result
 		}
-		result.Content = formatResult(res)
+		result.Content = FormatResult(res)
 
 	case "get_connection_info":
-		content, err := m.gatherConnectionInfo(ctx)
+		content, err := cm.GatherConnectionInfo(ctx, snapshot)
 		if err != nil {
 			result.Error = err.Error()
 			return result
@@ -114,20 +112,9 @@ func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult 
 		result.Content = content
 
 	case "get_visible_results":
-		columns := make([]string, len(m.queryLog.results.Columns()))
-		for i, column := range m.queryLog.results.Columns() {
-			columns[i] = column.Title
-		}
-		tableRows := m.queryLog.results.Rows()
-		rows := make([][]*string, len(tableRows))
-		for i, row := range tableRows {
-			values := make([]*string, len(row))
-			for j, cell := range row {
-				values[j] = &cell
-			}
-			rows[i] = values
-		}
-		result.Content = formatResult(sharedsql.Result{Columns: columns, Rows: rows})
+		columns := make([]string, len(snapshot.Results.Columns))
+		copy(columns, snapshot.Results.Columns)
+		result.Content = FormatResult(sharedsql.Result{Columns: columns, Rows: snapshot.Results.Rows})
 
 	default:
 		result.Error = fmt.Sprintf("unknown tool: %s", call.Name)
@@ -135,7 +122,9 @@ func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult 
 	return result
 }
 
-func formatResult(res sharedsql.Result) string {
+// FormatResult renders a query result as the tabular text tools and write
+// results carry.
+func FormatResult(res sharedsql.Result) string {
 	if len(res.Columns) == 0 && len(res.Rows) == 0 {
 		if res.RowsAffected > 0 {
 			return fmt.Sprintf("Query OK, %d rows affected", res.RowsAffected)
@@ -201,9 +190,11 @@ func formatResult(res sharedsql.Result) string {
 	return b.String()
 }
 
-func (m Model) gatherConnectionInfo(ctx context.Context) (string, error) {
+// GatherConnectionInfo builds the connection info text from the snapshot
+// and one read-only query per product.
+func (cm Model) GatherConnectionInfo(ctx context.Context, snapshot Context) (string, error) {
 	var b strings.Builder
-	info := m.databaseInfo
+	info := snapshot.Database
 	b.WriteString(fmt.Sprintf("Product: %s\n", info.Product))
 	if info.Version != "" {
 		b.WriteString(fmt.Sprintf("Version: %s\n", info.Version))
@@ -211,7 +202,7 @@ func (m Model) gatherConnectionInfo(ctx context.Context) (string, error) {
 
 	switch info.Product {
 	case "MySQL":
-		res, err := m.Database.ExecuteReadOnly(ctx, "SELECT CURRENT_USER(), DATABASE(), CONNECTION_ID(), @@hostname, @@port")
+		res, err := cm.Executor.ExecuteReadOnly(ctx, "SELECT CURRENT_USER(), DATABASE(), CONNECTION_ID(), @@hostname, @@port")
 		if err != nil {
 			return "", err
 		}
@@ -235,7 +226,7 @@ func (m Model) gatherConnectionInfo(ctx context.Context) (string, error) {
 		}
 
 	case "PostgreSQL":
-		res, err := m.Database.ExecuteReadOnly(ctx, "SELECT current_user, current_database(), pg_backend_pid(), inet_server_addr(), inet_server_port()")
+		res, err := cm.Executor.ExecuteReadOnly(ctx, "SELECT current_user, current_database(), pg_backend_pid(), inet_server_addr(), inet_server_port()")
 		if err != nil {
 			return "", err
 		}
@@ -259,8 +250,8 @@ func (m Model) gatherConnectionInfo(ctx context.Context) (string, error) {
 		}
 
 	case "SQLite":
-		b.WriteString(fmt.Sprintf("Database file: %s\n", m.Target))
-		res, err := m.Database.ExecuteReadOnly(ctx, "SELECT sqlite_version()")
+		b.WriteString(fmt.Sprintf("Database file: %s\n", cm.Target))
+		res, err := cm.Executor.ExecuteReadOnly(ctx, "SELECT sqlite_version()")
 		if err == nil && len(res.Rows) > 0 && len(res.Rows[0]) > 0 && res.Rows[0][0] != nil {
 			b.WriteString(fmt.Sprintf("Version: %s\n", *res.Rows[0][0]))
 		}

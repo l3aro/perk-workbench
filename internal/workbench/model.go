@@ -14,6 +14,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/core"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
@@ -70,7 +71,19 @@ type Model struct {
 	notifications    notificationState
 	overlay          overlayState
 	layout           layoutState
-	chat             chatModel
+	chat             chatState
+}
+
+// chatState owns the assistant pane's root half: the chat component
+// (input, viewport, runs, tool rounds, rendering) plus the root-side
+// write-confirmation overlay.
+type chatState struct {
+	component chat.Model
+	// writeConfirmation is the root-owned dialog for an assistant
+	// sql_write call awaiting approval; writePending carries the request
+	// until the dialog resolves.
+	writeConfirmation *confirmationDialog
+	writePending      *chat.WriteRequest
 }
 
 // connectionState owns the connection screen's root half: the database
@@ -318,7 +331,9 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		overlay: overlayState{
 			formMode: &formModeController{},
 		},
-		chat:        newChatModel(),
+		chat: chatState{
+			component: chat.New(),
+		},
 		keybindings: DefaultKeybindings(),
 		vimMode:     vimModeEnabled(),
 	}
@@ -329,6 +344,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		model.connection.component.Form.Values.ReadOnly = true
 	}
 	model.overlay.commandPalette = newCommandPalette(model)
+	model.chat.component.SetContext(ctx)
 	model.focusActiveTable()
 	model.queryLog.path, _ = queryLogPath()
 	model.notifications.path, _ = notificationPath()
@@ -469,17 +485,9 @@ func (m *Model) disconnect() {
 	m.browse.reset()
 	m.connection.reset()
 	m.overlay.reset()
-	m.chat.yoloWrites = false
-	for _, run := range m.chat.runs {
-		if run.roundState != nil {
-			run.roundState.releaseContexts()
-		}
-		if run.cancel != nil {
-			run.cancel()
-		}
-	}
-	m.chat.runs = map[string]*chatRun{}
-	m.chat.activeID = ""
+	m.chat.component.Reset()
+	m.chat.writeConfirmation = nil
+	m.chat.writePending = nil
 }
 
 // reset clears query workspace state: the editor, result table, raw

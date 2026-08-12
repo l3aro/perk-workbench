@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // formFieldIndexAt maps a click on a rendered form view to a field index.
@@ -165,15 +166,15 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 	workspaceLeft := m.workspaceLeft()
 	switch m.State {
 	case stateReady:
-		if m.chat.visible && (!m.layout.compact && x >= m.layout.schemaWidth+m.layout.editorWidth || m.layout.compact && m.Focus == focusChat) {
+		if m.chat.component.Visible && (!m.layout.compact && x >= m.layout.schemaWidth+m.layout.editorWidth || m.layout.compact && m.Focus == focusChat) {
 			// handleLeftClick focuses the chat pane on any click; a
 			// double-click (or any click without vim mode) enters insert
 			// mode on the input. The keep-insert flag stops the trailing
 			// release from resetting the mode.
 			if !m.vimMode || m.recordFormClick(x, y) {
-				m.chat.keepInsert = true
-				m.chat.chatMode = formModeInsert
-				return m, m.chat.input.Focus()
+				m.chat.component.KeepInsert = true
+				m.chat.component.ChatMode = chat.ModeInsert
+				return m, m.chat.component.Input.Focus()
 			}
 			return m, nil
 		}

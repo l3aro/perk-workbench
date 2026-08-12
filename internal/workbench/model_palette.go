@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // handlePaletteCommand dispatches a command selected from the palette.
@@ -86,16 +87,16 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "focus.chat":
-		if m.State == stateReady && m.chat.visible {
+		if m.State == stateReady && m.chat.component.Visible {
 			m.Focus = focusChat
 			m.queryLog.component.PendingG = false
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
 			if !m.vimMode {
-				m.chat.chatMode = formModeInsert
-				return m, m.chat.input.Focus()
+				m.chat.component.ChatMode = chat.ModeInsert
+				return m, m.chat.component.Input.Focus()
 			}
-			m.chat.chatMode = formModeNormal
+			m.chat.component.ChatMode = chat.ModeNormal
 			return m, nil
 		}
 		return m, nil
@@ -104,12 +105,12 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "chat.delete":
 		if m.State == stateReady && m.Focus == focusChat {
-			return m, m.deleteChatHistory(false)
+			return m, m.chat.component.DeleteHistory(m.chatLayout(), false)
 		}
 		return m, nil
 	case "chat.clear":
 		if m.State == stateReady && m.Focus == focusChat {
-			return m, m.deleteChatHistory(true)
+			return m, m.chat.component.DeleteHistory(m.chatLayout(), true)
 		}
 		return m, nil
 	case "chat.apply_sql":

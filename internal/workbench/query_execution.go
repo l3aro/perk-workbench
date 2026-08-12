@@ -136,6 +136,8 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 	}
 	_, quit := m.Workflow.FinishQuery()
 	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: message.err.Error(), Status: "failed"})
+	m.chat.component.LastFailedQuery = message.statement
+	m.chat.component.LastFailedError = message.err.Error()
 	if quit {
 		return m, tea.Quit
 	}

@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 const doubleClickTimeout = 500 * time.Millisecond
@@ -53,10 +54,10 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			case focusQueryLog:
 				return m.focusQueryLogClick(x, contentY)
 			case focusChat:
-				if !m.chat.keepInsert {
-					m.chat.chatMode = formModeNormal
+				if !m.chat.component.KeepInsert {
+					m.chat.component.ChatMode = chat.ModeNormal
 				}
-				m.chat.keepInsert = false
+				m.chat.component.KeepInsert = false
 				return m, nil
 			}
 			return m, nil
@@ -75,17 +76,17 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 			return m.schemaClick(x, contentY)
 		}
-		if m.chat.visible && x >= m.layout.schemaWidth+m.layout.editorWidth {
+		if m.chat.component.Visible && x >= m.layout.schemaWidth+m.layout.editorWidth {
 			m.Focus = focusChat
 			m.queryLog.component.ClearPendingG()
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
 			// A double-click press just entered insert mode; the trailing
 			// release must not reset it to normal.
-			if !m.chat.keepInsert {
-				m.chat.chatMode = formModeNormal
+			if !m.chat.component.KeepInsert {
+				m.chat.component.ChatMode = chat.ModeNormal
 			}
-			m.chat.keepInsert = false
+			m.chat.component.KeepInsert = false
 			return m, nil
 		}
 		if contentY < m.layout.workspaceHeight {

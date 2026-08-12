@@ -401,6 +401,7 @@ func readyModel(t *testing.T) Model {
 	model.queryLog.component.Entries = nil
 	model.queryLog.component.Render()
 	model.State, model.Database = stateReady, service
+	model.chat.component.Executor = chatExecutor{service: service}
 	return model
 }
 
@@ -562,7 +563,9 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 		t.Fatal("A open did not set a connection ID")
 	}
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT broken FROM nope", Status: "failed", Message: "no such table: nope"})
-	if ctx := model.chatContext(); !strings.Contains(ctx, "Last failed query") || !strings.Contains(ctx, "no such table: nope") {
+	model.chat.component.LastFailedQuery = "SELECT broken FROM nope"
+	model.chat.component.LastFailedError = "no such table: nope"
+	if ctx := model.chat.component.ContextText(model.chatLayout()); !strings.Contains(ctx, "Last failed query") || !strings.Contains(ctx, "no such table: nope") {
 		t.Fatalf("A chat context = %q, want the failed query", ctx)
 	}
 	t.Cleanup(func() {
@@ -606,7 +609,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 		t.Fatalf("B open = opened %v, state %v, want ready", openedB, model.State)
 	}
 
-	ctx := model.chatContext()
+	ctx := model.chat.component.ContextText(model.chatLayout())
 	if strings.Contains(ctx, "SELECT broken") || strings.Contains(ctx, "no such table: nope") {
 		t.Fatalf("B chat context leaked A's failed query: %q", ctx)
 	}

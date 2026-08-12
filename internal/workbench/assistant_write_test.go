@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // toolWriteClient simulates a provider that returns write tool calls.
@@ -63,8 +64,10 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	tc := &toolWriteClient{
 		firstCalls: []ai.ToolCall{
@@ -77,13 +80,13 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	model.Focus = focusChat
 	model.applyLayout(140, 32)
 
-	model.chat.input.SetValue("insert a row")
+	model.chat.component.Input.SetValue("insert a row")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	// First response: assistantToolStartMsg
+	// First response: chat.ToolStartMsg
 	model, cmd = resolveChatCommand(model, cmd)
 
 	// sql_read executes immediately
@@ -92,10 +95,10 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	// sql_read result → advances to sql_write
 	model, cmd = resolveChatCommand(model, cmd)
 
-	// sql_write → pendingWrite
+	// sql_write → chat.PendingWrite
 	model, cmd = resolveChatCommand(model, cmd)
-	if model.chat.activeRun().pendingWrite == nil {
-		t.Fatal("expected pendingWrite after sql_write call")
+	if model.chat.component.ActiveRun().PendingWrite == nil {
+		t.Fatal("expected chat.PendingWrite after sql_write call")
 	}
 
 	// Approve via Model.Update (dialog handling)
@@ -111,7 +114,7 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	// get_connection_info + next round → final answer
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading after completion")
 	}
 
@@ -161,8 +164,10 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	tc := &toolWriteClient{
 		firstCalls: []ai.ToolCall{
@@ -173,7 +178,7 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 	model.Focus = focusChat
 	model.applyLayout(140, 32)
 
-	model.chat.input.SetValue("insert")
+	model.chat.component.Input.SetValue("insert")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -182,24 +187,24 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 	model, cmd = resolveChatCommand(model, cmd)
 
 	model, cmd = resolveChatCommand(model, cmd)
-	if model.chat.activeRun().pendingWrite == nil {
-		t.Fatal("expected pendingWrite")
+	if model.chat.component.ActiveRun().PendingWrite == nil {
+		t.Fatal("expected chat.PendingWrite")
 	}
 
 	// Decline via direct message.
-	declineMsg := assistantWriteResultMsg{
-		gen: model.chat.activeRun().gen, callID: "call_w2", callName: "sql_write",
-		err: "execution canceled by user", declined: true,
+	declineMsg := chat.WriteResultMsg{
+		Gen: model.chat.component.ActiveRun().Gen, CallID: "call_w2", CallName: "sql_write",
+		Err: "execution canceled by user", Declined: true,
 	}
 	updated, _ = model.Update(declineMsg)
 	model = updated.(Model)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading after decline")
 	}
 
 	// Verify cancel message in history.
-	last := model.chat.activeRun().messages[len(model.chat.activeRun().messages)-1]
+	last := model.chat.component.ActiveRun().Messages[len(model.chat.component.ActiveRun().Messages)-1]
 	if !strings.Contains(last.Content, "execution canceled by user") {
 		t.Fatalf("last tool result = %q, want cancel message", last.Content)
 	}
@@ -233,8 +238,10 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	var secondDone bool
 	tc := &toolWriteClient{
@@ -255,7 +262,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	model.Focus = focusChat
 	model.applyLayout(140, 32)
 
-	model.chat.input.SetValue("update")
+	model.chat.component.Input.SetValue("update")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -264,8 +271,8 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	model, cmd = resolveChatCommand(model, cmd)
 
 	model, cmd = resolveChatCommand(model, cmd)
-	if model.chat.activeRun().pendingWrite == nil {
-		t.Fatal("expected pendingWrite for first write")
+	if model.chat.component.ActiveRun().PendingWrite == nil {
+		t.Fatal("expected chat.PendingWrite for first write")
 	}
 
 	// Approve first (failing) write.
@@ -278,13 +285,13 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	model, cmd = resolveChatCommand(model, cmd)
 
 	// Second round: corrected write.
-	// Drive tool round: assistantToolStartMsg → continue → sql_write → pendingWrite
+	// Drive tool round: chat.ToolStartMsg → continue → sql_write → chat.PendingWrite
 	model, cmd = resolveChatCommand(model, cmd)
 
 	model, cmd = resolveChatCommand(model, cmd)
 
-	if model.chat.activeRun().pendingWrite == nil {
-		t.Fatal("expected pendingWrite for corrected write")
+	if model.chat.component.ActiveRun().PendingWrite == nil {
+		t.Fatal("expected chat.PendingWrite for corrected write")
 	}
 
 	// Approve second write.
@@ -299,7 +306,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	// Final answer.
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading")
 	}
 
@@ -332,8 +339,10 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	tc := &toolWriteClient{
 		firstCalls: []ai.ToolCall{
@@ -344,20 +353,20 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	model.Focus = focusChat
 	model.applyLayout(140, 32)
 
-	model.chat.input.SetValue("insert")
+	model.chat.component.Input.SetValue("insert")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
 	// Drive the tool round until the write awaits confirmation.
-	for model.chat.activeRun().pendingWrite == nil && cmd != nil {
+	for model.chat.component.ActiveRun().PendingWrite == nil && cmd != nil {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
-	if model.chat.activeRun().pendingWrite == nil {
-		t.Fatal("expected pendingWrite after sql_write call")
+	if model.chat.component.ActiveRun().PendingWrite == nil {
+		t.Fatal("expected chat.PendingWrite after sql_write call")
 	}
-	if model.chat.chatMode != formModeInsert {
+	if model.chat.component.ChatMode != chat.ModeInsert {
 		t.Fatal("test setup: expected insert mode while awaiting write confirmation")
 	}
 
@@ -365,16 +374,16 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 	assertOnlyNotificationTick(t, cmd)
-	if model.chat.chatMode != formModeNormal {
-		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeNormal {
+		t.Fatalf("chat mode = %d, want normal after first escape", model.chat.component.ChatMode)
 	}
-	if model.chat.activeRun().pendingWrite == nil {
+	if model.chat.component.ActiveRun().PendingWrite == nil {
 		t.Fatal("first Escape should keep the write confirmation up")
 	}
-	if model.chat.activeRun().roundState == nil {
+	if model.chat.component.ActiveRun().RoundState == nil {
 		t.Fatal("first Escape should NOT interrupt the agent run")
 	}
-	if !model.chat.activeRun().loading {
+	if !model.chat.component.ActiveRun().Loading {
 		t.Fatal("first Escape should NOT stop loading")
 	}
 
@@ -386,13 +395,13 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	}
 	model, _ = resolveChatCommand(model, cmd)
 
-	if model.chat.activeRun().pendingWrite != nil {
+	if model.chat.component.ActiveRun().PendingWrite != nil {
 		t.Fatal("second Escape should clear the write confirmation")
 	}
-	if model.chat.activeRun().roundState != nil {
+	if model.chat.component.ActiveRun().RoundState != nil {
 		t.Fatal("second Escape should interrupt the agent run")
 	}
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading after second escape")
 	}
 
@@ -417,11 +426,14 @@ func TestChat_assistantWrite_readOnly(t *testing.T) {
 	model := New("", ctx, nil, true)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 	model.ReadOnly = true
+	model.chat.component.ReadOnly = true
 
-	tools := model.databaseTools()
+	tools := model.chat.component.DatabaseTools(model.chatLayout())
 	for _, td := range tools {
 		if td.Name == "sql_write" {
 			t.Fatal("read-only model should not expose sql_write")
@@ -448,8 +460,10 @@ func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	const statement = "INSERT INTO confirm_view_test (val) VALUES ('hello')"
 	tc := &toolWriteClient{
@@ -461,18 +475,18 @@ func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 	model.Focus = focusChat
 	model.applyLayout(140, 32)
 
-	model.chat.input.SetValue("insert a row")
+	model.chat.component.Input.SetValue("insert a row")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
 	// Drive the tool round until the write awaits confirmation.
-	for model.chat.activeRun().pendingWrite == nil && cmd != nil {
+	for model.chat.component.ActiveRun().PendingWrite == nil && cmd != nil {
 		model, cmd = resolveChatCommand(model, cmd)
 	}
-	if model.chat.activeRun().pendingWrite == nil {
-		t.Fatal("expected pendingWrite after sql_write call")
+	if model.chat.component.ActiveRun().PendingWrite == nil {
+		t.Fatal("expected chat.PendingWrite after sql_write call")
 	}
 
 	view := ansi.Strip(model.View().Content)
@@ -502,8 +516,10 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State = stateReady
 	model.Database = service
+	model.chat.component.Executor = chatExecutor{service: service}
 	model.databaseInfo = service.Info()
 	model.Target = ":memory:"
+	model.chat.component.Target = ":memory:"
 
 	tc := &toolWriteClient{
 		firstCalls: []ai.ToolCall{
@@ -515,13 +531,13 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 	model.applyLayout(140, 32)
 
 	// Enable YOLO via the AI slash command.
-	model.chat.input.SetValue("/yolo-on")
+	model.chat.component.Input.SetValue("/yolo-on")
 	updated2, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated2.(Model)
 	updated2, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated2.(Model)
 	assertOnlyNotificationTick(t, cmd)
-	if !model.chat.yoloWrites {
+	if !model.chat.component.YoloWrites {
 		t.Fatal("yoloWrites should be true after command")
 	}
 	if !strings.Contains(model.chatContentView(), "YOLO") {
@@ -531,7 +547,7 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 		t.Error("footer should not contain YOLO indicator")
 	}
 
-	model.chat.input.SetValue("yolo insert")
+	model.chat.component.Input.SetValue("yolo insert")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
 	updated, cmd = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -539,7 +555,7 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 
 	model = driveToolRoundToCompletion(t, model, cmd)
 
-	if model.chat.activeRun().loading {
+	if model.chat.component.ActiveRun().Loading {
 		t.Fatal("model should not be loading")
 	}
 
@@ -552,7 +568,7 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 	}
 
 	model.disconnect()
-	if model.chat.yoloWrites {
+	if model.chat.component.YoloWrites {
 		t.Error("yoloWrites should be false after disconnect")
 	}
 }

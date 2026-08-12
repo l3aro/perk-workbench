@@ -64,6 +64,22 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 	if store := m.queryLogStore(); store != nil {
 		_ = store.Append(m.connectionID, entry, queryLogLimit)
 	}
+	m.refreshChatFailedContext()
+}
+
+// refreshChatFailedContext mirrors the newest failed query into the chat
+// component's assistant context, scanning the current log like the
+// original context builder did.
+func (m *Model) refreshChatFailedContext() {
+	for _, entry := range m.queryLog.component.AllEntries() {
+		if entry.Status == "failed" {
+			m.chat.component.LastFailedQuery = entry.Statement
+			m.chat.component.LastFailedError = entry.Message
+			return
+		}
+	}
+	m.chat.component.LastFailedQuery = ""
+	m.chat.component.LastFailedError = ""
 }
 
 func queryLogMessage(statement string, rowsAffected int64, rows int) string {

@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // TestNonVim_singleClickEntersInsertOnEditor: without vim mode a single
@@ -661,7 +662,7 @@ func TestBrowseForm_singleClickKeepsNullFlagDoubleClickClearsIt(t *testing.T) {
 
 func TestChat_singleClickStaysNormalMode(t *testing.T) {
 	model := readyModel(t)
-	model.chat.visible = true
+	model.chat.component.Visible = true
 	model = resizeModel(model, 140, 32)
 	// Chat pane starts at x = schemaWidth + editorWidth = 102.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 110, Y: 10, Button: tea.MouseLeft})
@@ -669,27 +670,27 @@ func TestChat_singleClickStaysNormalMode(t *testing.T) {
 	if model.Focus != focusChat {
 		t.Fatalf("focus = %v, want focusChat", model.Focus)
 	}
-	if model.chat.chatMode != formModeNormal {
-		t.Fatalf("chat mode = %d, want normal", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeNormal {
+		t.Fatalf("chat mode = %d, want normal", model.chat.component.ChatMode)
 	}
 }
 
 func TestChat_doubleClickEntersInsertMode(t *testing.T) {
 	model := readyModel(t)
-	model.chat.visible = true
+	model.chat.component.Visible = true
 	model = resizeModel(model, 140, 32)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 110, Y: 10, Button: tea.MouseLeft})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: 110, Y: 10, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.chat.chatMode != formModeInsert {
-		t.Fatalf("chat mode = %d, want insert", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeInsert {
+		t.Fatalf("chat mode = %d, want insert", model.chat.component.ChatMode)
 	}
 }
 
 func TestChat_doubleClickInsertSurvivesRelease(t *testing.T) {
 	model := readyModel(t)
-	model.chat.visible = true
+	model.chat.component.Visible = true
 	model = resizeModel(model, 140, 32)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 110, Y: 10, Button: tea.MouseLeft})
 	model = updated.(Model)
@@ -697,14 +698,14 @@ func TestChat_doubleClickInsertSurvivesRelease(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseReleaseMsg{X: 110, Y: 10, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.chat.chatMode != formModeInsert {
-		t.Fatalf("chat mode = %d, want insert after release", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeInsert {
+		t.Fatalf("chat mode = %d, want insert after release", model.chat.component.ChatMode)
 	}
 }
 
 func TestChat_singleClickAfterDoubleClickExitsInsert(t *testing.T) {
 	model := readyModel(t)
-	model.chat.visible = true
+	model.chat.component.Visible = true
 	model = resizeModel(model, 140, 32)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 110, Y: 10, Button: tea.MouseLeft})
 	model = updated.(Model)
@@ -715,7 +716,7 @@ func TestChat_singleClickAfterDoubleClickExitsInsert(t *testing.T) {
 	// A later single click at a different spot exits insert mode.
 	updated, _ = model.Update(tea.MouseClickMsg{X: 120, Y: 12, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.chat.chatMode != formModeNormal {
-		t.Fatalf("chat mode = %d, want normal", model.chat.chatMode)
+	if model.chat.component.ChatMode != chat.ModeNormal {
+		t.Fatalf("chat mode = %d, want normal", model.chat.component.ChatMode)
 	}
 }

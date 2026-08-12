@@ -1,6 +1,7 @@
 package workbench
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
@@ -92,28 +94,9 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDocumentEditorSaved(saved)
 	}
 
-	// Route streaming and persistence messages early to prevent modal branches
-	// from consuming them and stalling the stream.
-	if _, ok := message.(chatStreamMsg); ok {
-		return m.updateChat(message)
-	}
-	if _, ok := message.(chatPersistMsg); ok {
-		return m.updateChat(message)
-	}
-	// Route tool-round messages early for the same reason.
-	if _, ok := message.(assistantToolStartMsg); ok {
-		return m.updateChat(message)
-	}
-	if _, ok := message.(assistantToolPhaseExpiredMsg); ok {
-		return m.updateChat(message)
-	}
-	if _, ok := message.(assistantToolContinueMsg); ok {
-		return m.updateChat(message)
-	}
-	if _, ok := message.(assistantWriteResultMsg); ok {
-		return m.updateChat(message)
-	}
-	if _, ok := message.(assistantToolResultMsg); ok {
+	// Route streaming, persistence, and tool-round messages early so modal
+	// branches never consume them and stall the stream.
+	if chat.OwnsMessage(message) {
 		return m.updateChat(message)
 	}
 	// The notification component owns its messages: the popup dismiss
@@ -265,62 +248,58 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.startQueryStatement(statement, false)
 	}
-	if run := m.chat.activeRun(); run.pendingWrite != nil && run.pendingWrite.dialog != nil {
+	if m.chat.writeConfirmation != nil {
 		// While in chat insert mode, Escape exits insert mode first so the
 		// write confirmation cannot interrupt the agent on the first press;
 		// a second Escape (now in normal mode) declines the write.
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape && m.chat.chatMode == formModeInsert {
-			m.chat.chatMode = formModeNormal
-			m.chat.input.Blur()
+		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape && m.chat.component.InsertMode() {
+			m.chat.component.ExitInsertMode()
 			return m, nil
 		}
-		completed, action := run.pendingWrite.dialog.Update(message, m.layout.width, m.layout.height)
+		completed, action := m.chat.writeConfirmation.Update(message, m.layout.width, m.layout.height)
 		if !completed {
 			return m, nil
 		}
-		call := run.pendingWrite.call
-		statement := run.pendingWrite.statement
-		gen := run.pendingWrite.generation
+		pending := *m.chat.writePending
+		m.chat.writeConfirmation = nil
+		m.chat.writePending = nil
+		m.overlay.formMode.mode = formModeNormal
 
 		if action != "run" {
 			// Decline — send error result and stop round.
-			run.pendingWrite = nil
 			return m, func() tea.Msg {
-				return assistantWriteResultMsg{
-					gen: gen, callID: call.ID, callName: call.Name,
-					err: "execution canceled by user", declined: true,
+				return chat.WriteResultMsg{
+					Gen: pending.Generation,
+					Err: "execution canceled by user", Declined: true,
 				}
 			}
 		}
 
-		// Approved — execute write asynchronously.
-		run.pendingWrite = nil
-		rs := run.roundState
-		if rs == nil || gen != rs.gen {
-			return m, nil
-		}
-		if time.Now().After(rs.toolDeadline) {
+		// Approved — execute write asynchronously through the root-owned
+		// database path.
+		if time.Now().After(pending.Deadline) {
 			return m, func() tea.Msg {
-				return assistantWriteResultMsg{
-					gen: gen, callID: call.ID, callName: call.Name,
-					err: "tool time budget ended before write approval",
+				return chat.WriteResultMsg{
+					Gen: pending.Generation,
+					Err: "tool time budget ended before write approval",
 				}
 			}
 		}
-		chatContext := rs.chatContext
+		statement := pending.Statement
 		db := m.Database
+		ctx, cancel := context.WithDeadline(m.appContext, pending.Deadline)
 		return m, func() tea.Msg {
-			res, err := db.Execute(chatContext, statement)
+			defer cancel()
+			res, err := db.Execute(ctx, statement)
 			content := ""
 			errStr := ""
 			if err != nil {
 				errStr = err.Error()
 			} else {
-				content = formatResult(res)
+				content = chat.FormatResult(res)
 			}
-			return assistantWriteResultMsg{
-				gen: gen, callID: call.ID, callName: call.Name,
-				content: content, err: errStr,
+			return chat.WriteResultMsg{
+				Gen: pending.Generation, Content: content, Err: errStr,
 			}
 		}
 	}
@@ -451,19 +430,19 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.queryLog.editorValidity = sqlValidityPending
 		return m, tea.Batch(m.overlay.formMode.beginInsert(m.queryLog.editor), m.scheduleSQLValidation())
 	}
-	if m.chat.historyPicker != nil {
+	if m.chat.component.HistoryPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.chat.historyPicker = nil
+			m.chat.component.HistoryPicker = nil
 			return m, nil
 		}
-		form, command := m.chat.historyPicker.Update(message)
-		m.chat.historyPicker = form.(*huh.Form)
-		if m.chat.historyPicker.State != huh.StateCompleted {
+		form, command := m.chat.component.HistoryPicker.Update(message)
+		m.chat.component.HistoryPicker = form.(*huh.Form)
+		if m.chat.component.HistoryPicker.State != huh.StateCompleted {
 			return m, command
 		}
-		conversationID := m.chat.historyChoice
-		m.chat.historyPicker = nil
-		return m, m.loadChatMessages(conversationID)
+		conversationID := m.chat.component.HistoryChoice
+		m.chat.component.HistoryPicker = nil
+		return m, m.chat.component.LoadMessages(m.chatLayout(), conversationID)
 	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
@@ -513,12 +492,13 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Route chat Escape before global keybindings so chat's
-		// insert→normal→cancel precedence wins over query.cancel etc.
-		if m.Focus == focusChat && message.Key().Code == tea.KeyEscape {
+		// insert→normal→cancel precedence wins over query.cancel etc. An
+		// open write confirmation owns the key instead.
+		if m.Focus == focusChat && message.Key().Code == tea.KeyEscape && m.chat.writeConfirmation == nil {
 			return m.updateChat(message)
 		}
 
-		if m.State == stateReady && !m.formActive() && !m.schema.filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.editing()) && !(m.Focus == focusChat && m.chat.chatMode == formModeInsert) {
+		if m.State == stateReady && !m.formActive() && !m.schema.filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
@@ -542,7 +522,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case m.keybindings.Match(message, "focus.chat", []scope{scopeGlobal}):
-				if !m.chat.visible {
+				if !m.chat.component.Visible {
 					return m, nil
 				}
 				m.Focus = focusChat
@@ -550,10 +530,10 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				if !m.vimMode {
-					m.chat.chatMode = formModeInsert
-					return m, m.chat.input.Focus()
+					m.chat.component.ChatMode = chat.ModeInsert
+					return m, m.chat.component.Input.Focus()
 				}
-				m.chat.chatMode = formModeNormal
+				m.chat.component.ChatMode = chat.ModeNormal
 				return m, nil
 			case m.keybindings.Match(message, "ai.toggle", []scope{scopeGlobal}):
 				m.toggleAI()
@@ -859,9 +839,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
-	case chatResponseMsg, chatStreamMsg, chatPersistMsg, chatHistoryLoadedMsg, chatMessagesLoadedMsg, chatHistoryDeletedMsg,
-		assistantToolStartMsg, assistantToolContinueMsg, assistantWriteResultMsg, chatSpinnerTickMsg:
-		return m.updateChat(message)
+
 	case treeAnimTickMsg:
 		return m.updateTreeAnim(message)
 	}

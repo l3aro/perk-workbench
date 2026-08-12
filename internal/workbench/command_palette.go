@@ -269,9 +269,9 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "query.cancel":
 		return m.Running()
 	case "ai.toggle":
-		return m.State == stateReady && m.chat.enabled
+		return m.State == stateReady && m.chat.component.Enabled
 	case "focus.chat":
-		return m.State == stateReady && m.chat.visible
+		return m.State == stateReady && m.chat.component.Visible
 	case "focus.schema", "focus.workspace", "focus.query_log",
 		"focus.toggle_fullscreen", "focus.cycle_forward", "focus.cycle_backward":
 		return m.State == stateReady && !m.formActive() && !m.schema.filter.Focused()

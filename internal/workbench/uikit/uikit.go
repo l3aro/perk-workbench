@@ -124,6 +124,11 @@ var (
 	ButtonSaveStyle, ButtonCancelStyle    lipgloss.Style
 	ActionStyle, ActionSelectedStyle      lipgloss.Style
 	ActionFocusedStyle                    lipgloss.Style
+	ThinkingStyle                         lipgloss.Style
+	UserMessageStyle                      lipgloss.Style
+	UserMessageAccentStyle                lipgloss.Style
+	CompletionItemStyle                   lipgloss.Style
+	CompletionDetailStyle                 lipgloss.Style
 )
 
 // SetTheme applies the named theme palette and rebuilds the derived
