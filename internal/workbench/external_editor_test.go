@@ -29,7 +29,7 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 	if command == nil {
 		t.Fatal("SQL Huh Text Ctrl+E returned no editor command")
 	}
-	process, complete, err := sqlEditorProcess(model.editor.value, model.editorEditTag)
+	process, complete, err := sqlEditorProcess(model.queryLog.editor.value, model.queryLog.editorEditTag)
 	if err != nil {
 		t.Fatalf("creating SQL editor process: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "SELECT 2" {
+	if got := model.queryLog.editor.value; got != "SELECT 2" {
 		t.Fatalf("SQL Huh Text editor value = %q, want SELECT 2", got)
 	}
 }
@@ -46,8 +46,8 @@ func TestModel_sqlEditorCompletionReportsError(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus, model.Tab = focusWorkspace, tabSQL
-	model.formMode.beginInsert(model.editor)
-	model.editorEditTag = 1
+	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	model.queryLog.editorEditTag = 1
 
 	// When
 	updated, _ := model.Update(sqlEditorFinishedMsg{tag: 1, err: errors.New("editor failed")})
@@ -63,8 +63,8 @@ func TestModel_sqlEditorCompletionReportsStaleTarget(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus, model.Tab = focusWorkspace, tabSQL
-	model.formMode.beginInsert(model.editor)
-	model.editorEditTag = 1
+	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	model.queryLog.editorEditTag = 1
 	model.Focus = focusSchema
 
 	// When
@@ -87,10 +87,10 @@ func TestModel_ctrlEEditsFocusedHuhInput(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	model := readyModel(t)
 	model.State = stateConnection
-	model.connection.setFocus(connectionFocusForm)
-	model.connection.values.name = "before"
-	model.formMode.beginHuh(model.connection.focusForm())
-	updated, _ := model.Update(model.connection.form.NextField()())
+	model.connection.form.setFocus(connectionFocusForm)
+	model.connection.form.values.name = "before"
+	model.overlay.formMode.beginHuh(model.connection.form.focusForm())
+	updated, _ := model.Update(model.connection.form.form.NextField()())
 	model = updated.(Model)
 
 	// When
@@ -99,7 +99,7 @@ func TestModel_ctrlEEditsFocusedHuhInput(t *testing.T) {
 	if command == nil {
 		t.Fatal("connection Huh Input Ctrl+E returned no editor command")
 	}
-	process, complete, err := externalEditorProcess("before", model.editorEditTag, externalEditorLocation{kind: externalEditorTargetConnection, key: "name"})
+	process, complete, err := externalEditorProcess("before", model.queryLog.editorEditTag, externalEditorLocation{kind: externalEditorTargetConnection, key: "name"})
 	if err != nil {
 		t.Fatalf("creating connection editor process: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestModel_ctrlEEditsFocusedHuhInput(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.connection.values.name; got != "after" {
+	if got := model.connection.form.values.name; got != "after" {
 		t.Fatalf("connection editor value = %q, want after", got)
 	}
 }
@@ -117,8 +117,8 @@ func TestModel_ctrlEIgnoresFocusedHuhSelect(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	model := readyModel(t)
 	model.State = stateConnection
-	model.connection.setFocus(connectionFocusForm)
-	model.formMode.beginHuh(model.connection.focusForm())
+	model.connection.form.setFocus(connectionFocusForm)
+	model.overlay.formMode.beginHuh(model.connection.form.focusForm())
 
 	// When
 	_, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})

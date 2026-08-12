@@ -261,11 +261,11 @@ func commandLabel(m Model, id CommandID, raw string) string {
 func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "app.quit":
-		return !m.formActive() && !m.schemaFilter.Focused() &&
-			!(m.State == stateConnection && (m.recentFilter.Focused() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
-			!(m.sqlEditorActive() && m.formMode.editing())
+		return !m.formActive() && !m.schema.filter.Focused() &&
+			!(m.State == stateConnection && (m.connection.recentFilter.Focused() || (m.connection.form.focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
+			!(m.sqlEditorActive() && m.overlay.formMode.editing())
 	case "editor.external":
-		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil
+		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil
 	case "query.cancel":
 		return m.Running()
 	case "ai.toggle":
@@ -274,7 +274,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.chat.visible
 	case "focus.schema", "focus.workspace", "focus.query_log",
 		"focus.toggle_fullscreen", "focus.cycle_forward", "focus.cycle_backward":
-		return m.State == stateReady && !m.formActive() && !m.schemaFilter.Focused()
+		return m.State == stateReady && !m.formActive() && !m.schema.filter.Focused()
 	case "query.execute":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
 	case "query.history", "app.quit_dialog":
@@ -291,50 +291,50 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "structure.filter", "structure.reset", "structure.edit", "structure.add", "structure.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
 	case "browse.edit":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil && m.browseWriteAvailable()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil && m.browseWriteAvailable()
 	case "browse.edit_cell":
 		// On document stores the cell binding edits the whole document, so
 		// it merges into "edit document" and is not offered separately.
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil && m.writeCapabilities().RowWriter
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil && m.writeCapabilities().RowWriter
 	case "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil
 	case "browse.insert_row":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil && m.browseWriteAvailable()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil && m.browseWriteAvailable()
 	case "cell.view":
-		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.formMode.editing() && m.results.Focused())
+		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil) ||
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.editing() && m.queryLog.results.Focused())
 	case "cell.yank":
-		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.formMode.editing() && m.results.Focused())
+		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil) ||
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.editing() && m.queryLog.results.Focused())
 	case "indexes.filter", "indexes.reset", "indexes.create", "indexes.edit", "indexes.delete":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.indexForm.active()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.structure.indexForm.active()
 	case "foreign_keys.filter", "foreign_keys.reset", "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.foreignKeyForm.active()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.structure.foreignKeyForm.active()
 	case "query_log.yank", "query_log.explain", "query_log.detail", "query_log.context_menu",
 		"query_log.cursor_down", "query_log.cursor_up", "query_log.top_first", "query_log.top_last", "query_log.next_page", "query_log.prev_page":
 		return m.State == stateReady && m.Focus == focusQueryLog
 	case "chat.delete", "chat.clear", "chat.apply_sql":
 		return m.State == stateReady && m.Focus == focusChat
 	case "detail.explain", "detail.close":
-		return m.queryLogDetail != nil
+		return m.queryLog.detail != nil
 	case "picker.reload", "picker.select":
 		return m.State == statePicking
 	case "failure.return_to_picker":
 		return m.State == stateFailure
 	case "connection.switch_to_form", "connection.add", "connection.edit", "connection.delete":
-		return m.State == stateConnection && m.connection.focus == connectionFocusRecent
+		return m.State == stateConnection && m.connection.form.focus == connectionFocusRecent
 	case "connection.switch_to_list", "connection.execute", "connection.field_next", "connection.field_prev":
-		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil
+		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil
 	case "connection.action_enter":
-		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil && m.connectionActionFocused()
+		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil && m.connectionActionFocused()
 	case "connection.edit_field":
-		return m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil && !m.connectionActionFocused()
+		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil && !m.connectionActionFocused()
 	case "form.edit":
 		return m.formActive()
 	case "form.save", "form.discard", "form.field_next", "form.field_prev":
 		return m.formActive()
 	case "form.delete":
-		return m.indexForm.active() || m.foreignKeyForm.active() || m.columnForm.active()
+		return m.structure.indexForm.active() || m.structure.foreignKeyForm.active() || m.structure.columnForm.active()
 	default:
 		return false
 	}

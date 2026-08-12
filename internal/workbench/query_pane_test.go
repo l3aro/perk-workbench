@@ -20,10 +20,10 @@ func TestWideLayout_renders_query_log_in_its_own_pane(t *testing.T) {
 	model = resizeModel(model, 160, 24)
 
 	// Then
-	if model.queryLogHeight != queryLogPaneHeight {
-		t.Fatalf("query log height = %d, want %d", model.queryLogHeight, queryLogPaneHeight)
+	if model.layout.queryLogHeight != queryLogPaneHeight {
+		t.Fatalf("query log height = %d, want %d", model.layout.queryLogHeight, queryLogPaneHeight)
 	}
-	if got, want := model.workspaceHeight+model.queryLogHeight, model.height-4; got != want {
+	if got, want := model.layout.workspaceHeight+model.layout.queryLogHeight, model.layout.height-4; got != want {
 		t.Fatalf("stacked right pane height = %d, want %d", got, want)
 	}
 	if strings.Contains(ansi.Strip(model.workspaceView()), "Duration/fetch") {
@@ -61,7 +61,7 @@ func TestWideLayout_sizes_browse_table_inside_upper_pane(t *testing.T) {
 
 	// Then
 	// SetHeight(workspaceHeight-8) minus the header row, clamped to one.
-	if got, want := model.browse.Height(), max(model.workspaceHeight-9, 1); got != want {
+	if got, want := model.browse.table.Height(), max(model.layout.workspaceHeight-9, 1); got != want {
 		t.Fatalf("browse table height = %d, want %d within upper pane", got, want)
 	}
 }
@@ -80,7 +80,7 @@ func TestWideLayout_shows_two_recent_browse_entries(t *testing.T) {
 
 	// Then
 	view := ansi.Strip(model.queryLogPaneView())
-	if got, want := len(model.queryLogEntries), 2; got != want {
+	if got, want := len(model.queryLog.entries), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
 	if !strings.Contains(view, cellText("SELECT * FROM \"projects\" LIMIT 25 OFFSET 25")) {
@@ -100,7 +100,7 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.Focus != focusQueryLog || !model.queryLog.Focused() {
+	if model.Focus != focusQueryLog || !model.queryLog.table.Focused() {
 		t.Fatal("3 did not focus the query log pane")
 	}
 
@@ -116,7 +116,7 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 	} {
 		updated, _ = model.Update(test.key)
 		model = updated.(Model)
-		if got := model.queryLog.Cursor(); got != test.want {
+		if got := model.queryLog.table.Cursor(); got != test.want {
 			t.Fatalf("query log cursor = %d, want %d after %s", got, test.want, test.key.String())
 		}
 	}
@@ -136,10 +136,10 @@ func TestQueryLog_n_and_p_change_pages(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLogPage, 1; got != want {
+	if got, want := model.queryLog.page, 1; got != want {
 		t.Fatalf("query log page = %d, want %d", got, want)
 	}
-	if got, want := model.queryLog.Rows()[0][2], "SELECT 0"; got != want {
+	if got, want := model.queryLog.table.Rows()[0][2], "SELECT 0"; got != want {
 		t.Fatalf("next page statement = %q, want %q", got, want)
 	}
 
@@ -148,10 +148,10 @@ func TestQueryLog_n_and_p_change_pages(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLogPage, 0; got != want {
+	if got, want := model.queryLog.page, 0; got != want {
 		t.Fatalf("query log page = %d, want %d", got, want)
 	}
-	if got, want := model.queryLog.Rows()[0][2], "SELECT 25"; got != want {
+	if got, want := model.queryLog.table.Rows()[0][2], "SELECT 25"; got != want {
 		t.Fatalf("previous page statement = %q, want %q", got, want)
 	}
 }
@@ -162,7 +162,7 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	model.appendQueryLog(queryLogEntry{statement: "SELECT 42", message: message})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
-	model.queryLogColumn = 4
+	model.layout.queryLogColumn = 4
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -175,7 +175,7 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	if command == nil {
 		t.Fatal("copy command = nil, want clipboard command")
 	}
-	if got, want := queryLogCell(model.queryLogEntries[0], model.queryLogColumn), message; got != want {
+	if got, want := queryLogCell(model.queryLog.entries[0], model.layout.queryLogColumn), message; got != want {
 		t.Fatalf("copied cell value = %q, want full message", got)
 	}
 }

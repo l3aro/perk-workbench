@@ -114,11 +114,11 @@ func (m Model) executeTool(ctx context.Context, call ai.ToolCall) ai.ToolResult 
 		result.Content = content
 
 	case "get_visible_results":
-		columns := make([]string, len(m.results.Columns()))
-		for i, column := range m.results.Columns() {
+		columns := make([]string, len(m.queryLog.results.Columns()))
+		for i, column := range m.queryLog.results.Columns() {
 			columns[i] = column.Title
 		}
-		tableRows := m.results.Rows()
+		tableRows := m.queryLog.results.Rows()
 		rows := make([][]*string, len(tableRows))
 		for i, row := range tableRows {
 			values := make([]*string, len(row))

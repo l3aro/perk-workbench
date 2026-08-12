@@ -51,7 +51,7 @@ func TestConnectionForm_defaultsPostgreSQLTLSToDisabled(t *testing.T) {
 
 func TestConnectionForm_restoresPostgreSQLTLSFromRecentProfile(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver:        driverPostgreSQL,
 		Name:          "Local Docker",
 		Host:          "127.0.0.1",
@@ -59,21 +59,21 @@ func TestConnectionForm_restoresPostgreSQLTLSFromRecentProfile(t *testing.T) {
 		User:          "postgres",
 		PostgreSQLTLS: postgresTLSEncrypt,
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
-	if model.connection.values.postgresTLS != postgresTLSEncrypt {
-		t.Fatalf("PostgreSQL TLS mode = %q, want %q", model.connection.values.postgresTLS, postgresTLSEncrypt)
+	if model.connection.form.values.postgresTLS != postgresTLSEncrypt {
+		t.Fatalf("PostgreSQL TLS mode = %q, want %q", model.connection.form.values.postgresTLS, postgresTLSEncrypt)
 	}
 }
 
 func TestConnectionForm_restoresMySQLTLSFromRecentProfile(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver:   driverMySQL,
 		Name:     "Local Docker",
 		Host:     "127.0.0.1",
@@ -81,16 +81,16 @@ func TestConnectionForm_restoresMySQLTLSFromRecentProfile(t *testing.T) {
 		User:     "root",
 		MySQLTLS: mysqlTLSSkipVerify,
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	if model.connection.values.mysqlTLS != mysqlTLSSkipVerify {
-		t.Fatalf("MySQL TLS mode = %q, want %q", model.connection.values.mysqlTLS, mysqlTLSSkipVerify)
+	if model.connection.form.values.mysqlTLS != mysqlTLSSkipVerify {
+		t.Fatalf("MySQL TLS mode = %q, want %q", model.connection.form.values.mysqlTLS, mysqlTLSSkipVerify)
 	}
 }
 

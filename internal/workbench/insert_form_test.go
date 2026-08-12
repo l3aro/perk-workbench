@@ -17,18 +17,18 @@ func TestInsertForm_aOpensEmptyInsertForm(t *testing.T) {
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
 
 	// Then — insert form open, every field on DEFAULT, no row required
-	if !model.browseForm.active() || !model.browseForm.inserting {
+	if !model.browse.form.active() || !model.browse.form.inserting {
 		t.Fatal("a did not open the insert form")
 	}
-	for index := range model.browseForm.values.defaults {
-		if !model.browseForm.values.defaults[index] {
+	for index := range model.browse.form.values.defaults {
+		if !model.browse.form.values.defaults[index] {
 			t.Fatalf("field %d not on DEFAULT after open", index)
 		}
-		if model.browseForm.values.nulls[index] {
+		if model.browse.form.values.nulls[index] {
 			t.Fatalf("field %d starts NULL, want default", index)
 		}
-		if model.browseForm.values.fields[index] != "" {
-			t.Fatalf("field %d = %q, want empty", index, model.browseForm.values.fields[index])
+		if model.browse.form.values.fields[index] != "" {
+			t.Fatalf("field %d = %q, want empty", index, model.browse.form.values.fields[index])
 		}
 	}
 }
@@ -153,16 +153,16 @@ func TestInsertForm_setDefaultReturnsFieldToOmission(t *testing.T) {
 	// Given — a typed field, then N returns it to DEFAULT
 	model := readyBrowseModel(t)
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
-	model.browseForm.values.fields[0] = "5"
-	model.browseForm.values.defaults[0] = false
+	model.browse.form.values.fields[0] = "5"
+	model.browse.form.values.defaults[0] = false
 
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'N', Text: "N"})
 
 	// Then
-	if !model.browseForm.values.defaults[0] || model.browseForm.values.nulls[0] || model.browseForm.values.fields[0] != "" {
-		t.Fatalf("field 0 = defaults %t nulls %t value %q, want default", model.browseForm.values.defaults[0], model.browseForm.values.nulls[0], model.browseForm.values.fields[0])
+	if !model.browse.form.values.defaults[0] || model.browse.form.values.nulls[0] || model.browse.form.values.fields[0] != "" {
+		t.Fatalf("field 0 = defaults %t nulls %t value %q, want default", model.browse.form.values.defaults[0], model.browse.form.values.nulls[0], model.browse.form.values.fields[0])
 	}
-	if values := model.browseForm.rowValues(); len(values) != 0 {
+	if values := model.browse.form.rowValues(); len(values) != 0 {
 		t.Fatalf("rowValues = %#v, want none after returning to DEFAULT", values)
 	}
 }
@@ -172,7 +172,7 @@ func TestInsertForm_typingSelectsValue(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.vimMode = false
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
-	if !model.formMode.editing() {
+	if !model.overlay.formMode.editing() {
 		t.Fatal("insert form did not open in insert mode without vim mode")
 	}
 
@@ -180,14 +180,14 @@ func TestInsertForm_typingSelectsValue(t *testing.T) {
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
 
 	// Then — typing left the DEFAULT state
-	if model.browseForm.values.defaults[0] {
+	if model.browse.form.values.defaults[0] {
 		t.Fatal("typing did not leave the DEFAULT state")
 	}
-	if got := model.browseForm.values.fields[0]; got != "x" {
+	if got := model.browse.form.values.fields[0]; got != "x" {
 		t.Fatalf("field 0 = %q, want x", got)
 	}
 	want := []sharedsql.RowValue{{Name: "id", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "x"}}}
-	if values := model.browseForm.rowValues(); !reflect.DeepEqual(values, want) {
+	if values := model.browse.form.rowValues(); !reflect.DeepEqual(values, want) {
 		t.Fatalf("rowValues = %#v, want %#v", values, want)
 	}
 }
@@ -196,25 +196,25 @@ func TestInsertForm_savesInsertedRow(t *testing.T) {
 	// Given — insert form with a typed name
 	model := readyBrowseModel(t)
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
-	model.browseForm.values.defaults[1] = false
-	model.browseForm.values.fields[1] = "third"
+	model.browse.form.values.defaults[1] = false
+	model.browse.form.values.fields[1] = "third"
 
 	// When — save and confirm
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then — form closed, row inserted with the engine-assigned id
-	if model.browseForm.active() {
+	if model.browse.form.active() {
 		t.Fatal("insert form remained open after save")
 	}
 	var insertEntry *queryLogEntry
-	for index := range min(len(model.queryLogEntries), 3) {
-		if model.queryLogEntries[index].message == "inserted 1 row" {
-			insertEntry = &model.queryLogEntries[index]
+	for index := range min(len(model.queryLog.entries), 3) {
+		if model.queryLog.entries[index].message == "inserted 1 row" {
+			insertEntry = &model.queryLog.entries[index]
 		}
 	}
 	if insertEntry == nil {
-		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLogEntries)
+		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLog.entries)
 	}
 	if got, want := insertEntry.statement, "Table: items\nValues:\n  name = \"third\""; got != want {
 		t.Fatalf("query log statement = %q, want preview %q", got, want)
@@ -232,7 +232,7 @@ func TestInsertForm_savesInsertedRow(t *testing.T) {
 	if got, want := *result.Rows[2][1], "third"; got != want {
 		t.Fatalf("new name = %q, want %q", got, want)
 	}
-	if got := model.browse.Rows(); len(got) != 3 {
+	if got := model.browse.table.Rows(); len(got) != 3 {
 		t.Fatalf("browse rows = %d, want refreshed 3", len(got))
 	}
 }
@@ -247,7 +247,7 @@ func TestInsertForm_allDefaultsInsertsEngineRow(t *testing.T) {
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then — DEFAULT VALUES ran and the auto-increment id advanced
-	if model.browseForm.active() {
+	if model.browse.form.active() {
 		t.Fatal("insert form remained open after save")
 	}
 	result, err := model.Database.Execute(model.appContext, "SELECT COUNT(*) FROM items")
@@ -264,16 +264,16 @@ func TestInsertForm_readOnlyKeepsFormOpen(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.ReadOnly = true
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
-	model.browseForm.values.defaults[1] = false
-	model.browseForm.values.fields[1] = "third"
+	model.browse.form.values.defaults[1] = false
+	model.browse.form.values.fields[1] = "third"
 
 	// When
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then — rejected, form and input preserved
-	if !model.browseForm.active() || model.browseForm.saving {
-		t.Fatalf("form = %#v, want retained unsaved insert form", model.browseForm)
+	if !model.browse.form.active() || model.browse.form.saving {
+		t.Fatalf("form = %#v, want retained unsaved insert form", model.browse.form)
 	}
 	if !strings.Contains(model.Status, "read-only") {
 		t.Fatalf("status = %q, want read-only rejection", model.Status)

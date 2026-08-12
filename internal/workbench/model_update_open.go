@@ -29,10 +29,10 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 			m.setStatus(safeText(fmt.Sprintf("database switch failed: %v", message.err)))
 			return m, nil
 		}
-		if m.connection.focus == connectionFocusForm {
+		if m.connection.form.focus == connectionFocusForm {
 			m.State = stateConnection
 			m.setStatus(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
-			m.formMode.mode = formModeNormal
+			m.overlay.formMode.mode = formModeNormal
 			return m, nil
 		}
 		m.Fail(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
@@ -47,9 +47,9 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.databaseInfo = message.info
-	m.layout(m.width, m.height)
+	m.applyLayout(m.layout.width, m.layout.height)
 	m.Focus = focusSchema
-	m.editor.text.Blur()
+	m.queryLog.editor.text.Blur()
 	m.blurTables()
 	if !message.reconnect {
 		if err := m.recordConnection(message.target); err != nil {
@@ -57,18 +57,18 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 			m.setStatus(safeText("saving connection profile: " + err.Error()))
 		}
 	}
-	m.queryLogEntries = loadQueryLog(m.queryLogPath, m.connectionID)
-	m.queryLogPage = 0
+	m.queryLog.entries = loadQueryLog(m.queryLog.path, m.connectionID)
+	m.queryLog.page = 0
 	m.renderQueryLog()
-	m.notificationEntries = loadNotifications(m.notificationPath, m.connectionID)
+	m.notifications.entries = loadNotifications(m.notifications.path, m.connectionID)
 	name := filepath.Base(message.target)
-	if configured := strings.TrimSpace(m.connection.values.name); configured != "" {
+	if configured := strings.TrimSpace(m.connection.form.values.name); configured != "" {
 		name = configured
 	}
 	m.setStatus(safeText("ready: " + name))
 	// The ready transition surfaces as a Debug log notification (visible
 	// only when log_level allows it), not as a plain status popup.
-	m.skipStatusPopup = true
+	m.notifications.skipStatusPopup = true
 	log.Debug("ready: " + name)
 	return m, m.setSchemaObjects(message.objects)
 }

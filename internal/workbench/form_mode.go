@@ -102,7 +102,7 @@ func (m *Model) openForm(command tea.Cmd, focus func() tea.Cmd) tea.Cmd {
 	if m.vimMode {
 		return command
 	}
-	return tea.Batch(command, m.formMode.beginHuh(focus()))
+	return tea.Batch(command, m.overlay.formMode.beginHuh(focus()))
 }
 
 // beginInsertForCurrentFocus transitions the active text input into insert
@@ -117,29 +117,29 @@ func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
 		}
 		return nil
 	}
-	if m.formMode.editing() {
+	if m.overlay.formMode.editing() {
 		return nil
 	}
 	switch {
-	case m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.form != nil && m.connection.confirmation == nil:
-		return m.formMode.beginHuh(m.connection.focusForm())
+	case m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.form != nil && m.connection.form.confirmation == nil:
+		return m.overlay.formMode.beginHuh(m.connection.form.focusForm())
 	case m.sqlEditorActive() && !m.tableFormOpen():
-		return m.formMode.beginInsert(m.editor)
-	case m.columnForm.active():
-		return m.formMode.beginHuh(m.columnForm.focus())
-	case m.documentEditor != nil:
-		return m.formMode.beginHuh(m.documentEditor.focus())
-	case m.browseForm.active():
-		return m.formMode.beginHuh(m.browseForm.focus())
-	case m.browseFilterForm != nil:
-		command, _ := m.browseFilterForm.beginEdit()
+		return m.overlay.formMode.beginInsert(m.queryLog.editor)
+	case m.structure.columnForm.active():
+		return m.overlay.formMode.beginHuh(m.structure.columnForm.focus())
+	case m.browse.documentEditor != nil:
+		return m.overlay.formMode.beginHuh(m.browse.documentEditor.focus())
+	case m.browse.form.active():
+		return m.overlay.formMode.beginHuh(m.browse.form.focus())
+	case m.browse.filterForm != nil:
+		command, _ := m.browse.filterForm.beginEdit()
 		return command
-	case m.indexForm.active():
-		return m.formMode.beginHuh(m.indexForm.focus())
-	case m.foreignKeyForm.active():
-		return m.formMode.beginHuh(m.foreignKeyForm.focus())
+	case m.structure.indexForm.active():
+		return m.overlay.formMode.beginHuh(m.structure.indexForm.focus())
+	case m.structure.foreignKeyForm.active():
+		return m.overlay.formMode.beginHuh(m.structure.foreignKeyForm.focus())
 	case m.tableFormOpen():
-		return m.formMode.beginHuh(m.tableForm.focus())
+		return m.overlay.formMode.beginHuh(m.structure.tableForm.focus())
 	}
 	return nil
 }

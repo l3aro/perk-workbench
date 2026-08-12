@@ -29,7 +29,7 @@ func TestChat_spinnerWhileLoading(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	if strings.Contains(model.chatModeBadge(), "⠋") {
 		t.Fatal("spinner shown while idle")
@@ -69,7 +69,7 @@ func TestChat_spinnerWithYOLO(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.yoloWrites = true
 	model.chat.activeRun().loading = true
@@ -210,7 +210,7 @@ func TestChat_streamingRendersPartialContent(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'})
 	model = updated.(Model)
@@ -269,7 +269,7 @@ func TestChat_slashNewStartsNewConversation(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.activeID = "existing"
 	model.chat.activeRun().messages = []ai.Message{{Role: ai.RoleUser, Content: "old turn"}}
@@ -311,7 +311,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(client, history)
 	model.connectionID = "test-connection"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	// Conversation A: send a prompt whose stream blocks until released.
 	model.chat.input.SetValue("slow question")
@@ -371,11 +371,11 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 		t.Fatal("/history sent no command")
 	}
 	model, cmdHistory = resolveChatCommand(model, cmdHistory)
-	if model.chatHistoryPicker == nil {
+	if model.chat.historyPicker == nil {
 		t.Fatal("/history did not open the conversation picker")
 	}
 	model.chat.historyChoice = idA // what a selection in the form binds
-	model.chatHistoryPicker = nil  // what the submit handler does first
+	model.chat.historyPicker = nil // what the submit handler does first
 	cmdLoad := model.loadChatMessages(idA)
 	updated, _ = model.Update(cmdLoad())
 	model = updated.(Model)
@@ -435,7 +435,7 @@ func TestChat_staleConversationLoadIsDropped(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "test-connection"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	loadA := model.loadChatMessages(a.ID) // seq 1
 	loadB := model.loadChatMessages(b.ID) // seq 2
@@ -478,7 +478,7 @@ func TestChat_slashCompletionSuggestsCommands(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
@@ -532,7 +532,7 @@ func TestChat_completionArrowNavigation(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
@@ -611,7 +611,7 @@ func TestChat_historySlashCommand(t *testing.T) {
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "test-connection"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
@@ -629,7 +629,7 @@ func TestChat_historySlashCommand(t *testing.T) {
 	}
 	updated, _ = model.Update(msg)
 	model = updated.(Model)
-	if model.chatHistoryPicker == nil {
+	if model.chat.historyPicker == nil {
 		t.Fatal("/history did not open the conversation picker")
 	}
 }
@@ -641,7 +641,7 @@ func TestChat_yoloCommandsToggleWrites(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
@@ -705,7 +705,7 @@ func TestChat_enterSendsPromptAndRendersResponse(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'})
 	model = updated.(Model)
@@ -829,7 +829,7 @@ func TestChat_realProviderResponsePersistsConversation(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(client, history)
 	model.connectionID = "test-connection"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("How should I speed this up?")
 
 	// Enter insert mode before sending
@@ -869,7 +869,7 @@ func TestChat_generatesTitleForNewConversation(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "test-connection"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("How do I add an index?")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape}) // ensure normal
@@ -911,25 +911,25 @@ func TestChatSQL_returnsLatestFencedSQLBlock(t *testing.T) {
 func TestChat_toggleVisibilityChangesPaneLayout(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	if model.chat.visible {
 		t.Fatal("AI pane is visible without an Assistant")
 	}
 
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
-	if !model.chat.visible || model.editorWidth != 58 {
-		t.Fatalf("AI pane = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
+	model.applyLayout(140, 32)
+	if !model.chat.visible || model.layout.editorWidth != 58 {
+		t.Fatalf("AI pane = visible:%t editorWidth:%d", model.chat.visible, model.layout.editorWidth)
 	}
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl, Text: "g"})
 	model = updated.(Model)
-	if model.chat.visible || model.editorWidth != 94 {
-		t.Fatalf("AI pane after toggle = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
+	if model.chat.visible || model.layout.editorWidth != 94 {
+		t.Fatalf("AI pane after toggle = visible:%t editorWidth:%d", model.chat.visible, model.layout.editorWidth)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'g', Mod: tea.ModCtrl, Text: "g"})
 	model = updated.(Model)
-	if !model.chat.visible || model.editorWidth != 58 {
-		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.visible, model.editorWidth)
+	if !model.chat.visible || model.layout.editorWidth != 58 {
+		t.Fatalf("AI pane after second toggle = visible:%t editorWidth:%d", model.chat.visible, model.layout.editorWidth)
 	}
 }
 
@@ -937,9 +937,9 @@ func TestChat_inputPaddingPreservesPaneHeight(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
-	if got, want := lipgloss.Height(model.chatContentView()), model.height-4; got != want {
+	if got, want := lipgloss.Height(model.chatContentView()), model.layout.height-4; got != want {
 		t.Fatalf("chat content height = %d, want %d", got, want)
 	}
 }
@@ -948,9 +948,9 @@ func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, nil)
-	model.fullscreen = true
-	model.layout(140, 32)
-	if got, want := model.chat.viewport.Width(), model.width-6; got != want {
+	model.layout.fullscreen = true
+	model.applyLayout(140, 32)
+	if got, want := model.chat.viewport.Width(), model.layout.width-6; got != want {
 		t.Fatalf("chat viewport width = %d, want pane interior width %d", got, want)
 	}
 	model.chat.activeRun().messages = []ai.Message{{Role: ai.RoleUser, Content: "full width"}}
@@ -976,8 +976,8 @@ func TestChat_fullscreenUserMessageFillsViewport(t *testing.T) {
 func TestChat_shareResultsTool(t *testing.T) {
 	model := readyModel(t)
 	model.State, model.Focus = stateReady, focusChat
-	model.results.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "alice"}}))
-	model.results.SetRows([]table.Row{{"1", "alice"}})
+	model.queryLog.results.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "alice"}}))
+	model.queryLog.results.SetRows([]table.Row{{"1", "alice"}})
 
 	// Sharing is off by default: no tool, no results block in context.
 	if hasTool(model.databaseTools(), "get_visible_results") {
@@ -1064,9 +1064,9 @@ func TestChat_shareResultsToollessProvider(t *testing.T) {
 	model := readyModel(t)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(client, nil)
-	model.layout(140, 32)
-	model.results.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "alice"}}))
-	model.results.SetRows([]table.Row{{"1", "alice"}})
+	model.applyLayout(140, 32)
+	model.queryLog.results.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "alice"}}))
+	model.queryLog.results.SetRows([]table.Row{{"1", "alice"}})
 
 	// Enable sharing via the AI slash command.
 	model.chat.input.SetValue("/share-results")
@@ -1094,7 +1094,7 @@ func TestChat_escapeCancelsActiveRequest(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(waitingChatClient{started: started}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("cancel this request")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -1134,9 +1134,9 @@ func TestChat_escapeCancelsActiveRequest_fullScreen(t *testing.T) {
 	started := make(chan struct{})
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
-	model.fullscreen = true
+	model.layout.fullscreen = true
 	model.SetAI(waitingChatClient{started: started}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("cancel this request")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -1346,7 +1346,7 @@ func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	tc := &toolChatClient{}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	// Send a prompt that triggers databaseTools.
 	model.chat.input.SetValue("count rows")
@@ -1400,7 +1400,7 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 			model.SetAI(fakeChatClient{}, nil)
 			model.Database = service
 			model.databaseInfo = service.Info()
-			model.layout(terminalWidth, 32)
+			model.applyLayout(terminalWidth, 32)
 
 			model.chat.activeRun().messages = []ai.Message{
 				{Role: ai.RoleUser, Content: "which tables has most records?"},
@@ -1472,7 +1472,7 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 	ec := &exhaustClient{}
 	model.SetAI(ec, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.input.SetValue("investigate")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -1512,7 +1512,7 @@ func TestChat_toolDeadlineFinalizesOnFreshContext(t *testing.T) {
 
 	client := &deadlineClient{}
 	model.SetAI(client, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("investigate")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
 	model = updated.(Model)
@@ -1572,7 +1572,7 @@ func TestAssistantBlockingToolDoesNotFreezeUI(t *testing.T) {
 	model.Database = db
 	model.databaseInfo = sharedsql.DatabaseInfo{Product: "SQLite"}
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	gen := int64(1)
 	model.chat.activeRun().gen = gen
@@ -1648,9 +1648,9 @@ func TestAssistant_fullScreenEscapeExitsInsertModeThenCancels(t *testing.T) {
 
 	model := New("", ctx, nil, false)
 	model.State, model.Focus = stateReady, focusChat
-	model.fullscreen = true
+	model.layout.fullscreen = true
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	gen := int64(1)
 	model.chat.activeRun().gen = gen
@@ -1701,12 +1701,12 @@ func TestAssistant_fullscreenTransitionPreservesEscapeOrder(t *testing.T) {
 	model := New("", ctx, nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	// Toggle fullscreen via keybinding (works in normal mode).
 	modelI, _ := model.Update(tea.KeyPressMsg{Code: 'f', Text: "f"})
 	model = modelI.(Model)
-	if !model.fullscreen {
+	if !model.layout.fullscreen {
 		t.Fatal("expected fullscreen after toggle")
 	}
 
@@ -1787,7 +1787,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 	}
 
 	// Add a failed query.
-	model.queryLogEntries = []queryLogEntry{
+	model.queryLog.entries = []queryLogEntry{
 		{statement: "SELECT * FROM nonexistent", message: "no such table: nonexistent", status: "failed"},
 	}
 	ctx = model.chatContext()
@@ -1799,7 +1799,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 	}
 
 	// Newer successful query does not hide the failure.
-	model.queryLogEntries = []queryLogEntry{
+	model.queryLog.entries = []queryLogEntry{
 		{statement: "SELECT 1", status: "success"},
 		{statement: "SELECT * FROM nonexistent", message: "no such table: nonexistent", status: "failed"},
 	}
@@ -1809,7 +1809,7 @@ func TestChatContext_includesLastFailedQuery(t *testing.T) {
 	}
 
 	// All successful → no error context.
-	model.queryLogEntries = []queryLogEntry{
+	model.queryLog.entries = []queryLogEntry{
 		{statement: "SELECT 1", status: "success"},
 	}
 	ctx = model.chatContext()
@@ -1827,7 +1827,7 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State = stateReady
 	model.SetAI(fakeChatClient{}, nil)
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '4'}) // focus chat
 	model = updated.(Model)
@@ -1940,7 +1940,7 @@ func TestChat_historyPersistenceIsConnectionScoped(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "conn-a"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("How do I add an index?")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -1975,7 +1975,7 @@ func TestChat_persistenceRequiresConnectionScope(t *testing.T) {
 	model := New(":memory:", context.Background(), nil, false)
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history) // history present, but no connection scope
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 	model.chat.input.SetValue("How do I add an index?")
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -2014,7 +2014,7 @@ func TestChat_connectionSwitchDropsStaleHistoryResults(t *testing.T) {
 	model.State, model.Focus = stateReady, focusChat
 	model.SetAI(fakeChatClient{}, history)
 	model.connectionID = "conn-a"
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	// A history load started on conn-a must not open the picker after conn-b
 	// became active.
@@ -2022,7 +2022,7 @@ func TestChat_connectionSwitchDropsStaleHistoryResults(t *testing.T) {
 	model.connectionID = "conn-b"
 	updated, _ := model.Update(cmd())
 	model = updated.(Model)
-	if model.chatHistoryPicker != nil {
+	if model.chat.historyPicker != nil {
 		t.Fatal("stale history load opened the picker on the new connection")
 	}
 

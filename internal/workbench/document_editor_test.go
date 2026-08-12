@@ -66,20 +66,20 @@ func readyDocumentModel(t *testing.T, capabilities sharedsql.WriteCapabilities) 
 	model.Database = service
 	model.databaseInfo = sharedsql.DatabaseInfo{Product: "MongoDB"}
 	model.SelectedTable, model.Tab, model.Focus = "things", tabBrowse, focusWorkspace
-	model.structureColumns = []sharedsql.ColumnInfo{
+	model.structure.columns = []sharedsql.ColumnInfo{
 		{Name: "_id", Type: "objectId", PrimaryKey: 1},
 		{Name: "name", Type: "string", Nullable: true},
 	}
-	model.browseResult = sharedsql.Result{
+	model.browse.result = sharedsql.Result{
 		Columns: []string{"_id", "name"},
 		Rows: [][]*string{
 			{stringPointer(`ObjectId("` + testObjectID + `")`), stringPointer("first")},
 		},
 		DocumentIDs: []sharedsql.DocumentPayload{mongoIdentity()},
 	}
-	model.browse.SetColumns(tableColumns([]string{"_id", "name"}, []table.Row{{"1", "first"}}))
-	model.browse.SetRows([]table.Row{{"1", "first"}})
-	model.browse.SetCursor(0)
+	model.browse.table.SetColumns(tableColumns([]string{"_id", "name"}, []table.Row{{"1", "first"}}))
+	model.browse.table.SetRows([]table.Row{{"1", "first"}})
+	model.browse.table.SetCursor(0)
 	return model, service
 }
 
@@ -102,16 +102,16 @@ func TestDocumentEditor_insertStartsWithObjectForMongoFormat(t *testing.T) {
 
 	model = openInsertDocument(t, model)
 
-	if model.documentEditor == nil || model.documentEditor.loading {
-		t.Fatalf("documentEditor = %#v, want open insert editor", model.documentEditor)
+	if model.browse.documentEditor == nil || model.browse.documentEditor.loading {
+		t.Fatalf("documentEditor = %#v, want open insert editor", model.browse.documentEditor)
 	}
-	if !model.documentEditor.inserting {
+	if !model.browse.documentEditor.inserting {
 		t.Fatal("editor is not in insert mode")
 	}
-	if got, want := model.documentEditor.edited, "{}"; got != want {
+	if got, want := model.browse.documentEditor.edited, "{}"; got != want {
 		t.Fatalf("insert text = %q, want %q", got, want)
 	}
-	if got, want := model.documentEditor.title, "Insert document"; got != want {
+	if got, want := model.browse.documentEditor.title, "Insert document"; got != want {
 		t.Fatalf("title = %q, want %q", got, want)
 	}
 }
@@ -124,12 +124,12 @@ func TestDocumentEditor_insertRejectsInvalidJSONBeforeConfirmation(t *testing.T)
 		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
 	})
 	model = openInsertDocument(t, model)
-	model.documentEditor.edited = "{oops"
+	model.browse.documentEditor.edited = "{oops"
 
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 
-	if model.documentEditor == nil || model.documentEditor.confirming {
-		t.Fatalf("editor = %#v, want open non-confirming editor after invalid JSON", model.documentEditor)
+	if model.browse.documentEditor == nil || model.browse.documentEditor.confirming {
+		t.Fatalf("editor = %#v, want open non-confirming editor after invalid JSON", model.browse.documentEditor)
 	}
 	if !strings.Contains(model.Status, "invalid JSON") {
 		t.Fatalf("status = %q, want invalid-JSON rejection", model.Status)
@@ -147,19 +147,19 @@ func TestDocumentEditor_insertConfirmsAndSaves(t *testing.T) {
 		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
 	})
 	model = openInsertDocument(t, model)
-	model.documentEditor.edited = `{"name": "widget"}`
+	model.browse.documentEditor.edited = `{"name": "widget"}`
 
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if !model.documentEditor.confirming || model.documentEditor.confirmation == nil {
+	if !model.browse.documentEditor.confirming || model.browse.documentEditor.confirmation == nil {
 		t.Fatal("save did not open the confirmation")
 	}
-	if got := model.documentEditor.confirmation.content(80); !strings.Contains(got, `{"name": "widget"}`) {
+	if got := model.browse.documentEditor.confirmation.content(80); !strings.Contains(got, `{"name": "widget"}`) {
 		t.Fatalf("confirmation content = %q, want exact document text", got)
 	}
 
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
-	if model.documentEditor != nil {
+	if model.browse.documentEditor != nil {
 		t.Fatal("editor remained open after successful insert")
 	}
 	if len(service.inserted) != 1 {
@@ -172,13 +172,13 @@ func TestDocumentEditor_insertConfirmsAndSaves(t *testing.T) {
 		t.Fatalf("inserted format = %q, want %q", got, want)
 	}
 	var insertEntry *queryLogEntry
-	for index := range min(len(model.queryLogEntries), 3) {
-		if model.queryLogEntries[index].message == "inserted 1 row" {
-			insertEntry = &model.queryLogEntries[index]
+	for index := range min(len(model.queryLog.entries), 3) {
+		if model.queryLog.entries[index].message == "inserted 1 row" {
+			insertEntry = &model.queryLog.entries[index]
 		}
 	}
 	if insertEntry == nil {
-		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLogEntries)
+		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLog.entries)
 	}
 	if got, want := insertEntry.statement, "Table: things\nDocument:\n{\"name\": \"widget\"}"; got != want {
 		t.Fatalf("query log statement = %q, want preview %q", got, want)
@@ -193,14 +193,14 @@ func TestDocumentEditor_unknownFormatPassesExactBytes(t *testing.T) {
 		Document: &sharedsql.DocumentWriteCapability{Format: format, Text: true},
 	})
 	model = openInsertDocument(t, model)
-	if got, want := model.documentEditor.edited, ""; got != want {
+	if got, want := model.browse.documentEditor.edited, ""; got != want {
 		t.Fatalf("raw insert text = %q, want empty", got)
 	}
 	exact := "line1\n\tline2  trailing  "
-	model.documentEditor.edited = exact
+	model.browse.documentEditor.edited = exact
 
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if model.documentEditor.confirming == false {
+	if model.browse.documentEditor.confirming == false {
 		t.Fatal("raw format save did not open the confirmation")
 	}
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -225,28 +225,28 @@ func TestDocumentEditor_editLoadsFullPayloadBeforeOpening(t *testing.T) {
 
 	model = openEditDocument(t, model)
 
-	if model.documentEditor == nil || !model.documentEditor.loading {
-		t.Fatalf("editor = %#v, want loading editor before payload arrives", model.documentEditor)
+	if model.browse.documentEditor == nil || !model.browse.documentEditor.loading {
+		t.Fatalf("editor = %#v, want loading editor before payload arrives", model.browse.documentEditor)
 	}
-	if got, want := model.documentEditor.View(), "loading document"; !strings.Contains(got, want) {
+	if got, want := model.browse.documentEditor.View(), "loading document"; !strings.Contains(got, want) {
 		t.Fatalf("view = %q, want %q while loading", got, want)
 	}
 
 	updated, _ := model.Update(documentEditorLoadedMsg{payload: service.loaded})
 	model = updated.(Model)
 
-	if model.documentEditor.loading || model.documentEditor.form == nil {
+	if model.browse.documentEditor.loading || model.browse.documentEditor.form == nil {
 		t.Fatal("editor did not open after the payload arrived")
 	}
-	if got, want := model.documentEditor.edited, full; got != want {
+	if got, want := model.browse.documentEditor.edited, full; got != want {
 		t.Fatalf("edited = %q, want full loaded document %q", got, want)
 	}
-	if got, want := model.documentEditor.title, "Edit document"; got != want {
+	if got, want := model.browse.documentEditor.title, "Edit document"; got != want {
 		t.Fatalf("title = %q, want %q", got, want)
 	}
 
 	// Save the edited document: the replace must target the row identity.
-	model.documentEditor.edited = `{"name": "edited"}`
+	model.browse.documentEditor.edited = `{"name": "edited"}`
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
@@ -272,7 +272,7 @@ func TestDocumentEditor_editLoadFailureClosesEditor(t *testing.T) {
 	updated, _ := model.Update(documentEditorLoadedMsg{err: context.DeadlineExceeded})
 	model = updated.(Model)
 
-	if model.documentEditor != nil {
+	if model.browse.documentEditor != nil {
 		t.Fatal("editor remained open after load failure")
 	}
 	if !strings.Contains(model.Status, "loading document") {
@@ -286,11 +286,11 @@ func TestDocumentEditor_editIdentityUnavailable(t *testing.T) {
 	model, _ := readyDocumentModel(t, sharedsql.WriteCapabilities{
 		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
 	})
-	model.browseResult.DocumentIDs = nil
+	model.browse.result.DocumentIDs = nil
 
 	model = openEditDocument(t, model)
 
-	if model.documentEditor != nil {
+	if model.browse.documentEditor != nil {
 		t.Fatal("editor opened without an identity")
 	}
 	if !strings.Contains(model.Status, "document identity unavailable") {
@@ -307,7 +307,7 @@ func TestDocumentEditor_nonTextHidesEditingButDeletes(t *testing.T) {
 	})
 
 	model = openInsertDocument(t, model)
-	if model.documentEditor != nil {
+	if model.browse.documentEditor != nil {
 		t.Fatal("insert editor opened on a non-text capability")
 	}
 	if !strings.Contains(model.Status, "document editing is unsupported for format") {
@@ -315,7 +315,7 @@ func TestDocumentEditor_nonTextHidesEditingButDeletes(t *testing.T) {
 	}
 
 	model = openEditDocument(t, model)
-	if model.documentEditor != nil {
+	if model.browse.documentEditor != nil {
 		t.Fatal("edit editor opened on a non-text capability")
 	}
 
@@ -382,7 +382,7 @@ func TestDocumentEditor_saveFailureKeepsEditor(t *testing.T) {
 		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
 	})
 	model = openInsertDocument(t, model)
-	model.documentEditor.edited = `{"name": "widget"}`
+	model.browse.documentEditor.edited = `{"name": "widget"}`
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 	// The save command is dispatched; intercept by delivering a failed
@@ -390,10 +390,10 @@ func TestDocumentEditor_saveFailureKeepsEditor(t *testing.T) {
 	updated, _ := model.Update(documentEditorSavedMsg{err: context.DeadlineExceeded})
 	model = updated.(Model)
 
-	if model.documentEditor == nil || model.documentEditor.confirming {
-		t.Fatalf("editor = %#v, want retained non-confirming editor after save failure", model.documentEditor)
+	if model.browse.documentEditor == nil || model.browse.documentEditor.confirming {
+		t.Fatalf("editor = %#v, want retained non-confirming editor after save failure", model.browse.documentEditor)
 	}
-	if got, want := model.documentEditor.edited, `{"name": "widget"}`; got != want {
+	if got, want := model.browse.documentEditor.edited, `{"name": "widget"}`; got != want {
 		t.Fatalf("editor content = %q, want retained %q", got, want)
 	}
 	if len(service.inserted) != 0 {

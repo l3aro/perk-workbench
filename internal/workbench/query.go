@@ -62,7 +62,7 @@ type insertRowMsg struct {
 }
 
 func (m *Model) setResults(result sharedsql.Result) {
-	m.resultsNumericColumns = numericColumns(result.ColumnTypes)
+	m.queryLog.resultsNumericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		titles[index] = safeText(column)
@@ -79,15 +79,15 @@ func (m *Model) setResults(result sharedsql.Result) {
 		}
 		rows[rowIndex] = cells
 	}
-	m.resultsRaw = result.UntruncatedRows
-	m.results.SetRows(nil)
-	m.results.SetColumns(tableColumns(titles, rows))
-	resizeResultsTable(&m.results, m.tableViewportWidth, max(m.resultsHeight-4, 2))
-	m.results.SetRows(rows)
-	m.resultsColumn, m.resultsOffset = 0, 0
-	m.results.Focus()
-	m.formMode.mode = formModeNormal
-	m.editor.text.Blur()
+	m.queryLog.resultsRaw = result.UntruncatedRows
+	m.queryLog.results.SetRows(nil)
+	m.queryLog.results.SetColumns(tableColumns(titles, rows))
+	resizeResultsTable(&m.queryLog.results, m.layout.tableViewportWidth, max(m.layout.resultsHeight-4, 2))
+	m.queryLog.results.SetRows(rows)
+	m.layout.resultsColumn, m.layout.resultsOffset = 0, 0
+	m.queryLog.results.Focus()
+	m.overlay.formMode.mode = formModeNormal
+	m.queryLog.editor.text.Blur()
 	rowLabel := "rows"
 	if len(rows) == 1 {
 		rowLabel = "row"
@@ -96,10 +96,10 @@ func (m *Model) setResults(result sharedsql.Result) {
 	if result.RowsAffected == 1 {
 		affectedLabel = "row"
 	}
-	m.resultsStatus = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
-	m.resultsStatus += colsHint(m.results.Columns(), m.tableViewportWidth)
+	m.queryLog.resultsStatus = fmt.Sprintf("%d %s | %d %s affected | %s", len(rows), rowLabel, result.RowsAffected, affectedLabel, result.Duration)
+	m.queryLog.resultsStatus += colsHint(m.queryLog.results.Columns(), m.layout.tableViewportWidth)
 	if result.Truncated {
-		m.resultsStatus += " | truncated"
+		m.queryLog.resultsStatus += " | truncated"
 	}
 	m.setStatus("")
 }
@@ -113,10 +113,10 @@ func (m Model) loadTableInfo() tea.Cmd {
 }
 
 func (m Model) loadBrowse() tea.Cmd {
-	tableName, page, tag, service := m.SelectedTable, m.BrowsePage, m.browsePageTag, m.Database
-	settings := m.browseSettings
-	columns := make([]string, len(m.structureColumns))
-	for index, column := range m.structureColumns {
+	tableName, page, tag, service := m.SelectedTable, m.BrowsePage, m.browse.pageTag, m.Database
+	settings := m.browse.settings
+	columns := make([]string, len(m.structure.columns))
+	for index, column := range m.structure.columns {
 		columns[index] = column.Name
 	}
 	startedAt := time.Now()
@@ -128,7 +128,7 @@ func (m Model) loadBrowse() tea.Cmd {
 		filters := slices.Clone(settings.filters)
 		result, err := service.BrowseTable(m.appContext, tableName, sharedsql.BrowseOptions{
 			Columns: columns, Filters: filters, Sorts: sorts,
-			Offset: page * settings.pageSize(m.browsePageSize), Limit: settings.pageSize(m.browsePageSize),
+			Offset: page * settings.pageSize(m.browse.pageSize), Limit: settings.pageSize(m.browse.pageSize),
 		})
 		return browseTableMsg{table: tableName, page: page, tag: tag, startedAt: startedAt, result: result, err: err}
 	}
@@ -139,7 +139,7 @@ func (m Model) alterColumn() tea.Cmd {
 		return func() tea.Msg { return columnAlteredMsg{kind: "altered", err: fmt.Errorf("connection is read-only")} }
 	}
 	table, service := m.SelectedTable, m.Database
-	change, err := m.columnForm.change()
+	change, err := m.structure.columnForm.change()
 	if err != nil {
 		return func() tea.Msg { return columnAlteredMsg{kind: "altered", err: err} }
 	}
@@ -154,7 +154,7 @@ func (m Model) addColumn() tea.Cmd {
 		return func() tea.Msg { return columnAlteredMsg{kind: "added", err: fmt.Errorf("connection is read-only")} }
 	}
 	table, service := m.SelectedTable, m.Database
-	def, err := m.columnForm.columnDef()
+	def, err := m.structure.columnForm.columnDef()
 	if err != nil {
 		return func() tea.Msg { return columnAlteredMsg{kind: "added", err: err} }
 	}
@@ -168,9 +168,9 @@ func (m Model) deleteColumn() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return columnDeletedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	name := m.deletePendingName
+	name := m.overlay.deletePendingName
 	if name == "" {
-		name = m.columnForm.previousName
+		name = m.structure.columnForm.previousName
 	}
 	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropColumnStatement(table, name), time.Now()
@@ -187,15 +187,15 @@ func (m Model) updateBrowseRow() tea.Cmd {
 	if writer == nil {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: m.rowWriteUnsupportedError()} }
 	}
-	key, err := m.browseForm.keyValues()
+	key, err := m.browse.form.keyValues()
 	if err != nil {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: err} }
 	}
-	values := m.browseForm.rowValues()
+	values := m.browse.form.rowValues()
 	if len(values) == 0 {
 		return func() tea.Msg { return browseRowUpdatedMsg{} }
 	}
-	preview := m.browseForm.preview()
+	preview := m.browse.form.preview()
 	table, startedAt := m.SelectedTable, time.Now()
 	return func() tea.Msg {
 		result, err := writer.UpdateRow(m.appContext, table, key, values)
@@ -237,12 +237,12 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 			row[4] = strings.Repeat(" ", (nullableColWidth-contentWidth)/2) + row[4]
 		}
 	}
-	m.structure.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"}, rows))
-	resizeResultsTable(&m.structure, m.tableViewportWidth, m.structure.Height()+1)
-	m.structureRows = rows
-	m.structureColumns = message.columns
+	m.structure.table.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"}, rows))
+	resizeResultsTable(&m.structure.table, m.layout.tableViewportWidth, m.structure.table.Height()+1)
+	m.structure.rows = rows
+	m.structure.columns = message.columns
 	m.applyTableFilter(tabStructure)
-	m.structureOffset = 0
+	m.layout.structureOffset = 0
 	return m, nil
 }
 
@@ -261,11 +261,11 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 		if message.kind == "added" {
 			actionMsg = "adding column"
 		}
-		m.columnForm.saving = false
+		m.structure.columnForm.saving = false
 		m.setStatus(safeText(fmt.Sprintf(actionMsg+": %v", message.err)))
 		return m, nil
 	}
-	m.columnForm = columnForm{}
+	m.structure.columnForm = columnForm{}
 	m.setStatus(status)
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
@@ -275,11 +275,11 @@ func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped column"))
 	}
 	if message.err != nil {
-		m.columnForm.saving = false
+		m.structure.columnForm.saving = false
 		m.setStatus(safeText(fmt.Sprintf("deleting column: %v", message.err)))
 		return m, nil
 	}
-	m.columnForm = columnForm{}
+	m.structure.columnForm = columnForm{}
 	m.setStatus("column deleted")
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
@@ -289,11 +289,11 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated 1 row"))
 	}
 	if message.err != nil {
-		m.browseForm.saving = false
+		m.browse.form.saving = false
 		m.setStatus(safeText(fmt.Sprintf("updating row: %v", message.err)))
 		return m, nil
 	}
-	m.browseForm = browseForm{}
+	m.browse.form = browseForm{}
 	m.setStatus("row updated")
 	return m, m.loadBrowse()
 }
@@ -310,8 +310,8 @@ func (m Model) insertBrowseRow() tea.Cmd {
 	if writer == nil {
 		return func() tea.Msg { return insertRowMsg{err: m.rowWriteUnsupportedError()} }
 	}
-	values := m.browseForm.rowValues()
-	preview := m.browseForm.preview()
+	values := m.browse.form.rowValues()
+	preview := m.browse.form.preview()
 	table, startedAt := m.SelectedTable, time.Now()
 	return func() tea.Msg {
 		result, err := writer.InsertRow(m.appContext, table, values)
@@ -327,11 +327,11 @@ func (m Model) updateInsertRowMsg(message insertRowMsg) (tea.Model, tea.Cmd) {
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "inserted 1 row"))
 	}
 	if message.err != nil {
-		m.browseForm.saving = false
+		m.browse.form.saving = false
 		m.setStatus(safeText(fmt.Sprintf("inserting row: %v", message.err)))
 		return m, nil
 	}
-	m.browseForm = browseForm{}
+	m.browse.form = browseForm{}
 	m.setStatus("row inserted")
 	return m, m.loadBrowse()
 }
@@ -340,19 +340,19 @@ func (m Model) deleteRow() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	if len(m.structureColumns) == 0 || m.browse.Cursor() < 0 || m.browse.Cursor() >= len(m.browseResult.Rows) {
+	if len(m.structure.columns) == 0 || m.browse.table.Cursor() < 0 || m.browse.table.Cursor() >= len(m.browse.result.Rows) {
 		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("no row selected")} }
 	}
-	columns := m.browseResult.Columns
-	row := m.browseResult.Rows[m.browse.Cursor()]
+	columns := m.browse.result.Columns
+	row := m.browse.result.Rows[m.browse.table.Cursor()]
 	table, startedAt := m.SelectedTable, time.Now()
 	capabilities := m.writeCapabilities()
 	if capabilities.RowWriter {
-		key, err := rowKeyValues(columns, row, browsePrimaryKeys(m.structureColumns, columns))
+		key, err := rowKeyValues(columns, row, browsePrimaryKeys(m.structure.columns, columns))
 		if err != nil {
 			return func() tea.Msg { return deleteRowMsg{err: err} }
 		}
-		preview := browseDeletePreview(table, columns, row, browsePrimaryKeys(m.structureColumns, columns))
+		preview := browseDeletePreview(table, columns, row, browsePrimaryKeys(m.structure.columns, columns))
 		writer := m.rowWriter()
 		return func() tea.Msg {
 			result, err := writer.DeleteRow(m.appContext, table, key)
@@ -461,21 +461,21 @@ func (m Model) browseFilterStatement(filter sharedsql.BrowseFilter) string {
 func quoteLogString(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
 
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
-	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.tag != m.browsePageTag {
+	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.tag != m.browse.pageTag {
 		return m, nil
 	}
 	quotedTable := m.actionIdentifier(message.table)
 	statement := fmt.Sprintf("SELECT * FROM %s", quotedTable)
-	if len(m.browseSettings.filters) > 0 {
-		filters := make([]string, len(m.browseSettings.filters))
-		for index, filter := range m.browseSettings.filters {
+	if len(m.browse.settings.filters) > 0 {
+		filters := make([]string, len(m.browse.settings.filters))
+		for index, filter := range m.browse.settings.filters {
 			filters[index] = m.browseFilterStatement(filter)
 		}
 		statement += " WHERE " + strings.Join(filters, " AND ")
 	}
-	if len(m.browseSettings.sorts) > 0 {
-		orders := make([]string, len(m.browseSettings.sorts))
-		for index, sort := range m.browseSettings.sorts {
+	if len(m.browse.settings.sorts) > 0 {
+		orders := make([]string, len(m.browse.settings.sorts))
+		for index, sort := range m.browse.settings.sorts {
 			orders[index] = m.actionIdentifier(sort.column)
 			if sort.desc {
 				orders[index] += " DESC"
@@ -483,10 +483,10 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		}
 		statement += " ORDER BY " + strings.Join(orders, ", ")
 	}
-	pageSize := m.browseSettings.pageSize(m.browsePageSize)
+	pageSize := m.browse.settings.pageSize(m.browse.pageSize)
 	statement += fmt.Sprintf(" LIMIT %d OFFSET %d", pageSize, message.page*pageSize)
 
-	m.browseLoading = false
+	m.browse.loading = false
 	if message.err != nil {
 		duration := time.Duration(0)
 		if !message.startedAt.IsZero() {
@@ -511,7 +511,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if rows == 0 {
 		start = 0
 	}
-	m.browseStatus = browseStatusText(message.table, start, end, browsePosition(m.browse.Cursor(), rows), rows, message.page)
+	m.browse.status = browseStatusText(message.table, start, end, browsePosition(m.browse.table.Cursor(), rows), rows, message.page)
 	m.setBrowse(message.result)
 	duration := message.result.Duration
 	if !message.startedAt.IsZero() {
@@ -555,37 +555,37 @@ func browsePosition(cursor, rows int) int {
 // cursor, page, and loaded rows. Every browse cursor move must call it so
 // the "index/total | page N" position stays accurate.
 func (m *Model) refreshBrowseStatus() {
-	rows := len(m.browseResult.Rows)
-	pageSize := m.browseSettings.pageSize(m.browsePageSize)
+	rows := len(m.browse.result.Rows)
+	pageSize := m.browse.settings.pageSize(m.browse.pageSize)
 	start, end := m.BrowsePage*pageSize+1, m.BrowsePage*pageSize+rows
 	if rows == 0 {
 		start = 0
 	}
-	status := browseStatusText(m.SelectedTable, start, end, browsePosition(m.browse.Cursor(), rows), rows, m.BrowsePage)
-	if status == m.browseStatus {
+	status := browseStatusText(m.SelectedTable, start, end, browsePosition(m.browse.table.Cursor(), rows), rows, m.BrowsePage)
+	if status == m.browse.status {
 		return
 	}
-	m.browseStatus = status
+	m.browse.status = status
 	// The split decision depends on the status width; if it flipped, keep
 	// the table height consistent with the rendered footer.
 	footerRows := m.browseFooterRows()
-	if m.browse.Height() != max(m.workspaceHeight-footerRows, 2) {
-		resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-footerRows, 2))
+	if m.browse.table.Height() != max(m.layout.workspaceHeight-footerRows, 2) {
+		resizeResultsTable(&m.browse.table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-footerRows, 2))
 	}
 }
 
 func (m *Model) setBrowse(result sharedsql.Result) {
-	cursor := m.browse.Cursor()
+	cursor := m.browse.table.Cursor()
 	selectedColumn := ""
-	if m.browseColumn >= 0 && m.browseColumn < len(m.browseResult.Columns) {
-		selectedColumn = m.browseResult.Columns[m.browseColumn]
+	if m.layout.browseColumn >= 0 && m.layout.browseColumn < len(m.browse.result.Columns) {
+		selectedColumn = m.browse.result.Columns[m.layout.browseColumn]
 	}
-	m.browseResult = result
-	m.browseNumericColumns = numericColumns(result.ColumnTypes)
+	m.browse.result = result
+	m.browse.numericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
 	for index, column := range result.Columns {
 		title := safeText(column)
-		for _, sort := range m.browseSettings.sorts {
+		for _, sort := range m.browse.settings.sorts {
 			if column != sort.column {
 				continue
 			}
@@ -610,20 +610,20 @@ func (m *Model) setBrowse(result sharedsql.Result) {
 		}
 		rows[rowIndex] = cells
 	}
-	m.browse.SetRows(nil)
-	m.browse.SetColumns(tableColumns(titles, rows))
+	m.browse.table.SetRows(nil)
+	m.browse.table.SetColumns(tableColumns(titles, rows))
 	// Must mirror layout()'s sizing: the browse table yields the footer
 	// rows below its data rows (browseFooterRows).
-	resizeResultsTable(&m.browse, m.tableViewportWidth, max(m.workspaceHeight-m.browseFooterRows(), 2))
-	m.browse.SetRows(rows)
+	resizeResultsTable(&m.browse.table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-m.browseFooterRows(), 2))
+	m.browse.table.SetRows(rows)
 	if cursor >= 0 && len(rows) > 0 {
-		m.browse.SetCursor(min(cursor, len(rows)-1))
+		m.browse.table.SetCursor(min(cursor, len(rows)-1))
 	}
-	m.browseColumn, m.browseOffset = 0, 0
+	m.layout.browseColumn, m.layout.browseOffset = 0, 0
 	for index, column := range result.Columns {
 		if column == selectedColumn {
-			m.browseColumn = index
-			revealTableColumn(m.browse, index, &m.browseOffset, m.tableViewportWidth)
+			m.layout.browseColumn = index
+			revealTableColumn(m.browse.table, index, &m.layout.browseOffset, m.layout.tableViewportWidth)
 			break
 		}
 	}

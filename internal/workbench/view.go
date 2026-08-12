@@ -19,29 +19,29 @@ func (m Model) View() tea.View {
 	view.AltScreen = true
 	view.KeyboardEnhancements.ReportEventTypes = true
 	view.MouseMode = tea.MouseModeCellMotion
-	if m.height < 4 || m.width < 1 {
+	if m.layout.height < 4 || m.layout.width < 1 {
 		view.SetContent(headerStyle.Render("PERK WORKBENCH"))
 		return view
 	}
 	content := m.contentView()
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, m.headerView(), content, footerStyle.Render(m.footer()))
-	if m.commandPalette.visible || m.themePicker != nil || m.tableTargetPicker != nil {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
+	if m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil {
+		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		if m.themePicker != nil {
-			m.drawConfirmDialog(canvas, m.themePicker.content())
-		} else if m.tableTargetPicker != nil {
-			m.drawConfirmDialog(canvas, m.tableTargetPicker.content())
+		if m.overlay.themePicker != nil {
+			m.drawConfirmDialog(canvas, m.overlay.themePicker.content())
+		} else if m.overlay.tableTargetPicker != nil {
+			m.drawConfirmDialog(canvas, m.overlay.tableTargetPicker.content())
 		} else {
-			m.commandPalette.paletteDraw(canvas, m.width, m.height)
+			m.overlay.commandPalette.paletteDraw(canvas, m.layout.width, m.layout.height)
 		}
 		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.notificationHistory != nil {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
+	if m.notifications.history != nil {
+		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
 		m.drawNotificationHistory(canvas)
@@ -49,8 +49,8 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.notificationDetail != nil {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
+	if m.notifications.detail != nil {
+		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
 		m.drawNotificationDetail(canvas)
@@ -58,35 +58,35 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.queryLogDetail != nil {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
+	if m.queryLog.detail != nil {
+		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		m.drawQueryLogDetail(canvas)
 		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.cellEditor != nil || m.cellViewer != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
-		m.foreignKeyForm.confirming() || m.browseForm.confirming() ||
-		m.connection.confirmation != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.queryConfirmation != nil || m.hasConfirming() {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
+	if m.browse.cellEditor != nil || m.browse.cellViewer != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
+		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() ||
+		m.connection.form.confirmation != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.overlay.queryConfirmation != nil || m.hasConfirming() {
+		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		if m.contextMenu != nil {
+		if m.overlay.contextMenu != nil {
 			m.drawContextMenu(canvas)
 		} else if dialog := m.activeConfirmation(); dialog != nil {
 			dialog.draw(canvas)
 		} else if dialog := m.confirmContent(); dialog != "" {
 			m.drawConfirmDialog(canvas, dialog)
-		} else if m.cellViewer != nil {
+		} else if m.browse.cellViewer != nil {
 			m.drawCellViewer(canvas)
 		}
 		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.notificationPopup != nil {
-		canvas := uv.NewScreenBuffer(m.width, m.height)
+	if m.notifications.popup != nil {
+		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
 		m.drawNotificationPopup(canvas)
@@ -141,46 +141,48 @@ func (m Model) headerView() string {
 	button := renderHeaderButton(headerButtonStyle, headerButtonLabel, width)
 	quitButton := renderHeaderButton(headerQuitButtonStyle, headerQuitButtonLabel, width)
 	buttons := button + strings.Repeat(" ", headerButtonGap) + quitButton + strings.Repeat(" ", headerRightMargin)
-	gap := max(m.width-ansi.StringWidth(logo)-ansi.StringWidth(buttons), 0)
+	gap := max(m.layout.width-ansi.StringWidth(logo)-ansi.StringWidth(buttons), 0)
 	return logo + strings.Repeat(" ", gap) + buttons
 }
 
 // tableFormOpen reports whether the table popup is visible: open and not
 // mid-execution (the retained form hides while its DDL query runs).
-func (m Model) tableFormOpen() bool { return m.tableForm.active() && !m.tableFormRunning }
+func (m Model) tableFormOpen() bool {
+	return m.structure.tableForm.active() && !m.structure.tableFormRunning
+}
 
 func (m Model) hasConfirming() bool {
-	return m.explainPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
-		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil || m.tableFormOpen() ||
-		(m.cellEditor != nil && m.cellEditor.confirming) ||
-		(m.documentEditor != nil && m.documentEditor.confirming) ||
+	return m.overlay.explainPicker != nil || m.overlay.quitDialog != nil || m.overlay.queryConfirmation != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
+		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() || m.connection.form.confirmation != nil || m.tableFormOpen() ||
+		(m.browse.cellEditor != nil && m.browse.cellEditor.confirming) ||
+		(m.browse.documentEditor != nil && m.browse.documentEditor.confirming) ||
 		(m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil)
 }
 
 func (m Model) activeConfirmation() *confirmationDialog {
 	switch {
-	case m.queryConfirmation != nil:
-		return m.queryConfirmation.dialog
-	case m.quitDialog != nil:
-		return m.quitDialog
-	case m.columnForm.confirming():
-		return m.columnForm.confirmation
-	case m.browseForm.confirming():
-		return m.browseForm.confirmation
-	case m.indexForm.confirming():
-		return m.indexForm.confirmation
-	case m.foreignKeyForm.confirming():
-		return m.foreignKeyForm.confirmation
-	case m.connection.confirmation != nil:
-		return m.connection.confirmation
-	case m.tableFormOpen() && m.tableForm.confirming():
-		return m.tableForm.confirmation
-	case m.deleteConfirm != nil:
-		return m.deleteConfirm
-	case m.cellEditor != nil && m.cellEditor.confirming:
-		return m.cellEditor.confirm
-	case m.documentEditor != nil && m.documentEditor.confirming:
-		return m.documentEditor.confirmation
+	case m.overlay.queryConfirmation != nil:
+		return m.overlay.queryConfirmation.dialog
+	case m.overlay.quitDialog != nil:
+		return m.overlay.quitDialog
+	case m.structure.columnForm.confirming():
+		return m.structure.columnForm.confirmation
+	case m.browse.form.confirming():
+		return m.browse.form.confirmation
+	case m.structure.indexForm.confirming():
+		return m.structure.indexForm.confirmation
+	case m.structure.foreignKeyForm.confirming():
+		return m.structure.foreignKeyForm.confirmation
+	case m.connection.form.confirmation != nil:
+		return m.connection.form.confirmation
+	case m.tableFormOpen() && m.structure.tableForm.confirming():
+		return m.structure.tableForm.confirmation
+	case m.overlay.deleteConfirm != nil:
+		return m.overlay.deleteConfirm
+	case m.browse.cellEditor != nil && m.browse.cellEditor.confirming:
+		return m.browse.cellEditor.confirm
+	case m.browse.documentEditor != nil && m.browse.documentEditor.confirming:
+		return m.browse.documentEditor.confirmation
 	case m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil:
 		return m.chat.activeRun().pendingWrite.dialog
 	default:
@@ -189,38 +191,38 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.tableTargetPicker != nil || m.queryLogDetail != nil || m.notificationHistory != nil || m.notificationDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.documentEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.detail != nil || m.notifications.history != nil || m.notifications.detail != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
 	var raw string
 	switch {
-	case m.cellEditor != nil:
-		return m.cellEditor.confirmContent()
-	case m.queryConfirmation != nil:
-		raw = m.queryConfirmation.dialog.content(m.width)
-	case m.explainPicker != nil:
-		raw = m.explainPicker.form.View()
+	case m.browse.cellEditor != nil:
+		return m.browse.cellEditor.confirmContent()
+	case m.overlay.queryConfirmation != nil:
+		raw = m.overlay.queryConfirmation.dialog.content(m.layout.width)
+	case m.overlay.explainPicker != nil:
+		raw = m.overlay.explainPicker.form.View()
 	case m.tableFormOpen():
-		raw = m.tableForm.View()
-	case m.chatHistoryPicker != nil:
-		raw = m.chatHistoryPicker.View()
-	case m.quitDialog != nil:
-		raw = m.quitDialog.content(m.width)
-	case m.columnForm.confirming():
-		raw = m.columnForm.confirmation.content(m.width)
-	case m.browseForm.confirming():
-		raw = m.browseForm.confirmation.content(m.width)
-	case m.indexForm.confirming():
-		raw = m.indexForm.confirmation.content(m.width)
-	case m.foreignKeyForm.confirming():
-		raw = m.foreignKeyForm.confirmation.content(m.width)
-	case m.connection.confirmation != nil:
-		raw = m.connection.confirmation.content(m.width)
-	case m.deleteConfirm != nil:
-		raw = m.deleteConfirm.content(m.width)
+		raw = m.structure.tableForm.View()
+	case m.chat.historyPicker != nil:
+		raw = m.chat.historyPicker.View()
+	case m.overlay.quitDialog != nil:
+		raw = m.overlay.quitDialog.content(m.layout.width)
+	case m.structure.columnForm.confirming():
+		raw = m.structure.columnForm.confirmation.content(m.layout.width)
+	case m.browse.form.confirming():
+		raw = m.browse.form.confirmation.content(m.layout.width)
+	case m.structure.indexForm.confirming():
+		raw = m.structure.indexForm.confirmation.content(m.layout.width)
+	case m.structure.foreignKeyForm.confirming():
+		raw = m.structure.foreignKeyForm.confirmation.content(m.layout.width)
+	case m.connection.form.confirmation != nil:
+		raw = m.connection.form.confirmation.content(m.layout.width)
+	case m.overlay.deleteConfirm != nil:
+		raw = m.overlay.deleteConfirm.content(m.layout.width)
 	case m.chat.activeRun().pendingWrite != nil:
-		return m.chat.activeRun().pendingWrite.dialog.content(m.width)
+		return m.chat.activeRun().pendingWrite.dialog.content(m.layout.width)
 	}
 	if raw == "" {
 		return ""
@@ -236,8 +238,8 @@ func (m Model) confirmContent() string {
 }
 
 func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
-	if m.cellViewer != nil {
-		drawCellViewerBox(canvas, m.cellViewer)
+	if m.browse.cellViewer != nil {
+		drawCellViewerBox(canvas, m.browse.cellViewer)
 	}
 }
 
@@ -364,7 +366,7 @@ func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
 }
 
 func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
-	menu := m.contextMenu
+	menu := m.overlay.contextMenu
 	if menu == nil || !menu.visible || len(menu.options) == 0 {
 		return
 	}
@@ -463,7 +465,7 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 }
 
 func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
-	d := m.queryLogDetail
+	d := m.queryLog.detail
 	if d == nil {
 		return
 	}
@@ -480,7 +482,7 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 		iconStr = statusSuccessStyle.Render(iconSuccess)
 	}
 
-	innerW := m.width - 4
+	innerW := m.layout.width - 4
 
 	var b strings.Builder
 	b.WriteString(headerStyle.Render("  \uf0ca Query Log Detail  "))
@@ -504,47 +506,47 @@ func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
 	b.WriteString("\n\n  y copy | e explain | enter/esc close")
 
 	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
-	canvas.FillArea(&dialogBg, image.Rect(1, 1, m.width-1, m.height-1))
+	canvas.FillArea(&dialogBg, image.Rect(1, 1, m.layout.width-1, m.layout.height-1))
 
 	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
-	for x := 1; x < m.width-1; x++ {
+	for x := 1; x < m.layout.width-1; x++ {
 		canvas.SetCell(x, 0, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
-		canvas.SetCell(x, m.height-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
+		canvas.SetCell(x, m.layout.height-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
 	}
-	for y := 1; y < m.height-1; y++ {
+	for y := 1; y < m.layout.height-1; y++ {
 		canvas.SetCell(0, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
-		canvas.SetCell(m.width-1, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
+		canvas.SetCell(m.layout.width-1, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
 	}
 	canvas.SetCell(0, 0, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
-	canvas.SetCell(m.width-1, 0, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
-	canvas.SetCell(0, m.height-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
-	canvas.SetCell(m.width-1, m.height-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
+	canvas.SetCell(m.layout.width-1, 0, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
+	canvas.SetCell(0, m.layout.height-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
+	canvas.SetCell(m.layout.width-1, m.layout.height-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
 
-	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, m.width-1, m.height-1))
+	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, m.layout.width-1, m.layout.height-1))
 }
 
 func (m Model) contentView() string {
 	switch m.State {
 	case stateConnection:
-		if m.compact {
-			title, content := "Connection <2>", m.connectionPaneView(max(m.height-6, 0))
-			if m.connection.focus == connectionFocusRecent {
+		if m.layout.compact {
+			title, content := "Connection <2>", m.connectionPaneView(max(m.layout.height-6, 0))
+			if m.connection.form.focus == connectionFocusRecent {
 				title, content = "Profiles <1>", m.recentPaneView()
 			}
-			return titledPane(title, content, paneStyle(true).Width(max(m.width-2, 0)).MaxWidth(max(m.width-2, 0)).Height(max(m.height-4, 0)).MaxHeight(max(m.height-4, 0)))
+			return titledPane(title, content, paneStyle(true).Width(max(m.layout.width-2, 0)).MaxWidth(max(m.layout.width-2, 0)).Height(max(m.layout.height-4, 0)).MaxHeight(max(m.layout.height-4, 0)))
 		}
-		left := titledPane("Profiles <1>", m.recentPaneView(), paneStyle(m.connection.focus == connectionFocusRecent).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-4, 0)))
-		right := titledPane("Connection <2>", m.connectionPaneView(max(m.height-6, 0)), paneStyle(m.connection.focus != connectionFocusRecent).Width(max(m.width-m.schemaWidth, 0)).Height(max(m.height-4, 0)))
+		left := titledPane("Profiles <1>", m.recentPaneView(), paneStyle(m.connection.form.focus == connectionFocusRecent).Width(max(m.layout.schemaWidth-2, 0)).Height(max(m.layout.height-4, 0)))
+		right := titledPane("Connection <2>", m.connectionPaneView(max(m.layout.height-6, 0)), paneStyle(m.connection.form.focus != connectionFocusRecent).Width(max(m.layout.width-m.layout.schemaWidth, 0)).Height(max(m.layout.height-4, 0)))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	case statePicking:
-		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(m.picker.View())
+		return paneStyle(true).Width(max(m.layout.width-2, 0)).Height(max(m.layout.height-4, 0)).Render(m.connection.picker.View())
 	case stateOpening:
-		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(statusStyle.Render("opening database"))
+		return paneStyle(true).Width(max(m.layout.width-2, 0)).Height(max(m.layout.height-4, 0)).Render(statusStyle.Render("opening database"))
 	case stateFailure:
-		return paneStyle(true).Width(max(m.width-2, 0)).Height(max(m.height-4, 0)).Render(statusStyle.Render(m.Status + "\npress enter to return to the picker"))
+		return paneStyle(true).Width(max(m.layout.width-2, 0)).Height(max(m.layout.height-4, 0)).Render(statusStyle.Render(m.Status + "\npress enter to return to the picker"))
 	}
-	if m.compact {
-		width, height := max(1, m.width-2), max(1, m.height-4)
+	if m.layout.compact {
+		width, height := max(1, m.layout.width-2), max(1, m.layout.height-4)
 		switch m.Focus {
 		case focusSchema:
 			return titledPane("Databases <1>", m.schemaPaneBody(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
@@ -556,7 +558,7 @@ func (m Model) contentView() string {
 			return titledPane("Assistant <4>", m.chatContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		}
 	}
-	left := titledPane("Databases <1>", m.schemaPaneBody(), paneStyle(m.Focus == focusSchema).Width(max(m.schemaWidth-2, 0)).Height(max(m.height-2, 0)))
+	left := titledPane("Databases <1>", m.schemaPaneBody(), paneStyle(m.Focus == focusSchema).Width(max(m.layout.schemaWidth-2, 0)).Height(max(m.layout.height-2, 0)))
 	center := lipgloss.JoinVertical(lipgloss.Left, m.rightView(), m.queryLogPaneView())
 	if !m.chat.visible {
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, center)
@@ -568,21 +570,21 @@ func (m Model) contentView() string {
 // schema list. The row is omitted when the pane is too narrow to show it.
 func (m Model) schemaPaneBody() string {
 	if row := m.schemaFilterRow(); row != "" {
-		return row + "\n" + m.schema.View()
+		return row + "\n" + m.schema.list.View()
 	}
-	return m.schema.View()
+	return m.schema.list.View()
 }
 
 func (m Model) rightView() string {
-	return titledPane("Workspace <2>", m.workspaceView(), paneStyle(m.Focus == focusWorkspace).Width(max(m.editorWidth-2, 0)).Height(max(m.workspaceHeight, 0)))
+	return titledPane("Workspace <2>", m.workspaceView(), paneStyle(m.Focus == focusWorkspace).Width(max(m.layout.editorWidth-2, 0)).Height(max(m.layout.workspaceHeight, 0)))
 }
 
 func (m Model) queryLogPaneView() string {
-	return titledPane("Query Log <3>", m.queryLogContentView(), paneStyle(m.Focus == focusQueryLog).Width(max(m.editorWidth-2, 0)).Height(max(m.queryLogHeight, 0)))
+	return titledPane("Query Log <3>", m.queryLogContentView(), paneStyle(m.Focus == focusQueryLog).Width(max(m.layout.editorWidth-2, 0)).Height(max(m.layout.queryLogHeight, 0)))
 }
 
 func (m Model) chatPaneView() string {
-	return titledPane("Assistant <4>", m.chatContentView(), paneStyle(m.Focus == focusChat).Width(max(m.chatWidth-2, 0)).Height(max(m.height-2, 0)))
+	return titledPane("Assistant <4>", m.chatContentView(), paneStyle(m.Focus == focusChat).Width(max(m.layout.chatWidth-2, 0)).Height(max(m.layout.height-2, 0)))
 }
 
 func (m Model) chatContentView() string {
@@ -606,11 +608,11 @@ func (m Model) chatContentView() string {
 }
 
 func (m Model) queryLogContentView() string {
-	content := tableViewportViewWithAlignment(m.queryLog, nil, m.queryLogOffset, m.tableViewportWidth, m.queryLogColumn)
-	summary := m.queryLogSummary() + colsHint(m.queryLog.Columns(), m.tableViewportWidth)
-	padding := max(m.queryLogHeight-1-lipgloss.Height(content)-1, 0)
+	content := tableViewportViewWithAlignment(m.queryLog.table, nil, m.layout.queryLogOffset, m.layout.tableViewportWidth, m.layout.queryLogColumn)
+	summary := m.queryLogSummary() + colsHint(m.queryLog.table.Columns(), m.layout.tableViewportWidth)
+	padding := max(m.layout.queryLogHeight-1-lipgloss.Height(content)-1, 0)
 	return content + strings.Repeat("\n", padding+1) +
-		chrome.PaneStatus(statusStyle.Render("n/p page"), statusStyle.Render(summary), m.tableViewportWidth)
+		chrome.PaneStatus(statusStyle.Render("n/p page"), statusStyle.Render(summary), m.layout.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {
@@ -636,12 +638,12 @@ func (m Model) workspaceView() string {
 		content = m.foreignKeysView()
 	}
 	modeLine := m.modeBadge()
-	if m.compact && m.SelectedTable != "" {
+	if m.layout.compact && m.SelectedTable != "" {
 		modeLine += "  " + statusStyle.Render(m.SelectedTable)
 	}
 	footer := modeLine + " " + statusStyle.Render("L/H tabs")
 	if m.formTabActive() {
-		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.formMode.buttonsFocused, m.formMode.buttonChoice), "", footer)
+		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.overlay.formMode.buttonsFocused, m.overlay.formMode.buttonChoice), "", footer)
 	}
 	// A blank line separates the tab's status line from the mode/tab-hint
 	// footer; the browse tab renders that gap again between its status
@@ -651,8 +653,8 @@ func (m Model) workspaceView() string {
 
 func (m Model) sqlPaneView() string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		sqlEditorBox(m.editor.View(), m.editorBorderColor()),
-		tableViewportViewWithAlignment(m.results, m.resultsNumericColumns, m.resultsOffset, m.tableViewportWidth, m.resultsColumn),
+		sqlEditorBox(m.queryLog.editor.View(), m.editorBorderColor()),
+		tableViewportViewWithAlignment(m.queryLog.results, m.queryLog.resultsNumericColumns, m.layout.resultsOffset, m.layout.tableViewportWidth, m.layout.resultsColumn),
 	)
 
 	if dropdown := m.completionOverlay(); dropdown != "" {
@@ -668,7 +670,7 @@ func (m Model) sqlPaneView() string {
 		content = strings.Join(lines, "\n")
 	}
 
-	return content + "\n" + chrome.PaneStatus("", m.resultsStatus, m.tableViewportWidth)
+	return content + "\n" + chrome.PaneStatus("", m.queryLog.resultsStatus, m.layout.tableViewportWidth)
 }
 
 // sqlEditorBox frames the SQL input; its border color mirrors the live
@@ -678,7 +680,7 @@ func sqlEditorBox(view, borderColor string) string {
 }
 
 func (m Model) editorBorderColor() string {
-	switch m.editorValidity {
+	switch m.queryLog.editorValidity {
 	case sqlValidityValid:
 		return colorSuccess
 	case sqlValidityInvalid:
@@ -689,26 +691,26 @@ func (m Model) editorBorderColor() string {
 }
 
 func (m Model) structureView() string {
-	if m.columnForm.active() {
-		return m.formViewport(m.columnForm.View(), m.columnForm.scrollOffset)
+	if m.structure.columnForm.active() {
+		return m.formViewport(m.structure.columnForm.View(), m.structure.columnForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.structure, nil, m.structureOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabStructure), "", m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.structure.table, nil, m.layout.structureOffset, m.layout.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabStructure), "", m.layout.tableViewportWidth)
 }
 
 func (m Model) browseView() string {
-	if m.browseFilterForm != nil {
+	if m.browse.filterForm != nil {
 		// The filter view is already windowed at its scroll offset (it
 		// renders at most one screenful per frame), so the viewport slice
 		// must not re-apply the offset.
-		return m.formViewport(m.browseFilterForm.View(), 0)
+		return m.formViewport(m.browse.filterForm.View(), 0)
 	}
-	if m.documentEditor != nil {
-		return m.formViewport(m.documentEditor.View(), m.documentEditor.scrollOffset)
+	if m.browse.documentEditor != nil {
+		return m.formViewport(m.browse.documentEditor.View(), m.browse.documentEditor.scrollOffset)
 	}
-	if m.browseForm.active() {
-		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)
+	if m.browse.form.active() {
+		return m.formViewport(m.browse.form.View(), m.browse.form.scrollOffset)
 	}
-	view := tableViewportViewWithAlignment(m.browse, m.browseNumericColumns, m.browseOffset, m.tableViewportWidth, m.browseColumn) + "\n" + m.browseStatusLine() + "\n\n" + m.browsePagerLine()
+	view := tableViewportViewWithAlignment(m.browse.table, m.browse.numericColumns, m.layout.browseOffset, m.layout.tableViewportWidth, m.layout.browseColumn) + "\n" + m.browseStatusLine() + "\n\n" + m.browsePagerLine()
 	return view
 }
 
@@ -724,7 +726,7 @@ const browseStatusHints = "/ filter | r reset | s sort column"
 // pager row's y position, and the pager click hit-test all mirror this
 // choice, so it is the single source of truth.
 func (m Model) browseStatusSplit() bool {
-	return m.browseStatus != "" && ansi.StringWidth(browseStatusHints)+4+ansi.StringWidth(m.browseStatus) > m.tableViewportWidth
+	return m.browse.status != "" && ansi.StringWidth(browseStatusHints)+4+ansi.StringWidth(m.browse.status) > m.layout.tableViewportWidth
 }
 
 // browseFooterRows is the number of workspace rows the browse view
@@ -749,8 +751,8 @@ func (m Model) browseFooterRows() int {
 // they move onto two lines, each keeping as much width as the viewport
 // allows; large screens keep the single-line layout unchanged.
 func (m Model) browseStatusLine() string {
-	width := m.tableViewportWidth
-	left, right := browseStatusHints, m.browseStatus
+	width := m.layout.tableViewportWidth
+	left, right := browseStatusHints, m.browse.status
 	if m.browseStatusSplit() {
 		if ansi.StringWidth(left) > max(width-2, 0) {
 			left = ansi.Truncate(left, max(width-2, 0), "…")
@@ -803,7 +805,7 @@ func (m Model) browsePager() browsePager {
 		prev:        formCancelButtonStyle.Render(browsePrevLabel),
 		next:        formCancelButtonStyle.Render(browseNextLabel),
 		prevEnabled: m.BrowsePage > 0,
-		nextEnabled: m.browseResult.HasMore,
+		nextEnabled: m.browse.result.HasMore,
 	}
 	if pager.prevEnabled {
 		pager.prev = formSaveButtonStyle.Render(browsePrevLabel)
@@ -811,7 +813,7 @@ func (m Model) browsePager() browsePager {
 	if pager.nextEnabled {
 		pager.next = formSaveButtonStyle.Render(browseNextLabel)
 	}
-	gap := max(m.tableViewportWidth-2-ansi.StringWidth(pager.prev)-ansi.StringWidth(pager.next), 0)
+	gap := max(m.layout.tableViewportWidth-2-ansi.StringWidth(pager.prev)-ansi.StringWidth(pager.next), 0)
 	pager.prevStart = 1 // statusStyle pads the row by one cell on each side
 	pager.nextStart = 1 + ansi.StringWidth(pager.prev) + gap
 	pager.line = statusStyle.Render(pager.prev + strings.Repeat(" ", gap) + pager.next)
@@ -834,20 +836,20 @@ func (m Model) formViewport(view string, offset int) string {
 }
 
 func (m Model) indexesView() string {
-	if m.indexForm.active() {
-		return m.formViewport(m.indexForm.View(), m.indexForm.scrollOffset)
+	if m.structure.indexForm.active() {
+		return m.formViewport(m.structure.indexForm.View(), m.structure.indexForm.scrollOffset)
 	}
-	return tableViewportViewWithAlignment(m.indexes, nil, m.indexesOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabIndexes), "", m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.structure.indexes, nil, m.layout.indexesOffset, m.layout.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabIndexes), "", m.layout.tableViewportWidth)
 }
 
 func (m Model) foreignKeysView() string {
-	if m.foreignKeyForm.active() {
-		return m.formViewport(m.foreignKeyForm.View(), m.foreignKeyForm.scrollOffset)
+	if m.structure.foreignKeyForm.active() {
+		return m.formViewport(m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset)
 	}
-	if m.relationshipDiagram {
+	if m.structure.relationshipDiagram {
 		return m.relationshipView()
 	}
-	return tableViewportViewWithAlignment(m.foreignKeys, nil, m.foreignKeysOffset, m.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabForeignKeys), "", m.tableViewportWidth)
+	return tableViewportViewWithAlignment(m.structure.foreignKeys, nil, m.layout.foreignKeysOffset, m.layout.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabForeignKeys), "", m.layout.tableViewportWidth)
 }
 
 func (m Model) footer() string {
@@ -879,7 +881,7 @@ func (m Model) modeBadge() string {
 	badge := ""
 	if m.vimMode {
 		// The modal INSERT/NORMAL state only exists in vim mode.
-		if m.formMode.editing() {
+		if m.overlay.formMode.editing() {
 			badge = modeInsertStyle.Render("INSERT")
 		} else {
 			badge = modeNormalStyle.Render("NORMAL")

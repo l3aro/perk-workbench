@@ -48,22 +48,22 @@ func (m *Model) openBrowseForm() tea.Cmd {
 		// Document stores edit the whole document instead of a row.
 		return m.openEditDocument()
 	}
-	row := m.browse.Cursor()
-	if row < 0 || row >= len(m.browseResult.Rows) {
+	row := m.browse.table.Cursor()
+	if row < 0 || row >= len(m.browse.result.Rows) {
 		m.setStatus("select a row")
 		return nil
 	}
-	form, err := newBrowseForm(m.browseResult.Columns, m.browseResult.Rows[row], m.structureColumns)
+	form, err := newBrowseForm(m.browse.result.Columns, m.browse.result.Rows[row], m.structure.columns)
 	if err != nil {
 		m.setStatus(safeText(err.Error()))
 		return nil
 	}
-	m.browseForm = form
-	m.formMode.buttonsFocused = false
-	m.browseForm.keybindings = m.keybindings
-	m.browseForm.table = m.SelectedTable
-	m.browseForm.setWidth(m.tableViewportWidth)
-	return m.openForm(m.browseForm.form.Init(), m.browseForm.focus)
+	m.browse.form = form
+	m.overlay.formMode.buttonsFocused = false
+	m.browse.form.keybindings = m.keybindings
+	m.browse.form.table = m.SelectedTable
+	m.browse.form.setWidth(m.layout.tableViewportWidth)
+	return m.openForm(m.browse.form.form.Init(), m.browse.form.focus)
 }
 
 // openInsertRowForm opens the insert-row form for the selected table. The
@@ -78,8 +78,8 @@ func (m *Model) openInsertRowForm() tea.Cmd {
 		m.setStatus(safeText(m.rowWriteUnsupportedError().Error()))
 		return nil
 	}
-	columns := make([]string, 0, len(m.structureColumns))
-	for _, info := range m.structureColumns {
+	columns := make([]string, 0, len(m.structure.columns))
+	for _, info := range m.structure.columns {
 		columns = append(columns, info.Name)
 	}
 	form, err := newInsertBrowseForm(columns)
@@ -87,12 +87,12 @@ func (m *Model) openInsertRowForm() tea.Cmd {
 		m.setStatus(safeText(err.Error()))
 		return nil
 	}
-	m.browseForm = form
-	m.formMode.buttonsFocused = false
-	m.browseForm.keybindings = m.keybindings
-	m.browseForm.table = m.SelectedTable
-	m.browseForm.setWidth(m.tableViewportWidth)
-	return m.openForm(m.browseForm.form.Init(), m.browseForm.focus)
+	m.browse.form = form
+	m.overlay.formMode.buttonsFocused = false
+	m.browse.form.keybindings = m.keybindings
+	m.browse.form.table = m.SelectedTable
+	m.browse.form.setWidth(m.layout.tableViewportWidth)
+	return m.openForm(m.browse.form.form.Init(), m.browse.form.focus)
 }
 
 // newInsertBrowseForm builds an insert-row form over the given columns.

@@ -58,9 +58,9 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 			entry.message = "completed"
 		}
 	}
-	m.queryLogEntries = append([]queryLogEntry{entry}, m.queryLogEntries...)
-	if len(m.queryLogEntries) > queryLogLimit {
-		m.queryLogEntries = m.queryLogEntries[:queryLogLimit]
+	m.queryLog.entries = append([]queryLogEntry{entry}, m.queryLog.entries...)
+	if len(m.queryLog.entries) > queryLogLimit {
+		m.queryLog.entries = m.queryLog.entries[:queryLogLimit]
 	}
 	if db := m.queryLogDB(); db != nil {
 		_ = saveQueryLogDB(db, m.connectionID, entry)
@@ -69,28 +69,28 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 }
 
 func (m Model) queryLogPageCount() int {
-	return max((len(m.queryLogEntries)+m.queryLogPageSize-1)/m.queryLogPageSize, 1)
+	return max((len(m.queryLog.entries)+m.queryLog.pageSize-1)/m.queryLog.pageSize, 1)
 }
 
 func (m Model) queryLogPageEntries() []queryLogEntry {
-	start := m.queryLogPage * m.queryLogPageSize
-	if start >= len(m.queryLogEntries) {
+	start := m.queryLog.page * m.queryLog.pageSize
+	if start >= len(m.queryLog.entries) {
 		return nil
 	}
-	return m.queryLogEntries[start:min(start+m.queryLogPageSize, len(m.queryLogEntries))]
+	return m.queryLog.entries[start:min(start+m.queryLog.pageSize, len(m.queryLog.entries))]
 }
 
 func (m Model) queryLogSelectedEntry() (queryLogEntry, bool) {
-	index := m.queryLogPage*m.queryLogPageSize + m.queryLog.Cursor()
-	if index < 0 || index >= len(m.queryLogEntries) {
+	index := m.queryLog.page*m.queryLog.pageSize + m.queryLog.table.Cursor()
+	if index < 0 || index >= len(m.queryLog.entries) {
 		return queryLogEntry{}, false
 	}
-	return m.queryLogEntries[index], true
+	return m.queryLog.entries[index], true
 }
 
 func (m *Model) renderQueryLog() {
-	if m.queryLogPage >= m.queryLogPageCount() {
-		m.queryLogPage = m.queryLogPageCount() - 1
+	if m.queryLog.page >= m.queryLogPageCount() {
+		m.queryLog.page = m.queryLogPageCount() - 1
 	}
 	entries := m.queryLogPageEntries()
 	rows := make([]table.Row, len(entries))
@@ -122,14 +122,14 @@ func (m *Model) renderQueryLog() {
 			row[1] = strings.Repeat(" ", (statusColWidth-contentWidth)/2) + row[1]
 		}
 	}
-	height := m.queryLog.Height()
-	m.queryLog.SetRows(nil)
+	height := m.queryLog.table.Height()
+	m.queryLog.table.SetRows(nil)
 	columns := tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, rows)
 	columns[2].Width = min(columns[2].Width, 50)
 	columns[4].Width = min(columns[4].Width, 50)
-	m.queryLog.SetColumns(columns)
-	resizeResultsTable(&m.queryLog, m.tableViewportWidth, max(height+1, 2))
-	m.queryLog.SetRows(rows)
+	m.queryLog.table.SetColumns(columns)
+	resizeResultsTable(&m.queryLog.table, m.layout.tableViewportWidth, max(height+1, 2))
+	m.queryLog.table.SetRows(rows)
 }
 
 func queryLogCell(entry queryLogEntry, column int) string {
@@ -150,15 +150,15 @@ func queryLogCell(entry queryLogEntry, column int) string {
 }
 
 func (m Model) queryLogSummary() string {
-	if len(m.queryLogEntries) == 0 {
+	if len(m.queryLog.entries) == 0 {
 		return ""
 	}
-	fastest, slowest := m.queryLogEntries[0].duration, m.queryLogEntries[0].duration
-	for _, entry := range m.queryLogEntries[1:] {
+	fastest, slowest := m.queryLog.entries[0].duration, m.queryLog.entries[0].duration
+	for _, entry := range m.queryLog.entries[1:] {
 		fastest = min(fastest, entry.duration)
 		slowest = max(slowest, entry.duration)
 	}
-	return fmt.Sprintf("page %d/%d | fastest %s | slowest %s", m.queryLogPage+1, m.queryLogPageCount(), fastest.Round(time.Microsecond), slowest.Round(time.Microsecond))
+	return fmt.Sprintf("page %d/%d | fastest %s | slowest %s", m.queryLog.page+1, m.queryLogPageCount(), fastest.Round(time.Microsecond), slowest.Round(time.Microsecond))
 }
 
 func queryLogMessage(statement string, rowsAffected int64, rows int) string {

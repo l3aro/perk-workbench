@@ -83,7 +83,7 @@ func TestSchemaListFilter_plainTermKeepsFuzzyMatching(t *testing.T) {
 func TestFocus_schema_filter_globPattern(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus = stateReady, focusSchema
-	if err := model.schema.SetItems(officeDemoItems()); err != nil {
+	if err := model.schema.list.SetItems(officeDemoItems()); err != nil {
 		t.Fatalf("setting schema items: %v", err)
 	}
 
@@ -93,7 +93,7 @@ func TestFocus_schema_filter_globPattern(t *testing.T) {
 		updated, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
 		model = updated.(Model)
 	}
-	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "rez_abc_" {
+	if got := model.schema.list.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "rez_abc_" {
 		t.Fatalf("visible items = %#v, want only rez_abc_", got)
 	}
 }

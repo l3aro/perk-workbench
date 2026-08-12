@@ -222,12 +222,12 @@ func notificationPath() (string, error) {
 // notificationDB returns the model's persistent notification database,
 // opened lazily on first use and reused for every save.
 func (m *Model) notificationDB() *sql.DB {
-	if m.notificationDatabase == nil && m.notificationPath != "" {
-		if db, err := openNotificationStore(m.notificationPath); err == nil {
-			m.notificationDatabase = db
+	if m.notifications.database == nil && m.notifications.path != "" {
+		if db, err := openNotificationStore(m.notifications.path); err == nil {
+			m.notifications.database = db
 		}
 	}
-	return m.notificationDatabase
+	return m.notifications.database
 }
 
 // loadNotifications returns the retained entries for one connection scope,
@@ -366,7 +366,7 @@ func pruneNotifications(db *sql.DB, now time.Time, connectionID string) error {
 // so repeated writes of the same text still surface as notification events.
 func (m *Model) setStatus(status string) {
 	m.Status = status
-	m.statusRevision++
+	m.notifications.statusRevision++
 }
 
 // notificationDismissTick builds the command that closes the popup after
@@ -423,30 +423,30 @@ func (m *Model) showNotification(entry notificationEntry, persist bool) tea.Cmd 
 			}
 		}
 	}
-	m.notificationEntries = append([]notificationEntry{entry}, m.notificationEntries...)
-	m.notificationPopup = &entry
-	m.notificationGeneration++
-	generation := m.notificationGeneration
+	m.notifications.entries = append([]notificationEntry{entry}, m.notifications.entries...)
+	m.notifications.popup = &entry
+	m.notifications.generation++
+	generation := m.notifications.generation
 	return notificationDismissTick(generation)
 }
 
 // notificationPopupBounds returns the screen rectangle of the visible popup.
 // The popup is a bordered card anchored to the top-right corner.
 func (m Model) notificationPopupBounds() (image.Rectangle, bool) {
-	if m.notificationPopup == nil {
+	if m.notifications.popup == nil {
 		return image.Rectangle{}, false
 	}
-	width := min(50, m.width-4)
-	if width < 4 || m.height < 4 {
+	width := min(50, m.layout.width-4)
+	if width < 4 || m.layout.height < 4 {
 		return image.Rectangle{}, false
 	}
-	lines := strings.Split(ansi.Wordwrap(m.notificationPopup.description, max(width-4-notificationIconIndent(m.notificationPopup.level), 1), "\n"), "\n")
+	lines := strings.Split(ansi.Wordwrap(m.notifications.popup.description, max(width-4-notificationIconIndent(m.notifications.popup.level), 1), "\n"), "\n")
 	cardW := width + 2
 	cardH := len(lines) + 3 // title row + description + top/bottom border
-	if cardH > m.height-4 {
-		cardH = m.height - 4
+	if cardH > m.layout.height-4 {
+		cardH = m.layout.height - 4
 	}
-	x := m.width - cardW - 1
+	x := m.layout.width - cardW - 1
 	y := 1
 	return image.Rect(x, y, x+cardW, y+cardH), true
 }

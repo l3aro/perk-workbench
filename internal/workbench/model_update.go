@@ -30,7 +30,7 @@ type browseDebounceMsg struct {
 func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	previousStatus := m.Status
 	previousCoreRevision := m.StatusRevision()
-	previousRevision := m.statusRevision
+	previousRevision := m.notifications.statusRevision
 	updated, cmd := m.updateCore(message)
 	model := updated.(Model)
 	var cmds []tea.Cmd
@@ -39,17 +39,17 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	statusWritten := model.Status != previousStatus ||
 		model.StatusRevision() != previousCoreRevision ||
-		model.statusRevision != previousRevision
-	if statusWritten && model.Status != "" && !model.skipStatusPopup {
+		model.notifications.statusRevision != previousRevision
+	if statusWritten && model.Status != "" && !model.notifications.skipStatusPopup {
 		cmds = append(cmds, model.notify(model.Status))
 	}
-	model.skipStatusPopup = false
+	model.notifications.skipStatusPopup = false
 	// Logged events surface as popups after the status one so the level
 	// title, icon, and color win the visible slot. A transition that logs
 	// before its profile scope exists marks its entries transient so they
 	// never bind history to the wrong connection.
-	transient := model.skipNotificationPersist
-	model.skipNotificationPersist = false
+	transient := model.notifications.skipNotificationPersist
+	model.notifications.skipNotificationPersist = false
 	for _, entry := range drainLogNotifications() {
 		if transient {
 			cmds = append(cmds, model.notifyLogTransient(entry))
@@ -68,12 +68,12 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, ok := message.(tea.WindowSizeMsg); ok {
-		m.layout(window.Width, window.Height)
-		if m.cellViewer != nil {
-			m.cellViewer.resize(max(m.width-8, 1), max(m.height-10, 1))
+		m.applyLayout(window.Width, window.Height)
+		if m.browse.cellViewer != nil {
+			m.browse.cellViewer.resize(max(m.layout.width-8, 1), max(m.layout.height-10, 1))
 		}
-		if m.notificationHistory != nil {
-			m.notificationHistory.resize(window.Width, window.Height)
+		if m.notifications.history != nil {
+			m.notifications.history.resize(window.Width, window.Height)
 		}
 		return m, nil
 	}
@@ -118,15 +118,15 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateChat(message)
 	}
 	if dismiss, ok := message.(notificationDismissMsg); ok {
-		if dismiss.generation == m.notificationGeneration {
-			m.notificationPopup = nil
+		if dismiss.generation == m.notifications.generation {
+			m.notifications.popup = nil
 		}
 		return m, nil
 	}
 	// Consume the release trailing a popup click before the modal branches
 	// swallow it; otherwise the flag stays armed and eats a later release.
-	if _, ok := message.(tea.MouseReleaseMsg); ok && m.notificationPopupSwallowRelease {
-		m.notificationPopupSwallowRelease = false
+	if _, ok := message.(tea.MouseReleaseMsg); ok && m.notifications.popupSwallowRelease {
+		m.notifications.popupSwallowRelease = false
 		return m, nil
 	}
 	// A click on the popup opens the notification history (or, without a
@@ -134,109 +134,109 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	// trailing release so it cannot click the pane underneath.
 	if click, ok := message.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
 		if bounds, hit := m.notificationPopupBounds(); hit && click.X >= bounds.Min.X && click.X < bounds.Max.X && click.Y >= bounds.Min.Y && click.Y < bounds.Max.Y {
-			m.notificationPopupSwallowRelease = true
-			if m.connectionID != "" && m.notificationPopup.id != 0 {
-				m.notificationHistory = newNotificationHistory(m.notificationEntries, m.notificationPopup.id, m.width, m.height)
+			m.notifications.popupSwallowRelease = true
+			if m.connectionID != "" && m.notifications.popup.id != 0 {
+				m.notifications.history = newNotificationHistory(m.notifications.entries, m.notifications.popup.id, m.layout.width, m.layout.height)
 			} else {
-				m.notificationDetail = m.notificationPopup
+				m.notifications.detail = m.notifications.popup
 			}
 			return m, nil
 		}
 	}
-	if m.notificationHistory != nil {
+	if m.notifications.history != nil {
 		if click, ok := message.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-			m.notificationHistory.handleClick(click.X, click.Y)
+			m.notifications.history.handleClick(click.X, click.Y)
 			return m, nil
 		}
 		if wheel, ok := message.(tea.MouseWheelMsg); ok {
-			m.notificationHistory.handleWheel(wheel)
+			m.notifications.history.handleWheel(wheel)
 			return m, nil
 		}
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			// The filter's first Escape only blurs the filter and the
 			// viewer's Escape closes the viewer; a further Escape closes
 			// the modal.
-			if keyPress.Key().Code == tea.KeyEscape && !m.notificationHistory.filterFocused && m.notificationHistory.viewer == nil {
-				m.notificationHistory = nil
+			if keyPress.Key().Code == tea.KeyEscape && !m.notifications.history.filterFocused && m.notifications.history.viewer == nil {
+				m.notifications.history = nil
 				return m, nil
 			}
-			if handled, cmd := m.notificationHistory.handleKey(keyPress); handled {
+			if handled, cmd := m.notifications.history.handleKey(keyPress); handled {
 				return m, cmd
 			}
 		}
 		return m, nil
 	}
-	if m.notificationDetail != nil {
+	if m.notifications.detail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.notificationDetail = nil
+			m.notifications.detail = nil
 			return m, nil
 		}
 		return m, nil
 	}
 
-	if m.themePicker != nil {
+	if m.overlay.themePicker != nil {
 		keyPress, ok := message.(tea.KeyPressMsg)
 		if !ok {
 			return m, nil
 		}
 		switch keyPress.Key().Code {
 		case tea.KeyEscape:
-			m.applyTheme(m.themePicker.original)
-			m.themePicker = nil
+			m.applyTheme(m.overlay.themePicker.original)
+			m.overlay.themePicker = nil
 			return m, nil
 		case tea.KeyEnter:
-			m.commitTheme(m.themePicker.theme())
-			m.themePicker = nil
+			m.commitTheme(m.overlay.themePicker.theme())
+			m.overlay.themePicker = nil
 			return m, nil
 		case tea.KeyUp:
-			m.themePicker.move(-1)
+			m.overlay.themePicker.move(-1)
 		case tea.KeyDown:
-			m.themePicker.move(1)
+			m.overlay.themePicker.move(1)
 		default:
 			switch keyPress.Keystroke() {
 			case "j":
-				m.themePicker.move(1)
+				m.overlay.themePicker.move(1)
 			case "k":
-				m.themePicker.move(-1)
+				m.overlay.themePicker.move(-1)
 			default:
 				return m, nil
 			}
 		}
-		m.applyTheme(m.themePicker.theme())
+		m.applyTheme(m.overlay.themePicker.theme())
 		return m, nil
 	}
-	if m.tableTargetPicker != nil {
+	if m.overlay.tableTargetPicker != nil {
 		keyPress, ok := message.(tea.KeyPressMsg)
 		if !ok {
 			return m, nil
 		}
 		switch keyPress.Key().Code {
 		case tea.KeyEscape:
-			m.tableTargetPicker = nil
+			m.overlay.tableTargetPicker = nil
 			return m, nil
 		case tea.KeyEnter:
-			m.commitTableOpenTarget(m.tableTargetPicker.tab())
-			m.tableTargetPicker = nil
+			m.commitTableOpenTarget(m.overlay.tableTargetPicker.tab())
+			m.overlay.tableTargetPicker = nil
 			return m, nil
 		case tea.KeyUp:
-			m.tableTargetPicker.move(-1)
+			m.overlay.tableTargetPicker.move(-1)
 		case tea.KeyDown:
-			m.tableTargetPicker.move(1)
+			m.overlay.tableTargetPicker.move(1)
 		default:
 			switch keyPress.Keystroke() {
 			case "j":
-				m.tableTargetPicker.move(1)
+				m.overlay.tableTargetPicker.move(1)
 			case "k":
-				m.tableTargetPicker.move(-1)
+				m.overlay.tableTargetPicker.move(-1)
 			default:
 				return m, nil
 			}
 		}
 		return m, nil
 	}
-	if m.commandPalette.visible {
+	if m.overlay.commandPalette.visible {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
-			selectMsg, close, consumed := m.commandPalette.handleKey(keyPress)
+			selectMsg, close, consumed := m.overlay.commandPalette.handleKey(keyPress)
 			if consumed && !close && selectMsg.id == "" {
 				return m, nil
 			}
@@ -248,11 +248,11 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if wheel, ok := message.(tea.MouseWheelMsg); ok {
-			m.commandPalette.handleWheel(wheel)
+			m.overlay.commandPalette.handleWheel(wheel)
 			return m, nil
 		}
 		if click, ok := message.(tea.MouseClickMsg); ok {
-			selectMsg, consumed := m.commandPalette.handleClick(click, m.width, m.height)
+			selectMsg, consumed := m.overlay.commandPalette.handleClick(click, m.layout.width, m.layout.height)
 			if !consumed {
 				return m, nil
 			}
@@ -262,23 +262,23 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	if m.cellViewer != nil {
+	if m.browse.cellViewer != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.cellViewer = nil
+			m.browse.cellViewer = nil
 			return m, nil
 		}
-		cmd := m.cellViewer.update(message)
+		cmd := m.browse.cellViewer.update(message)
 		return m, cmd
 	}
-	if m.contextMenu != nil && m.contextMenu.visible {
+	if m.overlay.contextMenu != nil && m.overlay.contextMenu.visible {
 		return m.updateContextMenu(message)
 	}
-	if m.quitDialog != nil {
-		completed, action := m.quitDialog.Update(message, m.width, m.height)
+	if m.overlay.quitDialog != nil {
+		completed, action := m.overlay.quitDialog.Update(message, m.layout.width, m.layout.height)
 		if !completed {
 			return m, nil
 		}
-		m.quitDialog = nil
+		m.overlay.quitDialog = nil
 		switch action {
 		case "quit":
 			return m, tea.Quit
@@ -292,21 +292,21 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			// A release consumed by an open dialog is not the trailing
 			// release of a form-button press; it must not count toward the
 			// one-shot swallow below.
-			m.formButtonHit = false
-			completed, _ := dialog.Update(mouse, m.width, m.height)
+			m.layout.formButtonHit = false
+			completed, _ := dialog.Update(mouse, m.layout.width, m.layout.height)
 			if !completed {
 				return m, nil
 			}
 			message = tea.KeyPressMsg{Code: tea.KeyEnter}
 		}
 	}
-	if m.queryConfirmation != nil {
-		completed, action := m.queryConfirmation.dialog.Update(message, m.width, m.height)
+	if m.overlay.queryConfirmation != nil {
+		completed, action := m.overlay.queryConfirmation.dialog.Update(message, m.layout.width, m.layout.height)
 		if !completed {
 			return m, nil
 		}
-		statement := m.queryConfirmation.statement
-		m.queryConfirmation = nil
+		statement := m.overlay.queryConfirmation.statement
+		m.overlay.queryConfirmation = nil
 		if action != "run" {
 			return m, nil
 		}
@@ -321,7 +321,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.chat.input.Blur()
 			return m, nil
 		}
-		completed, action := run.pendingWrite.dialog.Update(message, m.width, m.height)
+		completed, action := run.pendingWrite.dialog.Update(message, m.layout.width, m.layout.height)
 		if !completed {
 			return m, nil
 		}
@@ -371,8 +371,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	if m.documentEditor != nil {
-		editor := m.documentEditor
+	if m.browse.documentEditor != nil {
+		editor := m.browse.documentEditor
 		if editor.saving || editor.loading {
 			// The payload arrives via documentEditorLoadedMsg, routed
 			// before this branch; ignore user input meanwhile.
@@ -383,19 +383,19 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			if editor.confirming {
 				editor.confirming = false
 				editor.confirmation = nil
-				m.formMode.mode = formModeNormal
+				m.overlay.formMode.mode = formModeNormal
 				return m, editor.form.Init()
 			}
-			m.documentEditor = nil
+			m.browse.documentEditor = nil
 			return m, nil
 		}
 		if editor.confirming {
-			completed, action := editor.confirmation.Update(message, m.width, m.height)
+			completed, action := editor.confirmation.Update(message, m.layout.width, m.layout.height)
 			if !completed {
 				return m, nil
 			}
 			if action != "confirm" {
-				m.documentEditor = nil
+				m.browse.documentEditor = nil
 				return m, nil
 			}
 			editor.confirming = false
@@ -426,29 +426,29 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.cellEditor != nil {
+	if m.browse.cellEditor != nil {
 		keyPress, isKeyPress := message.(tea.KeyPressMsg)
 		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
-			if m.cellEditor.confirming {
-				m.cellEditor.confirming = false
-				m.cellEditor.confirm = nil
-				m.formMode.mode = formModeNormal
-				return m, m.cellEditor.input.Init()
+			if m.browse.cellEditor.confirming {
+				m.browse.cellEditor.confirming = false
+				m.browse.cellEditor.confirm = nil
+				m.overlay.formMode.mode = formModeNormal
+				return m, m.browse.cellEditor.input.Init()
 			}
-			m.cellEditor = nil
+			m.browse.cellEditor = nil
 			return m, nil
 		}
-		if m.cellEditor.confirming {
-			completed, action := m.cellEditor.confirm.Update(message, m.width, m.height)
+		if m.browse.cellEditor.confirming {
+			completed, action := m.browse.cellEditor.confirm.Update(message, m.layout.width, m.layout.height)
 			if !completed {
 				return m, nil
 			}
 			if action != "save" {
-				m.cellEditor = nil
+				m.browse.cellEditor = nil
 				return m, nil
 			}
 			cmd := m.executeCellUpdate()
-			m.cellEditor = nil
+			m.browse.cellEditor = nil
 			return m, cmd
 		}
 
@@ -457,11 +457,11 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if mouse, ok := message.(tea.MouseClickMsg); ok && mouse.Button == tea.MouseLeft {
 			switch m.cellEditorButtonAt(mouse.X, mouse.Y) {
 			case "save":
-				m.formButtonHit = true
-				return m, m.cellEditor.beginConfirmation()
+				m.layout.formButtonHit = true
+				return m, m.browse.cellEditor.beginConfirmation()
 			case "cancel":
-				m.formButtonHit = true
-				m.cellEditor = nil
+				m.layout.formButtonHit = true
+				m.browse.cellEditor = nil
 				return m, nil
 			}
 		}
@@ -473,63 +473,63 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-			return m, m.cellEditor.beginConfirmation()
+			return m, m.browse.cellEditor.beginConfirmation()
 		}
-		model, command := m.cellEditor.input.Update(message)
-		m.cellEditor.input = model.(*huh.Form)
-		if m.cellEditor.input.State != huh.StateCompleted {
+		model, command := m.browse.cellEditor.input.Update(message)
+		m.browse.cellEditor.input = model.(*huh.Form)
+		if m.browse.cellEditor.input.State != huh.StateCompleted {
 			return m, command
 		}
-		return m, m.cellEditor.beginConfirmation()
+		return m, m.browse.cellEditor.beginConfirmation()
 	}
-	if m.explainPicker != nil {
+	if m.overlay.explainPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.explainPicker = nil
+			m.overlay.explainPicker = nil
 			return m, nil
 		}
-		command := m.explainPicker.Update(message)
-		if !m.explainPicker.completed() {
+		command := m.overlay.explainPicker.Update(message)
+		if !m.overlay.explainPicker.completed() {
 			return m, command
 		}
-		m.editor.setValue(m.explainPicker.query())
-		m.explainPicker = nil
+		m.queryLog.editor.setValue(m.overlay.explainPicker.query())
+		m.overlay.explainPicker = nil
 		m.Focus, m.Tab = focusWorkspace, tabSQL
 		m.blurTables()
-		m.editorValidity = sqlValidityPending
-		return m, tea.Batch(m.formMode.beginInsert(m.editor), m.scheduleSQLValidation())
+		m.queryLog.editorValidity = sqlValidityPending
+		return m, tea.Batch(m.overlay.formMode.beginInsert(m.queryLog.editor), m.scheduleSQLValidation())
 	}
-	if m.chatHistoryPicker != nil {
+	if m.chat.historyPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.chatHistoryPicker = nil
+			m.chat.historyPicker = nil
 			return m, nil
 		}
-		form, command := m.chatHistoryPicker.Update(message)
-		m.chatHistoryPicker = form.(*huh.Form)
-		if m.chatHistoryPicker.State != huh.StateCompleted {
+		form, command := m.chat.historyPicker.Update(message)
+		m.chat.historyPicker = form.(*huh.Form)
+		if m.chat.historyPicker.State != huh.StateCompleted {
 			return m, command
 		}
 		conversationID := m.chat.historyChoice
-		m.chatHistoryPicker = nil
+		m.chat.historyPicker = nil
 		return m, m.loadChatMessages(conversationID)
 	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
-		m.layout(message.Width, message.Height)
+		m.applyLayout(message.Width, message.Height)
 		return m, nil
 	case browseDebounceMsg:
-		if message.tag != m.browsePageTag || message.table != m.SelectedTable || m.browseLoading {
+		if message.tag != m.browse.pageTag || message.table != m.SelectedTable || m.browse.loading {
 			return m, nil
 		}
-		if message.delta > 0 && !m.browseResult.HasMore {
+		if message.delta > 0 && !m.browse.result.HasMore {
 			return m, nil
 		}
 		if !m.ChangeBrowsePage(message.delta) {
 			return m, nil
 		}
-		m.browseLoading = true
+		m.browse.loading = true
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
-		if m.tableFiltering {
+		if m.structure.tableFiltering {
 			return m, m.updateTableFilter(message)
 		}
 		if m.keybindings.Match(message, "editor.external", []scope{scopeGlobal}) {
@@ -538,15 +538,15 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if m.keybindings.Match(message, "app.palette", []scope{scopeGlobal}) && !m.hasOverlay() {
-			m.commandPalette = newCommandPalette(m)
-			m.commandPalette.visible = true
+			m.overlay.commandPalette = newCommandPalette(m)
+			m.overlay.commandPalette.visible = true
 			return m, nil
 		}
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
-		if quit && !m.formActive() && !m.schemaFilter.Focused() &&
-			!(m.State == stateConnection && (m.recentFilter.Focused() || (m.connection.focus == connectionFocusForm && m.formMode.editing()))) &&
-			!(m.sqlEditorActive() && m.formMode.editing()) &&
-			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.editor.value == "") {
+		if quit && !m.formActive() && !m.schema.filter.Focused() &&
+			!(m.State == stateConnection && (m.connection.recentFilter.Focused() || (m.connection.form.focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
+			!(m.sqlEditorActive() && m.overlay.formMode.editing()) &&
+			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.queryLog.editor.value == "") {
 			if m.Running() {
 				m.RequestQuit()
 				m.cancelQuery()
@@ -565,27 +565,27 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateChat(message)
 		}
 
-		if m.State == stateReady && !m.formActive() && !m.schemaFilter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.formMode.editing()) && !(m.Focus == focusChat && m.chat.chatMode == formModeInsert) {
+		if m.State == stateReady && !m.formActive() && !m.schema.filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.editing()) && !(m.Focus == focusChat && m.chat.chatMode == formModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
-				m.queryLogPendingG = false
-				m.editor.text.Blur()
+				m.queryLog.pendingG = false
+				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				return m, nil
 			case m.keybindings.Match(message, "focus.workspace", []scope{scopeGlobal}):
 				m.Focus = focusWorkspace
-				m.queryLogPendingG = false
+				m.queryLog.pendingG = false
 				m.focusActiveTable()
 				return m, nil
 			case m.keybindings.Match(message, "focus.query_log", []scope{scopeGlobal}):
 				m.Focus = focusQueryLog
-				m.queryLogPendingG = false
-				m.editor.text.Blur()
+				m.queryLog.pendingG = false
+				m.queryLog.editor.text.Blur()
 				m.blurTables()
-				m.queryLog.Focus()
-				if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
-					m.queryLog.SetCursor(0)
+				m.queryLog.table.Focus()
+				if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
+					m.queryLog.table.SetCursor(0)
 				}
 				return m, nil
 			case m.keybindings.Match(message, "focus.chat", []scope{scopeGlobal}):
@@ -593,8 +593,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.Focus = focusChat
-				m.queryLogPendingG = false
-				m.editor.text.Blur()
+				m.queryLog.pendingG = false
+				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				if !m.vimMode {
 					m.chat.chatMode = formModeInsert
@@ -606,8 +606,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.toggleAI()
 				return m, nil
 			case m.keybindings.Match(message, "focus.toggle_fullscreen", []scope{scopeGlobal}):
-				m.fullscreen = !m.fullscreen
-				m.layout(m.width, m.height)
+				m.layout.fullscreen = !m.layout.fullscreen
+				m.applyLayout(m.layout.width, m.layout.height)
 				return m, nil
 			case m.keybindings.Match(message, "focus.cycle_forward", []scope{scopeGlobal}):
 				m.cycleFocus(true)
@@ -628,22 +628,22 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory(1) {
 			m.Focus, m.Tab = focusWorkspace, tabSQL
 			m.blurTables()
-			return m, m.formMode.beginInsert(m.editor)
+			return m, m.overlay.formMode.beginInsert(m.queryLog.editor)
 		}
 		if m.sqlEditorActive() && !m.tableFormOpen() {
-			if m.editor.completionVisible() {
+			if m.queryLog.editor.completionVisible() {
 				key := message.Key()
 				completionHandled := true
 				switch {
 				case key.Code == tea.KeyEscape:
-					m.editor.completion = completion{}
+					m.queryLog.editor.completion = completion{}
 					completionHandled = false // let escape also exit insert mode
 				case key.Code == tea.KeyUp || (key.Code == 'k' && key.Mod == tea.ModCtrl):
-					m.editor.completion.move(-1)
+					m.queryLog.editor.completion.move(-1)
 				case key.Code == tea.KeyDown || (key.Code == 'j' && key.Mod == tea.ModCtrl):
-					m.editor.completion.move(1)
+					m.queryLog.editor.completion.move(1)
 				case key.Code == tea.KeyEnter || key.Code == tea.KeyTab:
-					m.editor.acceptCompletion()
+					m.queryLog.editor.acceptCompletion()
 				default:
 					completionHandled = false
 				}
@@ -651,13 +651,13 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			if m.formMode.editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
+			if m.overlay.formMode.editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
 				return m, m.startCompletion()
 			}
-			if m.formMode.editing() {
+			if m.overlay.formMode.editing() {
 				key := message.Key()
-				if (key.Code == tea.KeyUp && (m.editor.value == "" || m.historyIndex >= 0)) ||
-					(key.Code == tea.KeyDown && m.historyIndex >= 0) {
+				if (key.Code == tea.KeyUp && (m.queryLog.editor.value == "" || m.queryLog.historyIndex >= 0)) ||
+					(key.Code == tea.KeyDown && m.queryLog.historyIndex >= 0) {
 					direction := 1
 					if key.Code == tea.KeyDown {
 						direction = -1
@@ -665,36 +665,36 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					if m.recallQueryHistory(direction) {
 						// setValue replaces the textarea, dropping focus; re-focus so
 						// subsequent typing in insert mode still lands.
-						m.editorValidity = sqlValidityPending
-						return m, tea.Batch(m.editor.Focus(), m.scheduleSQLValidation())
+						m.queryLog.editorValidity = sqlValidityPending
+						return m, tea.Batch(m.queryLog.editor.Focus(), m.scheduleSQLValidation())
 					}
 				}
 			}
-			switch m.formMode.route(message, m.editor) {
+			switch m.overlay.formMode.route(message, m.queryLog.editor) {
 			case formRouteConsumed:
 				return m, nil
 			case formRouteHuh:
-				previous := m.editor.value
-				command := m.editor.update(message)
-				if m.editor.value != previous {
-					m.historyIndex = -1
-					m.editorValidity = sqlValidityPending
+				previous := m.queryLog.editor.value
+				command := m.queryLog.editor.update(message)
+				if m.queryLog.editor.value != previous {
+					m.queryLog.historyIndex = -1
+					m.queryLog.editorValidity = sqlValidityPending
 					command = tea.Batch(command, m.scheduleSQLValidation())
 				}
 				if message.Text == "." {
-					m.editor.completion = completion{}
+					m.queryLog.editor.completion = completion{}
 					return m, tea.Batch(command, m.startCompletion())
 				}
-				if m.editor.completionVisible() {
-					m.editor.completion.filter(sharedsql.CompletionPrefix(m.editor.value))
+				if m.queryLog.editor.completionVisible() {
+					m.queryLog.editor.completion.filter(sharedsql.CompletionPrefix(m.queryLog.editor.value))
 				} else if isIdentStart(message.Text) {
-					m.editor.completion = completion{}
+					m.queryLog.editor.completion = completion{}
 					return m, tea.Batch(command, m.startCompletion())
 				}
 				return m, command
 			case formRouteParent:
 				if isInsertModeKey(message) || m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
-					return m, m.formMode.beginInsert(m.editor)
+					return m, m.overlay.formMode.beginInsert(m.queryLog.editor)
 				}
 			}
 		}
@@ -709,11 +709,11 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch message := message.(type) {
 	case tea.MouseClickMsg:
-		if m.tableFiltering {
+		if m.structure.tableFiltering {
 			m.closeTableFilter()
 		}
 		cmds := []tea.Cmd{}
-		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
+		if m.overlay.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
 			model, cmd := m.handleLeftClick(message.X, message.Y)
 			m = model.(Model)
 			if cmd != nil {
@@ -737,7 +737,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			if maybeCmd != nil {
 				cmds = append(cmds, maybeCmd)
 			}
-			if len(cmds) > 0 || m.contextMenu != nil {
+			if len(cmds) > 0 || m.overlay.contextMenu != nil {
 				return m, tea.Batch(cmds...)
 			}
 		}
@@ -748,82 +748,82 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 	case tea.MouseWheelMsg:
-		if !m.hasOverlay() && m.contextMenu == nil {
-			if (m.formActive() || m.State == stateConnection) && !m.tableFiltering {
+		if !m.hasOverlay() && m.overlay.contextMenu == nil {
+			if (m.formActive() || m.State == stateConnection) && !m.structure.tableFiltering {
 				return m.scrollForm(message)
 			}
 			return m.handleMouseWheel(message)
 		}
 	case tea.MouseReleaseMsg:
-		if m.notificationPopupSwallowRelease {
-			m.notificationPopupSwallowRelease = false
+		if m.notifications.popupSwallowRelease {
+			m.notifications.popupSwallowRelease = false
 			return m, nil
 		}
-		if m.commandPalette != nil && m.commandPalette.swallowRelease {
-			m.commandPalette.swallowRelease = false
+		if m.overlay.commandPalette != nil && m.overlay.commandPalette.swallowRelease {
+			m.overlay.commandPalette.swallowRelease = false
 			return m, nil
 		}
-		if m.formButtonHit {
+		if m.layout.formButtonHit {
 			// The release trailing a form-button press must not also act on
 			// the pane underneath (field focus, table selection). One-shot:
 			// a later real release clicks normally.
-			m.formButtonHit = false
+			m.layout.formButtonHit = false
 			return m, nil
 		}
-		if m.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
+		if m.overlay.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
 			return m.handleLeftClick(message.X, message.Y)
 		}
 	}
 
-	if m.deleteConfirm != nil {
-		completed, action := m.deleteConfirm.Update(message, m.width, m.height)
+	if m.overlay.deleteConfirm != nil {
+		completed, action := m.overlay.deleteConfirm.Update(message, m.layout.width, m.layout.height)
 		if !completed {
 			return m, nil
 		}
-		m.deleteConfirm = nil
-		pending := m.deletePending
-		m.deletePending = ""
+		m.overlay.deleteConfirm = nil
+		pending := m.overlay.deletePending
+		m.overlay.deletePending = ""
 		if action != "delete" && action != "delete_table" {
-			m.deletePendingName = ""
-			m.deletePendingDatabase = ""
-			m.deletePendingConnection = nil
+			m.overlay.deletePendingName = ""
+			m.overlay.deletePendingDatabase = ""
+			m.overlay.deletePendingConnection = nil
 			return m, nil
 		}
 		switch pending {
 		case "column":
 			cmd := m.deleteColumn()
-			m.deletePendingName = ""
+			m.overlay.deletePendingName = ""
 			return m, cmd
 		case "index":
 			cmd := m.deleteIndex()
-			m.deletePendingName = ""
+			m.overlay.deletePendingName = ""
 			return m, cmd
 		case "foreign_key":
 			cmd := m.deleteForeignKey()
-			m.deletePendingName = ""
+			m.overlay.deletePendingName = ""
 			return m, cmd
 		case "table":
-			database, table := m.deletePendingDatabase, m.deletePendingName
-			m.deletePendingDatabase, m.deletePendingName = "", ""
+			database, table := m.overlay.deletePendingDatabase, m.overlay.deletePendingName
+			m.overlay.deletePendingDatabase, m.overlay.deletePendingName = "", ""
 			statement := "DROP TABLE " + m.actionIdentifier(m.qualifiedTableName(database, table))
 			return m.startQueryStatement(statement, true)
 		case "schema":
-			schema := m.deletePendingName
-			m.deletePendingName, m.deletePendingDatabase = "", ""
+			schema := m.overlay.deletePendingName
+			m.overlay.deletePendingName, m.overlay.deletePendingDatabase = "", ""
 			return m.startQueryStatement("DROP SCHEMA "+m.quoteIdentifier(schema)+" RESTRICT", true)
 		case "database":
-			database := m.deletePendingDatabase
-			m.deletePendingDatabase, m.deletePendingName = "", ""
+			database := m.overlay.deletePendingDatabase
+			m.overlay.deletePendingDatabase, m.overlay.deletePendingName = "", ""
 			return m.startQueryStatement("DROP DATABASE "+m.quoteIdentifier(database), true)
 		case "connection":
-			connection := m.deletePendingConnection
-			m.deletePendingConnection = nil
+			connection := m.overlay.deletePendingConnection
+			m.overlay.deletePendingConnection = nil
 			if connection != nil {
 				m.deleteRecentConnection(*connection)
 			}
 			return m, nil
 		default:
-			m.deletePendingName = ""
+			m.overlay.deletePendingName = ""
 			return m, m.deleteRow()
 		}
 	}
@@ -832,7 +832,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	case databaseOpenedMsg:
 		return m.updateOpen(message)
 	case directoryReadMsg:
-		m.pickerDir = message.dir
+		m.connection.pickerDir = message.dir
 		if message.err != nil {
 			log.Error("reading directory", message.err)
 			m.setStatus(safeText(fmt.Sprintf("unable to read directory: %v", message.err)))
@@ -843,7 +843,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		for index, item := range message.items {
 			items[index] = item
 		}
-		return m, m.picker.SetItems(items)
+		return m, m.connection.picker.SetItems(items)
 	case pickerSelectionMsg:
 		if message.err != nil {
 			log.Error("opening selection", message.err)
@@ -858,8 +858,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		// (visible only when log_level allows it), not as a plain status
 		// popup. It is also transient: it logs before the connection
 		// profile exists, so it never binds history to a scope.
-		m.skipStatusPopup = true
-		m.skipNotificationPersist = true
+		m.notifications.skipStatusPopup = true
+		m.notifications.skipNotificationPersist = true
 		log.Debug("opening database")
 		return m, m.openTarget(message.target)
 	case querySucceededMsg:
@@ -923,24 +923,24 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	// a rejected DDL restores it, a success closes it and refreshes the
 	// sidebar.
 	if m.tableFormOpen() {
-		command, action := m.tableForm.Update(message, m.formMode)
+		command, action := m.structure.tableForm.Update(message, m.overlay.formMode)
 		switch action {
 		case tableFormClose:
-			m.tableForm = tableForm{}
+			m.structure.tableForm = tableForm{}
 		case tableFormSave:
-			m.tableForm.confirmation.description = m.tableForm.statement(m)
+			m.structure.tableForm.confirmation.description = m.structure.tableForm.statement(m)
 		case tableFormExecute:
-			statement := m.tableForm.statement(m)
-			m.tableFormRunning = true
+			statement := m.structure.tableForm.statement(m)
+			m.structure.tableFormRunning = true
 			return m.startQueryStatement(statement, true)
 		}
 		return m, command
 	}
-	if m.sqlEditorActive() && m.formMode.editing() {
-		previous := m.editor.value
-		command := m.editor.update(message)
-		if m.editor.value != previous {
-			m.editorValidity = sqlValidityPending
+	if m.sqlEditorActive() && m.overlay.formMode.editing() {
+		previous := m.queryLog.editor.value
+		command := m.queryLog.editor.update(message)
+		if m.queryLog.editor.value != previous {
+			m.queryLog.editorValidity = sqlValidityPending
 			command = tea.Batch(command, m.scheduleSQLValidation())
 		}
 		return m, command
@@ -950,8 +950,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) executeQuery() (tea.Model, tea.Cmd) {
-	if requiresQueryConfirmation(m.editor.value) {
-		m.queryConfirmation = newQueryConfirmation(m.editor.value)
+	if requiresQueryConfirmation(m.queryLog.editor.value) {
+		m.overlay.queryConfirmation = newQueryConfirmation(m.queryLog.editor.value)
 		return m, nil
 	}
 	return m.startQuery()

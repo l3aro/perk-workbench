@@ -49,14 +49,14 @@ func (m Model) loadReferencingForeignKeys() tea.Cmd {
 }
 
 func (m Model) saveForeignKey() tea.Cmd {
-	change, err := m.foreignKeyForm.change()
+	change, err := m.structure.foreignKeyForm.change()
 	if err != nil {
 		return func() tea.Msg { return foreignKeyChangedMsg{err: err} }
 	}
 	if m.ReadOnly {
 		return func() tea.Msg { return foreignKeyChangedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	table, service, previous := m.SelectedTable, m.Database, m.foreignKeyForm.previous
+	table, service, previous := m.SelectedTable, m.Database, m.structure.foreignKeyForm.previous
 	statement, startedAt := m.foreignKeyChangeStatement(table, previous, change), time.Now()
 	return func() tea.Msg {
 		if previous == "" {
@@ -70,9 +70,9 @@ func (m Model) deleteForeignKey() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return foreignKeyDeletedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	previous := m.deletePendingName
+	previous := m.overlay.deletePendingName
 	if previous == "" {
-		previous = m.foreignKeyForm.previous
+		previous = m.structure.foreignKeyForm.previous
 	}
 	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropForeignKeyStatement(table, previous), time.Now()
@@ -93,12 +93,12 @@ func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.C
 	for index, foreignKey := range message.foreignKeys {
 		rows[index] = table.Row{safeText(foreignKey.ID), safeText(strings.Join(foreignKey.Columns, ", ")), safeText(foreignKey.ReferenceTable), safeText(strings.Join(foreignKey.ReferenceColumns, ", ")), safeText(foreignKey.OnDelete), safeText(foreignKey.OnUpdate)}
 	}
-	m.foreignKeys.SetColumns(tableColumns([]string{"ID", "Columns", "Reference table", "Reference columns", "On delete", "On update"}, rows))
-	resizeResultsTable(&m.foreignKeys, m.tableViewportWidth, m.foreignKeys.Height()+1)
-	m.foreignKeyRows = rows
-	m.foreignKeyInfo = message.foreignKeys
+	m.structure.foreignKeys.SetColumns(tableColumns([]string{"ID", "Columns", "Reference table", "Reference columns", "On delete", "On update"}, rows))
+	resizeResultsTable(&m.structure.foreignKeys, m.layout.tableViewportWidth, m.structure.foreignKeys.Height()+1)
+	m.structure.foreignKeyRows = rows
+	m.structure.foreignKeyInfo = message.foreignKeys
 	m.applyTableFilter(tabForeignKeys)
-	m.foreignKeysOffset = 0
+	m.layout.foreignKeysOffset = 0
 	return m, nil
 }
 
@@ -110,7 +110,7 @@ func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoaded
 		}
 		return m, nil
 	}
-	m.referencingForeignKeyInfo = message.foreignKeys
+	m.structure.referencingForeignKeyInfo = message.foreignKeys
 	return m, nil
 }
 
@@ -119,11 +119,11 @@ func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model,
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated foreign key"))
 	}
 	if message.err != nil {
-		m.foreignKeyForm.saving = false
+		m.structure.foreignKeyForm.saving = false
 		m.setStatus(safeText(fmt.Sprintf("updating foreign key: %v", message.err)))
 		return m, nil
 	}
-	m.foreignKeyForm.close()
+	m.structure.foreignKeyForm.close()
 	m.setStatus("foreign key updated")
 	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
@@ -133,19 +133,19 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped foreign key"))
 	}
 	if message.err != nil {
-		m.foreignKeyForm.saving = false
+		m.structure.foreignKeyForm.saving = false
 		m.setStatus(safeText(fmt.Sprintf("deleting foreign key: %v", message.err)))
 		return m, nil
 	}
-	m.foreignKeyForm.close()
+	m.structure.foreignKeyForm.close()
 	m.setStatus("foreign key deleted")
 	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
 
 func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd {
-	m.foreignKeyForm = newForeignKeyForm(foreignKey)
-	m.formMode.buttonsFocused = false
-	m.foreignKeyForm.keybindings = m.keybindings
-	m.foreignKeyForm.setWidth(m.tableViewportWidth)
-	return m.openForm(m.foreignKeyForm.form.Init(), m.foreignKeyForm.focus)
+	m.structure.foreignKeyForm = newForeignKeyForm(foreignKey)
+	m.overlay.formMode.buttonsFocused = false
+	m.structure.foreignKeyForm.keybindings = m.keybindings
+	m.structure.foreignKeyForm.setWidth(m.layout.tableViewportWidth)
+	return m.openForm(m.structure.foreignKeyForm.form.Init(), m.structure.foreignKeyForm.focus)
 }

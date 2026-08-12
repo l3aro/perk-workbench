@@ -54,7 +54,7 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 	if model.Focus != focusSchema {
 		t.Fatalf("model focus = %v, want schema", model.Focus)
 	}
-	if got := model.schema.Items(); len(got) != 2 {
+	if got := model.schema.list.Items(); len(got) != 2 {
 		t.Fatalf("schema items = %d, want database root and table", len(got))
 	}
 	if model.Database == nil {
@@ -93,21 +93,21 @@ func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 
 func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	if model.connection.focus != connectionFocusRecent {
-		t.Fatalf("connection focus = %d, want recent connections", model.connection.focus)
+	if model.connection.form.focus != connectionFocusRecent {
+		t.Fatalf("connection focus = %d, want recent connections", model.connection.form.focus)
 	}
 }
 
 func TestNew_schemaListUsesSimpleTableRows(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	if err := model.schema.SetItems([]list.Item{schemaItem{title: "projects"}}); err != nil {
+	if err := model.schema.list.SetItems([]list.Item{schemaItem{title: "projects"}}); err != nil {
 		t.Fatalf("setting schema items: %v", err)
 	}
-	model.schema.SetSize(20, 5)
+	model.schema.list.SetSize(20, 5)
 
 	// When
-	view := ansi.Strip(model.schema.View())
+	view := ansi.Strip(model.schema.list.View())
 
 	// Then
 	if strings.Contains(view, "> ") {
@@ -125,14 +125,14 @@ func TestSchemaTree_groups_tables_under_databases(t *testing.T) {
 		{Database: "app", Type: "database", Name: "app"},
 		{Database: "app", Type: "table", Name: "accounts"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
 	// When
-	expanded := ansi.Strip(model.schema.View())
+	expanded := ansi.Strip(model.schema.list.View())
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	model = completeTreeAnim(model)
-	collapsed := ansi.Strip(model.schema.View())
+	collapsed := ansi.Strip(model.schema.list.View())
 
 	// Then
 	for _, label := range []string{"▣ analytics", "  ▪ events", "▣ app", "  ▪ accounts"} {
@@ -161,10 +161,10 @@ func TestSchemaTree_mysqlLoadExpandsConnectedDatabase(t *testing.T) {
 		{Database: "app", Type: "database", Name: "app"},
 		{Database: "app", Type: "table", Name: "users"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
 	// Then
-	view := ansi.Strip(model.schema.View())
+	view := ansi.Strip(model.schema.list.View())
 	if !strings.Contains(view, "  ▪ users") {
 		t.Fatalf("loaded tree = %q, want app expanded with users", view)
 	}
@@ -183,16 +183,16 @@ func TestSchemaTree_mysqlExpandsOneDatabaseAtATime(t *testing.T) {
 		{Database: "analytics", Type: "database", Name: "analytics"},
 		{Database: "analytics", Type: "table", Name: "events"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
 	// When — Enter on the analytics root.
-	model.schema.Select(2)
+	model.schema.list.Select(2)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	model = completeTreeAnim(model)
 
 	// Then — analytics is expanded and app collapsed: one at a time.
-	view := ansi.Strip(model.schema.View())
+	view := ansi.Strip(model.schema.list.View())
 	for _, label := range []string{"▣ analytics", "  ▪ events"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expanded analytics tree = %q, want %q", view, label)
@@ -204,14 +204,14 @@ func TestSchemaTree_mysqlExpandsOneDatabaseAtATime(t *testing.T) {
 
 	// When — Enter again on the analytics root (the rebuild moved the
 	// selection; the root now sits at index 1).
-	model.schema.Select(1)
+	model.schema.list.Select(1)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	model = completeTreeAnim(model)
 
 	// Then — everything is collapsed; app tables stay hidden until app is
 	// expanded again.
-	view = ansi.Strip(model.schema.View())
+	view = ansi.Strip(model.schema.list.View())
 	if strings.Contains(view, "  ▪ events") || strings.Contains(view, "  ▪ users") {
 		t.Fatalf("collapsed tree = %q, want no database tables", view)
 	}
@@ -228,16 +228,16 @@ func TestSchemaTree_postgresExpandsOneSchemaAtATime(t *testing.T) {
 		{Database: "main", Type: "schema", Name: "audit"},
 		{Database: "main", Type: "table", Name: "audit.events"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
 	// When — Enter on the audit schema row.
-	model.schema.Select(3)
+	model.schema.list.Select(3)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	model = completeTreeAnim(model)
 
 	// Then — audit is expanded and public collapsed: one at a time.
-	view := ansi.Strip(model.schema.View())
+	view := ansi.Strip(model.schema.list.View())
 	for _, label := range []string{"  ▤ audit", "    ▪ events"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("expanded audit tree = %q, want %q", view, label)
@@ -259,9 +259,9 @@ func TestSchemaTree_collections_count_in_database_badge(t *testing.T) {
 		{Database: "mydb", Type: "collection", Name: "users"},
 		{Database: "mydb", Type: "collection", Name: "orders"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
-	expanded := ansi.Strip(model.schema.View())
+	expanded := ansi.Strip(model.schema.list.View())
 	for _, label := range []string{"▣ mydb", "  ▪ users", "  ▪ orders"} {
 		if !strings.Contains(expanded, label) {
 			t.Fatalf("expanded schema tree = %q, want %q", expanded, label)
@@ -283,10 +283,10 @@ func TestSchemaTree_stateColors(t *testing.T) {
 		{Database: "main", Type: "table", Name: "public.orders"},
 		{Database: "archive", Type: "database", Name: "archive"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 	model.SelectedTable = "public.accounts"
 	_ = model.rebuildSchemaTree()
-	model.schema.Select(0)
+	model.schema.list.Select(0)
 	// The marker renders bold (heavier strokes, same cell), the label
 	// regular; both carry the state color.
 	row := func(marker, indent, label, color string) string {
@@ -298,7 +298,7 @@ func TestSchemaTree_stateColors(t *testing.T) {
 	// the open path is secondary, the selected row is primary, everything
 	// else is idle muted. Count badges pin to the row's right edge instead
 	// of sitting inline after the name.
-	view := model.schema.View()
+	view := model.schema.list.View()
 	for _, label := range []string{"▣ main", "  ▤ public", "    ▪ accounts", "    ▪ orders", "▣ archive"} {
 		if !strings.Contains(ansi.Strip(view), label) {
 			t.Fatalf("schema tree = %q, want %q", ansi.Strip(view), label)
@@ -319,7 +319,7 @@ func TestSchemaTree_stateColors(t *testing.T) {
 	}
 
 	// When — Enter opens the orders table: the path moves with it.
-	model.schema.Select(3)
+	model.schema.list.Select(3)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	// selectSchemaTable schedules the sidebar rebuild in its command batch;
@@ -328,8 +328,8 @@ func TestSchemaTree_stateColors(t *testing.T) {
 	// synchronously; the returned command only feeds filter matches.
 	model.rebuildSchemaTree()
 	// Move the selection off the opened table: the path keeps its color.
-	model.schema.Select(2)
-	view = model.schema.View()
+	model.schema.list.Select(2)
+	view = model.schema.list.View()
 	if !strings.Contains(view, row("▪", "    ", "orders", colorSecondary)) {
 		t.Fatalf("opened table row = %q, want secondary color", view)
 	}
@@ -340,8 +340,8 @@ func TestSchemaTree_stateColors(t *testing.T) {
 	// When — no table is open, only the selection keeps a non-idle color.
 	model.SelectedTable = ""
 	_ = model.rebuildSchemaTree()
-	model.schema.Select(2)
-	view = model.schema.View()
+	model.schema.list.Select(2)
+	view = model.schema.list.View()
 	if !strings.Contains(view, row("▣", "", "main", colorMuted)) {
 		t.Fatalf("root without open table = %q, want muted color", view)
 	}
@@ -396,8 +396,8 @@ func readyModel(t *testing.T) Model {
 		}
 	})
 	model := New("", context.Background(), testOpen, false)
-	model.queryLogPath = t.TempDir() + "/data.db"
-	model.queryLogEntries = nil
+	model.queryLog.path = t.TempDir() + "/data.db"
+	model.queryLog.entries = nil
 	model.renderQueryLog()
 	model.State, model.Database = stateReady, service
 	return model
@@ -464,7 +464,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := loadRecentConnections(model.recentPath)
+		loaded, _ := loadRecentConnections(model.connection.recentPath)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -481,7 +481,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := loadRecentConnections(model.recentPath)
+		loaded, _ := loadRecentConnections(model.connection.recentPath)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -489,7 +489,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 	t.Run("connection form", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 		model := New("", context.Background(), testOpen, false)
-		model.connection.values.name, model.connection.values.target = "Form", target
+		model.connection.form.values.name, model.connection.form.values.target = "Form", target
 		updated, command := model.openConnection()
 		model = updated.(Model)
 		if command == nil {
@@ -500,7 +500,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := loadRecentConnections(model.recentPath)
+		loaded, _ := loadRecentConnections(model.connection.recentPath)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -517,7 +517,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.connectionID != "" {
 			t.Fatalf("failed open set connection ID %q", model.connectionID)
 		}
-		loaded, _ := loadRecentConnections(model.recentPath)
+		loaded, _ := loadRecentConnections(model.connection.recentPath)
 		if len(loaded) != 0 {
 			t.Fatalf("failed open saved profiles = %#v, want none", loaded)
 		}
@@ -549,7 +549,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	}
 
 	model := New("", context.Background(), testOpen, false)
-	model.connection.values.name, model.connection.values.target = "A", aPath
+	model.connection.form.values.name, model.connection.form.values.target = "A", aPath
 	updated, command := model.openConnection()
 	model = updated.(Model)
 	updated, _ = model.Update(command())
@@ -578,8 +578,8 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	if model.databaseInfo != (sharedsql.DatabaseInfo{}) {
 		t.Fatalf("disconnect kept database info %#v", model.databaseInfo)
 	}
-	if len(model.queryLogEntries) != 0 {
-		t.Fatalf("disconnect kept query log entries %#v", model.queryLogEntries)
+	if len(model.queryLog.entries) != 0 {
+		t.Fatalf("disconnect kept query log entries %#v", model.queryLog.entries)
 	}
 
 	// Open B through a stub backend with a distinct product identity.
@@ -596,7 +596,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 			Objects: []sharedsql.SchemaObject{{Database: "b_db", Type: "database", Name: "b_db"}},
 		}, nil
 	}, false)
-	model.connection.values.name, model.connection.values.target = "B", bTarget
+	model.connection.form.values.name, model.connection.form.values.target = "B", bTarget
 	updated, command = model.openConnection()
 	model = updated.(Model)
 	updated, _ = model.Update(command())

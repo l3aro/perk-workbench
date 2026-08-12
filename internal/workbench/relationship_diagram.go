@@ -18,8 +18,8 @@ type relationshipEdge struct {
 
 func (m Model) relationshipView() string {
 	diagram := m.relationshipDiagramView()
-	if lipgloss.Width(diagram) > m.tableViewportWidth || strings.Count(diagram, "\n")+1 > max(m.workspaceHeight-2, 1) {
-		return m.relationshipListView() + "\n" + chrome.PaneStatus("", statusStyle.Render("Press f for full-screen diagram"), m.tableViewportWidth)
+	if lipgloss.Width(diagram) > m.layout.tableViewportWidth || strings.Count(diagram, "\n")+1 > max(m.layout.workspaceHeight-2, 1) {
+		return m.relationshipListView() + "\n" + chrome.PaneStatus("", statusStyle.Render("Press f for full-screen diagram"), m.layout.tableViewportWidth)
 	}
 	return diagram
 }
@@ -81,17 +81,17 @@ func (m Model) relationshipDiagramView() string {
 }
 
 func (m Model) relationshipListView() string {
-	lines := []string{headerStyle.Render(relationshipLine(m.SelectedTable+" relationships", max(m.tableViewportWidth-2, 1)))}
-	for _, foreignKey := range m.foreignKeyInfo {
-		lines = append(lines, relationshipLine(m.SelectedTable+" → "+foreignKey.ReferenceTable, m.tableViewportWidth))
+	lines := []string{headerStyle.Render(relationshipLine(m.SelectedTable+" relationships", max(m.layout.tableViewportWidth-2, 1)))}
+	for _, foreignKey := range m.structure.foreignKeyInfo {
+		lines = append(lines, relationshipLine(m.SelectedTable+" → "+foreignKey.ReferenceTable, m.layout.tableViewportWidth))
 	}
-	for _, foreignKey := range m.referencingForeignKeyInfo {
+	for _, foreignKey := range m.structure.referencingForeignKeyInfo {
 		if strings.EqualFold(foreignKey.Table, m.SelectedTable) {
 			continue
 		}
-		lines = append(lines, relationshipLine(foreignKey.Table+" → "+m.SelectedTable, m.tableViewportWidth))
+		lines = append(lines, relationshipLine(foreignKey.Table+" → "+m.SelectedTable, m.layout.tableViewportWidth))
 	}
-	return strings.Join(lines[:min(len(lines), max(m.workspaceHeight-3, 0))], "\n")
+	return strings.Join(lines[:min(len(lines), max(m.layout.workspaceHeight-3, 0))], "\n")
 }
 
 func relationshipLine(value string, width int) string {
@@ -115,7 +115,7 @@ func (m Model) relationshipEdges() (incoming, outgoing []relationshipEdge) {
 		index[key] = edgeSlot{edges, len(*edges)}
 		*edges = append(*edges, edge)
 	}
-	for _, foreignKey := range m.foreignKeyInfo {
+	for _, foreignKey := range m.structure.foreignKeyInfo {
 		if strings.EqualFold(foreignKey.ReferenceTable, m.SelectedTable) {
 			continue
 		}
@@ -124,7 +124,7 @@ func (m Model) relationshipEdges() (incoming, outgoing []relationshipEdge) {
 			pairs: []string{relationshipPairLabel(foreignKey)},
 		})
 	}
-	for _, foreignKey := range m.referencingForeignKeyInfo {
+	for _, foreignKey := range m.structure.referencingForeignKeyInfo {
 		if strings.EqualFold(foreignKey.Table, m.SelectedTable) {
 			continue
 		}
@@ -154,19 +154,19 @@ func relationshipPairLabel(foreignKey sharedsql.ForeignKeyInfo) string {
 // collapsed — the Columns tab shows the full schema.
 func (m Model) relationshipCenterCard(connector bool) []string {
 	foreignKeys := map[string]bool{}
-	for _, foreignKey := range m.foreignKeyInfo {
+	for _, foreignKey := range m.structure.foreignKeyInfo {
 		for _, column := range foreignKey.Columns {
 			foreignKeys[column] = true
 		}
 	}
 	referenced := map[string]bool{}
-	for _, foreignKey := range m.referencingForeignKeyInfo {
+	for _, foreignKey := range m.structure.referencingForeignKeyInfo {
 		for _, column := range foreignKey.ReferenceColumns {
 			referenced[column] = true
 		}
 	}
-	rows := make([]string, 0, len(m.structureColumns)+2)
-	for _, column := range m.structureColumns {
+	rows := make([]string, 0, len(m.structure.columns)+2)
+	for _, column := range m.structure.columns {
 		switch {
 		case column.PrimaryKey > 0:
 			rows = append(rows, "🔑 "+column.Name)
@@ -174,7 +174,7 @@ func (m Model) relationshipCenterCard(connector bool) []string {
 			rows = append(rows, "🔗 "+column.Name)
 		}
 	}
-	for _, foreignKey := range m.foreignKeyInfo {
+	for _, foreignKey := range m.structure.foreignKeyInfo {
 		if strings.EqualFold(foreignKey.ReferenceTable, m.SelectedTable) {
 			rows = append(rows, "↺ "+relationshipPairLabel(foreignKey))
 		}

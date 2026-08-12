@@ -192,7 +192,7 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 	if !model.vimMode {
 		t.Fatal("test setup: vim mode should default on")
 	}
-	if model.formMode.editing() {
+	if model.overlay.formMode.editing() {
 		t.Fatal("test setup: SQL editor should start in normal mode")
 	}
 	for _, item := range newCommandPalette(model).items {
@@ -204,8 +204,8 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 	// Normal mode swallows typing.
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updated.(Model)
-	if model.editor.value != "" {
-		t.Fatalf("editor = %q, want empty before toggle", model.editor.value)
+	if model.queryLog.editor.value != "" {
+		t.Fatalf("editor = %q, want empty before toggle", model.queryLog.editor.value)
 	}
 
 	// Toggle off via the palette command.
@@ -214,15 +214,15 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 	if model.vimMode {
 		t.Fatal("vim mode still on after toggle")
 	}
-	if !model.formMode.editing() {
+	if !model.overlay.formMode.editing() {
 		t.Fatal("SQL editor did not enter insert mode when vim mode switched off")
 	}
 
 	// Typing now lands in the editor.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updated.(Model)
-	if model.editor.value != "j" {
-		t.Fatalf("editor = %q, want j after toggle", model.editor.value)
+	if model.queryLog.editor.value != "j" {
+		t.Fatalf("editor = %q, want j after toggle", model.queryLog.editor.value)
 	}
 
 	// Persisted for the next launch.
@@ -247,7 +247,7 @@ func TestCommandPalette_connectionShowsExecutableCommands(t *testing.T) {
 
 	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "notifications.show", "table.open_target", "theme.select", "vim.toggle")
 
-	model.connection.focus = connectionFocusForm
+	model.connection.form.focus = connectionFocusForm
 	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "notifications.show", "table.open_target", "theme.select", "vim.toggle")
 }
 
@@ -353,23 +353,23 @@ func TestModelCommandPalette_wheelNavigatesSelection(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("palette did not open")
 	}
 
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	if model.commandPalette.cursor != 1 {
-		t.Fatalf("wheel down cursor = %d, want 1", model.commandPalette.cursor)
+	if model.overlay.commandPalette.cursor != 1 {
+		t.Fatalf("wheel down cursor = %d, want 1", model.overlay.commandPalette.cursor)
 	}
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("wheel closed the palette")
 	}
 
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(Model)
-	if model.commandPalette.cursor != 0 {
-		t.Fatalf("wheel up cursor = %d, want 0", model.commandPalette.cursor)
+	if model.overlay.commandPalette.cursor != 0 {
+		t.Fatalf("wheel up cursor = %d, want 0", model.overlay.commandPalette.cursor)
 	}
 }
 
@@ -377,7 +377,7 @@ func TestModelCommandPalette_outsideClickClosesWithoutLeakingRelease(t *testing.
 	model := resizeModel(readyModel(t), 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("palette did not open")
 	}
 	want := model.Focus
@@ -385,7 +385,7 @@ func TestModelCommandPalette_outsideClickClosesWithoutLeakingRelease(t *testing.
 	// Click outside the palette box — closes it.
 	updated, _ = model.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.commandPalette.visible {
+	if model.overlay.commandPalette.visible {
 		t.Fatal("outside click did not close the palette")
 	}
 
@@ -408,7 +408,7 @@ func TestModelCommandPalette_clickSelectDoesNotLeakReleaseToPane(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
-	p := model.commandPalette
+	p := model.overlay.commandPalette
 
 	// Locate the rendered row of the focus.query_log item.
 	logIdx := -1
@@ -440,7 +440,7 @@ func TestModelCommandPalette_clickSelectDoesNotLeakReleaseToPane(t *testing.T) {
 	if model.Focus != focusQueryLog {
 		t.Fatalf("focus = %v, want focusQueryLog", model.Focus)
 	}
-	if model.commandPalette.visible {
+	if model.overlay.commandPalette.visible {
 		t.Fatal("palette still visible after click")
 	}
 
@@ -463,21 +463,21 @@ func TestModelCommandPalette_clickSelectsRenderedItem(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 100 - headerRightMargin - headerButtonWidth() - (headerButtonWidth()+1)/2, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("palette did not open")
 	}
 
-	_, _, boxX, boxY := model.commandPalette.layout(100, 24)
+	_, _, boxX, boxY := model.overlay.commandPalette.layout(100, 24)
 	// Header row click — consumed, palette stays open (off-by-one guard).
 	updated, _ = model.Update(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 3, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("click on scope header closed the palette")
 	}
 	// First item sits at inner row 3 (title, blank, header, item).
 	updated, _ = model.Update(tea.MouseClickMsg{X: boxX + 2, Y: boxY + 4, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.commandPalette.visible {
+	if model.overlay.commandPalette.visible {
 		t.Fatal("click on first item did not select and close the palette")
 	}
 }
@@ -562,7 +562,7 @@ func TestModelCommandPalette_opensThemePicker(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl, Text: "p"})
 	model = updated.(Model)
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("ctrl+p did not open the palette")
 	}
 
@@ -575,8 +575,8 @@ func TestModelCommandPalette_opensThemePicker(t *testing.T) {
 	} {
 		updated, _ = model.Update(test.key)
 		model = updated.(Model)
-		if model.commandPalette.cursor != test.want {
-			t.Fatalf("cursor = %d, want %d", model.commandPalette.cursor, test.want)
+		if model.overlay.commandPalette.cursor != test.want {
+			t.Fatalf("cursor = %d, want %d", model.overlay.commandPalette.cursor, test.want)
 		}
 	}
 
@@ -592,7 +592,7 @@ func TestModelCommandPalette_opensThemePicker(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	if model.commandPalette.visible || model.themePicker == nil {
+	if model.overlay.commandPalette.visible || model.overlay.themePicker == nil {
 		t.Fatal("theme selection did not open the theme picker")
 	}
 	if activeTheme != original {
@@ -605,7 +605,7 @@ func TestThemePicker_previewsAndCancelsTheme(t *testing.T) {
 	t.Cleanup(func() { setTheme(original) })
 
 	model := New("", context.Background(), testOpen, false)
-	model.themePicker = newThemePicker()
+	model.overlay.themePicker = newThemePicker()
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = updated.(Model)
 	if activeTheme != themeNord {
@@ -614,7 +614,7 @@ func TestThemePicker_previewsAndCancelsTheme(t *testing.T) {
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.themePicker != nil {
+	if model.overlay.themePicker != nil {
 		t.Fatal("theme picker remained visible after cancel")
 	}
 	if activeTheme != original {
@@ -628,12 +628,12 @@ func TestThemePicker_commitsPreviewedTheme(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // keep the commit off the real config dir
 
 	model := New("", context.Background(), testOpen, false)
-	model.themePicker = newThemePicker()
+	model.overlay.themePicker = newThemePicker()
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.themePicker != nil {
+	if model.overlay.themePicker != nil {
 		t.Fatal("theme picker remained visible after selection")
 	}
 	if activeTheme != themeNord {
@@ -665,7 +665,7 @@ func TestModelCommandPalette_tableOpenTargetPickerCommitsAndPersists(t *testing.
 
 	updated, _ := model.handlePaletteCommand("table.open_target")
 	model = updated.(Model)
-	if model.tableTargetPicker == nil {
+	if model.overlay.tableTargetPicker == nil {
 		t.Fatal("table.open_target did not open the table target picker")
 	}
 
@@ -673,7 +673,7 @@ func TestModelCommandPalette_tableOpenTargetPickerCommitsAndPersists(t *testing.
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.tableTargetPicker != nil {
+	if model.overlay.tableTargetPicker != nil {
 		t.Fatal("table target picker remained visible after selection")
 	}
 	if got := tableOpenTargetTab(); got != tabBrowse {
@@ -699,12 +699,12 @@ func TestTableTargetPicker_cancelsWithoutChange(t *testing.T) {
 	SetAppConfig(Config{})
 
 	model := readyModel(t)
-	model.tableTargetPicker = newTableTargetPicker()
+	model.overlay.tableTargetPicker = newTableTargetPicker()
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.tableTargetPicker != nil {
+	if model.overlay.tableTargetPicker != nil {
 		t.Fatal("table target picker remained visible after cancel")
 	}
 	if got := tableOpenTargetTab(); got != tabStructure {

@@ -32,7 +32,7 @@ type queryCanceledMsg struct {
 }
 
 func (m Model) startQuery() (tea.Model, tea.Cmd) {
-	return m.startQueryStatement(m.editor.value, false)
+	return m.startQueryStatement(m.queryLog.editor.value, false)
 }
 
 // startQueryStatement runs a statement asynchronously; reloadSchema requests
@@ -61,39 +61,39 @@ func (m Model) startQueryStatement(statement string, reloadSchema bool) (tea.Mod
 }
 
 func (m *Model) recordQueryHistory(statement string) {
-	m.queryHistory = append([]string{statement}, m.queryHistory...)
-	if len(m.queryHistory) > queryLogLimit {
-		m.queryHistory = m.queryHistory[:queryLogLimit]
+	m.queryLog.history = append([]string{statement}, m.queryLog.history...)
+	if len(m.queryLog.history) > queryLogLimit {
+		m.queryLog.history = m.queryLog.history[:queryLogLimit]
 	}
-	m.historyIndex = -1
+	m.queryLog.historyIndex = -1
 }
 
 func (m *Model) recallQueryHistory(direction int) bool {
-	if len(m.queryHistory) == 0 {
+	if len(m.queryLog.history) == 0 {
 		return false
 	}
 	if direction > 0 {
-		if m.historyIndex == -1 {
-			m.historyIndex = 0
-		} else if m.historyIndex < len(m.queryHistory)-1 {
-			m.historyIndex++
+		if m.queryLog.historyIndex == -1 {
+			m.queryLog.historyIndex = 0
+		} else if m.queryLog.historyIndex < len(m.queryLog.history)-1 {
+			m.queryLog.historyIndex++
 		} else {
 			return false // already at the oldest entry; never wrap
 		}
 	} else {
-		if m.historyIndex <= 0 {
-			if m.historyIndex == -1 {
+		if m.queryLog.historyIndex <= 0 {
+			if m.queryLog.historyIndex == -1 {
 				return false // Down outside recall mode
 			}
-			m.historyIndex = -1
+			m.queryLog.historyIndex = -1
 		} else {
-			m.historyIndex--
+			m.queryLog.historyIndex--
 		}
 	}
-	if m.historyIndex == -1 {
-		m.editor.setValue("")
+	if m.queryLog.historyIndex == -1 {
+		m.queryLog.editor.setValue("")
 	} else {
-		m.editor.setValue(m.queryHistory[m.historyIndex])
+		m.queryLog.editor.setValue(m.queryLog.history[m.queryLog.historyIndex])
 	}
 	return true
 }
@@ -112,7 +112,7 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 	} else {
 		m.setResults(message.result)
 		if message.statement != "" && len(message.result.Rows) > 0 {
-			m.results.SetCursor(0)
+			m.queryLog.results.SetCursor(0)
 		}
 		m.appendQueryLog(queryLogEntry{startedAt: message.startedAt, statement: message.statement, duration: message.result.Duration, message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), status: "success"})
 	}
@@ -120,11 +120,11 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 		return m, tea.Quit
 	}
 	// Schema may have changed (DDL); recheck the editor value against it.
-	m.editorValidity = sqlValidityPending
+	m.queryLog.editorValidity = sqlValidityPending
 	if message.reloadSchema {
 		// A table action succeeded: close its popup and refresh the sidebar.
-		m.tableForm = tableForm{}
-		m.tableFormRunning = false
+		m.structure.tableForm = tableForm{}
+		m.structure.tableFormRunning = false
 		return m, tea.Batch(m.scheduleSQLValidation(), m.loadSchema())
 	}
 	return m, m.scheduleSQLValidation()
@@ -139,11 +139,11 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 	if quit {
 		return m, tea.Quit
 	}
-	if m.tableFormRunning {
+	if m.structure.tableFormRunning {
 		// The table DDL was rejected: keep the popup open with its typed
 		// name so the user can adjust or discard it.
-		m.tableFormRunning = false
-		m.formMode.mode = formModeNormal
+		m.structure.tableFormRunning = false
+		m.overlay.formMode.mode = formModeNormal
 		m.setStatus(safeText("table action failed: " + message.err.Error()))
 	}
 	return m, nil
@@ -158,10 +158,10 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 	if quit {
 		return m, tea.Quit
 	}
-	if m.tableFormRunning {
+	if m.structure.tableFormRunning {
 		// The statement never ran; restore the popup.
-		m.tableFormRunning = false
-		m.formMode.mode = formModeNormal
+		m.structure.tableFormRunning = false
+		m.overlay.formMode.mode = formModeNormal
 	}
 	return m, nil
 }
@@ -211,8 +211,8 @@ type sqlValidationMsg struct {
 
 // scheduleSQLValidation debounces validation after the editor value changes.
 func (m *Model) scheduleSQLValidation() tea.Cmd {
-	m.sqlValidationTag++
-	tag := m.sqlValidationTag
+	m.queryLog.validationTag++
+	tag := m.queryLog.validationTag
 	return tea.Tick(sqlValidationDebounce, func(time.Time) tea.Msg {
 		return sqlValidationTickMsg{tag: tag}
 	})
@@ -228,25 +228,25 @@ func (m Model) validateSQL(statement string) tea.Cmd {
 }
 
 func (m Model) updateSQLValidationTick(message sqlValidationTickMsg) (tea.Model, tea.Cmd) {
-	if message.tag != m.sqlValidationTag || m.Database == nil {
+	if message.tag != m.queryLog.validationTag || m.Database == nil {
 		return m, nil
 	}
-	statement := strings.TrimSpace(m.editor.value)
+	statement := strings.TrimSpace(m.queryLog.editor.value)
 	if statement == "" {
-		m.editorValidity = sqlValidityPending
+		m.queryLog.editorValidity = sqlValidityPending
 		return m, nil
 	}
-	return m, m.validateSQL(m.editor.value)
+	return m, m.validateSQL(m.queryLog.editor.value)
 }
 
 func (m Model) updateSQLValidation(message sqlValidationMsg) (tea.Model, tea.Cmd) {
-	if m.editor.value != message.statement {
+	if m.queryLog.editor.value != message.statement {
 		return m, nil // stale result for an older revision
 	}
 	if message.err != nil {
-		m.editorValidity = sqlValidityInvalid
+		m.queryLog.editorValidity = sqlValidityInvalid
 	} else {
-		m.editorValidity = sqlValidityValid
+		m.queryLog.editorValidity = sqlValidityValid
 	}
 	return m, nil
 }

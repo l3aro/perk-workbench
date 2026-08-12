@@ -93,17 +93,17 @@ func (f *browseFilterForm) reset() {
 }
 
 func (m *Model) openBrowseFilterForm() tea.Cmd {
-	if len(m.structureColumns) == 0 {
+	if len(m.structure.columns) == 0 {
 		m.setStatus("table columns are loading")
 		return nil
 	}
-	m.browseFilterForm = newBrowseFilterForm(m.structureColumns, m.browseSettings, m.browsePageSize, m.tableViewportWidth, m.formViewportHeight())
-	m.formMode.mode = formModeNormal
-	m.formMode.buttonsFocused = false
+	m.browse.filterForm = newBrowseFilterForm(m.structure.columns, m.browse.settings, m.browse.pageSize, m.layout.tableViewportWidth, m.formViewportHeight())
+	m.overlay.formMode.mode = formModeNormal
+	m.overlay.formMode.buttonsFocused = false
 	if m.vimMode {
 		return nil
 	}
-	command, _ := m.browseFilterForm.beginEdit()
+	command, _ := m.browse.filterForm.beginEdit()
 	return command
 }
 

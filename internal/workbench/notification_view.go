@@ -19,17 +19,17 @@ func (m Model) drawNotificationPopup(canvas uv.ScreenBuffer) {
 	}
 	// The level symbol sits on the title row; title text and description
 	// start after it so the whole body is indented together.
-	iconIndent := notificationIconIndent(m.notificationPopup.level)
+	iconIndent := notificationIconIndent(m.notifications.popup.level)
 	bodyX := bounds.Min.X + 1 + iconIndent
 	width := max(bounds.Dx()-2-iconIndent, 1)
-	lines := strings.Split(ansi.Wordwrap(m.notificationPopup.description, width, "\n"), "\n")
+	lines := strings.Split(ansi.Wordwrap(m.notifications.popup.description, width, "\n"), "\n")
 	innerH := min(len(lines), max(bounds.Dy()-3, 0))
 	start := max(len(lines)-innerH, 0)
 
 	panelBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
 	canvas.FillArea(&panelBg, bounds)
 
-	borderStyle := uv.Style{Fg: chrome.ParseHex(notificationBorderColor(m.notificationPopup.level))}
+	borderStyle := uv.Style{Fg: chrome.ParseHex(notificationBorderColor(m.notifications.popup.level))}
 	canvas.SetCell(bounds.Min.X, bounds.Min.Y, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
 	canvas.SetCell(bounds.Max.X-1, bounds.Min.Y, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
 	canvas.SetCell(bounds.Min.X, bounds.Max.Y-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
@@ -47,18 +47,18 @@ func (m Model) drawNotificationPopup(canvas uv.ScreenBuffer) {
 	// bold. The symbol may be a double-width glyph, so advance by measured
 	// width like drawConfirmationText does.
 	titleStyle := uv.Style{
-		Fg:    chrome.ParseHex(notificationLevelColor(m.notificationPopup.level)),
+		Fg:    chrome.ParseHex(notificationLevelColor(m.notifications.popup.level)),
 		Bg:    chrome.ParseHex(colorPanel),
 		Attrs: uv.AttrBold,
 	}
 	tx := bounds.Min.X + 1
-	if level, ok := logLevelOf(m.notificationPopup.level); ok {
+	if level, ok := logLevelOf(m.notifications.popup.level); ok {
 		icon := logLevelIcon(level)
 		canvas.SetCell(tx, bounds.Min.Y+1, &uv.Cell{Content: icon, Width: max(ansi.StringWidth(icon), 1), Style: titleStyle})
 		tx += max(ansi.StringWidth(icon), 1) + 1 // symbol + gap
 	}
-	titleText := m.notificationPopup.title
-	if level, ok := logLevelOf(m.notificationPopup.level); ok {
+	titleText := m.notifications.popup.title
+	if level, ok := logLevelOf(m.notifications.popup.level); ok {
 		titleText = level.Title()
 	}
 	for _, r := range titleText {
@@ -87,36 +87,36 @@ func (m Model) drawNotificationPopup(canvas uv.ScreenBuffer) {
 // drawNotificationDetail draws the single-entry detail card opened from a
 // popup click when no connection scope exists.
 func (m Model) drawNotificationDetail(canvas uv.ScreenBuffer) {
-	entry := m.notificationDetail
+	entry := m.notifications.detail
 	if entry == nil {
 		return
 	}
-	innerW := m.width - 8
+	innerW := m.layout.width - 8
 	description := chrome.DetailValue(entry.description)
 	body := "Title:\n  " + entry.title + "\n\nDescription:\n  " +
 		ansi.Wordwrap(safeText(description), innerW-2, "\n  ") + "\n\nTime:\n  " +
 		entry.createdAt.Format("2006-01-02 15:04:05") + "\n\n  esc close"
-	drawCard(canvas, m.width, m.height, " Notification ", body, innerW)
+	drawCard(canvas, m.layout.width, m.layout.height, " Notification ", body, innerW)
 }
 
 // drawNotificationHistory draws the modal: a filter input, a sortable
 // table with cell travel, and a status row with Prev/Next pager buttons.
 // An open cell viewer overlays the modal.
 func (m Model) drawNotificationHistory(canvas uv.ScreenBuffer) {
-	h := m.notificationHistory
+	h := m.notifications.history
 	if h == nil {
 		return
 	}
-	if m.width < 40 || m.height < 14 {
-		drawCard(canvas, m.width, m.height, " Notifications ", "terminal too small", m.width-8)
+	if m.layout.width < 40 || m.layout.height < 14 {
+		drawCard(canvas, m.layout.width, m.layout.height, " Notifications ", "terminal too small", m.layout.width-8)
 		return
 	}
-	boxW := m.width - 2
+	boxW := m.layout.width - 2
 	innerW := max(boxW-4, 1)
 
 	// Panel background so the modal reads above the panes underneath.
 	panelBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
-	canvas.FillArea(&panelBg, image.Rect(1, 1, m.width-1, m.height-1))
+	canvas.FillArea(&panelBg, image.Rect(1, 1, m.layout.width-1, m.layout.height-1))
 
 	filter := h.filter.View()
 	filterBox := lipgloss.NewStyle().
@@ -141,9 +141,9 @@ func (m Model) drawNotificationHistory(canvas uv.ScreenBuffer) {
 		Padding(0, 1).
 		Width(boxW).
 		Render(b.String())
-	uv.NewStyledString(box).Draw(canvas, image.Rect(1, 1, m.width-1, m.height-1))
+	uv.NewStyledString(box).Draw(canvas, image.Rect(1, 1, m.layout.width-1, m.layout.height-1))
 
-	drawLabel(canvas, 2, m.height-2, "h/j/k/l move | s sort | / filter | y copy | v view | n/p page | esc close", colorMuted, colorCanvas)
+	drawLabel(canvas, 2, m.layout.height-2, "h/j/k/l move | s sort | / filter | y copy | v view | n/p page | esc close", colorMuted, colorCanvas)
 	if h.viewer != nil {
 		drawCellViewerBox(canvas, h.viewer)
 	}

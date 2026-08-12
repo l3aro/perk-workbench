@@ -65,8 +65,8 @@ func (m *Model) openInsertDocument() tea.Cmd {
 	if capability.Format == sharedsql.DocumentFormatMongoExtendedJSON {
 		initial = "{}"
 	}
-	m.documentEditor = newDocumentEditor(m.SelectedTable, true, *capability, nil, initial, max(m.tableViewportWidth, 40))
-	return m.openForm(m.documentEditor.form.Init(), m.documentEditor.focus)
+	m.browse.documentEditor = newDocumentEditor(m.SelectedTable, true, *capability, nil, initial, max(m.layout.tableViewportWidth, 40))
+	return m.openForm(m.browse.documentEditor.form.Init(), m.browse.documentEditor.focus)
 }
 
 // openEditDocument opens the document editor for the selected row: the
@@ -92,11 +92,11 @@ func (m *Model) openEditDocument() tea.Cmd {
 		m.setStatus(fmt.Sprintf("document editing is unsupported for format %s", capability.Format))
 		return nil
 	}
-	m.documentEditor = &documentEditor{
+	m.browse.documentEditor = &documentEditor{
 		collection: m.SelectedTable,
 		capability: *capability,
 		identity:   identity,
-		width:      max(m.tableViewportWidth, 40),
+		width:      max(m.layout.tableViewportWidth, 40),
 		loading:    true,
 	}
 	collection := m.SelectedTable
@@ -187,7 +187,7 @@ func (m Model) executeDocumentSave() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return documentEditorSavedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	e := m.documentEditor
+	e := m.browse.documentEditor
 	payload := sharedsql.DocumentPayload{Format: e.capability.Format, Data: []byte(e.edited)}
 	preview := e.preview()
 	collection, startedAt := e.collection, time.Now()
@@ -217,17 +217,17 @@ func (m Model) executeDocumentSave() tea.Cmd {
 // updateDocumentEditorLoaded completes an edit-open: the full document
 // arrives, the editor form opens with it. Invalid UTF-8 disables editing.
 func (m Model) updateDocumentEditorLoaded(message documentEditorLoadedMsg) (tea.Model, tea.Cmd) {
-	editor := m.documentEditor
+	editor := m.browse.documentEditor
 	if editor == nil {
 		return m, nil
 	}
 	if message.err != nil {
-		m.documentEditor = nil
+		m.browse.documentEditor = nil
 		m.setStatus(safeText(fmt.Sprintf("loading document: %v", message.err)))
 		return m, nil
 	}
 	if !utf8.Valid(message.payload.Data) {
-		m.documentEditor = nil
+		m.browse.documentEditor = nil
 		m.setStatus(fmt.Sprintf("document editing is unsupported for format %s", editor.capability.Format))
 		return m, nil
 	}
@@ -249,15 +249,15 @@ func (m Model) updateDocumentEditorSaved(message documentEditorSavedMsg) (tea.Mo
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, text))
 	}
 	if message.err != nil {
-		if m.documentEditor != nil {
-			m.documentEditor.saving = false
-			m.documentEditor.confirming = false
-			m.documentEditor.confirmation = nil
+		if m.browse.documentEditor != nil {
+			m.browse.documentEditor.saving = false
+			m.browse.documentEditor.confirming = false
+			m.browse.documentEditor.confirmation = nil
 		}
 		m.setStatus(safeText(fmt.Sprintf("saving document: %v", message.err)))
 		return m, nil
 	}
-	m.documentEditor = nil
+	m.browse.documentEditor = nil
 	m.setStatus("document saved")
 	return m, m.loadBrowse()
 }

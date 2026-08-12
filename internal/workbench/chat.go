@@ -8,6 +8,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/glamour/v2"
+	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/table"
 	"github.com/l3aro/perk-workbench/internal/ai"
@@ -49,6 +50,11 @@ type chatModel struct {
 	chatMode      formMode
 	glamour       *glamour.TermRenderer
 	completion    completion // slash-command suggestions while typing
+	// historyPicker is the /history conversation picker overlay.
+	historyPicker *huh.Form
+	// keepInsert keeps the chat input in insert mode after a release
+	// click inside the chat pane.
+	keepInsert bool
 
 	// promptHistory is the newest-first list of accepted user prompts for
 	// this process; historyIndex == -1 means not browsing recall.
@@ -333,20 +339,20 @@ func (m *Model) toggleAI() {
 		m.Focus = focusWorkspace
 		m.focusActiveTable()
 	}
-	m.layout(m.width, m.height)
+	m.applyLayout(m.layout.width, m.layout.height)
 }
 
 func (m *Model) resizeChat() {
-	width := max(m.chatWidth-6, 1)
-	height := max(m.height-4, 1)
-	if m.compact {
-		width = max(m.width-6, 1)
+	width := max(m.layout.chatWidth-6, 1)
+	height := max(m.layout.height-4, 1)
+	if m.layout.compact {
+		width = max(m.layout.width-6, 1)
 	}
 	m.chat.input.SetWidth(width)
 	m.chat.input.SetHeight(1)
 	m.chat.viewport.SetWidth(width)
 	viewportHeight := height - 4
-	if m.compact {
+	if m.layout.compact {
 		viewportHeight -= 2
 	}
 	m.chat.viewport.SetHeight(max(viewportHeight, 1))

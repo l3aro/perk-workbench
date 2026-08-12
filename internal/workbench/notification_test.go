@@ -106,13 +106,13 @@ func TestNew_loadsPersistedNotifications(t *testing.T) {
 
 	model := New("", context.Background(), testOpen, false)
 	// No connection is open yet, so persisted entries must not surface.
-	if got := model.notificationEntries; len(got) != 0 {
+	if got := model.notifications.entries; len(got) != 0 {
 		t.Fatalf("notifications before a connection = %#v, want none", got)
 	}
 	// The scoped load (what updateOpen runs after recordConnection).
 	model.connectionID = "conn-a"
-	model.notificationEntries = loadNotifications(model.notificationPath, model.connectionID)
-	if got := model.notificationEntries; len(got) != 1 || got[0].description != entry.description {
+	model.notifications.entries = loadNotifications(model.notifications.path, model.connectionID)
+	if got := model.notifications.entries; len(got) != 1 || got[0].description != entry.description {
 		t.Fatalf("loaded notifications = %#v, want %#v", got, []notificationEntry{entry})
 	}
 }
@@ -120,23 +120,23 @@ func TestNew_loadsPersistedNotifications(t *testing.T) {
 func TestNotificationPopup_dismissGenerationGuards(t *testing.T) {
 	model := readyModel(t)
 	model.notify("first")
-	if model.notificationPopup == nil {
+	if model.notifications.popup == nil {
 		t.Fatal("popup not shown after notify")
 	}
-	stale := model.notificationGeneration
+	stale := model.notifications.generation
 
 	model.notify("second")
 	// A stale timer must not close the newer popup.
 	updated, _ := model.Update(notificationDismissMsg{generation: stale})
 	model = updated.(Model)
-	if model.notificationPopup == nil || model.notificationPopup.description != "second" {
-		t.Fatalf("stale dismiss closed the popup: %#v", model.notificationPopup)
+	if model.notifications.popup == nil || model.notifications.popup.description != "second" {
+		t.Fatalf("stale dismiss closed the popup: %#v", model.notifications.popup)
 	}
 
 	// A matching timer closes it.
-	updated, _ = model.Update(notificationDismissMsg{generation: model.notificationGeneration})
+	updated, _ = model.Update(notificationDismissMsg{generation: model.notifications.generation})
 	model = updated.(Model)
-	if model.notificationPopup != nil {
+	if model.notifications.popup != nil {
 		t.Fatal("matching dismiss did not close the popup")
 	}
 }
@@ -157,15 +157,15 @@ func TestNotificationPopup_rendersAndFooterOmitsStatus(t *testing.T) {
 
 func TestNotificationPopup_clickOpensHistoryWithSelectedEntry(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	model.notificationPath = filepath.Join(t.TempDir(), "data.db")
+	model.notifications.path = filepath.Join(t.TempDir(), "data.db")
 	model.connectionID = "conn-a"
 	model.notify("first")
-	first := *model.notificationPopup
+	first := *model.notifications.popup
 	model.notify("second")
 	if first.id == 0 {
 		t.Fatal("persisted notification has no row ID")
 	}
-	model.notificationPopup = &first
+	model.notifications.popup = &first
 
 	bounds, ok := model.notificationPopupBounds()
 	if !ok {
@@ -173,26 +173,26 @@ func TestNotificationPopup_clickOpensHistoryWithSelectedEntry(t *testing.T) {
 	}
 	updated, _ := model.Update(tea.MouseClickMsg{X: bounds.Min.X + 1, Y: bounds.Min.Y + 1, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.notificationHistory == nil {
+	if model.notifications.history == nil {
 		t.Fatal("popup click did not open the notification history")
 	}
-	selected, ok := model.notificationHistory.selected()
+	selected, ok := model.notifications.history.selected()
 	if !ok || selected.id != first.id {
 		t.Fatalf("selected entry = %#v, want the clicked entry %#v", selected, first)
 	}
-	if !model.notificationPopupSwallowRelease {
+	if !model.notifications.popupSwallowRelease {
 		t.Fatal("popup click did not arm the release swallow")
 	}
 	// The trailing release is consumed.
 	updated, _ = model.Update(tea.MouseReleaseMsg{Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.notificationPopupSwallowRelease {
+	if model.notifications.popupSwallowRelease {
 		t.Fatal("release swallow not consumed")
 	}
 	// Escape closes the modal.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.notificationHistory != nil {
+	if model.notifications.history != nil {
 		t.Fatal("escape did not close the notification history")
 	}
 }
@@ -201,8 +201,8 @@ func TestNotificationPopup_clickWithoutScopeOpensDetailOnly(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.connectionID = ""
 	model.notify("database unavailable: boom")
-	popup := *model.notificationPopup
-	model.notificationPopup = &popup
+	popup := *model.notifications.popup
+	model.notifications.popup = &popup
 
 	bounds, ok := model.notificationPopupBounds()
 	if !ok {
@@ -210,10 +210,10 @@ func TestNotificationPopup_clickWithoutScopeOpensDetailOnly(t *testing.T) {
 	}
 	updated, _ := model.Update(tea.MouseClickMsg{X: bounds.Min.X + 1, Y: bounds.Min.Y + 1, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.notificationDetail == nil {
+	if model.notifications.detail == nil {
 		t.Fatal("popup click without a scope did not open the detail overlay")
 	}
-	if model.notificationHistory != nil {
+	if model.notifications.history != nil {
 		t.Fatal("popup click without a scope opened a list column")
 	}
 	view := ansi.Strip(model.View().Content)
@@ -222,14 +222,14 @@ func TestNotificationPopup_clickWithoutScopeOpensDetailOnly(t *testing.T) {
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.notificationDetail != nil {
+	if model.notifications.detail != nil {
 		t.Fatal("escape did not close the detail overlay")
 	}
 }
 
 func TestNotificationHistory_modalFiltersAndNavigates(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	model.notificationEntries = []notificationEntry{
+	model.notifications.entries = []notificationEntry{
 		{id: 3, createdAt: time.Now(), title: notificationTitle, description: "row updated"},
 		{id: 2, createdAt: time.Now(), title: notificationTitle, description: "column deleted"},
 		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "ready: chinook"},
@@ -237,54 +237,54 @@ func TestNotificationHistory_modalFiltersAndNavigates(t *testing.T) {
 
 	updated, _ := model.handlePaletteCommand("notifications.show")
 	model = updated.(Model)
-	if model.notificationHistory == nil {
+	if model.notifications.history == nil {
 		t.Fatal("palette command did not open the notification history")
 	}
-	selected, ok := model.notificationHistory.selected()
+	selected, ok := model.notifications.history.selected()
 	if !ok || selected.id != 3 {
 		t.Fatalf("initial selection = %#v, want newest entry id 3", selected)
 	}
 
 	// Filter narrows the list; unmatched filter leaves no selection.
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'd', Text: "d"})
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if len(model.notificationHistory.filtered) != 1 || model.notificationHistory.filtered[0].id != 2 {
-		t.Fatalf("filtered entries = %#v, want only the deleted column entry", model.notificationHistory.filtered)
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if len(model.notifications.history.filtered) != 1 || model.notifications.history.filtered[0].id != 2 {
+		t.Fatalf("filtered entries = %#v, want only the deleted column entry", model.notifications.history.filtered)
 	}
 
 	// Esc blurs the filter, second Esc closes the modal.
 	model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.notificationHistory != nil {
+	if model.notifications.history != nil {
 		t.Fatal("escape did not close the notification history")
 	}
 }
 
 func TestNotificationHistory_escapeExitsFilteringFirst(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	model.notificationEntries = []notificationEntry{
+	model.notifications.entries = []notificationEntry{
 		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "ready"},
 	}
-	model.notificationHistory = newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
-	if !model.notificationHistory.filterFocused {
+	model.notifications.history = newNotificationHistory(model.notifications.entries, 0, model.layout.width, model.layout.height)
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
+	if !model.notifications.history.filterFocused {
 		t.Fatal("filter not focused after /")
 	}
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.notificationHistory == nil {
+	if model.notifications.history == nil {
 		t.Fatal("first escape closed the modal instead of exiting filtering")
 	}
-	if model.notificationHistory.filterFocused {
+	if model.notifications.history.filterFocused {
 		t.Fatal("filter still focused after first escape")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.notificationHistory != nil {
+	if model.notifications.history != nil {
 		t.Fatal("second escape did not close the modal")
 	}
 }
@@ -292,59 +292,59 @@ func TestNotificationHistory_escapeExitsFilteringFirst(t *testing.T) {
 func TestNotificationHistory_cellTravelAndViewer(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	long := strings.Repeat("word ", 600)
-	model.notificationEntries = []notificationEntry{
+	model.notifications.entries = []notificationEntry{
 		{id: 2, createdAt: time.Now(), title: notificationTitle, description: long},
 		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "short"},
 	}
-	model.notificationHistory = newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+	model.notifications.history = newNotificationHistory(model.notifications.entries, 0, model.layout.width, model.layout.height)
 
-	if col := model.notificationHistory.selectedCol; col != 0 {
+	if col := model.notifications.history.selectedCol; col != 0 {
 		t.Fatalf("modal does not start on the first column, got %d", col)
 	}
 	// j moves the row cursor down.
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if selected, _ := model.notificationHistory.selected(); selected.id != 1 {
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if selected, _ := model.notifications.history.selected(); selected.id != 1 {
 		t.Fatalf("selection after j = %#v, want id 1", selected)
 	}
 	// Back up to the long entry.
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if selected, _ := model.notificationHistory.selected(); selected.id != 2 {
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
+	if selected, _ := model.notifications.history.selected(); selected.id != 2 {
 		t.Fatalf("selection after k = %#v, want id 2", selected)
 	}
 	// l travels to the next column, h back to the first.
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if model.notificationHistory.selectedCol != 1 {
-		t.Fatalf("selectedCol after l = %d, want 1", model.notificationHistory.selectedCol)
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	if model.notifications.history.selectedCol != 1 {
+		t.Fatalf("selectedCol after l = %d, want 1", model.notifications.history.selectedCol)
 	}
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
-	if model.notificationHistory.selectedCol != 0 {
-		t.Fatalf("selectedCol after h = %d, want 0", model.notificationHistory.selectedCol)
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
+	if model.notifications.history.selectedCol != 0 {
+		t.Fatalf("selectedCol after h = %d, want 0", model.notifications.history.selectedCol)
 	}
 
 	// v opens the viewer with the untruncated description; Escape closes it.
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
-	if model.notificationHistory.viewer == nil {
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	if model.notifications.history.viewer == nil {
 		t.Fatal("v did not open the viewer")
 	}
-	if got := model.notificationHistory.viewer.column; got != "Description" {
+	if got := model.notifications.history.viewer.column; got != "Description" {
 		t.Fatalf("viewer column = %q, want Description", got)
 	}
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if model.notificationHistory.viewer != nil {
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.notifications.history.viewer != nil {
 		t.Fatal("escape did not close the viewer")
 	}
 	// A key press over the open viewer scrolls it, not the table.
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
-	before := model.notificationHistory.viewer.viewport.YOffset()
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if got := model.notificationHistory.viewer.viewport.YOffset(); got <= before {
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
+	before := model.notifications.history.viewer.viewport.YOffset()
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	if got := model.notifications.history.viewer.viewport.YOffset(); got <= before {
 		t.Fatalf("viewer scroll offset = %d, want it to grow past %d", got, before)
 	}
-	model.notificationHistory.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if model.notificationHistory.viewer != nil {
+	model.notifications.history.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if model.notifications.history.viewer != nil {
 		t.Fatal("escape did not close the viewer")
 	}
 }
@@ -352,13 +352,13 @@ func TestNotificationHistory_cellTravelAndViewer(t *testing.T) {
 func TestNotificationHistory_sortCyclesAndHeaderClick(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	base := time.Now()
-	model.notificationEntries = []notificationEntry{
+	model.notifications.entries = []notificationEntry{
 		{id: 3, createdAt: base, title: "zeta", description: "third"},
 		{id: 2, createdAt: base.Add(-2 * time.Minute), title: "alpha", description: "second"},
 		{id: 1, createdAt: base.Add(-3 * time.Minute), title: "mid", description: "first"},
 	}
-	model.notificationHistory = newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
-	h := model.notificationHistory
+	model.notifications.history = newNotificationHistory(model.notifications.entries, 0, model.layout.width, model.layout.height)
+	h := model.notifications.history
 
 	// s on the Time column cycles ascending, descending, then back to the
 	// default entry order.
@@ -384,14 +384,14 @@ func TestNotificationHistory_sortCyclesAndHeaderClick(t *testing.T) {
 	titleStart := 2 + (columns[0].Width + 2*spaceCompact) + (columns[1].Width + 2*spaceCompact)
 	updated, _ := model.Update(tea.MouseClickMsg{X: titleStart + 2, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
-	h = model.notificationHistory
+	h = model.notifications.history
 	if h.sortCol != 2 || h.sortDesc || h.selectedCol != 2 || h.filtered[0].id != 2 {
 		t.Fatalf("after header click: sort = col %d desc %t selected %d first %d, want Title ascending, selected col 2, first id 2", h.sortCol, h.sortDesc, h.selectedCol, h.filtered[0].id)
 	}
 	// Clicking the same header again descends.
 	updated, _ = model.Update(tea.MouseClickMsg{X: titleStart + 2, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
-	h = model.notificationHistory
+	h = model.notifications.history
 	if h.sortCol != 2 || !h.sortDesc || h.filtered[0].id != 3 {
 		t.Fatalf("after second header click: sort = col %d desc %t, first = %d, want Title descending with id 3", h.sortCol, h.sortDesc, h.filtered[0].id)
 	}
@@ -413,9 +413,9 @@ func TestNotificationHistory_paginationAndButtons(t *testing.T) {
 	for i := range entries {
 		entries[i] = notificationEntry{id: int64(25 - i), createdAt: time.Now(), title: notificationTitle, description: "entry"}
 	}
-	model.notificationEntries = entries
-	h := newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
-	model.notificationHistory = h
+	model.notifications.entries = entries
+	h := newNotificationHistory(model.notifications.entries, 0, model.layout.width, model.layout.height)
+	model.notifications.history = h
 
 	if h.pageSize != 12 {
 		t.Fatalf("page size = %d, want 12 at height 24", h.pageSize)
@@ -466,10 +466,10 @@ func TestNotificationHistory_paginationAndButtons(t *testing.T) {
 
 func TestNotificationHistory_copyCell(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	model.notificationEntries = []notificationEntry{
+	model.notifications.entries = []notificationEntry{
 		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "copy me"},
 	}
-	h := newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+	h := newNotificationHistory(model.notifications.entries, 0, model.layout.width, model.layout.height)
 
 	// Travel to the Description column and copy the raw cell value.
 	for range 3 {
@@ -497,12 +497,12 @@ func TestNotificationHistory_copyCell(t *testing.T) {
 
 func TestNotificationHistory_filterSearchesAllColumns(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
-	model.notificationEntries = []notificationEntry{
+	model.notifications.entries = []notificationEntry{
 		{id: 3, createdAt: time.Now(), title: notificationTitle, description: "row updated", level: storedLogLevel(log.LevelError)},
 		{id: 2, createdAt: time.Now(), title: notificationTitle, description: "column deleted"},
 		{id: 1, createdAt: time.Now(), title: notificationTitle, description: "ready: chinook"},
 	}
-	h := newNotificationHistory(model.notificationEntries, 0, model.width, model.height)
+	h := newNotificationHistory(model.notifications.entries, 0, model.layout.width, model.layout.height)
 
 	h.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
 	h.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})

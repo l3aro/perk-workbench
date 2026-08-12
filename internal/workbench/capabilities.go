@@ -71,11 +71,11 @@ func (m Model) browseWriteAvailable() bool {
 // browseDocumentIdentity returns the selected browse row's stable document
 // identity, or nil when the row has none.
 func (m Model) browseDocumentIdentity() *sharedsql.DocumentPayload {
-	row := m.browse.Cursor()
-	if row < 0 || row >= len(m.browseResult.DocumentIDs) {
+	row := m.browse.table.Cursor()
+	if row < 0 || row >= len(m.browse.result.DocumentIDs) {
 		return nil
 	}
-	identity := m.browseResult.DocumentIDs[row]
+	identity := m.browse.result.DocumentIDs[row]
 	if identity.Format == "" && len(identity.Data) == 0 {
 		return nil
 	}

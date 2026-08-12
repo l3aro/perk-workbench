@@ -37,14 +37,14 @@ func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 	// Given
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
-	model.connection.values.driver, model.connection.values.name = driverSQLite, ""
-	model.connection.values.target = "/tmp/alpha.db"
+	model.connection.form.values.driver, model.connection.form.values.name = driverSQLite, ""
+	model.connection.form.values.target = "/tmp/alpha.db"
 	model.recordConnection("")
-	model.connection.values.target = "/tmp/beta.db"
+	model.connection.form.values.target = "/tmp/beta.db"
 
 	// When
 	model.recordConnection("")
-	loaded, _ := loadRecentConnections(model.recentPath)
+	loaded, _ := loadRecentConnections(model.connection.recentPath)
 
 	// Then
 	if len(loaded) != 2 {
@@ -63,7 +63,7 @@ func TestNew_targetInitializesRecentConnectionPersistence(t *testing.T) {
 	model := New("/tmp/chinook.db", context.Background(), testOpen, false)
 
 	// Then
-	if model.recentPath == "" {
+	if model.connection.recentPath == "" {
 		t.Fatal("target startup did not initialize recent connection persistence")
 	}
 }
@@ -74,13 +74,13 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "perk-workbench", "connections.json")
 	model := New("", context.Background(), testOpen, false)
-	model.connection.values.driver, model.connection.values.name = driverPostgreSQL, "Reporting"
-	model.connection.values.target, model.connection.values.host = "analytics", "db.example.test"
-	model.connection.values.port, model.connection.values.user, model.connection.values.pass = "5432", "analyst", "secret"
+	model.connection.form.values.driver, model.connection.form.values.name = driverPostgreSQL, "Reporting"
+	model.connection.form.values.target, model.connection.form.values.host = "analytics", "db.example.test"
+	model.connection.form.values.port, model.connection.form.values.user, model.connection.form.values.pass = "5432", "analyst", "secret"
 	model.recordConnection("")
 
 	// When
-	if err := saveRecentConnections(path, model.recentConnections); err != nil {
+	if err := saveRecentConnections(path, model.connection.recentConnections); err != nil {
 		t.Fatalf("saving connection profiles: %v", err)
 	}
 	loaded, _ := loadRecentConnections(path)
@@ -95,8 +95,8 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	if !strings.HasPrefix(stored[0].Pass, encPrefix) {
 		t.Fatalf("password not encrypted, prefix=%q", stored[0].Pass[:min(5, len(stored[0].Pass))])
 	}
-	if !reflect.DeepEqual(loaded, model.recentConnections) {
-		t.Fatalf("loaded profiles = %#v, want %#v", loaded, model.recentConnections)
+	if !reflect.DeepEqual(loaded, model.connection.recentConnections) {
+		t.Fatalf("loaded profiles = %#v, want %#v", loaded, model.connection.recentConnections)
 	}
 }
 
@@ -172,16 +172,16 @@ func TestConnectionProfiles_encryptDecryptRoundTrip_merged_3(t *testing.T) {
 
 func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.recentPath = filepath.Join(t.TempDir(), "connections.json")
+	model.connection.recentPath = filepath.Join(t.TempDir(), "connections.json")
 	model.setRecentConnections([]recentConnection{
 		{Driver: driverSQLite, Name: "Alpha", Target: "/tmp/alpha.db"},
 		{Driver: driverSQLite, Name: "Beta", Target: "/tmp/beta.db"},
 	})
-	model.connection.setFocus(connectionFocusRecent)
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.recentFilter.Focused() {
+	if !model.connection.recentFilter.Focused() {
 		t.Fatal("recent filter input should be focused")
 	}
 
@@ -189,46 +189,46 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
-	if model.connection.focus != connectionFocusForm {
-		t.Fatalf("connection focus = %d, want form", model.connection.focus)
+	if model.connection.form.focus != connectionFocusForm {
+		t.Fatalf("connection focus = %d, want form", model.connection.form.focus)
 	}
-	if model.connection.values.name != "Alpha" || model.connection.values.target != "/tmp/alpha.db" {
-		t.Fatalf("connection form = %q %q, want Alpha /tmp/alpha.db", model.connection.values.name, model.connection.values.target)
+	if model.connection.form.values.name != "Alpha" || model.connection.form.values.target != "/tmp/alpha.db" {
+		t.Fatalf("connection form = %q %q, want Alpha /tmp/alpha.db", model.connection.form.values.name, model.connection.form.values.target)
 	}
 
-	model.connection.setFocus(connectionFocusRecent)
+	model.connection.form.setFocus(connectionFocusRecent)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = updated.(Model)
-	if model.deleteConfirm == nil {
+	if model.overlay.deleteConfirm == nil {
 		t.Fatal("d did not open the delete confirmation")
 	}
-	if len(model.recentConnections) != 2 {
-		t.Fatalf("d deleted before confirmation: %#v", model.recentConnections)
+	if len(model.connection.recentConnections) != 2 {
+		t.Fatalf("d deleted before confirmation: %#v", model.connection.recentConnections)
 	}
 
 	// Decline: nothing is deleted.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	model = updated.(Model)
-	if model.deleteConfirm != nil || len(model.recentConnections) != 2 {
-		t.Fatalf("decline changed connections: %#v", model.recentConnections)
+	if model.overlay.deleteConfirm != nil || len(model.connection.recentConnections) != 2 {
+		t.Fatalf("decline changed connections: %#v", model.connection.recentConnections)
 	}
 
 	// Confirm: Alpha is removed, Beta stays.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = updated.(Model)
-	if model.deleteConfirm == nil {
+	if model.overlay.deleteConfirm == nil {
 		t.Fatal("d did not reopen the delete confirmation")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
-	if len(model.recentConnections) != 1 || model.recentConnections[0].Name != "Beta" {
-		t.Fatalf("recent connections = %#v, want only Beta", model.recentConnections)
+	if len(model.connection.recentConnections) != 1 || model.connection.recentConnections[0].Name != "Beta" {
+		t.Fatalf("recent connections = %#v, want only Beta", model.connection.recentConnections)
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
-	if model.connection.focus != connectionFocusForm || model.connection.values.name != "" || model.connection.values.target != "" {
-		t.Fatalf("new connection form = focus %d, name %q, target %q", model.connection.focus, model.connection.values.name, model.connection.values.target)
+	if model.connection.form.focus != connectionFocusForm || model.connection.form.values.name != "" || model.connection.form.values.target != "" {
+		t.Fatalf("new connection form = focus %d, name %q, target %q", model.connection.form.focus, model.connection.form.values.name, model.connection.form.values.target)
 	}
 }
 
@@ -237,7 +237,7 @@ func TestConnectionForm_recentConnectionActions(t *testing.T) {
 // enter/escape exit editing while keeping the applied filter.
 func TestConnectionForm_recentFilterInput(t *testing.T) {
 	model := recentClickModel(t)
-	model.connection.setFocus(connectionFocusRecent)
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// The filter row renders at the top of the profiles pane.
 	if !strings.Contains(ansi.Strip(model.View().Content), "filter") {
@@ -247,20 +247,20 @@ func TestConnectionForm_recentFilterInput(t *testing.T) {
 	// Enter filter editing, then type: only beta matches.
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.recentFilter.Focused() {
+	if !model.connection.recentFilter.Focused() {
 		t.Fatal("/ did not focus the recent filter input")
 	}
 
 	// Clipboard paste while editing lands in the input, not the list.
 	updated, _ = model.Update(tea.PasteMsg{Content: "be"})
 	model = updated.(Model)
-	if got := model.recentFilter.Value(); got != "be" {
+	if got := model.connection.recentFilter.Value(); got != "be" {
 		t.Fatalf("filter value after paste = %q, want be", got)
 	}
-	if !model.recent.IsFiltered() {
+	if !model.connection.recent.IsFiltered() {
 		t.Fatal("paste did not filter the recent list")
 	}
-	visible := model.recent.VisibleItems()
+	visible := model.connection.recent.VisibleItems()
 	if len(visible) != 1 || visible[0].(recentConnection).Name != "beta" {
 		t.Fatalf("visible profiles = %#v, want only beta", visible)
 	}
@@ -268,20 +268,20 @@ func TestConnectionForm_recentFilterInput(t *testing.T) {
 	// Typing extends the live filter.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 't', Text: "t"})
 	model = updated.(Model)
-	if got := model.recentFilter.Value(); got != "bet" {
+	if got := model.connection.recentFilter.Value(); got != "bet" {
 		t.Fatalf("filter value after typing = %q, want bet", got)
 	}
-	if len(model.recent.VisibleItems()) != 1 {
+	if len(model.connection.recent.VisibleItems()) != 1 {
 		t.Fatal("typing dropped the applied filter")
 	}
 
 	// Enter exits editing, keeping the filter and the typed query.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.recentFilter.Focused() || model.recentFilter.Value() != "bet" {
-		t.Fatalf("after enter: focused=%t value=%q, want inactive/bet", model.recentFilter.Focused(), model.recentFilter.Value())
+	if model.connection.recentFilter.Focused() || model.connection.recentFilter.Value() != "bet" {
+		t.Fatalf("after enter: focused=%t value=%q, want inactive/bet", model.connection.recentFilter.Focused(), model.connection.recentFilter.Value())
 	}
-	if !model.recent.IsFiltered() || len(model.recent.VisibleItems()) != 1 {
+	if !model.connection.recent.IsFiltered() || len(model.connection.recent.VisibleItems()) != 1 {
 		t.Fatal("enter dropped the applied filter")
 	}
 
@@ -290,28 +290,28 @@ func TestConnectionForm_recentFilterInput(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.recentFilter.Focused() {
+	if model.connection.recentFilter.Focused() {
 		t.Fatal("escape left the recent filter input focused")
 	}
-	if got := model.recentFilter.Value(); got != "bet" {
+	if got := model.connection.recentFilter.Value(); got != "bet" {
 		t.Fatalf("filter value = %q, want preserved bet", got)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
-	if model.connection.focus != connectionFocusForm {
-		t.Fatalf("connection focus = %d, want form after filter exit", model.connection.focus)
+	if model.connection.form.focus != connectionFocusForm {
+		t.Fatalf("connection focus = %d, want form after filter exit", model.connection.form.focus)
 	}
 
 	// Clearing the input restores every profile.
-	model.connection.setFocus(connectionFocusRecent)
+	model.connection.form.setFocus(connectionFocusRecent)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
 	for range "bet" {
 		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 		model = updated.(Model)
 	}
-	if model.recent.IsFiltered() || len(model.recent.VisibleItems()) != 2 {
-		t.Fatalf("after clearing: filtered=%t visible=%d, want all 2 profiles", model.recent.IsFiltered(), len(model.recent.VisibleItems()))
+	if model.connection.recent.IsFiltered() || len(model.connection.recent.VisibleItems()) != 2 {
+		t.Fatalf("after clearing: filtered=%t visible=%d, want all 2 profiles", model.connection.recent.IsFiltered(), len(model.connection.recent.VisibleItems()))
 	}
 }
 
@@ -324,7 +324,7 @@ func TestRecentClick_filterRowFocusesInput(t *testing.T) {
 	// The filter box occupies screen rows 2-4 (pane top border at y=1).
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 3, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.recentFilter.Focused() {
+	if !model.connection.recentFilter.Focused() {
 		t.Fatal("click on the filter row did not focus the input")
 	}
 
@@ -334,10 +334,10 @@ func TestRecentClick_filterRowFocusesInput(t *testing.T) {
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: itemY, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.recentFilter.Focused() {
+	if model.connection.recentFilter.Focused() {
 		t.Fatal("click on a profile left the filter input focused")
 	}
-	selected, ok := model.recent.SelectedItem().(recentConnection)
+	selected, ok := model.connection.recent.SelectedItem().(recentConnection)
 	if !ok || selected.Name != "beta" {
 		t.Fatalf("selected profile = %#v, want beta", selected)
 	}
@@ -346,7 +346,7 @@ func TestRecentClick_filterRowFocusesInput(t *testing.T) {
 func TestConnectionForm_editWithEmptyPassword(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -354,16 +354,16 @@ func TestConnectionForm_editWithEmptyPassword(t *testing.T) {
 		Port:   "3307",
 		User:   "alice",
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.values.pass = "previous-password"
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.values.pass = "previous-password"
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	values := model.connection.values
+	values := model.connection.form.values
 	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
 		t.Fatalf("connection form = %#v, want selected profile fields", values)
 	}
@@ -375,7 +375,7 @@ func TestConnectionForm_editWithEmptyPassword(t *testing.T) {
 func TestConnectionForm_editWithEmptyPassword_merged_2(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -383,16 +383,16 @@ func TestConnectionForm_editWithEmptyPassword_merged_2(t *testing.T) {
 		Port:   "3307",
 		User:   "alice",
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.values.pass = "previous-password"
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.values.pass = "previous-password"
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	values := model.connection.values
+	values := model.connection.form.values
 	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
 		t.Fatalf("connection form = %#v, want selected profile fields", values)
 	}
@@ -404,7 +404,7 @@ func TestConnectionForm_editWithEmptyPassword_merged_2(t *testing.T) {
 func TestConnectionForm_editWithEmptyPassword_merged_3(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -412,16 +412,16 @@ func TestConnectionForm_editWithEmptyPassword_merged_3(t *testing.T) {
 		Port:   "3307",
 		User:   "alice",
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.values.pass = "previous-password"
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.values.pass = "previous-password"
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	values := model.connection.values
+	values := model.connection.form.values
 	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
 		t.Fatalf("connection form = %#v, want selected profile fields", values)
 	}
@@ -433,7 +433,7 @@ func TestConnectionForm_editWithEmptyPassword_merged_3(t *testing.T) {
 func TestConnectionForm_editPopulatesStoredPassword(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -442,16 +442,16 @@ func TestConnectionForm_editPopulatesStoredPassword(t *testing.T) {
 		User:   "alice",
 		Pass:   "stored-pass",
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.values.pass = "previous-password"
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.values.pass = "previous-password"
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	values := model.connection.values
+	values := model.connection.form.values
 	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
 		t.Fatalf("connection form = %#v, want selected profile fields", values)
 	}
@@ -463,7 +463,7 @@ func TestConnectionForm_editPopulatesStoredPassword(t *testing.T) {
 func TestConnectionForm_editPopulatesStoredPassword_merged_2(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -472,16 +472,16 @@ func TestConnectionForm_editPopulatesStoredPassword_merged_2(t *testing.T) {
 		User:   "alice",
 		Pass:   "stored-pass",
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.values.pass = "previous-password"
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.values.pass = "previous-password"
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	values := model.connection.values
+	values := model.connection.form.values
 	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
 		t.Fatalf("connection form = %#v, want selected profile fields", values)
 	}
@@ -493,7 +493,7 @@ func TestConnectionForm_editPopulatesStoredPassword_merged_2(t *testing.T) {
 func TestConnectionForm_editPopulatesStoredPassword_merged_3(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{
+	model.connection.recentConnections = []recentConnection{{
 		Driver: driverMySQL,
 		Name:   "Production",
 		Target: "app",
@@ -502,16 +502,16 @@ func TestConnectionForm_editPopulatesStoredPassword_merged_3(t *testing.T) {
 		User:   "alice",
 		Pass:   "stored-pass",
 	}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.values.pass = "previous-password"
-	model.connection.setFocus(connectionFocusRecent)
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.values.pass = "previous-password"
+	model.connection.form.setFocus(connectionFocusRecent)
 
 	// When
 	command := model.editSelectedRecentConnection()
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	values := model.connection.values
+	values := model.connection.form.values
 	if values.driver != driverMySQL || values.name != "Production" || values.host != "db.example.test" || values.port != "3307" || values.user != "alice" || values.target != "app" {
 		t.Fatalf("connection form = %#v, want selected profile fields", values)
 	}
@@ -525,14 +525,14 @@ func TestConnectionForm_paneKeysKeepTabInTheForm(t *testing.T) {
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
 	model = updated.(Model)
-	if model.connection.focus != connectionFocusRecent {
-		t.Fatalf("connection focus = %d, want recent", model.connection.focus)
+	if model.connection.form.focus != connectionFocusRecent {
+		t.Fatalf("connection focus = %d, want recent", model.connection.form.focus)
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	model = updated.(Model)
-	if model.connection.focus != connectionFocusForm {
-		t.Fatalf("connection focus = %d, want form", model.connection.focus)
+	if model.connection.form.focus != connectionFocusForm {
+		t.Fatalf("connection focus = %d, want form", model.connection.form.focus)
 	}
 }
 
@@ -547,9 +547,9 @@ func TestConnectionForm_recentAddAndEditInitializeUsableHuhForms(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
-			model.recentConnections = []recentConnection{{Driver: driverSQLite, Name: "Alpha", Target: ":memory:"}}
-			_ = model.recent.SetItems(recentListItems(model.recentConnections))
-			model.connection.setFocus(connectionFocusRecent)
+			model.connection.recentConnections = []recentConnection{{Driver: driverSQLite, Name: "Alpha", Target: ":memory:"}}
+			_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+			model.connection.form.setFocus(connectionFocusRecent)
 
 			// When
 			updated, command := model.Update(test.key)
@@ -571,11 +571,11 @@ func TestConnectionForm_recentAddAndEditInitializeUsableHuhForms(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if !strings.Contains(model.connection.View(), "Target*") {
-				t.Fatalf("connection form after %s = %q, want rendered Target* control", test.name, model.connection.View())
+			if !strings.Contains(model.connection.form.View(), "Target*") {
+				t.Fatalf("connection form after %s = %q, want rendered Target* control", test.name, model.connection.form.View())
 			}
-			if !strings.Contains(model.connection.values.name, "x") {
-				t.Fatalf("connection name after %s = %q, want Huh input to accept text", test.name, model.connection.values.name)
+			if !strings.Contains(model.connection.form.values.name, "x") {
+				t.Fatalf("connection name after %s = %q, want Huh input to accept text", test.name, model.connection.form.values.name)
 			}
 		})
 	}
@@ -617,22 +617,22 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	// Given
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
-	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
 
 	// When — a new profile is recorded
 	model.recordConnection("")
 
 	// Then — it carries a fresh UUIDv7 scope
-	profile := model.recentConnections[0]
+	profile := model.connection.recentConnections[0]
 	if !validConnectionID(profile.ID) {
 		t.Fatalf("new profile ID = %q, want a UUIDv7", profile.ID)
 	}
 
 	// Save/load preserves the ID.
-	if err := saveRecentConnections(model.recentPath, model.recentConnections); err != nil {
+	if err := saveRecentConnections(model.connection.recentPath, model.connection.recentConnections); err != nil {
 		t.Fatalf("saving profiles: %v", err)
 	}
-	loaded, _ := loadRecentConnections(model.recentPath)
+	loaded, _ := loadRecentConnections(model.connection.recentPath)
 	if len(loaded) != 1 || loaded[0].ID != profile.ID {
 		t.Fatalf("loaded profiles = %#v, want the saved ID preserved", loaded)
 	}
@@ -640,31 +640,31 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	// Editing an existing profile carries its ID into the form and re-record
 	// preserves it (simulating an edited-and-saved profile).
 	model2 := New("", context.Background(), testOpen, false)
-	model2.recentConnections, _ = loadRecentConnections(model2.recentPath)
-	_ = model2.recent.SetItems(recentListItems(model2.recentConnections))
+	model2.connection.recentConnections, _ = loadRecentConnections(model2.connection.recentPath)
+	_ = model2.connection.recent.SetItems(recentListItems(model2.connection.recentConnections))
 	command := model2.editSelectedRecentConnection()
 	model2 = resolveConnectionCommand(model2, command)
-	if model2.connection.values.id != profile.ID {
-		t.Fatalf("form ID = %q, want selected profile ID %q", model2.connection.values.id, profile.ID)
+	if model2.connection.form.values.id != profile.ID {
+		t.Fatalf("form ID = %q, want selected profile ID %q", model2.connection.form.values.id, profile.ID)
 	}
-	model2.connection.values.name = "Renamed"
+	model2.connection.form.values.name = "Renamed"
 	model2.recordConnection("")
-	if model2.recentConnections[0].ID != profile.ID {
-		t.Fatalf("edited profile ID = %q, want preserved %q", model2.recentConnections[0].ID, profile.ID)
+	if model2.connection.recentConnections[0].ID != profile.ID {
+		t.Fatalf("edited profile ID = %q, want preserved %q", model2.connection.recentConnections[0].ID, profile.ID)
 	}
 
 	// A brand-new profile must mint a distinct ID, and the saved file keeps it.
-	model2.connection.values.id = ""
-	model2.connection.values.name, model2.connection.values.target = "Other", "/tmp/other.db"
+	model2.connection.form.values.id = ""
+	model2.connection.form.values.name, model2.connection.form.values.target = "Other", "/tmp/other.db"
 	model2.recordConnection("")
-	if model2.recentConnections[0].ID == profile.ID {
+	if model2.connection.recentConnections[0].ID == profile.ID {
 		t.Fatal("new profile reused the previous profile's ID")
 	}
-	if err := saveRecentConnections(model2.recentPath, model2.recentConnections); err != nil {
+	if err := saveRecentConnections(model2.connection.recentPath, model2.connection.recentConnections); err != nil {
 		t.Fatalf("saving profiles: %v", err)
 	}
-	persisted, _ := loadRecentConnections(model2.recentPath)
-	if len(persisted) != 2 || persisted[0].ID != model2.recentConnections[0].ID {
+	persisted, _ := loadRecentConnections(model2.connection.recentPath)
+	if len(persisted) != 2 || persisted[0].ID != model2.connection.recentConnections[0].ID {
 		t.Fatalf("persisted profiles = %#v, want two with the new ID first", persisted)
 	}
 }
@@ -694,9 +694,9 @@ func TestConnectionProfiles_legacyJSONProfileReceivesPersistedID(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 
 	// Then — New persisted the assigned ID immediately
-	persisted, _ := loadRecentConnections(model.recentPath)
-	if len(persisted) != 1 || persisted[0].ID != model.recentConnections[0].ID {
-		t.Fatalf("persisted profiles = %#v, want the migrated ID %q on disk", persisted, model.recentConnections[0].ID)
+	persisted, _ := loadRecentConnections(model.connection.recentPath)
+	if len(persisted) != 1 || persisted[0].ID != model.connection.recentConnections[0].ID {
+		t.Fatalf("persisted profiles = %#v, want the migrated ID %q on disk", persisted, model.connection.recentConnections[0].ID)
 	}
 }
 

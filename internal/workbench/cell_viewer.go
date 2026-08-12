@@ -127,9 +127,9 @@ func (m *Model) rawCellValue(tableType string, row, col int, displayValue string
 	var source [][]*string
 	switch tableType {
 	case "browse":
-		source = m.browseResult.UntruncatedRows
+		source = m.browse.result.UntruncatedRows
 	case "results":
-		source = m.resultsRaw
+		source = m.queryLog.resultsRaw
 	}
 	if row >= 0 && row < len(source) && col >= 0 && col < len(source[row]) {
 		if cell := source[row][col]; cell != nil {
@@ -154,6 +154,6 @@ func (m *Model) openCellViewer(resultTable table.Model, selectedColumn int, rawV
 
 	columnTitle := columns[selectedColumn].Title
 
-	m.cellViewer = newCellViewer(columnTitle, rawValue, max(m.width-8, 1), max(m.height-10, 1))
+	m.browse.cellViewer = newCellViewer(columnTitle, rawValue, max(m.layout.width-8, 1), max(m.layout.height-10, 1))
 	return nil
 }

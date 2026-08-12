@@ -35,14 +35,14 @@ func (m Model) loadIndexes() tea.Cmd {
 	}
 }
 func (m Model) saveIndex() tea.Cmd {
-	change, err := m.indexForm.change()
+	change, err := m.structure.indexForm.change()
 	if err != nil {
 		return func() tea.Msg { return indexChangedMsg{err: err} }
 	}
 	if m.ReadOnly {
 		return func() tea.Msg { return indexChangedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	table, service, previous := m.SelectedTable, m.Database, m.indexForm.previous
+	table, service, previous := m.SelectedTable, m.Database, m.structure.indexForm.previous
 	statement, startedAt := m.indexChangeStatement(table, previous, change), time.Now()
 	return func() tea.Msg {
 		if previous == "" {
@@ -55,9 +55,9 @@ func (m Model) deleteIndex() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return indexDeletedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	name := m.deletePendingName
+	name := m.overlay.deletePendingName
 	if name == "" {
-		name = m.indexForm.previous
+		name = m.structure.indexForm.previous
 	}
 	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropIndexStatement(table, name), time.Now()
@@ -83,12 +83,12 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 		rows[i] = table.Row{safeText(index.Name), kind, safeText(strings.Join(index.Columns, ", "))}
 	}
-	m.indexes.SetColumns(tableColumns([]string{"Name", "Kind", "Columns"}, rows))
-	resizeResultsTable(&m.indexes, m.tableViewportWidth, m.indexes.Height()+1)
-	m.indexRows = rows
-	m.indexInfo = message.indexes
+	m.structure.indexes.SetColumns(tableColumns([]string{"Name", "Kind", "Columns"}, rows))
+	resizeResultsTable(&m.structure.indexes, m.layout.tableViewportWidth, m.structure.indexes.Height()+1)
+	m.structure.indexRows = rows
+	m.structure.indexInfo = message.indexes
 	m.applyTableFilter(tabIndexes)
-	m.indexesOffset = 0
+	m.layout.indexesOffset = 0
 	return m, nil
 }
 func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) {
@@ -96,11 +96,11 @@ func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) 
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated index"))
 	}
 	if message.err != nil {
-		m.indexForm.saving = false
+		m.structure.indexForm.saving = false
 		m.setStatus(safeText(fmt.Sprintf("updating index: %v", message.err)))
 		return m, nil
 	}
-	m.indexForm.close()
+	m.structure.indexForm.close()
 	m.setStatus("index updated")
 	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
 }
@@ -109,18 +109,18 @@ func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) 
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped index"))
 	}
 	if message.err != nil {
-		m.indexForm.saving = false
+		m.structure.indexForm.saving = false
 		m.setStatus(safeText(fmt.Sprintf("deleting index: %v", message.err)))
 		return m, nil
 	}
-	m.indexForm.close()
+	m.structure.indexForm.close()
 	m.setStatus("index deleted")
 	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
 }
 func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {
-	m.indexForm = newIndexForm(index)
-	m.formMode.buttonsFocused = false
-	m.indexForm.keybindings = m.keybindings
-	m.indexForm.setWidth(m.tableViewportWidth)
-	return m.openForm(m.indexForm.form.Init(), m.indexForm.focus)
+	m.structure.indexForm = newIndexForm(index)
+	m.overlay.formMode.buttonsFocused = false
+	m.structure.indexForm.keybindings = m.keybindings
+	m.structure.indexForm.setWidth(m.layout.tableViewportWidth)
+	return m.openForm(m.structure.indexForm.form.Init(), m.structure.indexForm.focus)
 }

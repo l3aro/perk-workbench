@@ -84,16 +84,16 @@ func TestSetAppConfig_applies_defaults_to_new_models(t *testing.T) {
 	SetAppConfig(Config{BrowsePageSize: 50, QueryLogPageSize: 7, QueryLogRetentionDays: 90, ReadOnly: true, Theme: "nord"})
 	model := New("", context.Background(), testOpen, false)
 
-	if model.browsePageSize != 50 {
-		t.Fatalf("browsePageSize = %d, want 50", model.browsePageSize)
+	if model.browse.pageSize != 50 {
+		t.Fatalf("browsePageSize = %d, want 50", model.browse.pageSize)
 	}
-	if model.queryLogPageSize != 7 {
-		t.Fatalf("queryLogPageSize = %d, want 7", model.queryLogPageSize)
+	if model.queryLog.pageSize != 7 {
+		t.Fatalf("queryLogPageSize = %d, want 7", model.queryLog.pageSize)
 	}
 	if !model.ReadOnly {
 		t.Fatal("ReadOnly = false, want true from config")
 	}
-	if !model.connection.values.readOnly {
+	if !model.connection.form.values.readOnly {
 		t.Fatal("connection form readOnly = false, want pre-checked from config")
 	}
 	if activeTheme != themeNord {
@@ -112,11 +112,11 @@ func TestSetAppConfig_zero_keeps_builtin_defaults(t *testing.T) {
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
 
-	if model.browsePageSize != core.BrowsePageSize {
-		t.Fatalf("browsePageSize = %d, want built-in %d", model.browsePageSize, core.BrowsePageSize)
+	if model.browse.pageSize != core.BrowsePageSize {
+		t.Fatalf("browsePageSize = %d, want built-in %d", model.browse.pageSize, core.BrowsePageSize)
 	}
-	if model.queryLogPageSize != defaultQueryLogPageSize {
-		t.Fatalf("queryLogPageSize = %d, want built-in %d", model.queryLogPageSize, defaultQueryLogPageSize)
+	if model.queryLog.pageSize != defaultQueryLogPageSize {
+		t.Fatalf("queryLogPageSize = %d, want built-in %d", model.queryLog.pageSize, defaultQueryLogPageSize)
 	}
 	if model.ReadOnly {
 		t.Fatal("ReadOnly = true, want false with zero config")

@@ -26,7 +26,7 @@ func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
 			model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-			model.editor.setValue("SELECT 1")
+			model.queryLog.editor.setValue("SELECT 1")
 
 			// When
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: test.width, Height: test.height})
@@ -44,7 +44,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.editor.setValue("select ")
+	model.queryLog.editor.setValue("select ")
 
 	// When
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
@@ -65,7 +65,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "select " {
+	if got := model.queryLog.editor.value; got != "select " {
 		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
 	}
 
@@ -88,7 +88,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "select " {
+	if got := model.queryLog.editor.value; got != "select " {
 		t.Fatalf("non-SQL tab changed editor value = %q, want %q", got, "select ")
 	}
 
@@ -145,7 +145,7 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.editor.setValue("select ")
+	model.queryLog.editor.setValue("select ")
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
@@ -154,7 +154,7 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "select q" {
+	if got := model.queryLog.editor.value; got != "select q" {
 		t.Fatalf("editor value = %q, want %q", got, "select q")
 	}
 }
@@ -163,7 +163,7 @@ func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.editor.setValue("select ")
+	model.queryLog.editor.setValue("select ")
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
@@ -172,7 +172,7 @@ func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "select 1" {
+	if got := model.queryLog.editor.value; got != "select 1" {
 		t.Fatalf("editor value = %q, want %q", got, "select 1")
 	}
 }
@@ -192,8 +192,8 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 				// Given
 				model := New("", context.Background(), testOpen, false)
 				model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tab
-				model.formMode.mode = mode.value
-				model.layout(100, 24)
+				model.overlay.formMode.mode = mode.value
+				model.applyLayout(100, 24)
 
 				// When
 				view := model.workspaceView()
@@ -218,9 +218,9 @@ func TestView_vimOffHidesModeBadges(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.vimMode = false
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.formMode.mode = formModeInsert
+	model.overlay.formMode.mode = formModeInsert
 	model.ReadOnly = true
-	model.layout(100, 24)
+	model.applyLayout(100, 24)
 
 	workspace := ansi.Strip(model.workspaceView())
 	if strings.Contains(workspace, "INSERT") || strings.Contains(workspace, "NORMAL") {
@@ -241,7 +241,7 @@ func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.layout(100, 24)
+	model.applyLayout(100, 24)
 
 	// When
 	workspace := ansi.Strip(model.workspaceView())
@@ -277,7 +277,7 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.SetItems([]list.Item{
+	model.schema.list.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table"},
 		schemaItem{title: "queue_1", description: "table"},
 	})
@@ -293,29 +293,29 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	model = updateFromCommand(model, command)
 
 	// Then
-	if !model.schemaFilter.Focused() {
+	if !model.schema.filter.Focused() {
 		t.Fatal("schema filter input is not focused")
 	}
-	if got := model.schemaFilter.Value(); got != "q1" {
+	if got := model.schema.filter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want %q", got, "q1")
 	}
-	if !model.schema.IsFiltered() {
+	if !model.schema.list.IsFiltered() {
 		t.Fatal("schema list is not filtered")
 	}
-	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
+	if got := model.schema.list.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 
 	// Escape exits filter editing without clearing the applied filter.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.schemaFilter.Focused() {
+	if model.schema.filter.Focused() {
 		t.Fatal("schema filter input remains focused after escape")
 	}
-	if got := model.schemaFilter.Value(); got != "q1" {
+	if got := model.schema.filter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want preserved q1", got)
 	}
-	if got := model.schema.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
+	if got := model.schema.list.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 
@@ -323,13 +323,13 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	selectedBeforeFilter := model.SelectedTable
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.schemaFilter.Focused() {
+	if !model.schema.filter.Focused() {
 		t.Fatal("slash did not re-focus the schema filter input")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.schemaFilter.Focused() || model.schemaFilter.Value() != "q1" {
-		t.Fatalf("after enter: focused=%t value=%q, want inactive/q1", model.schemaFilter.Focused(), model.schemaFilter.Value())
+	if model.schema.filter.Focused() || model.schema.filter.Value() != "q1" {
+		t.Fatalf("after enter: focused=%t value=%q, want inactive/q1", model.schema.filter.Focused(), model.schema.filter.Value())
 	}
 	if model.SelectedTable != selectedBeforeFilter {
 		t.Fatalf("enter selected table %q, want unchanged %q", model.SelectedTable, selectedBeforeFilter)
@@ -349,7 +349,7 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
 			model.State, model.Focus = stateReady, focusSchema
-			model.schema.SetItems([]list.Item{
+			model.schema.list.SetItems([]list.Item{
 				schemaItem{title: "accounts", description: "table"},
 				schemaItem{title: "queue_1", description: "table"},
 			})
@@ -391,7 +391,7 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
 func TestSchemaFilter_matchesObjectKind(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.SetItems([]list.Item{
+	model.schema.list.SetItems([]list.Item{
 		schemaItem{title: "accounts", database: "main", table: "accounts", kind: "table"},
 		schemaItem{title: "audit_log", database: "main", table: "audit_log", kind: "view"},
 	})
@@ -404,7 +404,7 @@ func TestSchemaFilter_matchesObjectKind(t *testing.T) {
 		model = updateFromCommand(model, command)
 	}
 
-	visible := model.schema.VisibleItems()
+	visible := model.schema.list.VisibleItems()
 	if len(visible) != 1 {
 		t.Fatalf("filtered items = %d, want 1", len(visible))
 	}
@@ -442,7 +442,7 @@ func TestSchemaFilter_visibleInputRendersPlaceholderAndIcon(t *testing.T) {
 func TestSchemaFilter_escapeInTreeNavigationClearsInput(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.SetItems([]list.Item{
+	model.schema.list.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table"},
 		schemaItem{title: "queue_1", description: "table"},
 	})
@@ -456,15 +456,15 @@ func TestSchemaFilter_escapeInTreeNavigationClearsInput(t *testing.T) {
 	model = updateFromCommand(model, command)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if !model.schema.IsFiltered() {
+	if !model.schema.list.IsFiltered() {
 		t.Fatal("escape should commit, not clear, the filter")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.schema.IsFiltered() {
+	if model.schema.list.IsFiltered() {
 		t.Fatal("escape in tree navigation should clear the filter")
 	}
-	if got := model.schemaFilter.Value(); got != "" {
+	if got := model.schema.filter.Value(); got != "" {
 		t.Fatalf("visible filter input = %q, want cleared", got)
 	}
 }
@@ -476,7 +476,7 @@ func TestSchemaFilter_clickFocusesInput(t *testing.T) {
 	// Click the filter row (contentY 1 = terminal Y 2).
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 2, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.schemaFilter.Focused() {
+	if !model.schema.filter.Focused() {
 		t.Fatal("click on the filter row did not focus the input")
 	}
 
@@ -484,10 +484,10 @@ func TestSchemaFilter_clickFocusesInput(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updated.(Model)
 	model = updateFromCommand(model, command)
-	if got := model.schemaFilter.Value(); got != "x" {
+	if got := model.schema.filter.Value(); got != "x" {
 		t.Fatalf("filter value = %q, want x", got)
 	}
-	if !model.schema.IsFiltered() {
+	if !model.schema.list.IsFiltered() {
 		t.Fatal("typing in the filter did not filter the tree")
 	}
 }
@@ -497,11 +497,11 @@ func TestSchemaFilter_clickFocusesInput(t *testing.T) {
 // box and no status bar.
 func TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 30, 24)
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("30-wide model is not compact")
 	}
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.SetItems([]list.Item{
+	model.schema.list.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table"},
 		schemaItem{title: "queue_1", description: "table"},
 	})
@@ -543,7 +543,7 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact(t *testing.T)
 // box still renders.
 func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 16, 24)
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("16-wide model is not compact")
 	}
 	model.State, model.Focus = stateReady, focusSchema
@@ -551,7 +551,7 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing
 	for i := range 9 {
 		items = append(items, schemaItem{title: fmt.Sprintf("other_%d", i), description: "table"})
 	}
-	model.schema.SetItems(items)
+	model.schema.list.SetItems(items)
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
@@ -589,11 +589,11 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing
 // the click.
 func TestFocus_schemaFilteredMouseClickSelectsRenderedTableExactFit(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 32, 24)
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("32-wide model is not compact")
 	}
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.SetItems([]list.Item{
+	model.schema.list.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table"},
 		schemaItem{title: "queue_1", description: "table"},
 	})
@@ -716,7 +716,7 @@ func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus = focusSchema
-	model.schema.SetItems([]list.Item{schemaItem{title: "main", root: true}})
+	model.schema.list.SetItems([]list.Item{schemaItem{title: "main", root: true}})
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"ID"},
@@ -742,7 +742,7 @@ func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 		model = updated.(Model)
 
 		// Then
-		if got := model.results.Cursor(); got != test.want {
+		if got := model.queryLog.results.Cursor(); got != test.want {
 			t.Fatalf("result cursor = %d, want %d after %s", got, test.want, test.key.String())
 		}
 	}
@@ -758,14 +758,14 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to exceed the viewport"), stringPointer("third value"), stringPointer("fourth value"), stringPointer("fifth value")}},
 	}})
 	model = updated.(Model)
-	initialRow := model.results.Cursor()
-	view := tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth)
-	if got, want := len(strings.Split(view, "\n")), model.results.Height()+1; got != want {
+	initialRow := model.queryLog.results.Cursor()
+	view := tableViewportView(model.queryLog.results, model.layout.resultsOffset, model.layout.tableViewportWidth)
+	if got, want := len(strings.Split(view, "\n")), model.queryLog.results.Height()+1; got != want {
 		t.Fatalf("rendered result lines = %d, want fixed viewport height %d", got, want)
 	}
 	for index, line := range strings.Split(view, "\n") {
-		if got := ansi.StringWidth(line); got > model.tableViewportWidth {
-			t.Fatalf("rendered line %d width = %d, exceeds viewport %d: %q", index, got, model.tableViewportWidth, line)
+		if got := ansi.StringWidth(line); got > model.layout.tableViewportWidth {
+			t.Fatalf("rendered line %d width = %d, exceeds viewport %d: %q", index, got, model.layout.tableViewportWidth, line)
 		}
 	}
 
@@ -774,19 +774,19 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsColumn, 1; got != want {
+	if got, want := model.layout.resultsColumn, 1; got != want {
 		t.Fatalf("selected result column = %d, want %d after right", got, want)
 	}
-	if model.resultsOffset == 0 {
+	if model.layout.resultsOffset == 0 {
 		t.Fatal("right-selected result column was not revealed")
 	}
-	if got := model.results.Cursor(); got != initialRow {
+	if got := model.queryLog.results.Cursor(); got != initialRow {
 		t.Fatalf("result cursor = %d, want %d after right", got, initialRow)
 	}
-	if got := tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth); got == view {
+	if got := tableViewportView(model.queryLog.results, model.layout.resultsOffset, model.layout.tableViewportWidth); got == view {
 		t.Fatal("right-scrolled result viewport did not change")
 	}
-	if got := model.results.View(); got == tableViewportView(model.results, model.resultsOffset, model.tableViewportWidth) {
+	if got := model.queryLog.results.View(); got == tableViewportView(model.queryLog.results, model.layout.resultsOffset, model.layout.tableViewportWidth) {
 		t.Fatal("wide result table did not require a horizontal viewport")
 	}
 
@@ -795,10 +795,10 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsColumn, 0; got != want {
+	if got, want := model.layout.resultsColumn, 0; got != want {
 		t.Fatalf("selected result column = %d, want %d after h", got, want)
 	}
-	if got := model.resultsOffset; got != 0 {
+	if got := model.layout.resultsOffset; got != 0 {
 		t.Fatalf("results offset = %d, want 0 after selecting the first column", got)
 	}
 
@@ -807,7 +807,7 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsColumn, 1; got != want {
+	if got, want := model.layout.resultsColumn, 1; got != want {
 		t.Fatalf("selected result column = %d, want %d after l", got, want)
 	}
 }
@@ -819,8 +819,8 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	model.appendQueryLog(queryLogEntry{statement: "select 2"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
-	model.queryLog.SetCursor(1)
-	initialRow := model.queryLog.Cursor()
+	model.queryLog.table.SetCursor(1)
+	initialRow := model.queryLog.table.Cursor()
 	view := model.queryLogContentView()
 
 	// When
@@ -828,10 +828,10 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.Cursor(); got != initialRow {
+	if got := model.queryLog.table.Cursor(); got != initialRow {
 		t.Fatalf("query log cursor = %d, want %d after l", got, initialRow)
 	}
-	if got, want := model.queryLogColumn, 1; got != want {
+	if got, want := model.layout.queryLogColumn, 1; got != want {
 		t.Fatalf("selected query-log column = %d, want %d after l", got, want)
 	}
 
@@ -840,10 +840,10 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.Cursor(); got != initialRow {
+	if got := model.queryLog.table.Cursor(); got != initialRow {
 		t.Fatalf("query log cursor = %d, want %d after h", got, initialRow)
 	}
-	if got, want := model.queryLogColumn, 0; got != want {
+	if got, want := model.layout.queryLogColumn, 0; got != want {
 		t.Fatalf("selected query-log column = %d, want %d after h", got, want)
 	}
 
@@ -864,7 +864,7 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.formMode.beginInsert(model.editor)
+	model.overlay.formMode.beginInsert(model.queryLog.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column"},
@@ -890,10 +890,10 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	if got, want := model.Tab, tabSQL; got != want {
 		t.Fatalf("tab = %v, want %v", got, want)
 	}
-	if got, want := model.resultsColumn, 1; got != want {
+	if got, want := model.layout.resultsColumn, 1; got != want {
 		t.Fatalf("selected result column = %d, want %d after l", got, want)
 	}
-	if model.resultsOffset == 0 {
+	if model.layout.resultsOffset == 0 {
 		t.Fatal("right-selected result column was not revealed")
 	}
 }
@@ -912,17 +912,17 @@ func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsColumn, 1; got != want {
+	if got, want := model.layout.resultsColumn, 1; got != want {
 		t.Fatalf("selected result column = %d, want %d after l", got, want)
 	}
-	if model.resultsOffset == 0 {
+	if model.layout.resultsOffset == 0 {
 		t.Fatal("right-selected result column was not revealed")
 	}
 }
 func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.formMode.beginInsert(model.editor)
+	model.overlay.formMode.beginInsert(model.queryLog.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column", "sixth column", "seventh column", "eighth column"},
@@ -935,7 +935,7 @@ func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.resultsColumn, 1; got != want {
+	if got, want := model.layout.resultsColumn, 1; got != want {
 		t.Fatalf("selected result column = %d, want %d after l", got, want)
 	}
 }
@@ -952,7 +952,7 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 				model.focusActiveTable()
 				updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{{Name: "id"}, {Name: "name"}}})
 				model = updated.(Model)
-				model.structure.SetCursor(1)
+				model.structure.table.SetCursor(1)
 				return model
 			},
 		},
@@ -963,7 +963,7 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 				model.focusActiveTable()
 				updated, _ := model.Update(browseTableMsg{table: "projects", page: model.BrowsePage, result: sqlite.Result{Columns: []string{"ID"}, Rows: [][]*string{{stringPointer("1")}, {stringPointer("2")}}}})
 				model = updated.(Model)
-				model.browse.SetCursor(1)
+				model.browse.table.SetCursor(1)
 				return model
 			},
 		},
@@ -979,11 +979,11 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if test.name == "structure" && model.structure.Cursor() != 0 {
-				t.Fatalf("structure cursor = %d, want 0 after k", model.structure.Cursor())
+			if test.name == "structure" && model.structure.table.Cursor() != 0 {
+				t.Fatalf("structure cursor = %d, want 0 after k", model.structure.table.Cursor())
 			}
-			if test.name == "browse" && model.browse.Cursor() != 0 {
-				t.Fatalf("browse cursor = %d, want 0 after k", model.browse.Cursor())
+			if test.name == "browse" && model.browse.table.Cursor() != 0 {
+				t.Fatalf("browse cursor = %d, want 0 after k", model.browse.table.Cursor())
 			}
 		})
 	}
@@ -993,13 +993,13 @@ func TestBrowse_next_stays_on_final_page(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.BrowsePage = "projects", tabBrowse, 2
-	model.browseResult.HasMore = false
+	model.browse.result.HasMore = false
 	model.focusActiveTable()
 
 	// When
 	updated, timer := model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	model = updated.(Model)
-	updated, command := model.Update(browseDebounceMsg{tag: model.browsePageTag, delta: 1, table: "projects"})
+	updated, command := model.Update(browseDebounceMsg{tag: model.browse.pageTag, delta: 1, table: "projects"})
 	model = updated.(Model)
 
 	// Then
@@ -1012,7 +1012,7 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "projects", tabBrowse
-	model.browseResult.HasMore = true
+	model.browse.result.HasMore = true
 	model.focusActiveTable()
 
 	// When
@@ -1022,7 +1022,7 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 	model = updated.(Model)
 	updated, staleCommand := model.Update(browseDebounceMsg{tag: 1, delta: 1, table: "projects"})
 	model = updated.(Model)
-	updated, loadCommand := model.Update(browseDebounceMsg{tag: model.browsePageTag, delta: 1, table: "projects"})
+	updated, loadCommand := model.Update(browseDebounceMsg{tag: model.browse.pageTag, delta: 1, table: "projects"})
 	model = updated.(Model)
 
 	// Then
@@ -1034,8 +1034,8 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.schema.SetItems([]list.Item{schemaItem{title: "main", root: true}})
-	_, listCommand := model.schema.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model.schema.list.SetItems([]list.Item{schemaItem{title: "main", root: true}})
+	_, listCommand := model.schema.list.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	if commandQuits(listCommand) {
 		t.Fatal("schema list returned a quit command for plain q")
 	}
@@ -1048,7 +1048,7 @@ func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
 	if commandQuits(command) {
 		t.Fatal("plain q returned a quit command")
 	}
-	if model.quitDialog != nil {
+	if model.overlay.quitDialog != nil {
 		t.Fatal("plain q opened the quit dialog")
 	}
 
@@ -1057,7 +1057,7 @@ func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.quitDialog == nil {
+	if model.overlay.quitDialog == nil {
 		t.Fatal("ctrl+q did not open the quit dialog")
 	}
 }

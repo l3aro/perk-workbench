@@ -14,7 +14,7 @@ import (
 // by feeding synthetic frame ticks until no animation remains.
 func completeTreeAnim(model Model) Model {
 	for range 2 * treeAnimMaxTicks {
-		if model.treeAnim == nil {
+		if model.schema.anim == nil {
 			return model
 		}
 		updated, _ := model.Update(treeAnimTickMsg{})
@@ -33,27 +33,27 @@ func TestSchemaTree_expandAnimatesChildReveal(t *testing.T) {
 		{Database: "analytics", Type: "table", Name: "sessions"},
 		{Database: "app", Type: "database", Name: "app"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 	// Start collapsed, like a fresh session's non-preferred roots.
-	model.expandedDatabases["analytics"] = false
+	model.schema.expandedDatabases["analytics"] = false
 	model.rebuildSchemaTree()
 
 	// Expand the analytics root.
-	model.schema.Select(0)
+	model.schema.list.Select(0)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	if model.treeAnim == nil {
+	if model.schema.anim == nil {
 		t.Fatal("expanding toggle did not start an accordion animation")
 	}
-	if model.treeAnim.collapsing {
+	if model.schema.anim.collapsing {
 		t.Fatal("expanding toggle started a collapse animation")
 	}
-	if model.treeAnim.total != 3 {
-		t.Fatalf("animation total = %d, want 3 child rows", model.treeAnim.total)
+	if model.schema.anim.total != 3 {
+		t.Fatalf("animation total = %d, want 3 child rows", model.schema.anim.total)
 	}
 	// First frame: nothing revealed yet.
-	if view := ansi.Strip(model.schema.View()); strings.Contains(view, "  ▪ events") {
+	if view := ansi.Strip(model.schema.list.View()); strings.Contains(view, "  ▪ events") {
 		t.Fatalf("frame 0 = %q, want no children yet", view)
 	}
 
@@ -62,23 +62,23 @@ func TestSchemaTree_expandAnimatesChildReveal(t *testing.T) {
 	for range 200 {
 		updated, _ := model.Update(treeAnimTickMsg{})
 		model = updated.(Model)
-		if model.treeAnim == nil {
+		if model.schema.anim == nil {
 			break
 		}
-		rows := strings.Count(ansi.Strip(model.schema.View()), "  ▪")
+		rows := strings.Count(ansi.Strip(model.schema.list.View()), "  ▪")
 		if rows < seen {
 			t.Fatalf("reveal regressed: %d then %d rows", seen, rows)
 		}
 		seen = rows
 	}
 	model = completeTreeAnim(model)
-	view := ansi.Strip(model.schema.View())
+	view := ansi.Strip(model.schema.list.View())
 	for _, label := range []string{"▣ analytics", "  ▪ events", "  ▪ funnels", "  ▪ sessions"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("settled tree = %q, want %q", view, label)
 		}
 	}
-	if model.treeAnim != nil {
+	if model.schema.anim != nil {
 		t.Fatal("animation still running after settling")
 	}
 }
@@ -93,25 +93,25 @@ func TestSchemaTree_collapseAnimatesChildHide(t *testing.T) {
 		{Database: "analytics", Type: "table", Name: "sessions"},
 		{Database: "app", Type: "database", Name: "app"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
 	// Collapse the expanded analytics root.
-	model.schema.Select(0)
+	model.schema.list.Select(0)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	if model.treeAnim == nil || !model.treeAnim.collapsing {
+	if model.schema.anim == nil || !model.schema.anim.collapsing {
 		t.Fatal("collapsing toggle did not start a collapse animation")
 	}
-	if model.treeAnim.total != 3 {
-		t.Fatalf("animation total = %d, want 3 child rows", model.treeAnim.total)
+	if model.schema.anim.total != 3 {
+		t.Fatalf("animation total = %d, want 3 child rows", model.schema.anim.total)
 	}
 	// First frame still shows every child; the settle hides them all.
-	if view := ansi.Strip(model.schema.View()); !strings.Contains(view, "  ▪ events") {
+	if view := ansi.Strip(model.schema.list.View()); !strings.Contains(view, "  ▪ events") {
 		t.Fatalf("frame 0 = %q, want children still visible", view)
 	}
 	model = completeTreeAnim(model)
-	if view := ansi.Strip(model.schema.View()); strings.Contains(view, "  ▪") {
+	if view := ansi.Strip(model.schema.list.View()); strings.Contains(view, "  ▪") {
 		t.Fatalf("settled tree = %q, want no children", view)
 	}
 }
@@ -123,12 +123,12 @@ func TestSchemaTree_emptyRootToggleArmsNoAnimation(t *testing.T) {
 		{Database: "analytics", Type: "database", Name: "analytics"},
 		{Database: "app", Type: "database", Name: "app"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
-	model.schema.Select(0)
+	model.schema.list.Select(0)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.treeAnim != nil {
+	if model.schema.anim != nil {
 		t.Fatal("toggle on an empty root started an animation")
 	}
 }
@@ -144,21 +144,21 @@ func TestSchemaTree_postgresSchemaCollapseAnimatesTables(t *testing.T) {
 		{Database: "main", Type: "table", Name: "public.accounts"},
 		{Database: "main", Type: "table", Name: "public.orders"},
 	})
-	model.schema.SetSize(30, 8)
+	model.schema.list.SetSize(30, 8)
 
 	// The load expands main and its first schema; collapse that schema.
-	model.schema.Select(1)
+	model.schema.list.Select(1)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	if model.treeAnim == nil || !model.treeAnim.collapsing {
+	if model.schema.anim == nil || !model.schema.anim.collapsing {
 		t.Fatal("schema collapse did not start an animation")
 	}
-	if model.treeAnim.total != 2 {
-		t.Fatalf("schema collapse total = %d, want 2 tables", model.treeAnim.total)
+	if model.schema.anim.total != 2 {
+		t.Fatalf("schema collapse total = %d, want 2 tables", model.schema.anim.total)
 	}
 	model = completeTreeAnim(model)
-	if view := ansi.Strip(model.schema.View()); strings.Contains(view, "    ▪ accounts") {
+	if view := ansi.Strip(model.schema.list.View()); strings.Contains(view, "    ▪ accounts") {
 		t.Fatalf("settled tree = %q, want public's tables hidden", view)
 	}
 }

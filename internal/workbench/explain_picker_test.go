@@ -38,13 +38,13 @@ func TestExplainShortcut_prefillsSelectedCommandAndFocusesSQLEditor(t *testing.T
 	// Given
 	model := readyModel(t)
 	model.databaseInfo.Product = "SQLite"
-	model.editor.setValue("SELECT current editor")
+	model.queryLog.editor.setValue("SELECT current editor")
 	model.appendQueryLog(queryLogEntry{statement: "SELECT 1"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
-	if command == nil || model.explainPicker == nil {
+	if command == nil || model.overlay.explainPicker == nil {
 		t.Fatal("e did not open the explain command picker")
 	}
 	model = resolveExplainCommand(model, command)
@@ -55,13 +55,13 @@ func TestExplainShortcut_prefillsSelectedCommandAndFocusesSQLEditor(t *testing.T
 	model = resolveExplainCommand(model, command)
 
 	// Then
-	if model.explainPicker != nil {
+	if model.overlay.explainPicker != nil {
 		t.Fatal("selection did not close the explain command picker")
 	}
-	if model.Focus != focusWorkspace || model.Tab != tabSQL || !model.formMode.editing() {
-		t.Fatalf("SQL editor focus = focus:%v tab:%v editing:%t", model.Focus, model.Tab, model.formMode.editing())
+	if model.Focus != focusWorkspace || model.Tab != tabSQL || !model.overlay.formMode.editing() {
+		t.Fatalf("SQL editor focus = focus:%v tab:%v editing:%t", model.Focus, model.Tab, model.overlay.formMode.editing())
 	}
-	if got, want := model.editor.value, "EXPLAIN QUERY PLAN\nSELECT 1"; got != want {
+	if got, want := model.queryLog.editor.value, "EXPLAIN QUERY PLAN\nSELECT 1"; got != want {
 		t.Fatalf("editor value = %q, want %q", got, want)
 	}
 	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
@@ -70,8 +70,8 @@ func TestExplainShortcut_prefillsSelectedCommandAndFocusesSQLEditor(t *testing.T
 		t.Fatal("prefilled explain query did not start")
 	}
 	model = driveCommand(model, command)
-	if model.Running() || len(model.results.Rows()) == 0 {
-		t.Fatalf("explain query did not complete with results: running=%t rows=%#v", model.Running(), model.results.Rows())
+	if model.Running() || len(model.queryLog.results.Rows()) == 0 {
+		t.Fatalf("explain query did not complete with results: running=%t rows=%#v", model.Running(), model.queryLog.results.Rows())
 	}
 }
 
@@ -79,7 +79,7 @@ func TestExplainShortcut_discardsUnsupportedStatements(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.databaseInfo.Product, model.databaseInfo.Version = "MySQL", "8.0.36"
-	model.editor.setValue("SELECT current editor")
+	model.queryLog.editor.setValue("SELECT current editor")
 	model.appendQueryLog(queryLogEntry{statement: "CREATE TABLE projects (id INTEGER)"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
@@ -87,10 +87,10 @@ func TestExplainShortcut_discardsUnsupportedStatements(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if command != nil || model.explainPicker != nil {
-		t.Fatalf("unsupported statement opened picker: command=%t picker=%t", command != nil, model.explainPicker != nil)
+	if command != nil || model.overlay.explainPicker != nil {
+		t.Fatalf("unsupported statement opened picker: command=%t picker=%t", command != nil, model.overlay.explainPicker != nil)
 	}
-	if got, want := model.editor.value, "SELECT current editor"; got != want {
+	if got, want := model.queryLog.editor.value, "SELECT current editor"; got != want {
 		t.Fatalf("editor value = %q, want unchanged %q", got, want)
 	}
 }

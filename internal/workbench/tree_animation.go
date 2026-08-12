@@ -53,7 +53,7 @@ func (m *Model) startTreeAnim(database, schema string, expanding bool, total int
 	}
 	// Angular frequency 2π/0.5s ≈ 12.6 with a 0.8 damping ratio settles in
 	// about half a second with a barely visible overshoot.
-	m.treeAnim = &treeAnim{
+	m.schema.anim = &treeAnim{
 		spring:     harmonica.NewSpring(harmonica.FPS(60), 12.6, 0.8),
 		database:   database,
 		schema:     schema,
@@ -71,18 +71,18 @@ func (m Model) armTreeAnim() tea.Cmd {
 // tree with the revealed rows; the animation ends at the first frame that
 // shows (or hides) every child row, before any overshoot can bounce rows.
 func (m Model) updateTreeAnim(treeAnimTickMsg) (tea.Model, tea.Cmd) {
-	anim := m.treeAnim
+	anim := m.schema.anim
 	if anim == nil {
 		return m, nil
 	}
 	if anim.ticks >= treeAnimMaxTicks {
-		m.treeAnim = nil
+		m.schema.anim = nil
 		return m, m.rebuildSchemaTree()
 	}
 	anim.ticks++
 	anim.value, anim.velocity = anim.spring.Update(anim.value, anim.velocity, 1)
 	if anim.complete() {
-		m.treeAnim = nil
+		m.schema.anim = nil
 		return m, m.rebuildSchemaTree()
 	}
 	return m, tea.Batch(m.rebuildSchemaTree(), m.armTreeAnim())
@@ -111,7 +111,7 @@ func (a *treeAnim) revealedRows() int {
 // schemaReveal reports the animated subtree and how many of its child rows
 // may render this frame; revealed is -1 when no animation is running.
 func (m Model) schemaReveal() (database, schema string, revealed int) {
-	anim := m.treeAnim
+	anim := m.schema.anim
 	if anim == nil {
 		return "", "", -1
 	}
@@ -123,9 +123,9 @@ func (m Model) schemaReveal() (database, schema string, revealed int) {
 // post-toggle state when expanding, the pre-toggle state when collapsing,
 // mirroring what the rebuild renders at the first animation frame.
 func (m Model) schemaChildRowCount(database, schema string, expanding bool) int {
-	dbExpanded := m.expandedDatabases[database] || expanding
+	dbExpanded := m.schema.expandedDatabases[database] || expanding
 	count := 0
-	for _, object := range m.schemaObjects {
+	for _, object := range m.schema.objects {
 		switch object.Type {
 		case "schema":
 			if schema == "" && object.Database == database && dbExpanded {
@@ -140,7 +140,7 @@ func (m Model) schemaChildRowCount(database, schema string, expanding bool) int 
 				if !found {
 					continue
 				}
-				expanded := m.expandedSchemas[m.schemaExpansionKey(database, objSchema)]
+				expanded := m.schema.expandedSchemas[m.schemaExpansionKey(database, objSchema)]
 				if expanding && schema == objSchema {
 					expanded = true // toggleSchema expands exactly this one
 				}

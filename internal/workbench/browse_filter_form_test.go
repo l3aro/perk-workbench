@@ -45,18 +45,18 @@ func TestBrowseFilterGrid_editsAndAppliesFilters(t *testing.T) {
 
 			updated, command := model.Update(applyKey)
 			model = updated.(Model)
-			if command == nil || model.browseFilterForm != nil || model.BrowsePage != 0 {
-				t.Fatalf("apply state = form:%#v page:%d command:%t", model.browseFilterForm, model.BrowsePage, command != nil)
+			if command == nil || model.browse.filterForm != nil || model.BrowsePage != 0 {
+				t.Fatalf("apply state = form:%#v page:%d command:%t", model.browse.filterForm, model.BrowsePage, command != nil)
 			}
 			model = resolveBrowseCommand(model, command())
 			want := []sharedsql.BrowseFilter{
 				{Column: "id", Operator: sharedsql.BrowseFilterGreater, Value: "1"},
 				{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%second%"},
 			}
-			if got := model.browseSettings.filters; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+			if got := model.browse.settings.filters; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 				t.Fatalf("filters = %#v, want %#v", got, want)
 			}
-			if rows := model.browse.Rows(); len(rows) != 1 || rows[0][1] != "second" {
+			if rows := model.browse.table.Rows(); len(rows) != 1 || rows[0][1] != "second" {
 				t.Fatalf("browse rows = %#v, want second", rows)
 			}
 		})
@@ -83,8 +83,8 @@ func TestBrowseFilterGrid_patternOperator(t *testing.T) {
 	}
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	model.browseFilterForm.setSize(120, 8)
-	if view := ansi.Strip(model.browseFilterForm.View()); !strings.Contains(view, "* any, ? one char") {
+	model.browse.filterForm.setSize(120, 8)
+	if view := ansi.Strip(model.browse.filterForm.View()); !strings.Contains(view, "* any, ? one char") {
 		t.Fatalf("filter form = %q, want the PATTERN wildcard hint", view)
 	}
 
@@ -92,10 +92,10 @@ func TestBrowseFilterGrid_patternOperator(t *testing.T) {
 	model = updated.(Model)
 	model = resolveBrowseCommand(model, command())
 	want := []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterPattern, Value: "*second*"}}
-	if got := model.browseSettings.filters; len(got) != len(want) || got[0] != want[0] {
+	if got := model.browse.settings.filters; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("filters = %#v, want %#v", got, want)
 	}
-	if rows := model.browse.Rows(); len(rows) != 1 || rows[0][1] != "second" {
+	if rows := model.browse.table.Rows(); len(rows) != 1 || rows[0][1] != "second" {
 		t.Fatalf("browse rows = %#v, want second", rows)
 	}
 }
@@ -108,7 +108,7 @@ func TestBrowseFilterGrid_escapePreservesInlineValue(t *testing.T) {
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
-	if form := model.browseFilterForm; form == nil || form.fields[0].value != "x" || form.editing {
+	if form := model.browse.filterForm; form == nil || form.fields[0].value != "x" || form.editing {
 		t.Fatalf("filter form = %#v, want preserved inline value", form)
 	}
 
@@ -116,23 +116,23 @@ func TestBrowseFilterGrid_escapePreservesInlineValue(t *testing.T) {
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if form := model.browseFilterForm; form.fields[0].operator != sharedsql.BrowseFilterEqual || form.editing {
+	if form := model.browse.filterForm; form.fields[0].operator != sharedsql.BrowseFilterEqual || form.editing {
 		t.Fatalf("filter form = %#v, want preserved operator selection", form)
 	}
 }
 
 func TestBrowseFilterGrid_rRestoresOpenedState(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.browseSettings = browseSettings{
+	model.browse.settings = browseSettings{
 		filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%first%"}},
 		limit:   1,
 	}
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
-	form := model.browseFilterForm
+	form := model.browse.filterForm
 	form.fields[1].operator, form.fields[1].value, form.limit = sharedsql.BrowseFilterEqual, "second", "2"
 
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'r', Text: "r"})
-	form = model.browseFilterForm
+	form = model.browse.filterForm
 	if form.fields[1].operator != sharedsql.BrowseFilterLike || form.fields[1].value != "%first%" || form.limit != "1" {
 		t.Fatalf("reset form = %#v, want opened filter settings", form)
 	}
@@ -140,12 +140,12 @@ func TestBrowseFilterGrid_rRestoresOpenedState(t *testing.T) {
 
 func TestBrowseFilterGrid_backspaceClearsSelectedCell(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.browseSettings = browseSettings{
+	model.browse.settings = browseSettings{
 		filters: []sharedsql.BrowseFilter{{Column: "id", Operator: sharedsql.BrowseFilterGreater, Value: "1"}},
 	}
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	form := model.browseFilterForm
+	form := model.browse.filterForm
 	if form.fields[0].operator != sharedsql.BrowseFilterNone || form.fields[0].value != "1" {
 		t.Fatalf("operator clear = %#v, want empty operator with retained value", form.fields[0])
 	}
@@ -160,18 +160,18 @@ func TestBrowseFilterGrid_backspaceClearsSelectedCell(t *testing.T) {
 func TestBrowse_rClearsFiltersAndReloads(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.BrowsePage = 1
-	model.browseSettings = browseSettings{
+	model.browse.settings = browseSettings{
 		filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%second%"}},
 		sorts:   []browseSort{{column: "id", desc: true}},
 	}
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 	model = updated.(Model)
-	if command == nil || model.BrowsePage != 0 || len(model.browseSettings.filters) != 0 || len(model.browseSettings.sorts) != 1 {
-		t.Fatalf("reset state = %#v, page:%d, command:%t", model.browseSettings, model.BrowsePage, command != nil)
+	if command == nil || model.BrowsePage != 0 || len(model.browse.settings.filters) != 0 || len(model.browse.settings.sorts) != 1 {
+		t.Fatalf("reset state = %#v, page:%d, command:%t", model.browse.settings, model.BrowsePage, command != nil)
 	}
 	model = resolveBrowseCommand(model, command())
-	if rows := model.browse.Rows(); len(rows) != 2 {
+	if rows := model.browse.table.Rows(); len(rows) != 2 {
 		t.Fatalf("browse rows = %#v, want unfiltered rows", rows)
 	}
 }

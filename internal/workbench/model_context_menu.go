@@ -5,9 +5,9 @@ import (
 )
 
 func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
-	menu := m.contextMenu
+	menu := m.overlay.contextMenu
 	selectAction := func(action string) (tea.Model, tea.Cmd) {
-		m.contextMenu = nil
+		m.overlay.contextMenu = nil
 		switch action {
 		case "insert_row":
 			return m, m.openInsertRowForm()
@@ -18,7 +18,7 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "edit_row":
 			return m, m.openBrowseForm()
 		case "delete_row":
-			m.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
+			m.overlay.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
 				{label: "Yes, delete", action: "delete"},
 				{label: "Cancel", action: "cancel"},
 			})
@@ -52,20 +52,20 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.setStatus("copied to clipboard")
-			return m, copyQueryLogStatement(queryLogCell(entry, m.queryLogColumn))
+			return m, copyQueryLogStatement(queryLogCell(entry, m.layout.queryLogColumn))
 		case "query_log_explain":
 			entry, ok := m.queryLogSelectedEntry()
 			if !ok {
 				return m, nil
 			}
-			m.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.tableViewportWidth)
-			if m.explainPicker == nil {
+			m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.layout.tableViewportWidth)
+			if m.overlay.explainPicker == nil {
 				return m, nil
 			}
-			return m, m.explainPicker.form.Init()
+			return m, m.overlay.explainPicker.form.Init()
 		case "query_log_detail":
 			if entry, ok := m.queryLogSelectedEntry(); ok {
-				m.queryLogDetail = &entry
+				m.queryLog.detail = &entry
 			}
 		}
 		return m, nil
@@ -83,7 +83,7 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.Keystroke() {
 		case "esc":
-			m.contextMenu = nil
+			m.overlay.contextMenu = nil
 		case "up", "k":
 			menu.selected = max(menu.selected-1, 0)
 		case "down", "j":
@@ -103,14 +103,14 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseClickMsg:
 		if msg.Button != tea.MouseLeft {
-			m.contextMenu = nil
+			m.overlay.contextMenu = nil
 			return m, nil
 		}
 		relY := msg.Mouse().Y - menu.y - 1
 		if relY >= 2 && relY < 2+len(menu.options) {
 			return selectAction(menu.options[relY-2].action)
 		}
-		m.contextMenu = nil
+		m.overlay.contextMenu = nil
 	}
 	return m, nil
 }
@@ -120,37 +120,37 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 // Acceptance drops the table and refreshes the sidebar; decline clears the
 // retained target.
 func (m *Model) confirmTableDelete(database, table string) {
-	m.deletePending = "table"
-	m.deletePendingDatabase = database
-	m.deletePendingName = table
-	m.deleteConfirm = yesNoConfirmation("Delete table?", "DROP TABLE "+m.actionIdentifier(m.qualifiedTableName(database, table)), "delete_table")
+	m.overlay.deletePending = "table"
+	m.overlay.deletePendingDatabase = database
+	m.overlay.deletePendingName = table
+	m.overlay.deleteConfirm = yesNoConfirmation("Delete table?", "DROP TABLE "+m.actionIdentifier(m.qualifiedTableName(database, table)), "delete_table")
 }
 
 // confirmSchemaDelete opens the Delete schema? confirmation for the given
 // schema. RESTRICT is fixed policy: a schema with contained objects is left
 // untouched when the server rejects the drop.
 func (m *Model) confirmSchemaDelete(schema string) {
-	m.deletePending = "schema"
-	m.deletePendingName = schema
-	m.deleteConfirm = yesNoConfirmation("Delete schema?", "DROP SCHEMA "+m.quoteIdentifier(schema)+" RESTRICT", "delete")
+	m.overlay.deletePending = "schema"
+	m.overlay.deletePendingName = schema
+	m.overlay.deleteConfirm = yesNoConfirmation("Delete schema?", "DROP SCHEMA "+m.quoteIdentifier(schema)+" RESTRICT", "delete")
 }
 
 // confirmDatabaseDelete opens the Delete database? confirmation for the
 // given database.
 func (m *Model) confirmDatabaseDelete(database string) {
-	m.deletePending = "database"
-	m.deletePendingDatabase = database
-	m.deleteConfirm = yesNoConfirmation("Delete database?", "DROP DATABASE "+m.quoteIdentifier(database), "delete")
+	m.overlay.deletePending = "database"
+	m.overlay.deletePendingDatabase = database
+	m.overlay.deleteConfirm = yesNoConfirmation("Delete database?", "DROP DATABASE "+m.quoteIdentifier(database), "delete")
 }
 
 func (m *Model) copyBrowseCell() tea.Cmd {
-	row, col := m.browse.Cursor(), m.browseColumn
-	if row < 0 || row >= len(m.browseResult.Rows) || col < 0 || col >= len(m.browseResult.Columns) {
+	row, col := m.browse.table.Cursor(), m.layout.browseColumn
+	if row < 0 || row >= len(m.browse.result.Rows) || col < 0 || col >= len(m.browse.result.Columns) {
 		return nil
 	}
 	display := ""
-	if row < len(m.browse.Rows()) && col < len(m.browse.Rows()[row]) {
-		display = m.browse.Rows()[row][col]
+	if row < len(m.browse.table.Rows()) && col < len(m.browse.table.Rows()[row]) {
+		display = m.browse.table.Rows()[row][col]
 	}
 	value := m.rawCellValue("browse", row, col, display)
 	m.setStatus("copied to clipboard")
@@ -158,12 +158,12 @@ func (m *Model) copyBrowseCell() tea.Cmd {
 }
 
 func (m *Model) copySQLCell() tea.Cmd {
-	row, col := m.results.Cursor(), m.resultsColumn
-	if row < 0 || row >= len(m.resultsRaw) || col < 0 || col >= len(m.resultsRaw[row]) {
+	row, col := m.queryLog.results.Cursor(), m.layout.resultsColumn
+	if row < 0 || row >= len(m.queryLog.resultsRaw) || col < 0 || col >= len(m.queryLog.resultsRaw[row]) {
 		return nil
 	}
 	value := ""
-	if cell := m.resultsRaw[row][col]; cell != nil {
+	if cell := m.queryLog.resultsRaw[row][col]; cell != nil {
 		value = *cell
 	}
 	m.setStatus("copied to clipboard")

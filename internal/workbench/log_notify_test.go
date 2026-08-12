@@ -24,7 +24,7 @@ func TestLogNotification_popupRendersLevelTitleIcon(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.notifyLog(log.Entry{Time: time.Now(), Level: log.LevelWarn, Message: "slow query detected"})
 
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("popup not shown after notifyLog")
 	}
@@ -89,7 +89,7 @@ func TestLogNotification_statusEntriesStayNeutral(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.notify("row updated")
 
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("popup not shown after notify")
 	}
@@ -114,7 +114,7 @@ func TestLogNotification_logCallsInsideUpdateDrainToPopup(t *testing.T) {
 	updated, cmd := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	model = updated.(Model)
 
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("queued log entry did not surface as a popup")
 	}
@@ -133,7 +133,7 @@ func TestLogNotification_logCallsInsideUpdateDrainToPopup(t *testing.T) {
 // returns the resulting model.
 func openWithScratch(t *testing.T, model Model) Model {
 	t.Helper()
-	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
 	updated, command := model.openConnection()
 	model = updated.(Model)
 	if command == nil {
@@ -164,7 +164,7 @@ func TestLogNotification_readyStatusIsDebugLog(t *testing.T) {
 	if model.Status != "ready: Scratch" {
 		t.Fatalf("status = %q, want the ready status kept", model.Status)
 	}
-	if popup := model.notificationPopup; popup != nil {
+	if popup := model.notifications.popup; popup != nil {
 		t.Fatalf("default level surfaced a popup: %#v", popup)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "perk-workbench", "event.log")); err == nil {
@@ -175,7 +175,7 @@ func TestLogNotification_readyStatusIsDebugLog(t *testing.T) {
 	// the DEBUG line.
 	SetAppConfig(Config{LogLevel: "debug"})
 	model = openWithScratch(t, New("", context.Background(), testOpen, false))
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("debug level did not surface the ready popup")
 	}
@@ -212,16 +212,16 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	// entry is dropped, so nothing pops up.
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{Name: "Scratch", Target: ":memory:"}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.setFocus(connectionFocusRecent)
+	model.connection.recentConnections = []recentConnection{{Name: "Scratch", Target: ":memory:"}}
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.setFocus(connectionFocusRecent)
 	drainLogNotifications()
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
 	if model.Status != "editing Scratch" {
 		t.Fatalf("status = %q, want the editing status kept", model.Status)
 	}
-	if popup := model.notificationPopup; popup != nil {
+	if popup := model.notifications.popup; popup != nil {
 		t.Fatalf("default level surfaced a popup: %#v", popup)
 	}
 
@@ -229,13 +229,13 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	// the DEBUG line.
 	SetAppConfig(Config{LogLevel: "debug"})
 	model = New("", context.Background(), testOpen, false)
-	model.recentConnections = []recentConnection{{Name: "Scratch", Target: ":memory:"}}
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
-	model.connection.setFocus(connectionFocusRecent)
+	model.connection.recentConnections = []recentConnection{{Name: "Scratch", Target: ":memory:"}}
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
+	model.connection.form.setFocus(connectionFocusRecent)
 	drainLogNotifications()
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("debug level did not surface the editing popup")
 	}
@@ -273,13 +273,13 @@ func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
 	// event.log.
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
-	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
 	updated, _ := model.Update(connectionActionMsg{action: connectionActionConnect})
 	model = updated.(Model)
 	if model.Status != "opening Scratch" {
 		t.Fatalf("status = %q, want the opening status kept", model.Status)
 	}
-	if popup := model.notificationPopup; popup != nil {
+	if popup := model.notifications.popup; popup != nil {
 		t.Fatalf("default level surfaced a popup: %#v", popup)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "perk-workbench", "event.log")); err == nil {
@@ -292,10 +292,10 @@ func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
 	// opening one.
 	SetAppConfig(Config{LogLevel: "debug"})
 	model = New("", context.Background(), testOpen, false)
-	model.connection.values.name, model.connection.values.target = "Scratch", ":memory:"
+	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
 	updated, _ = model.Update(connectionActionMsg{action: connectionActionConnect})
 	model = updated.(Model)
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("debug level did not surface the opening popup")
 	}
@@ -350,7 +350,7 @@ func TestLogNotification_openingPickerStatusIsDebugLog(t *testing.T) {
 	if model.Status != "opening database" {
 		t.Fatalf("status = %q, want the opening status kept", model.Status)
 	}
-	if popup := model.notificationPopup; popup != nil {
+	if popup := model.notifications.popup; popup != nil {
 		t.Fatalf("default level surfaced a popup: %#v", popup)
 	}
 
@@ -362,7 +362,7 @@ func TestLogNotification_openingPickerStatusIsDebugLog(t *testing.T) {
 	model = New("", context.Background(), testOpen, false)
 	updated, _ = model.Update(pickerSelectionMsg{target: ":memory:"})
 	model = updated.(Model)
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("debug level did not surface the opening popup")
 	}
@@ -415,13 +415,13 @@ func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
 	// A live connection's scope is still assigned while the next open is
 	// in flight.
 	model.connectionID = "live-scope"
-	model.connection.values.name, model.connection.values.target = "Second", ":memory:"
+	model.connection.form.values.name, model.connection.form.values.target = "Second", ":memory:"
 
 	// The Debug opening popup shows while the scope is still the live
 	// connection's.
 	updated, _ := model.Update(connectionActionMsg{action: connectionActionConnect})
 	model = updated.(Model)
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil || !strings.Contains(popup.title, "Debug") || !strings.Contains(popup.description, "opening Second") {
 		t.Fatalf("popup = %#v, want the Debug opening Second popup", popup)
 	}
@@ -464,7 +464,7 @@ func TestLogNotification_endToEndFileAndPopup(t *testing.T) {
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	model = updated.(Model)
 
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("log.Error did not surface as a popup")
 	}
@@ -595,7 +595,7 @@ func TestLogNotification_idleAsyncLogWakesProgram(t *testing.T) {
 	// The woken loop drains the queue into a popup.
 	updated, _ := model.Update(logWakeupMsg{})
 	model = updated.(Model)
-	popup := model.notificationPopup
+	popup := model.notifications.popup
 	if popup == nil {
 		t.Fatal("async log did not surface as a popup")
 	}

@@ -81,14 +81,14 @@ func (e editor) completionVisible() bool { return e.completion.visible() }
 func (e editor) View() string { return e.text.View() }
 
 func (m Model) completionOverlay() string {
-	matches := m.editor.completion.matches
+	matches := m.queryLog.editor.completion.matches
 	if len(matches) < 1 {
 		return ""
 	}
 
 	// Scrollable viewport of up to 5 items, keeping selection visible.
 	const viewSize = 5
-	selected := m.editor.completion.selected
+	selected := m.queryLog.editor.completion.selected
 
 	offset := selected - viewSize/2
 	offset = max(offset, 0)
@@ -113,14 +113,14 @@ func (m Model) completionOverlay() string {
 	}
 
 	return completionBoxStyle.
-		MaxWidth(m.editor.width).
+		MaxWidth(m.queryLog.editor.width).
 		Render(lipgloss.JoinVertical(lipgloss.Left, items...))
 }
 func (m Model) completionCursorOffset() int {
-	styledLines := m.editor.text.styledLines(m.editor.value, max(m.editor.width, 1))
-	cursorLine := m.editor.text.input.Line()
-	cursorInfo := m.editor.text.input.LineInfo()
-	start := min(m.editor.text.input.ScrollYOffset(), len(styledLines))
+	styledLines := m.queryLog.editor.text.styledLines(m.queryLog.editor.value, max(m.queryLog.editor.width, 1))
+	cursorLine := m.queryLog.editor.text.input.Line()
+	cursorInfo := m.queryLog.editor.text.input.LineInfo()
+	start := min(m.queryLog.editor.text.input.ScrollYOffset(), len(styledLines))
 
 	for i, sl := range styledLines {
 		if sl.hardLine == cursorLine && sl.subLine == cursorInfo.RowOffset {

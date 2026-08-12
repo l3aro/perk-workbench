@@ -23,13 +23,13 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		// the database if one is open), so unlike the Ctrl+Q keybinding it
 		// opens regardless of form or running state.
 		width := headerButtonWidth()
-		quitX := m.width - headerRightMargin - width
+		quitX := m.layout.width - headerRightMargin - width
 		if x >= quitX && x < quitX+width {
 			return m.openQuitDialog(), nil
 		}
 		if x >= quitX-headerButtonGap-width && x < quitX-headerButtonGap {
-			m.commandPalette = newCommandPalette(m)
-			m.commandPalette.visible = true
+			m.overlay.commandPalette = newCommandPalette(m)
+			m.overlay.commandPalette.visible = true
 		}
 		return m, nil
 	}
@@ -38,7 +38,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	}
 	switch m.State {
 	case stateReady:
-		if m.compact {
+		if m.layout.compact {
 			// Single-pane layout: route by the focused pane, which renders
 			// full-width with its title row at y=1 (contentY=0).
 			contentY := y - 1
@@ -53,10 +53,10 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			case focusQueryLog:
 				return m.focusQueryLogClick(x, contentY)
 			case focusChat:
-				if !m.chatKeepInsert {
+				if !m.chat.keepInsert {
 					m.chat.chatMode = formModeNormal
 				}
-				m.chatKeepInsert = false
+				m.chat.keepInsert = false
 				return m, nil
 			}
 			return m, nil
@@ -66,46 +66,46 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		if contentY < 0 {
 			return m, nil
 		}
-		if x < m.schemaWidth {
+		if x < m.layout.schemaWidth {
 			if m.Focus != focusSchema {
 				m.Focus = focusSchema
-				m.queryLogPendingG = false
-				m.editor.text.Blur()
+				m.queryLog.pendingG = false
+				m.queryLog.editor.text.Blur()
 				m.blurTables()
 			}
 			return m.schemaClick(x, contentY)
 		}
-		if m.chat.visible && x >= m.schemaWidth+m.editorWidth {
+		if m.chat.visible && x >= m.layout.schemaWidth+m.layout.editorWidth {
 			m.Focus = focusChat
-			m.queryLogPendingG = false
-			m.editor.text.Blur()
+			m.queryLog.pendingG = false
+			m.queryLog.editor.text.Blur()
 			m.blurTables()
 			// A double-click press just entered insert mode; the trailing
 			// release must not reset it to normal.
-			if !m.chatKeepInsert {
+			if !m.chat.keepInsert {
 				m.chat.chatMode = formModeNormal
 			}
-			m.chatKeepInsert = false
+			m.chat.keepInsert = false
 			return m, nil
 		}
-		if contentY < m.workspaceHeight {
-			workspaceX := max(x-m.schemaWidth, 0)
+		if contentY < m.layout.workspaceHeight {
+			workspaceX := max(x-m.layout.schemaWidth, 0)
 			return m.handleWorkspaceClick(workspaceX, contentY)
 		}
 		// contentY is relative to the pane title row: the title sits at
 		// queryLogTop, so subtract queryLogTop-1 to make it relative to 0.
 		return m.focusQueryLogClick(x, contentY-m.queryLogTop()+1)
 	case stateConnection:
-		if m.compact {
+		if m.layout.compact {
 			return m, nil
 		}
-		if x < m.schemaWidth && m.connection.focus != connectionFocusRecent {
-			m.connection.focus = connectionFocusRecent
+		if x < m.layout.schemaWidth && m.connection.form.focus != connectionFocusRecent {
+			m.connection.form.focus = connectionFocusRecent
 			return m, nil
 		}
-		if x >= m.schemaWidth && m.connection.focus != connectionFocusForm {
-			m.connection.focus = connectionFocusForm
-			m.recentFilter.Blur()
+		if x >= m.layout.schemaWidth && m.connection.form.focus != connectionFocusForm {
+			m.connection.form.focus = connectionFocusForm
+			m.connection.recentFilter.Blur()
 		}
 		return m, nil
 	case statePicking:
@@ -114,11 +114,11 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		itemLine := y - 1 - 5
 		if itemLine >= 0 {
 			itemOnPage := itemLine / 3
-			items := m.picker.VisibleItems()
-			start, end := m.picker.Paginator.GetSliceBounds(len(items))
+			items := m.connection.picker.VisibleItems()
+			start, end := m.connection.picker.Paginator.GetSliceBounds(len(items))
 			if start+itemOnPage < end {
-				m.picker.Select(start + itemOnPage)
-				if item, ok := m.picker.SelectedItem().(pickerItem); ok {
+				m.connection.picker.Select(start + itemOnPage)
+				if item, ok := m.connection.picker.SelectedItem().(pickerItem); ok {
 					return m, selectPickerItem(item.raw)
 				}
 			}
@@ -126,7 +126,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		return m, nil
 	case stateFailure:
 		m.RecoverToPicker("choose another database")
-		return m, readDirectory(m.pickerDir)
+		return m, readDirectory(m.connection.pickerDir)
 	}
 	return m, nil
 }
@@ -145,8 +145,8 @@ func (m Model) recentItemOnPage(contentY int) (int, bool) {
 		return 0, false
 	}
 	itemOnPage := itemLine / 3
-	items := m.recent.VisibleItems()
-	start, end := m.recent.Paginator.GetSliceBounds(len(items))
+	items := m.connection.recent.VisibleItems()
+	start, end := m.connection.recent.Paginator.GetSliceBounds(len(items))
 	if start+itemOnPage >= end {
 		return 0, false
 	}
@@ -160,15 +160,15 @@ func (m Model) recentRowY(index int) int {
 	if m.schemaFilterShown() {
 		itemOffset = 6
 	}
-	items := m.recent.VisibleItems()
-	start, _ := m.recent.Paginator.GetSliceBounds(len(items))
+	items := m.connection.recent.VisibleItems()
+	start, _ := m.connection.recent.Paginator.GetSliceBounds(len(items))
 	return max(itemOffset+(index-start)*3, itemOffset)
 }
 
 // openRecentConnectionMenu opens the profile context menu: Edit loads the
 // selected profile into the connection form, Delete asks for confirmation.
 func (m *Model) openRecentConnectionMenu(x, y int) {
-	m.contextMenu = &contextMenuModel{
+	m.overlay.contextMenu = &contextMenuModel{
 		options: []menuOption{
 			{label: "Edit", action: "edit_profile", keys: "e"},
 			{label: "Delete", action: "delete_profile", keys: "d"},
@@ -193,15 +193,15 @@ func (m Model) handleRecentClick(x, y int) (tea.Model, tea.Cmd) {
 	// Clicking the box focuses the input; any other click leaves filter
 	// editing so navigation keys work again.
 	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
-		m.recentFilter.Focus()
+		m.connection.recentFilter.Focus()
 		return m, nil
 	}
-	m.recentFilter.Blur()
+	m.connection.recentFilter.Blur()
 	index, ok := m.recentItemOnPage(contentY)
 	if !ok {
 		return m, nil
 	}
-	m.recent.Select(index)
+	m.connection.recent.Select(index)
 	if !m.recordFormClick(x, y) {
 		return m, nil
 	}
@@ -225,18 +225,18 @@ func (m Model) handleRecentRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.recent.Select(index)
-	m.recentFilter.Blur()
-	m.connection.focus = connectionFocusRecent
+	m.connection.recent.Select(index)
+	m.connection.recentFilter.Blur()
+	m.connection.form.focus = connectionFocusRecent
 	m.openRecentConnectionMenu(absX, absY+1)
 	return m, nil
 }
 
 func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
-	m.schemaFilter.Blur()
+	m.schema.filter.Blur()
 	if m.Focus != focusWorkspace {
 		m.Focus = focusWorkspace
-		m.queryLogPendingG = false
+		m.queryLog.pendingG = false
 		m.focusActiveTable()
 	}
 	// The workspace pane has a RoundedBorder (top border at contentY=0).
@@ -273,7 +273,7 @@ func (m Model) schemaItemOffset() int {
 // openBlankServerMenu opens the blank-sidebar context menu: creating a
 // database is valid on any server product and needs no selection.
 func (m *Model) openBlankServerMenu(x, y int) {
-	m.contextMenu = &contextMenuModel{
+	m.overlay.contextMenu = &contextMenuModel{
 		options:  []menuOption{{label: "Add new database", action: "create_database", keys: "A"}},
 		selected: 0,
 		visible:  true,
@@ -291,16 +291,16 @@ func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
 	if itemY < 0 {
 		return schemaItem{}, false
 	}
-	items := m.schema.VisibleItems()
+	items := m.schema.list.VisibleItems()
 	if len(items) == 0 {
 		return schemaItem{}, false
 	}
-	start, end := m.schema.Paginator.GetSliceBounds(len(items))
+	start, end := m.schema.list.Paginator.GetSliceBounds(len(items))
 	if itemY >= end-start {
 		return schemaItem{}, false
 	}
-	m.schema.Select(start + itemY)
-	item, ok := m.schema.SelectedItem().(schemaItem)
+	m.schema.list.Select(start + itemY)
+	item, ok := m.schema.list.SelectedItem().(schemaItem)
 	return item, ok
 }
 
@@ -308,8 +308,8 @@ func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
 // index, clamped to the visible window.
 func (m Model) schemaRowY(index int) int {
 	itemOffset := m.schemaItemOffset()
-	items := m.schema.VisibleItems()
-	start, _ := m.schema.Paginator.GetSliceBounds(len(items))
+	items := m.schema.list.VisibleItems()
+	start, _ := m.schema.list.Paginator.GetSliceBounds(len(items))
 	row := itemOffset + (index - start)
 	return max(row, itemOffset)
 }
@@ -343,7 +343,7 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 		// database carries the schema-qualified Add table target (the
 		// table form uses it as the PostgreSQL schema); schema carries
 		// the same value for the schema-level actions.
-		m.contextMenu = &contextMenuModel{
+		m.overlay.contextMenu = &contextMenuModel{
 			options: []menuOption{
 				{label: "Add new schema", action: "create_schema", keys: "A"},
 				{label: "Add new table", action: "add_table", keys: "a"},
@@ -375,7 +375,7 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 					{label: "Delete database", action: "delete_database", keys: "d"},
 				}
 			}
-			m.contextMenu = &contextMenuModel{
+			m.overlay.contextMenu = &contextMenuModel{
 				options:  options,
 				selected: 0,
 				visible:  true,
@@ -387,7 +387,7 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 			// MySQL treats database and schema as one level: sibling
 			// database actions plus the table child. Database rename
 			// has no safe DDL, so Edit database is not offered.
-			m.contextMenu = &contextMenuModel{
+			m.overlay.contextMenu = &contextMenuModel{
 				options: []menuOption{
 					{label: "Add new database", action: "create_database", keys: "A"},
 					{label: "Add new table", action: "add_table", keys: "a"},
@@ -400,7 +400,7 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 				database: item.database,
 			}
 		default:
-			m.contextMenu = &contextMenuModel{
+			m.overlay.contextMenu = &contextMenuModel{
 				options:  []menuOption{{label: "Add table", action: "add_table", keys: "a"}},
 				selected: 0,
 				visible:  true,
@@ -429,7 +429,7 @@ func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
 				menuDatabase = target
 			}
 		}
-		m.contextMenu = &contextMenuModel{
+		m.overlay.contextMenu = &contextMenuModel{
 			options:  options,
 			selected: 0,
 			visible:  true,
@@ -449,16 +449,16 @@ func (m Model) schemaClick(x, contentY int) (tea.Model, tea.Cmd) {
 	// The filter box is the first body rows; clicking it focuses the
 	// input for typing.
 	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
-		m.schemaFilter.Focus()
+		m.schema.filter.Focus()
 		return m, nil
 	}
 	item, ok := m.schemaItemAt(contentY)
 	if !ok {
-		m.schemaFilter.Blur()
+		m.schema.filter.Blur()
 		return m, nil
 	}
 	// Item clicks leave filter editing so navigation keys work again.
-	m.schemaFilter.Blur()
+	m.schema.filter.Blur()
 	if item.kind == "schema" {
 		return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
 	}
@@ -478,11 +478,11 @@ func (m Model) schemaClick(x, contentY int) (tea.Model, tea.Cmd) {
 // content overflows; the inner render is cheap now (cached editor lexing,
 // cached cell styles, linear segment crop).
 func (m Model) queryLogTop() int {
-	if m.compact {
+	if m.layout.compact {
 		return 1
 	}
 	workspaceViewHeight := lipgloss.Height(m.workspaceView())
-	return 3 + max(m.workspaceHeight-1, workspaceViewHeight)
+	return 3 + max(m.layout.workspaceHeight-1, workspaceViewHeight)
 }
 
 func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
@@ -490,27 +490,27 @@ func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
 	// header line at 1, and data rows from 2.
 	if m.Focus != focusQueryLog {
 		m.Focus = focusQueryLog
-		m.queryLogPendingG = false
-		m.editor.text.Blur()
+		m.queryLog.pendingG = false
+		m.queryLog.editor.text.Blur()
 		m.blurTables()
-		m.queryLog.Focus()
-		if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
-			m.queryLog.SetCursor(0)
+		m.queryLog.table.Focus()
+		if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
+			m.queryLog.table.SetCursor(0)
 		}
 	}
 	rowY := contentY - 2
-	if rowY < 0 || rowY >= m.queryLog.Height() {
+	if rowY < 0 || rowY >= m.queryLog.table.Height() {
 		return m, nil
 	}
-	rows := m.queryLog.Rows()
-	start := min(max(m.queryLog.Cursor()-m.queryLog.Height()+1, 0), max(len(rows)-m.queryLog.Height(), 0))
+	rows := m.queryLog.table.Rows()
+	start := min(max(m.queryLog.table.Cursor()-m.queryLog.table.Height()+1, 0), max(len(rows)-m.queryLog.table.Height(), 0))
 	if row := start + rowY; row < len(rows) {
-		m.queryLog.SetCursor(row)
-		cellX := x - m.workspaceLeft() - 1 + m.queryLogOffset
-		for index, column := range m.queryLog.Columns() {
+		m.queryLog.table.SetCursor(row)
+		cellX := x - m.workspaceLeft() - 1 + m.layout.queryLogOffset
+		for index, column := range m.queryLog.table.Columns() {
 			cellWidth := column.Width + 2*spaceCompact
 			if cellX < cellWidth {
-				m.queryLogColumn = index
+				m.layout.queryLogColumn = index
 				break
 			}
 			cellX -= cellWidth
@@ -520,7 +520,7 @@ func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
-	if m.height < 4 || m.width < 1 {
+	if m.layout.height < 4 || m.layout.width < 1 {
 		return m, nil
 	}
 	// Forward wheel events to the focused area's table. Plain vertical
@@ -565,16 +565,16 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		}
 	case focusQueryLog:
 		if hStep != 0 {
-			moveTableColumn(&m.queryLog, &m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth, hStep)
+			moveTableColumn(&m.queryLog.table, &m.layout.queryLogColumn, &m.layout.queryLogOffset, m.layout.tableViewportWidth, hStep)
 			return m, nil
 		}
-		rows := m.queryLog.Rows()
+		rows := m.queryLog.table.Rows()
 		rowCount := len(rows)
 		if rowCount == 0 {
 			return m, nil
 		}
-		newCursor := clamp(m.queryLog.Cursor()+step, 0, rowCount-1)
-		m.queryLog.SetCursor(newCursor)
+		newCursor := clamp(m.queryLog.table.Cursor()+step, 0, rowCount-1)
+		m.queryLog.table.SetCursor(newCursor)
 	}
 	return m, nil
 }
@@ -595,30 +595,30 @@ func (m Model) scrollForm(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.State == stateConnection {
-		if m.connection.focus == connectionFocusForm && m.connection.form != nil {
+		if m.connection.form.focus == connectionFocusForm && m.connection.form.form != nil {
 			if step > 0 {
-				return m, m.connection.form.NextField()
+				return m, m.connection.form.form.NextField()
 			}
-			return m, m.connection.form.PrevField()
+			return m, m.connection.form.form.PrevField()
 		}
 		return m, nil
 	}
 	switch {
-	case m.columnForm.active():
+	case m.structure.columnForm.active():
 		if step > 0 {
-			return m, m.columnForm.nextField()
+			return m, m.structure.columnForm.nextField()
 		}
-		return m, m.columnForm.previousField()
-	case m.browseFilterForm != nil:
-		m.browseFilterForm.scrollOffset = clamp(m.browseFilterForm.scrollOffset+step, 0, len(m.browseFilterForm.fields)+1)
-	case m.documentEditor != nil:
-		m.documentEditor.scrollOffset = formScrollOffset(m.documentEditor.View(), m.documentEditor.scrollOffset, step, m.formViewportHeight())
-	case m.browseForm.active():
-		m.browseForm.scrollOffset = formScrollOffset(m.browseForm.View(), m.browseForm.scrollOffset, step, m.formViewportHeight())
-	case m.indexForm.active():
-		m.indexForm.scrollOffset = formScrollOffset(m.indexForm.View(), m.indexForm.scrollOffset, step, m.formViewportHeight())
-	case m.foreignKeyForm.active():
-		m.foreignKeyForm.scrollOffset = formScrollOffset(m.foreignKeyForm.View(), m.foreignKeyForm.scrollOffset, step, m.formViewportHeight())
+		return m, m.structure.columnForm.previousField()
+	case m.browse.filterForm != nil:
+		m.browse.filterForm.scrollOffset = clamp(m.browse.filterForm.scrollOffset+step, 0, len(m.browse.filterForm.fields)+1)
+	case m.browse.documentEditor != nil:
+		m.browse.documentEditor.scrollOffset = formScrollOffset(m.browse.documentEditor.View(), m.browse.documentEditor.scrollOffset, step, m.formViewportHeight())
+	case m.browse.form.active():
+		m.browse.form.scrollOffset = formScrollOffset(m.browse.form.View(), m.browse.form.scrollOffset, step, m.formViewportHeight())
+	case m.structure.indexForm.active():
+		m.structure.indexForm.scrollOffset = formScrollOffset(m.structure.indexForm.View(), m.structure.indexForm.scrollOffset, step, m.formViewportHeight())
+	case m.structure.foreignKeyForm.active():
+		m.structure.foreignKeyForm.scrollOffset = formScrollOffset(m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset, step, m.formViewportHeight())
 	}
 	return m, nil
 }
@@ -637,27 +637,27 @@ func formScrollOffset(view string, offset, step, height int) int {
 // handleSchemaTableClick handles left-click on structure, indexes, or foreignKeys tables.
 // Row-level selection; double-click opens the edit form for the row.
 func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
-	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil {
+	if m.State != stateReady || m.Focus != focusWorkspace || m.overlay.contextMenu != nil {
 		return m, nil
 	}
 
 	var targetTable *table.Model
 	switch m.Tab {
 	case tabStructure:
-		if m.columnForm.active() {
+		if m.structure.columnForm.active() {
 			return m, nil
 		}
-		targetTable = &m.structure
+		targetTable = &m.structure.table
 	case tabIndexes:
-		if m.indexForm.active() {
+		if m.structure.indexForm.active() {
 			return m, nil
 		}
-		targetTable = &m.indexes
+		targetTable = &m.structure.indexes
 	case tabForeignKeys:
-		if m.foreignKeyForm.active() || m.relationshipDiagram {
+		if m.structure.foreignKeyForm.active() || m.structure.relationshipDiagram {
 			return m, nil
 		}
-		targetTable = &m.foreignKeys
+		targetTable = &m.structure.foreignKeys
 	default:
 		return m, nil
 	}
@@ -669,10 +669,10 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	// Workspace X: skip schema pane (left) and pane left border (1).
 	workspaceX := absX - 1 // Skip pane left border.
-	if !m.compact {
-		workspaceX = max(absX-m.schemaWidth, 0) - 1
+	if !m.layout.compact {
+		workspaceX = max(absX-m.layout.schemaWidth, 0) - 1
 	}
-	if workspaceX < 0 || workspaceX >= m.tableViewportWidth {
+	if workspaceX < 0 || workspaceX >= m.layout.tableViewportWidth {
 		return m, nil
 	}
 
@@ -698,18 +698,18 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	// Non-vim mode: the clicked table owns focus, so leave any text editing.
 	if !m.vimMode {
-		m.formMode.mode = formModeNormal
-		m.editor.text.Blur()
+		m.overlay.formMode.mode = formModeNormal
+		m.queryLog.editor.text.Blur()
 		targetTable.Focus()
 	}
 
 	// Check for double-click at the same position on the same tab and row:
 	// open the row's edit form, matching the enter/i keybinding behavior.
 	now := time.Now()
-	if !m.lastClickTime.IsZero() && now.Sub(m.lastClickTime) < doubleClickTimeout &&
-		m.lastClickX == absX && m.lastClickY == absY &&
-		m.lastClickTab == m.Tab && m.lastClickRow == dataRow {
-		m.lastClickTime = time.Time{}
+	if !m.layout.lastClickTime.IsZero() && now.Sub(m.layout.lastClickTime) < doubleClickTimeout &&
+		m.layout.lastClickX == absX && m.layout.lastClickY == absY &&
+		m.layout.lastClickTab == m.Tab && m.layout.lastClickRow == dataRow {
+		m.layout.lastClickTime = time.Time{}
 		switch m.Tab {
 		case tabStructure:
 			return m, m.openColumnForm()
@@ -726,11 +726,11 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 
 	// Single click: select the row.
-	m.lastClickTime = now
-	m.lastClickX = absX
-	m.lastClickY = absY
-	m.lastClickTab = m.Tab
-	m.lastClickRow = dataRow
+	m.layout.lastClickTime = now
+	m.layout.lastClickX = absX
+	m.layout.lastClickY = absY
+	m.layout.lastClickTab = m.Tab
+	m.layout.lastClickRow = dataRow
 	return m, nil
 }
 
@@ -739,7 +739,7 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 // keybinding); a click on a data row selects the cell and detects
 // double-click for inline editing.
 func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
-	if m.State != stateReady || m.Focus != focusWorkspace || m.contextMenu != nil {
+	if m.State != stateReady || m.Focus != focusWorkspace || m.overlay.contextMenu != nil {
 		return m, nil
 	}
 
@@ -756,15 +756,15 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	// table's rows-empty guard: on an empty page (e.g. the last page after
 	// deletions) Prev is still enabled and must page back. Disabled
 	// buttons share the row but ignore clicks.
-	pagerRow := m.browse.Height() + 6
+	pagerRow := m.browse.table.Height() + 6
 	if m.browseStatusSplit() {
 		pagerRow++
 	}
-	if m.Tab == tabBrowse && contentY == pagerRow && !m.browseForm.active() && m.browseFilterForm == nil {
+	if m.Tab == tabBrowse && contentY == pagerRow && !m.browse.form.active() && m.browse.filterForm == nil {
 		pager := m.browsePager()
 		browseX := absX - 1
-		if !m.compact {
-			browseX = max(absX-m.schemaWidth, 0) - 1
+		if !m.layout.compact {
+			browseX = max(absX-m.layout.schemaWidth, 0) - 1
 		}
 		if pager.prevEnabled && browseX >= pager.prevStart && browseX < pager.prevStart+ansi.StringWidth(pager.prev) {
 			return m.pagerBrowseCommand(-1)
@@ -777,11 +777,11 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	// Determine which table tab we're on and which table to target.
 	switch m.Tab {
 	case tabBrowse:
-		if m.browseForm.active() || m.browseFilterForm != nil || len(m.browse.Rows()) == 0 {
+		if m.browse.form.active() || m.browse.filterForm != nil || len(m.browse.table.Rows()) == 0 {
 			return m, nil
 		}
 	case tabSQL:
-		if len(m.results.Rows()) == 0 {
+		if len(m.queryLog.results.Rows()) == 0 {
 			return m, nil
 		}
 	default:
@@ -798,20 +798,20 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	var rows []table.Row
 	switch m.Tab {
 	case tabBrowse:
-		targetTable = &m.browse
-		targetCol = &m.browseColumn
-		targetOffset = &m.browseOffset
-		rows = m.browse.Rows()
+		targetTable = &m.browse.table
+		targetCol = &m.layout.browseColumn
+		targetOffset = &m.layout.browseOffset
+		rows = m.browse.table.Rows()
 	case tabSQL:
-		targetTable = &m.results
-		targetCol = &m.resultsColumn
-		targetOffset = &m.resultsOffset
-		rows = m.results.Rows()
+		targetTable = &m.queryLog.results
+		targetCol = &m.layout.resultsColumn
+		targetOffset = &m.layout.resultsOffset
+		rows = m.queryLog.results.Rows()
 	}
 
 	browseX := absX - 1 // Skip pane left border.
-	if !m.compact {
-		browseX = max(absX-m.schemaWidth, 0) - 1
+	if !m.layout.compact {
+		browseX = max(absX-m.layout.schemaWidth, 0) - 1
 	}
 	if browseX < 0 {
 		return m, nil
@@ -843,7 +843,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		if m.Tab != tabBrowse {
 			return m, nil
 		}
-		m.browseColumn = col
+		m.layout.browseColumn = col
 		return m, m.cycleBrowseSort()
 	}
 	if browseLine < 1 {
@@ -859,20 +859,20 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	// Non-vim mode: the clicked table owns focus, so leave any text editing.
 	if !m.vimMode {
-		m.formMode.mode = formModeNormal
-		m.editor.text.Blur()
+		m.overlay.formMode.mode = formModeNormal
+		m.queryLog.editor.text.Blur()
 		targetTable.Focus()
 	}
 
 	// Check for double-click at the same position.
 	now := time.Now()
-	if !m.lastClickTime.IsZero() && now.Sub(m.lastClickTime) < doubleClickTimeout &&
-		m.lastClickX == absX && m.lastClickY == absY {
+	if !m.layout.lastClickTime.IsZero() && now.Sub(m.layout.lastClickTime) < doubleClickTimeout &&
+		m.layout.lastClickX == absX && m.layout.lastClickY == absY {
 		// Double-click: open inline cell editor.
 		targetTable.SetCursor(dataRow)
 		*targetCol = col
-		revealTableColumn(*targetTable, *targetCol, targetOffset, m.tableViewportWidth)
-		m.lastClickTime = time.Time{}
+		revealTableColumn(*targetTable, *targetCol, targetOffset, m.layout.tableViewportWidth)
+		m.layout.lastClickTime = time.Time{}
 		if m.Tab == tabBrowse {
 			return m, m.openCellEditor()
 		}
@@ -880,12 +880,12 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 
 	// Single click: select the cell.
-	m.lastClickTime = now
-	m.lastClickX = absX
-	m.lastClickY = absY
+	m.layout.lastClickTime = now
+	m.layout.lastClickX = absX
+	m.layout.lastClickY = absY
 	targetTable.SetCursor(dataRow)
 	*targetCol = col
-	revealTableColumn(*targetTable, *targetCol, targetOffset, m.tableViewportWidth)
+	revealTableColumn(*targetTable, *targetCol, targetOffset, m.layout.tableViewportWidth)
 	return m, nil
 }
 
@@ -893,10 +893,10 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State == stateConnection {
 		// Profiles pane: the left pane in the wide layout, the focused
 		// pane in compact. Right-clicking a profile opens its menu.
-		if !m.compact && absX >= m.schemaWidth {
+		if !m.layout.compact && absX >= m.layout.schemaWidth {
 			return m, nil
 		}
-		if m.compact && m.connection.focus != connectionFocusRecent {
+		if m.layout.compact && m.connection.form.focus != connectionFocusRecent {
 			return m, nil
 		}
 		return m.handleRecentRightClick(absX, absY)
@@ -909,8 +909,8 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	inSchema := !m.compact && absX < m.schemaWidth
-	if m.compact {
+	inSchema := !m.layout.compact && absX < m.layout.schemaWidth
+	if m.layout.compact {
 		inSchema = m.Focus == focusSchema
 	}
 	if inSchema {
@@ -926,7 +926,7 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 				m.openBlankServerMenu(absX, absY+1)
 				return m, nil
 			}
-			item, ok = m.schema.SelectedItem().(schemaItem)
+			item, ok = m.schema.list.SelectedItem().(schemaItem)
 			if !ok || item.database == "" {
 				return m, nil
 			}
@@ -935,15 +935,15 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		m.openSchemaItemMenu(item, absX, absY+1)
 		return m, nil
 	}
-	if m.compact && m.Focus != focusWorkspace {
+	if m.layout.compact && m.Focus != focusWorkspace {
 		return m, nil
 	}
 
 	// Only show context menu on browse table (tabBrowse) when form isn't active.
-	if !(m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active()) {
+	if !(m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active()) {
 		return m, nil
 	}
-	rows := m.browse.Rows()
+	rows := m.browse.table.Rows()
 	if len(rows) == 0 {
 		return m, nil
 	}
@@ -953,18 +953,18 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if browseLine < 1 {
 		return m, nil
 	}
-	rowHeight := m.browse.Height()
-	start := min(max(m.browse.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	rowHeight := m.browse.table.Height()
+	start := min(max(m.browse.table.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
 	dataRow := start + browseLine - 1
 	if dataRow < 0 || dataRow >= len(rows) {
 		return m, nil
 	}
 
 	// Select the row and build context menu.
-	m.browse.SetCursor(dataRow)
+	m.browse.table.SetCursor(dataRow)
 	m.refreshBrowseStatus()
 
-	m.contextMenu = &contextMenuModel{
+	m.overlay.contextMenu = &contextMenuModel{
 		options:  m.browseRowMenuOptions(),
 		selected: 0,
 		visible:  true,

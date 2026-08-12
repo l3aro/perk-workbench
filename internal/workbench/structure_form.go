@@ -91,21 +91,21 @@ func (m *Model) openColumnForm() tea.Cmd {
 		m.setStatus("select a column")
 		return nil
 	}
-	m.columnForm = newColumnForm(*column, sharedsql.ColumnTypes(m.databaseInfo))
-	m.formMode.buttonsFocused = false
-	m.columnForm.keybindings = m.keybindings
-	m.columnForm.setWidth(m.tableViewportWidth)
-	m.columnForm.setHeight(m.formViewportHeight())
-	return m.openForm(m.columnForm.form.Init(), m.columnForm.focus)
+	m.structure.columnForm = newColumnForm(*column, sharedsql.ColumnTypes(m.databaseInfo))
+	m.overlay.formMode.buttonsFocused = false
+	m.structure.columnForm.keybindings = m.keybindings
+	m.structure.columnForm.setWidth(m.layout.tableViewportWidth)
+	m.structure.columnForm.setHeight(m.formViewportHeight())
+	return m.openForm(m.structure.columnForm.form.Init(), m.structure.columnForm.focus)
 }
 
 func (m *Model) openNewColumnForm() tea.Cmd {
-	m.columnForm = newEmptyColumnForm(sharedsql.ColumnTypes(m.databaseInfo))
-	m.formMode.buttonsFocused = false
-	m.columnForm.keybindings = m.keybindings
-	m.columnForm.setWidth(m.tableViewportWidth)
-	m.columnForm.setHeight(m.formViewportHeight())
-	return m.openForm(m.columnForm.form.Init(), m.columnForm.focus)
+	m.structure.columnForm = newEmptyColumnForm(sharedsql.ColumnTypes(m.databaseInfo))
+	m.overlay.formMode.buttonsFocused = false
+	m.structure.columnForm.keybindings = m.keybindings
+	m.structure.columnForm.setWidth(m.layout.tableViewportWidth)
+	m.structure.columnForm.setHeight(m.formViewportHeight())
+	return m.openForm(m.structure.columnForm.form.Init(), m.structure.columnForm.focus)
 }
 
 func (f columnForm) active() bool { return f.form != nil }

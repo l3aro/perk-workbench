@@ -22,59 +22,59 @@ func TestForeignKeysTab_loadsAndManagesForeignKeys(t *testing.T) {
 
 	// When
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	model.foreignKeyForm.values.columns = "parent_id"
-	model.foreignKeyForm.values.referenceTable = "parents"
-	model.foreignKeyForm.values.referenceColumns = "id"
-	model.foreignKeyForm.values.onDelete = "CASCADE"
+	model.structure.foreignKeyForm.values.columns = "parent_id"
+	model.structure.foreignKeyForm.values.referenceTable = "parents"
+	model.structure.foreignKeyForm.values.referenceColumns = "id"
+	model.structure.foreignKeyForm.values.onDelete = "CASCADE"
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.foreignKeyForm.active() || model.foreignKeyForm.confirming() || len(model.foreignKeys.Rows()) != 0 {
+	if !model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() || len(model.structure.foreignKeys.Rows()) != 0 {
 		t.Fatal("negative create confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.foreignKeyForm.active() {
+	if model.structure.foreignKeyForm.active() {
 		t.Fatal("saved foreign-key form remained active")
 	}
-	if got := model.foreignKeys.Rows(); len(got) != 1 || got[0][1] != "parent_id" || got[0][2] != "parents" || got[0][3] != "id" || got[0][4] != "CASCADE" {
+	if got := model.structure.foreignKeys.Rows(); len(got) != 1 || got[0][1] != "parent_id" || got[0][2] != "parents" || got[0][3] != "id" || got[0][4] != "CASCADE" {
 		t.Fatalf("foreign-key rows = %#v, want parent_id references parents(id) on delete cascade", got)
 	}
 
 	// When
-	model.foreignKeys.SetCursor(0)
+	model.structure.foreignKeys.SetCursor(0)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	model.foreignKeyForm.values.columns = "code"
-	model.foreignKeyForm.values.referenceColumns = "code"
+	model.structure.foreignKeyForm.values.columns = "code"
+	model.structure.foreignKeyForm.values.referenceColumns = "code"
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.foreignKeyForm.active() || model.foreignKeyForm.confirming() || model.foreignKeys.Rows()[0][1] != "parent_id" {
+	if !model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() || model.structure.foreignKeys.Rows()[0][1] != "parent_id" {
 		t.Fatal("negative edit confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if got := model.foreignKeys.Rows(); len(got) != 1 || got[0][1] != "code" || got[0][3] != "code" {
+	if got := model.structure.foreignKeys.Rows(); len(got) != 1 || got[0][1] != "code" || got[0][3] != "code" {
 		t.Fatalf("foreign-key rows after edit = %#v, want code references parents(code)", got)
 	}
 
 	// When
-	model.foreignKeys.SetCursor(0)
+	model.structure.foreignKeys.SetCursor(0)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
-	if model.deleteConfirm == nil || len(model.foreignKeys.Rows()) != 1 {
+	if model.overlay.deleteConfirm == nil || len(model.structure.foreignKeys.Rows()) != 1 {
 		t.Fatal("d did not open delete confirmation")
 	}
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if model.deleteConfirm != nil || len(model.foreignKeys.Rows()) != 1 {
+	if model.overlay.deleteConfirm != nil || len(model.structure.foreignKeys.Rows()) != 1 {
 		t.Fatal("negative delete confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if got := model.foreignKeys.Rows(); len(got) != 0 {
+	if got := model.structure.foreignKeys.Rows(); len(got) != 0 {
 		t.Fatalf("foreign-key rows after delete = %#v, want no foreign keys", got)
 	}
 }
@@ -192,7 +192,7 @@ func TestForeignKeyForm_discardWithoutChangesClosesWithoutConfirmation(t *testin
 	updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: nil})
 	model = updated.(Model)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.foreignKeyForm.active() {
+	if !model.structure.foreignKeyForm.active() {
 		t.Fatal("fixture: 'n' did not open a new foreign-key form")
 	}
 
@@ -200,11 +200,11 @@ func TestForeignKeyForm_discardWithoutChangesClosesWithoutConfirmation(t *testin
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	// Then — form closes directly, no confirmation, mode normalized
-	if model.foreignKeyForm.active() || model.foreignKeyForm.confirming() {
+	if model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("form mode = %d, want normal", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.mode)
 	}
 }
 

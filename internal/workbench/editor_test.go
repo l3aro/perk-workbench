@@ -79,8 +79,8 @@ func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.schemaObjects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
-	model.editor.setValue("S")
+	model.schema.objects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
+	model.queryLog.editor.setValue("S")
 	// Enter insert mode first (pressing 'i' in normal mode does this).
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
@@ -90,10 +90,10 @@ func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if !model.editor.completion.visible() {
+	if !model.queryLog.editor.completion.visible() {
 		t.Fatal("completion should be visible after Ctrl+Space")
 	}
-	if got, want := model.editor.completion.accept().Label, "SELECT"; got != want {
+	if got, want := model.queryLog.editor.completion.accept().Label, "SELECT"; got != want {
 		t.Fatalf("top completion = %q, want %q", got, want)
 	}
 }
@@ -101,9 +101,9 @@ func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 func TestModel_completionColumnsCachesQualifiedTableResult(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.completionRequestTag = 1
-	model.completionTable = "orders"
-	model.editor.setValue("SELECT orders.")
+	model.queryLog.completionRequestTag = 1
+	model.queryLog.completionTable = "orders"
+	model.queryLog.editor.setValue("SELECT orders.")
 
 	// When
 	updated, _ := model.updateCompletionColumns(completionColumnsMsg{
@@ -112,10 +112,10 @@ func TestModel_completionColumnsCachesQualifiedTableResult(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.editor.completion.accept().Label, "id"; got != want {
+	if got, want := model.queryLog.editor.completion.accept().Label, "id"; got != want {
 		t.Fatalf("completion = %q, want %q", got, want)
 	}
-	if got, want := model.completionColumns["orders"], []string{"id"}; len(got) != len(want) || got[0] != want[0] {
+	if got, want := model.queryLog.completionColumns["orders"], []string{"id"}; len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("completionColumns = %q, want %q", got, want)
 	}
 }

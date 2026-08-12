@@ -263,27 +263,27 @@ func (m *Model) commitTheme(name appTheme) {
 func (m *Model) applyTheme(name appTheme) {
 	setTheme(name)
 
-	m.schema.SetDelegate(schemaItemDelegate{})
-	m.picker.SetDelegate(newListDelegate())
-	m.recent.SetDelegate(newListDelegate())
-	applyListTheme(&m.schema)
-	applyListTheme(&m.picker)
-	applyListTheme(&m.recent)
+	m.schema.list.SetDelegate(schemaItemDelegate{})
+	m.connection.picker.SetDelegate(newListDelegate())
+	m.connection.recent.SetDelegate(newListDelegate())
+	applyListTheme(&m.schema.list)
+	applyListTheme(&m.connection.picker)
+	applyListTheme(&m.connection.recent)
 	applyFormTheme(
-		m.connection.form,
-		m.columnForm.form,
-		m.browseForm.form,
-		m.indexForm.form,
-		m.foreignKeyForm.form,
+		m.connection.form.form,
+		m.structure.columnForm.form,
+		m.browse.form.form,
+		m.structure.indexForm.form,
+		m.structure.foreignKeyForm.form,
 	)
-	if m.cellEditor != nil {
-		applyFormTheme(m.cellEditor.input)
+	if m.browse.cellEditor != nil {
+		applyFormTheme(m.browse.cellEditor.input)
 	}
-	if m.explainPicker != nil {
-		applyFormTheme(m.explainPicker.form)
+	if m.overlay.explainPicker != nil {
+		applyFormTheme(m.overlay.explainPicker.form)
 	}
-	if m.width > 0 {
-		m.layout(m.width, m.height)
+	if m.layout.width > 0 {
+		m.applyLayout(m.layout.width, m.layout.height)
 	}
 }
 

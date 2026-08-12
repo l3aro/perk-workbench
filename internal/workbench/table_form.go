@@ -115,12 +115,12 @@ func (m *Model) openSchemaForm(originalName string) tea.Cmd {
 }
 
 func (m *Model) openPopup(form tableForm) tea.Cmd {
-	m.tableForm = form
-	m.tableForm.keybindings = m.keybindings
-	m.tableForm.setWidth(m.tableViewportWidth)
-	m.tableForm.setHeight(m.formViewportHeight())
-	m.tableForm.form.Init()
-	return m.formMode.beginHuh(m.tableForm.focus())
+	m.structure.tableForm = form
+	m.structure.tableForm.keybindings = m.keybindings
+	m.structure.tableForm.setWidth(m.layout.tableViewportWidth)
+	m.structure.tableForm.setHeight(m.formViewportHeight())
+	m.structure.tableForm.form.Init()
+	return m.overlay.formMode.beginHuh(m.structure.tableForm.focus())
 }
 
 func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea.Cmd, tableFormAction) {

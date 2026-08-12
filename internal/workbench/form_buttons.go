@@ -43,13 +43,13 @@ func formButtonAt(relX int) string {
 func (m Model) formTabActive() bool {
 	switch m.Tab {
 	case tabStructure:
-		return m.columnForm.active()
+		return m.structure.columnForm.active()
 	case tabBrowse:
-		return m.browseFilterForm != nil || m.documentEditor != nil || m.browseForm.active()
+		return m.browse.filterForm != nil || m.browse.documentEditor != nil || m.browse.form.active()
 	case tabIndexes:
-		return m.indexForm.active()
+		return m.structure.indexForm.active()
 	case tabForeignKeys:
-		return m.foreignKeyForm.active()
+		return m.structure.foreignKeyForm.active()
 	}
 	return false
 }
@@ -74,7 +74,7 @@ func formEscapeKeyPress() tea.Cmd {
 // by the field editor. Mouse-entered filter edits set only
 // browseFilterForm.editing, so it is checked alongside the controller mode.
 func (m Model) formSaveCommand() (Model, tea.Cmd) {
-	if m.formMode.editing() || (m.browseFilterForm != nil && m.browseFilterForm.editing) {
+	if m.overlay.formMode.editing() || (m.browse.filterForm != nil && m.browse.filterForm.editing) {
 		updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 		m = updated.(Model)
 	}

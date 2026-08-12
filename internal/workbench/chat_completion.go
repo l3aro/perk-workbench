@@ -81,9 +81,9 @@ func (m Model) chatCompletionOverlay() string {
 		item += " " + completionDetailStyle.Render(match.Kind.String())
 		items = append(items, item)
 	}
-	width := max(m.chatWidth-6, 1)
-	if m.compact {
-		width = max(m.width-6, 1)
+	width := max(m.layout.chatWidth-6, 1)
+	if m.layout.compact {
+		width = max(m.layout.width-6, 1)
 	}
 	return completionBoxStyle.
 		MaxWidth(width).

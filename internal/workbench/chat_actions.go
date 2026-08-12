@@ -319,8 +319,8 @@ func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
 			choices[index] = huh.NewOption(chatHistoryOptionLabel(m.chat.runs[conversation.ID], conversation.Title), conversation.ID)
 		}
 		m.chat.historyChoice = message.conversations[0].ID
-		m.chatHistoryPicker = newForm(huh.NewGroup(huh.NewSelect[string]().Key("conversation").Title("AI conversations").Options(choices...).Value(&m.chat.historyChoice))).WithWidth(max(m.tableViewportWidth, 1))
-		return m, m.chatHistoryPicker.Init()
+		m.chat.historyPicker = newForm(huh.NewGroup(huh.NewSelect[string]().Key("conversation").Title("AI conversations").Options(choices...).Value(&m.chat.historyChoice))).WithWidth(max(m.layout.tableViewportWidth, 1))
+		return m, m.chat.historyPicker.Init()
 	case chatMessagesLoadedMsg:
 		if message.connectionID != m.connectionID {
 			return m, nil // stale: started before a disconnect/reconnect
@@ -680,10 +680,10 @@ func (m *Model) applyChatSQL() tea.Cmd {
 	if statement == "" {
 		return nil
 	}
-	m.editor.setValue(statement)
+	m.queryLog.editor.setValue(statement)
 	m.Focus, m.Tab = focusWorkspace, tabSQL
 	m.setStatus("AI SQL added to editor")
-	m.editorValidity = sqlValidityPending
+	m.queryLog.editorValidity = sqlValidityPending
 	return m.scheduleSQLValidation()
 }
 

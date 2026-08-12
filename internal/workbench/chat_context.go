@@ -36,7 +36,7 @@ func (m Model) chatContext() string {
 		context.WriteString("\n")
 	}
 	// Scan from newest to oldest for the first failed query.
-	for _, entry := range m.queryLogEntries {
+	for _, entry := range m.queryLog.entries {
 		if entry.status == "failed" {
 			context.WriteString("Last failed query:\n")
 			context.WriteString(entry.statement)
@@ -46,9 +46,9 @@ func (m Model) chatContext() string {
 			break
 		}
 	}
-	if len(m.schemaObjects) > 0 {
+	if len(m.schema.objects) > 0 {
 		context.WriteString("Schema:\n")
-		for _, object := range m.schemaObjects {
+		for _, object := range m.schema.objects {
 			context.WriteString(object.Type)
 			context.WriteString(" ")
 			context.WriteString(object.Database)
@@ -57,7 +57,7 @@ func (m Model) chatContext() string {
 			context.WriteString("\n")
 		}
 	}
-	if query := strings.TrimSpace(m.editor.value); query != "" {
+	if query := strings.TrimSpace(m.queryLog.editor.value); query != "" {
 		context.WriteString("Current SQL:\n")
 		context.WriteString(query)
 		context.WriteString("\n")
@@ -68,12 +68,12 @@ func (m Model) chatContext() string {
 // chatResultsContext returns the visible results block for providers without
 // tool support; tool-capable providers get get_visible_results instead.
 func (m Model) chatResultsContext() string {
-	if !m.chat.shareResults || len(m.results.Rows()) == 0 {
+	if !m.chat.shareResults || len(m.queryLog.results.Rows()) == 0 {
 		return ""
 	}
 	var context strings.Builder
 	context.WriteString("Visible results:\n")
-	for _, row := range m.results.Rows() {
+	for _, row := range m.queryLog.results.Rows() {
 		context.WriteString(strings.Join(row, " | "))
 		context.WriteString("\n")
 	}

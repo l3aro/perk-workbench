@@ -88,29 +88,29 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 			// Given
 			model := resizeModel(readyModel(t), width, 24)
 			model.SelectedTable = "items"
-			model.structureColumns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}
-			model.browseResult = sqlite.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
-			model.browse.SetCursor(0)
+			model.structure.columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}
+			model.browse.result = sqlite.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
+			model.browse.table.SetCursor(0)
 
 			// When
 			model.Tab = tabStructure
 			_ = model.openColumnForm()
-			columnWidth := model.columnForm.width
-			columnView := model.columnForm.View()
+			columnWidth := model.structure.columnForm.width
+			columnView := model.structure.columnForm.View()
 			_ = model.openBrowseForm()
-			browseWidth := model.browseForm.width
-			browseView := model.browseForm.View()
+			browseWidth := model.browse.form.width
+			browseView := model.browse.form.View()
 			_ = model.openIndexForm(nil)
-			indexWidth := model.indexForm.width
-			indexView := model.indexForm.View()
+			indexWidth := model.structure.indexForm.width
+			indexView := model.structure.indexForm.View()
 			_ = model.openForeignKeyForm(nil)
-			foreignKeyWidth := model.foreignKeyForm.width
-			foreignKeyView := model.foreignKeyForm.View()
+			foreignKeyWidth := model.structure.foreignKeyForm.width
+			foreignKeyView := model.structure.foreignKeyForm.View()
 			model.State = stateConnection
-			connectionLayoutWidth := model.connection.width
+			connectionLayoutWidth := model.connection.form.width
 			_ = model.newConnection()
-			connectionWidth := model.connection.width
-			connectionView := model.connection.View()
+			connectionWidth := model.connection.form.width
+			connectionView := model.connection.form.View()
 
 			// Then
 			for _, form := range []struct {
@@ -123,12 +123,12 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 				{name: "index", width: indexWidth, view: indexView},
 				{name: "foreign key", width: foreignKeyWidth, view: foreignKeyView},
 			} {
-				if form.width != model.tableViewportWidth {
-					t.Fatalf("%s form width = %d, want viewport width %d", form.name, form.width, model.tableViewportWidth)
+				if form.width != model.layout.tableViewportWidth {
+					t.Fatalf("%s form width = %d, want viewport width %d", form.name, form.width, model.layout.tableViewportWidth)
 				}
 				for _, line := range strings.Split(ansi.Strip(form.view), "\n") {
-					if got := ansi.StringWidth(line); got > model.tableViewportWidth {
-						t.Fatalf("%s form line width = %d, want at most %d: %q", form.name, got, model.tableViewportWidth, line)
+					if got := ansi.StringWidth(line); got > model.layout.tableViewportWidth {
+						t.Fatalf("%s form line width = %d, want at most %d: %q", form.name, got, model.layout.tableViewportWidth, line)
 					}
 				}
 			}

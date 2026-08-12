@@ -7,19 +7,19 @@ import (
 )
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
-	if m.queryLogDetail != nil {
+	if m.queryLog.detail != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			switch {
 			case m.keybindings.Match(keyPress, "detail.explain", []scope{scopeView, scopeGlobal}):
-				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLogDetail.statement, m.tableViewportWidth)
+				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLog.detail.statement, m.layout.tableViewportWidth)
 				if explain == nil {
 					return m, nil
 				}
-				m.explainPicker = explain
-				m.queryLogDetail = nil
-				return m, m.explainPicker.form.Init()
+				m.overlay.explainPicker = explain
+				m.queryLog.detail = nil
+				return m, m.overlay.explainPicker.form.Init()
 			case m.keybindings.Match(keyPress, "detail.close", []scope{scopeView, scopeGlobal}):
-				m.queryLogDetail = nil
+				m.queryLog.detail = nil
 				return m, nil
 			}
 		}
@@ -32,37 +32,37 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	case statePicking:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.reload", []scope{scopeView, scopeGlobal}) {
 			m.setStatus("reloading picker")
-			return m, readDirectory(m.pickerDir)
+			return m, readDirectory(m.connection.pickerDir)
 		}
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.select", []scope{scopeView, scopeGlobal}) {
-			if item, ok := m.picker.SelectedItem().(pickerItem); ok {
+			if item, ok := m.connection.picker.SelectedItem().(pickerItem); ok {
 				return m, selectPickerItem(item.raw)
 			}
 		}
 		var command tea.Cmd
-		m.picker, command = m.picker.Update(message)
+		m.connection.picker, command = m.connection.picker.Update(message)
 		return m, command
 	case stateReady:
 		var command tea.Cmd
 		switch m.Focus {
 		case focusSchema:
-			if m.results.Focused() {
-				m.results, command = m.results.Update(message)
+			if m.queryLog.results.Focused() {
+				m.queryLog.results, command = m.queryLog.results.Update(message)
 				return m, command
 			}
-			if m.schemaFilter.Focused() {
+			if m.schema.filter.Focused() {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch keyPress.Code {
 					case tea.KeyEscape, tea.KeyEnter:
 						// Exit editing, keeping the applied filter.
-						m.schemaFilter.Blur()
+						m.schema.filter.Blur()
 						return m, nil
 					}
 				}
-				before := m.schemaFilter.Value()
+				before := m.schema.filter.Value()
 				var filterCommand tea.Cmd
-				m.schemaFilter, filterCommand = m.schemaFilter.Update(message)
-				if m.schemaFilter.Value() != before {
+				m.schema.filter, filterCommand = m.schema.filter.Update(message)
+				if m.schema.filter.Value() != before {
 					m.applySchemaFilter()
 				}
 				return m, filterCommand
@@ -70,17 +70,17 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			if keyPress, ok := message.(tea.KeyPressMsg); ok {
 				switch {
 				case m.keybindings.Match(keyPress, "schema.filter", []scope{scopeView, scopeGlobal}):
-					m.schemaFilter.Focus()
+					m.schema.filter.Focus()
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.context_menu", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
-						m.openSchemaItemMenu(item, m.schemaWidth/2, m.schemaRowY(m.schema.Index())+1)
+					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
+						m.openSchemaItemMenu(item, m.layout.schemaWidth/2, m.schemaRowY(m.schema.list.Index())+1)
 					} else if m.supportsCreateDatabase() {
-						m.openBlankServerMenu(m.schemaWidth/2, m.schemaRowY(0)+1)
+						m.openBlankServerMenu(m.layout.schemaWidth/2, m.schemaRowY(0)+1)
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.add_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
 						if target, ok := m.schemaAddTarget(item); ok {
 							return m, m.openTableForm(target, "")
 						}
@@ -92,17 +92,17 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.rename_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
+					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
 						return m, m.openTableForm(item.database, item.table)
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.delete_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
+					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
 						m.confirmTableDelete(item.database, item.table)
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.SelectedItem().(schemaItem); ok {
+					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
 						if item.kind == "schema" {
 							return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
 						}
@@ -120,37 +120,37 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m.collapseSchemaLevel()
 				}
 			}
-			m.schema, command = m.schema.Update(message)
+			m.schema.list, command = m.schema.list.Update(message)
 			// The list's own keymap can clear the filter (esc in tree
 			// navigation); keep the visible input in sync.
-			if !m.schema.IsFiltered() && m.schemaFilter.Value() != "" {
-				m.schemaFilter.SetValue("")
+			if !m.schema.list.IsFiltered() && m.schema.filter.Value() != "" {
+				m.schema.filter.SetValue("")
 			}
 			return m, command
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.formMode.editing()) &&
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.overlay.formMode.editing()) &&
 				m.keybindings.Match(keyPress, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
 				m.Focus = focusSchema
-				m.editor.text.Blur()
+				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				return m, nil
 			}
 			switch m.Tab {
 			case tabStructure:
-				if m.columnForm.active() {
-					m.columnForm.height = m.height
-					command, action := m.columnForm.Update(message, m.formMode)
+				if m.structure.columnForm.active() {
+					m.structure.columnForm.height = m.layout.height
+					command, action := m.structure.columnForm.Update(message, m.overlay.formMode)
 					switch action {
 					case columnFormSave:
-						m.columnForm.saving = true
-						if m.columnForm.isNew {
+						m.structure.columnForm.saving = true
+						if m.structure.columnForm.isNew {
 							return m, m.addColumn()
 						}
 						return m, m.alterColumn()
 					case columnFormDiscard:
-						m.columnForm = columnForm{}
+						m.structure.columnForm = columnForm{}
 					case columnFormDelete:
-						m.columnForm.saving = true
+						m.structure.columnForm.saving = true
 						return m, m.deleteColumn()
 					}
 					return m, command
@@ -168,9 +168,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, m.openNewColumnForm()
 					case m.keybindings.Match(keyPress, "structure.delete", []scope{scopeView, scopeGlobal}):
 						if column := m.selectedColumn(); column != nil {
-							m.deletePending = "column"
-							m.deletePendingName = column.Name
-							m.deleteConfirm = newConfirmationDialog("Delete column?", "", []confirmationOption{
+							m.overlay.deletePending = "column"
+							m.overlay.deletePendingName = column.Name
+							m.overlay.deleteConfirm = newConfirmationDialog("Delete column?", "", []confirmationOption{
 								{label: "Yes, delete", action: "delete"},
 								{label: "Cancel", action: "cancel"},
 							})
@@ -178,47 +178,47 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure, &m.structureOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure.table, &m.layout.structureOffset, m.layout.tableViewportWidth, keyPress) {
 					return m, nil
 				}
-				m.structure, command = m.structure.Update(message)
+				m.structure.table, command = m.structure.table.Update(message)
 			case tabBrowse:
-				if m.browseFilterForm != nil {
-					command, action := m.browseFilterForm.Update(message, m.keybindings)
-					if m.browseFilterForm.editing {
-						m.formMode.mode = formModeInsert
+				if m.browse.filterForm != nil {
+					command, action := m.browse.filterForm.Update(message, m.keybindings)
+					if m.browse.filterForm.editing {
+						m.overlay.formMode.mode = formModeInsert
 					} else {
-						m.formMode.mode = formModeNormal
+						m.overlay.formMode.mode = formModeNormal
 					}
 					switch action {
 					case browseFilterDiscard:
-						m.browseFilterForm = nil
+						m.browse.filterForm = nil
 					case browseFilterApply:
-						settings, err := m.browseFilterForm.apply()
+						settings, err := m.browse.filterForm.apply()
 						if err != nil {
 							m.setStatus(safeText(err.Error()))
 							return m, nil
 						}
-						m.browseSettings = settings
-						m.browseFilterForm = nil
-						m.BrowsePage, m.browseLoading = 0, true
-						m.browsePageTag++
+						m.browse.settings = settings
+						m.browse.filterForm = nil
+						m.BrowsePage, m.browse.loading = 0, true
+						m.browse.pageTag++
 						return m, m.loadBrowse()
 					}
 					return m, command
 				}
-				if m.browseForm.active() {
-					m.browseForm.height = m.height
-					command, action := m.browseForm.Update(message, m.formMode)
+				if m.browse.form.active() {
+					m.browse.form.height = m.layout.height
+					command, action := m.browse.form.Update(message, m.overlay.formMode)
 					switch action {
 					case browseFormSave:
-						m.browseForm.saving = true
-						if m.browseForm.inserting {
+						m.browse.form.saving = true
+						if m.browse.form.inserting {
 							return m, m.insertBrowseRow()
 						}
 						return m, m.updateBrowseRow()
 					case browseFormDiscard:
-						m.browseForm = browseForm{}
+						m.browse.form = browseForm{}
 					}
 					return m, command
 				}
@@ -247,32 +247,32 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.openInsertRowForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
-					row := m.browse.Cursor()
-					col := m.browseColumn
+					row := m.browse.table.Cursor()
+					col := m.layout.browseColumn
 					display := ""
-					if row >= 0 && row < len(m.browse.Rows()) && col >= 0 && col < len(m.browse.Rows()[row]) {
-						display = m.browse.Rows()[row][col]
+					if row >= 0 && row < len(m.browse.table.Rows()) && col >= 0 && col < len(m.browse.table.Rows()[row]) {
+						display = m.browse.table.Rows()[row][col]
 					}
 					raw := m.rawCellValue("browse", row, col, display)
-					return m, m.openCellViewer(m.browse, col, raw)
+					return m, m.openCellViewer(m.browse.table, col, raw)
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
 					switch {
 					case m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}):
 						return m, m.copyBrowseCell()
 					case m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}):
-						row := m.browse.Cursor()
-						if row < 0 || row >= len(m.browseResult.Rows) {
+						row := m.browse.table.Cursor()
+						if row < 0 || row >= len(m.browse.result.Rows) {
 							return m, nil
 						}
-						rows := m.browse.Rows()
-						rowHeight := m.browse.Height()
+						rows := m.browse.table.Rows()
+						rowHeight := m.browse.table.Height()
 						start := min(max(row-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
-						menuX := m.schemaWidth + 1 - m.browseOffset
-						for _, column := range m.browse.Columns()[:m.browseColumn] {
+						menuX := m.layout.schemaWidth + 1 - m.layout.browseOffset
+						for _, column := range m.browse.table.Columns()[:m.layout.browseColumn] {
 							menuX += column.Width + 2*spaceCompact
 						}
-						m.contextMenu = &contextMenuModel{
+						m.overlay.contextMenu = &contextMenuModel{
 							options: m.browseRowMenuOptions(),
 							visible: true,
 							x:       menuX,
@@ -280,66 +280,66 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						return m, nil
 					case m.keybindings.Match(keyPress, "browse.next_page", []scope{scopeView, scopeGlobal}):
-						if m.browseLoading {
+						if m.browse.loading {
 							return m, nil
 						}
-						m.browsePageTag++
-						tag := m.browsePageTag
+						m.browse.pageTag++
+						tag := m.browse.pageTag
 						table := m.SelectedTable
 						return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
 							return browseDebounceMsg{tag: tag, delta: 1, table: table}
 						})
 					case m.keybindings.Match(keyPress, "browse.prev_page", []scope{scopeView, scopeGlobal}):
-						if m.browseLoading {
+						if m.browse.loading {
 							return m, nil
 						}
-						m.browsePageTag++
-						tag := m.browsePageTag
+						m.browse.pageTag++
+						tag := m.browse.pageTag
 						table := m.SelectedTable
 						return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
 							return browseDebounceMsg{tag: tag, delta: -1, table: table}
 						})
 					}
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.browse, &m.browseColumn, &m.browseOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.browse.table, &m.layout.browseColumn, &m.layout.browseOffset, m.layout.tableViewportWidth, keyPress) {
 					m.refreshBrowseStatus()
 					return m, nil
 				}
-				m.browse, command = m.browse.Update(message)
+				m.browse.table, command = m.browse.table.Update(message)
 				m.refreshBrowseStatus()
 			case tabSQL:
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && m.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
-					row := m.results.Cursor()
-					col := m.resultsColumn
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+					row := m.queryLog.results.Cursor()
+					col := m.layout.resultsColumn
 					display := ""
-					if row >= 0 && row < len(m.results.Rows()) && col >= 0 && col < len(m.results.Rows()[row]) {
-						display = m.results.Rows()[row][col]
+					if row >= 0 && row < len(m.queryLog.results.Rows()) && col >= 0 && col < len(m.queryLog.results.Rows()[row]) {
+						display = m.queryLog.results.Rows()[row][col]
 					}
 					raw := m.rawCellValue("results", row, col, display)
-					return m, m.openCellViewer(m.results, col, raw)
+					return m, m.openCellViewer(m.queryLog.results, col, raw)
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && m.results.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
 					return m, m.copySQLCell()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formMode.editing() && moveTableCell(&m.results, &m.resultsColumn, &m.resultsOffset, m.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.editing() && moveTableCell(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, keyPress) {
 					return m, nil
 				}
-				if m.results.Focused() {
-					m.results, command = m.results.Update(message)
+				if m.queryLog.results.Focused() {
+					m.queryLog.results, command = m.queryLog.results.Update(message)
 				}
 			case tabIndexes:
-				if m.indexForm.active() {
-					m.indexForm.height = m.height
-					command, action := m.indexForm.Update(message, m.formMode)
+				if m.structure.indexForm.active() {
+					m.structure.indexForm.height = m.layout.height
+					command, action := m.structure.indexForm.Update(message, m.overlay.formMode)
 					switch action {
 					case indexFormSave:
-						m.indexForm.saving = true
+						m.structure.indexForm.saving = true
 						return m, m.saveIndex()
 					case indexFormDelete:
-						m.indexForm.saving = true
+						m.structure.indexForm.saving = true
 						return m, m.deleteIndex()
 					case indexFormDiscard:
-						m.indexForm.close()
+						m.structure.indexForm.close()
 					}
 					return m, command
 				}
@@ -359,33 +359,33 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case m.keybindings.Match(keyPress, "indexes.delete", []scope{scopeView, scopeGlobal}):
 						if index := m.selectedIndex(); index != nil {
-							m.deletePending = "index"
-							m.deletePendingName = index.Name
-							m.deleteConfirm = newConfirmationDialog("Delete index?", "", []confirmationOption{
+							m.overlay.deletePending = "index"
+							m.overlay.deletePendingName = index.Name
+							m.overlay.deleteConfirm = newConfirmationDialog("Delete index?", "", []confirmationOption{
 								{label: "Yes, delete", action: "delete"},
 								{label: "Cancel", action: "cancel"},
 							})
 						}
 						return m, nil
 					}
-					if moveTableRow(&m.indexes, &m.indexesOffset, m.tableViewportWidth, keyPress) {
+					if moveTableRow(&m.structure.indexes, &m.layout.indexesOffset, m.layout.tableViewportWidth, keyPress) {
 						return m, nil
 					}
 				}
-				m.indexes, command = m.indexes.Update(message)
+				m.structure.indexes, command = m.structure.indexes.Update(message)
 			case tabForeignKeys:
-				if m.foreignKeyForm.active() {
-					m.foreignKeyForm.height = m.height
-					command, action := m.foreignKeyForm.Update(message, m.formMode)
+				if m.structure.foreignKeyForm.active() {
+					m.structure.foreignKeyForm.height = m.layout.height
+					command, action := m.structure.foreignKeyForm.Update(message, m.overlay.formMode)
 					switch action {
 					case foreignKeyFormSave:
-						m.foreignKeyForm.saving = true
+						m.structure.foreignKeyForm.saving = true
 						return m, m.saveForeignKey()
 					case foreignKeyFormDelete:
-						m.foreignKeyForm.saving = true
+						m.structure.foreignKeyForm.saving = true
 						return m, m.deleteForeignKey()
 					case foreignKeyFormDiscard:
-						m.foreignKeyForm.close()
+						m.structure.foreignKeyForm.close()
 					}
 					return m, command
 				}
@@ -397,7 +397,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						m.resetTableFilter()
 						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.toggle_diagram", []scope{scopeView, scopeGlobal}):
-						m.relationshipDiagram = !m.relationshipDiagram
+						m.structure.relationshipDiagram = !m.structure.relationshipDiagram
 						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.create", []scope{scopeView, scopeGlobal}):
 						return m, m.openForeignKeyForm(nil)
@@ -408,33 +408,33 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					case m.keybindings.Match(keyPress, "foreign_keys.delete", []scope{scopeView, scopeGlobal}):
 						if foreignKey := m.selectedForeignKey(); foreignKey != nil {
-							m.deletePending = "foreign_key"
-							m.deletePendingName = foreignKey.ID
-							m.deleteConfirm = newConfirmationDialog("Delete foreign key?", "", []confirmationOption{
+							m.overlay.deletePending = "foreign_key"
+							m.overlay.deletePendingName = foreignKey.ID
+							m.overlay.deleteConfirm = newConfirmationDialog("Delete foreign key?", "", []confirmationOption{
 								{label: "Yes, delete", action: "delete"},
 								{label: "Cancel", action: "cancel"},
 							})
 						}
 						return m, nil
 					}
-					if moveTableRow(&m.foreignKeys, &m.foreignKeysOffset, m.tableViewportWidth, keyPress) {
+					if moveTableRow(&m.structure.foreignKeys, &m.layout.foreignKeysOffset, m.layout.tableViewportWidth, keyPress) {
 						return m, nil
 					}
 				}
-				m.foreignKeys, command = m.foreignKeys.Update(message)
+				m.structure.foreignKeys, command = m.structure.foreignKeys.Update(message)
 			}
 			return m, command
 		case focusQueryLog:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok {
 				if !m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}) {
-					if m.queryLogPendingG {
-						m.queryLogPendingG = false
+					if m.queryLog.pendingG {
+						m.queryLog.pendingG = false
 						return m, nil
 					}
-					m.queryLogPendingG = false
+					m.queryLog.pendingG = false
 				}
 				if m.keybindings.Match(keyPress, "query_log.context_menu", []scope{scopeView, scopeGlobal}) {
-					if len(m.queryLog.Rows()) == 0 {
+					if len(m.queryLog.table.Rows()) == 0 {
 						return m, nil
 					}
 					options := []menuOption{
@@ -449,9 +449,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					contentWidth := max(maxLabel+2+maxKeys+2, len("Row actions")+2, 24)
 					menuWidth := contentWidth + 2
-					menuX := min(max(m.schemaWidth+1, 0), max(m.width-menuWidth, 0))
-					menuY := min(max(m.workspaceHeight+4, 0), max(m.height-(4+len(options)), 0))
-					m.contextMenu = &contextMenuModel{
+					menuX := min(max(m.layout.schemaWidth+1, 0), max(m.layout.width-menuWidth, 0))
+					menuY := min(max(m.layout.workspaceHeight+4, 0), max(m.layout.height-(4+len(options)), 0))
+					m.overlay.contextMenu = &contextMenuModel{
 						options:  options,
 						selected: 0,
 						visible:  true,
@@ -461,25 +461,25 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if m.keybindings.Match(keyPress, "query_log.next_page", []scope{scopeView, scopeGlobal}) {
-					if m.queryLogPage+1 < m.queryLogPageCount() {
-						m.queryLogPage++
-						m.queryLog.SetCursor(0)
+					if m.queryLog.page+1 < m.queryLogPageCount() {
+						m.queryLog.page++
+						m.queryLog.table.SetCursor(0)
 						m.renderQueryLog()
 					}
 					return m, nil
 				}
 				if m.keybindings.Match(keyPress, "query_log.prev_page", []scope{scopeView, scopeGlobal}) {
-					if m.queryLogPage > 0 {
-						m.queryLogPage--
-						m.queryLog.SetCursor(0)
+					if m.queryLog.page > 0 {
+						m.queryLog.page--
+						m.queryLog.table.SetCursor(0)
 						m.renderQueryLog()
 					}
 					return m, nil
 				}
-				if moveTableCell(&m.queryLog, &m.queryLogColumn, &m.queryLogOffset, m.tableViewportWidth, keyPress) {
+				if moveTableCell(&m.queryLog.table, &m.layout.queryLogColumn, &m.layout.queryLogOffset, m.layout.tableViewportWidth, keyPress) {
 					return m, nil
 				}
-				rows := m.queryLog.Rows()
+				rows := m.queryLog.table.Rows()
 				if len(rows) == 0 {
 					return m, nil
 				}
@@ -490,37 +490,37 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						return m, nil
 					}
 					m.setStatus("copied to clipboard")
-					return m, copyQueryLogStatement(queryLogCell(entry, m.queryLogColumn))
+					return m, copyQueryLogStatement(queryLogCell(entry, m.layout.queryLogColumn))
 				case m.keybindings.Match(keyPress, "query_log.explain", []scope{scopeView, scopeGlobal}):
 					entry, ok := m.queryLogSelectedEntry()
 					if !ok {
 						return m, nil
 					}
-					m.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.tableViewportWidth)
-					if m.explainPicker == nil {
+					m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.statement, m.layout.tableViewportWidth)
+					if m.overlay.explainPicker == nil {
 						return m, nil
 					}
-					return m, m.explainPicker.form.Init()
+					return m, m.overlay.explainPicker.form.Init()
 				case m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}):
-					if m.queryLogPendingG {
-						m.queryLog.SetCursor(0)
-						m.queryLogColumn, m.queryLogOffset = 0, 0
-						m.queryLogPendingG = false
+					if m.queryLog.pendingG {
+						m.queryLog.table.SetCursor(0)
+						m.layout.queryLogColumn, m.layout.queryLogOffset = 0, 0
+						m.queryLog.pendingG = false
 					} else {
-						m.queryLogPendingG = true
+						m.queryLog.pendingG = true
 					}
 					return m, nil
 				case m.keybindings.Match(keyPress, "query_log.top_last", []scope{scopeView, scopeGlobal}):
-					m.queryLog.SetCursor(len(rows) - 1)
+					m.queryLog.table.SetCursor(len(rows) - 1)
 					return m, nil
 				case m.keybindings.Match(keyPress, "query_log.detail", []scope{scopeView, scopeGlobal}):
 					if entry, ok := m.queryLogSelectedEntry(); ok {
-						m.queryLogDetail = &entry
+						m.queryLog.detail = &entry
 					}
 					return m, nil
 				}
 			}
-			m.queryLog, command = m.queryLog.Update(message)
+			m.queryLog.table, command = m.queryLog.table.Update(message)
 			return m, command
 		case focusChat:
 			return m.updateChat(message)
@@ -528,12 +528,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 	case stateFailure:
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "failure.return_to_picker", []scope{scopeView, scopeGlobal}) {
 			m.RecoverToPicker("choose another database")
-			return m, readDirectory(m.pickerDir)
+			return m, readDirectory(m.connection.pickerDir)
 		}
 	}
 	return m, nil
 }
 
 func (m Model) formActive() bool {
-	return m.tableFiltering || m.columnForm.active() || m.tableFormOpen() || m.documentEditor != nil || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
+	return m.structure.tableFiltering || m.structure.columnForm.active() || m.tableFormOpen() || m.browse.documentEditor != nil || m.browse.form.active() || m.browse.filterForm != nil || m.structure.indexForm.active() || m.structure.foreignKeyForm.active()
 }

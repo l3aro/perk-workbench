@@ -185,7 +185,7 @@ func newFilterInput() textinput.Model {
 // schemaFilterShown reports whether the pane is wide enough for the filter
 // box (3 rows: top border, input, bottom border).
 func (m Model) schemaFilterShown() bool {
-	return m.schemaWidth >= 7
+	return m.layout.schemaWidth >= 7
 }
 
 // filterInputRow renders a filter input in a bordered box with a
@@ -213,7 +213,7 @@ func (m Model) schemaFilterRow() string {
 	if !m.schemaFilterShown() {
 		return ""
 	}
-	return m.filterInputRow(m.schemaFilter, max(m.schemaWidth-4, 0))
+	return m.filterInputRow(m.schema.filter, max(m.layout.schemaWidth-4, 0))
 }
 
 // recentFilterRow renders the profiles pane's filter input, matching the
@@ -222,7 +222,7 @@ func (m Model) recentFilterRow() string {
 	if !m.schemaFilterShown() {
 		return ""
 	}
-	return m.filterInputRow(m.recentFilter, max(m.schemaWidth-4, 0))
+	return m.filterInputRow(m.connection.recentFilter, max(m.layout.schemaWidth-4, 0))
 }
 
 // abbreviateCount renders a compact human-readable count: 10k, 490k,

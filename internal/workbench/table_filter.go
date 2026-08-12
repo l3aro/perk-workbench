@@ -10,17 +10,17 @@ import (
 )
 
 func (m *Model) openTableFilter() tea.Cmd {
-	m.tableFiltering = true
-	m.tableFilterTab = m.Tab
-	m.tableFilterInput = textinput.New()
-	m.tableFilterInput.Prompt = "Filter: "
-	m.tableFilterInput.SetValue(m.tableFilterValue(m.Tab))
-	return m.tableFilterInput.Focus()
+	m.structure.tableFiltering = true
+	m.structure.tableFilterTab = m.Tab
+	m.structure.tableFilterInput = textinput.New()
+	m.structure.tableFilterInput.Prompt = "Filter: "
+	m.structure.tableFilterInput.SetValue(m.tableFilterValue(m.Tab))
+	return m.structure.tableFilterInput.Focus()
 }
 
 func (m *Model) closeTableFilter() {
-	m.tableFiltering = false
-	m.tableFilterInput.Blur()
+	m.structure.tableFiltering = false
+	m.structure.tableFilterInput.Blur()
 }
 
 func (m *Model) updateTableFilter(message tea.KeyPressMsg) tea.Cmd {
@@ -29,9 +29,9 @@ func (m *Model) updateTableFilter(message tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	var command tea.Cmd
-	m.tableFilterInput, command = m.tableFilterInput.Update(message)
-	m.setTableFilterValue(m.tableFilterTab, m.tableFilterInput.Value())
-	m.applyTableFilter(m.tableFilterTab)
+	m.structure.tableFilterInput, command = m.structure.tableFilterInput.Update(message)
+	m.setTableFilterValue(m.structure.tableFilterTab, m.structure.tableFilterInput.Value())
+	m.applyTableFilter(m.structure.tableFilterTab)
 	return command
 }
 
@@ -43,11 +43,11 @@ func (m *Model) resetTableFilter() {
 func (m *Model) tableFilterValue(tab workspaceTab) string {
 	switch tab {
 	case tabStructure:
-		return m.structureFilter
+		return m.structure.structureFilter
 	case tabIndexes:
-		return m.indexesFilter
+		return m.structure.indexesFilter
 	case tabForeignKeys:
-		return m.foreignKeysFilter
+		return m.structure.foreignKeysFilter
 	default:
 		return ""
 	}
@@ -56,11 +56,11 @@ func (m *Model) tableFilterValue(tab workspaceTab) string {
 func (m *Model) setTableFilterValue(tab workspaceTab, value string) {
 	switch tab {
 	case tabStructure:
-		m.structureFilter = value
+		m.structure.structureFilter = value
 	case tabIndexes:
-		m.indexesFilter = value
+		m.structure.indexesFilter = value
 	case tabForeignKeys:
-		m.foreignKeysFilter = value
+		m.structure.foreignKeysFilter = value
 	}
 }
 
@@ -69,11 +69,11 @@ func (m *Model) applyTableFilter(tab workspaceTab) {
 	var source []table.Row
 	switch tab {
 	case tabStructure:
-		result, source = &m.structure, m.structureRows
+		result, source = &m.structure.table, m.structure.rows
 	case tabIndexes:
-		result, source = &m.indexes, m.indexRows
+		result, source = &m.structure.indexes, m.structure.indexRows
 	case tabForeignKeys:
-		result, source = &m.foreignKeys, m.foreignKeyRows
+		result, source = &m.structure.foreignKeys, m.structure.foreignKeyRows
 	default:
 		return
 	}
@@ -92,8 +92,8 @@ func (m *Model) applyTableFilter(tab workspaceTab) {
 }
 
 func (m Model) tableFilterStatus(tab workspaceTab) string {
-	if m.tableFiltering && m.tableFilterTab == tab {
-		return m.tableFilterInput.View() + " | enter/esc done"
+	if m.structure.tableFiltering && m.structure.tableFilterTab == tab {
+		return m.structure.tableFilterInput.View() + " | enter/esc done"
 	}
 	if query := m.tableFilterValue(tab); query != "" {
 		return "/ filter | r reset | " + query
@@ -102,42 +102,42 @@ func (m Model) tableFilterStatus(tab workspaceTab) string {
 }
 
 func (m Model) selectedColumn() *sharedsql.ColumnInfo {
-	row := m.structure.Cursor()
-	rows := m.structure.Rows()
+	row := m.structure.table.Cursor()
+	rows := m.structure.table.Rows()
 	if row < 0 || row >= len(rows) || len(rows[row]) == 0 {
 		return nil
 	}
-	for index := range m.structureColumns {
-		if m.structureColumns[index].Name == rows[row][0] {
-			return &m.structureColumns[index]
+	for index := range m.structure.columns {
+		if m.structure.columns[index].Name == rows[row][0] {
+			return &m.structure.columns[index]
 		}
 	}
 	return nil
 }
 
 func (m Model) selectedIndex() *sharedsql.IndexInfo {
-	row := m.indexes.Cursor()
-	rows := m.indexes.Rows()
+	row := m.structure.indexes.Cursor()
+	rows := m.structure.indexes.Rows()
 	if row < 0 || row >= len(rows) || len(rows[row]) == 0 {
 		return nil
 	}
-	for index := range m.indexInfo {
-		if m.indexInfo[index].Name == rows[row][0] {
-			return &m.indexInfo[index]
+	for index := range m.structure.indexInfo {
+		if m.structure.indexInfo[index].Name == rows[row][0] {
+			return &m.structure.indexInfo[index]
 		}
 	}
 	return nil
 }
 
 func (m Model) selectedForeignKey() *sharedsql.ForeignKeyInfo {
-	row := m.foreignKeys.Cursor()
-	rows := m.foreignKeys.Rows()
+	row := m.structure.foreignKeys.Cursor()
+	rows := m.structure.foreignKeys.Rows()
 	if row < 0 || row >= len(rows) || len(rows[row]) == 0 {
 		return nil
 	}
-	for index := range m.foreignKeyInfo {
-		if m.foreignKeyInfo[index].ID == rows[row][0] {
-			return &m.foreignKeyInfo[index]
+	for index := range m.structure.foreignKeyInfo {
+		if m.structure.foreignKeyInfo[index].ID == rows[row][0] {
+			return &m.structure.foreignKeyInfo[index]
 		}
 	}
 	return nil

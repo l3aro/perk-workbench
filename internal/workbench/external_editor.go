@@ -45,8 +45,8 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 	if !ok {
 		return nil, false
 	}
-	m.editorEditTag++
-	command, err := externalEditorCommand(target.externalEditorValue(), m.editorEditTag, location)
+	m.queryLog.editorEditTag++
+	command, err := externalEditorCommand(target.externalEditorValue(), m.queryLog.editorEditTag, location)
 	if err != nil {
 		m.setStatus(safeText(fmt.Sprintf("opening editor: %v", err)))
 		return nil, true
@@ -55,10 +55,10 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 }
 
 func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLocation, bool) {
-	if m.sqlEditorActive() && m.formMode.editing() {
-		return m.editor, externalEditorLocation{kind: externalEditorTargetSQL}, true
+	if m.sqlEditorActive() && m.overlay.formMode.editing() {
+		return m.queryLog.editor, externalEditorLocation{kind: externalEditorTargetSQL}, true
 	}
-	if !m.formMode.editing() {
+	if !m.overlay.formMode.editing() {
 		return nil, externalEditorLocation{}, false
 	}
 
@@ -67,20 +67,20 @@ func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLoc
 		location externalEditorLocation
 	)
 	switch {
-	case m.cellEditor != nil:
+	case m.browse.cellEditor != nil:
 		return nil, externalEditorLocation{}, false
-	case m.State == stateConnection && m.connection.focus == connectionFocusForm && m.connection.confirmation == nil:
-		form, location.kind = m.connection.form, externalEditorTargetConnection
-	case m.columnForm.active() && !m.columnForm.confirming():
-		form, location.kind = m.columnForm.form, externalEditorTargetColumn
-	case m.browseForm.active() && !m.browseForm.confirming():
-		form, location.kind = m.browseForm.form, externalEditorTargetBrowse
-	case m.indexForm.active() && !m.indexForm.confirming():
-		form, location.kind = m.indexForm.form, externalEditorTargetIndex
-	case m.foreignKeyForm.active() && !m.foreignKeyForm.confirming():
-		form, location.kind = m.foreignKeyForm.form, externalEditorTargetForeignKey
+	case m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil:
+		form, location.kind = m.connection.form.form, externalEditorTargetConnection
+	case m.structure.columnForm.active() && !m.structure.columnForm.confirming():
+		form, location.kind = m.structure.columnForm.form, externalEditorTargetColumn
+	case m.browse.form.active() && !m.browse.form.confirming():
+		form, location.kind = m.browse.form.form, externalEditorTargetBrowse
+	case m.structure.indexForm.active() && !m.structure.indexForm.confirming():
+		form, location.kind = m.structure.indexForm.form, externalEditorTargetIndex
+	case m.structure.foreignKeyForm.active() && !m.structure.foreignKeyForm.confirming():
+		form, location.kind = m.structure.foreignKeyForm.form, externalEditorTargetForeignKey
 	case m.tableFormOpen():
-		form, location.kind = m.tableForm.form, externalEditorTargetTable
+		form, location.kind = m.structure.tableForm.form, externalEditorTargetTable
 	default:
 		return nil, externalEditorLocation{}, false
 	}
@@ -148,7 +148,7 @@ func externalEditorProcess(value string, tag uint64, location externalEditorLoca
 
 func (m Model) updateExternalEditor(message sqlEditorFinishedMsg) (tea.Model, tea.Cmd) {
 	target, location, ok := m.focusedExternalEditor()
-	if message.tag != m.editorEditTag || !ok || message.location != location {
+	if message.tag != m.queryLog.editorEditTag || !ok || message.location != location {
 		m.setStatus("editor target is no longer focused")
 		return m, nil
 	}
@@ -157,8 +157,8 @@ func (m Model) updateExternalEditor(message sqlEditorFinishedMsg) (tea.Model, te
 		return m, nil
 	}
 	target.setExternalEditorValue(message.value)
-	if target == m.editor && m.editor.value != message.value {
-		m.editorValidity = sqlValidityPending
+	if target == m.queryLog.editor && m.queryLog.editor.value != message.value {
+		m.queryLog.editorValidity = sqlValidityPending
 		return m, tea.Batch(target.Focus(), m.scheduleSQLValidation())
 	}
 	return m, target.Focus()

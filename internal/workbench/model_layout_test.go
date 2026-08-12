@@ -25,11 +25,11 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 
 	// Then
-	if model.compact {
+	if model.layout.compact {
 		t.Fatal("wide terminal unexpectedly used compact layout")
 	}
-	if model.schemaWidth <= 0 || model.editorWidth <= 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
-		t.Fatalf("wide layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
+	if model.layout.schemaWidth <= 0 || model.layout.editorWidth <= 0 || model.layout.editorHeight < 0 || model.layout.resultsHeight < 0 {
+		t.Fatalf("wide layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.layout.schemaWidth, model.layout.editorWidth, model.layout.editorHeight, model.layout.resultsHeight)
 	}
 
 	// When
@@ -38,16 +38,16 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	model = resizeModel(model, 80, 24)
 
 	// Then
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("80-column terminal did not use compact layout")
 	}
 	if model.Tab != tabBrowse {
 		t.Fatalf("tab = %v, want Browse after SQL tab", model.Tab)
 	}
-	if model.schemaWidth <= 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
-		t.Fatalf("compact layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
+	if model.layout.schemaWidth <= 0 || model.layout.editorWidth < 0 || model.layout.editorHeight < 0 || model.layout.resultsHeight < 0 {
+		t.Fatalf("compact layout has invalid dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.layout.schemaWidth, model.layout.editorWidth, model.layout.editorHeight, model.layout.resultsHeight)
 	}
-	if got, want := model.tableViewportWidth, 74; got != want {
+	if got, want := model.layout.tableViewportWidth, 74; got != want {
 		t.Errorf("compact table viewport width = %d, want %d", got, want)
 	}
 
@@ -55,8 +55,8 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	model = resizeModel(model, 0, 0)
 
 	// Then
-	if model.schemaWidth < 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
-		t.Fatalf("edge layout has negative dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
+	if model.layout.schemaWidth < 0 || model.layout.editorWidth < 0 || model.layout.editorHeight < 0 || model.layout.resultsHeight < 0 {
+		t.Fatalf("edge layout has negative dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.layout.schemaWidth, model.layout.editorWidth, model.layout.editorHeight, model.layout.resultsHeight)
 	}
 }
 
@@ -69,19 +69,19 @@ func TestResize_wide_layout_uses_plan_formula(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 
 	// Then
-	if got := model.schemaWidth; got != 44 {
+	if got := model.layout.schemaWidth; got != 44 {
 		t.Errorf("schema width = %d, want 44", got)
 	}
-	if got := model.editorWidth; got != 54 {
+	if got := model.layout.editorWidth; got != 54 {
 		t.Errorf("workspace width = %d, want 54 with stacked query log pane", got)
 	}
-	if got := model.chatWidth; got != 0 {
+	if got := model.layout.chatWidth; got != 0 {
 		t.Errorf("chat width = %d, want hidden without an Assistant", got)
 	}
-	if got := model.editorHeight; got != 6 {
+	if got := model.layout.editorHeight; got != 6 {
 		t.Errorf("editor height = %d, want 6", got)
 	}
-	if got := model.resultsHeight; got != 3 {
+	if got := model.layout.resultsHeight; got != 3 {
 		t.Errorf("results height = %d, want 3 with an expanded lower query log pane", got)
 	}
 }
@@ -111,8 +111,8 @@ func TestResize_small_nonzero_dimensions_render_without_negative_sizes(t *testin
 			view := model.View()
 
 			// Then
-			if model.schemaWidth < 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
-				t.Fatalf("negative layout dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
+			if model.layout.schemaWidth < 0 || model.layout.editorWidth < 0 || model.layout.editorHeight < 0 || model.layout.resultsHeight < 0 {
+				t.Fatalf("negative layout dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.layout.schemaWidth, model.layout.editorWidth, model.layout.editorHeight, model.layout.resultsHeight)
 			}
 			if view.Content == "" {
 				t.Fatal("view content is empty")
@@ -131,7 +131,7 @@ func TestResize_short_wide_terminal_uses_compact_single_pane(t *testing.T) {
 	view := model.View()
 
 	// Then
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("100x5 terminal used the wide layout")
 	}
 	if view.Content == "" {
@@ -156,8 +156,8 @@ func TestHeader_buttonsPinnedToFarRight(t *testing.T) {
 	headerLine := strings.Split(ansi.Strip(model.View().Content), "\n")[0]
 
 	// Then — header spans the full width.
-	if got := ansi.StringWidth(headerLine); got != model.width {
-		t.Fatalf("header row width = %d, want %d", got, model.width)
+	if got := ansi.StringWidth(headerLine); got != model.layout.width {
+		t.Fatalf("header row width = %d, want %d", got, model.layout.width)
 	}
 
 	// The quit button is the rightmost non-space content.
@@ -204,7 +204,7 @@ func TestHeader_paletteButtonClickOpensPalette(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — nothing opens.
-	if model.commandPalette.visible {
+	if model.overlay.commandPalette.visible {
 		t.Fatal("logo-area click opened the palette")
 	}
 
@@ -213,7 +213,7 @@ func TestHeader_paletteButtonClickOpensPalette(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — the command palette opens.
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("header palette click did not open the command palette")
 	}
 
@@ -222,7 +222,7 @@ func TestHeader_paletteButtonClickOpensPalette(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — the outside click dismisses the palette.
-	if model.commandPalette.visible {
+	if model.overlay.commandPalette.visible {
 		t.Fatal("header click left of the buttons did not close the palette")
 	}
 }
@@ -236,21 +236,21 @@ func TestHeader_quitButtonOpensQuitDialog(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — the quit confirmation dialog opens (like Ctrl+Q).
-	if model.quitDialog == nil {
+	if model.overlay.quitDialog == nil {
 		t.Fatal("header quit button click did not open the quit dialog")
 	}
 
 	// When — the dialog is dismissed, then the margin cell is clicked.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.quitDialog != nil {
+	if model.overlay.quitDialog != nil {
 		t.Fatal("escape did not dismiss the quit dialog")
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: 100 - 1, Y: 0, Button: tea.MouseLeft})
 	model = updated.(Model)
 
 	// Then — the margin click does nothing.
-	if model.quitDialog != nil || model.commandPalette.visible {
+	if model.overlay.quitDialog != nil || model.overlay.commandPalette.visible {
 		t.Fatal("margin click opened a dialog or the palette")
 	}
 
@@ -259,7 +259,7 @@ func TestHeader_quitButtonOpensQuitDialog(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — the palette opens, not a second dialog.
-	if !model.commandPalette.visible {
+	if !model.overlay.commandPalette.visible {
 		t.Fatal("header palette click did not open the command palette")
 	}
 }
@@ -274,7 +274,7 @@ func TestHeader_quitButtonOpensDialogOnConnectionScreen(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — the quit confirmation dialog opens.
-	if model.quitDialog == nil {
+	if model.overlay.quitDialog == nil {
 		t.Fatal("quit button did not open the dialog on the connection screen")
 	}
 }
@@ -293,7 +293,7 @@ func TestResize_compact_query_log_fills_single_pane(t *testing.T) {
 	if model.Focus != focusQueryLog {
 		t.Fatalf("focus = %v, want query log", model.Focus)
 	}
-	if got, want := model.queryLogHeight, 20; got != want {
+	if got, want := model.layout.queryLogHeight, 20; got != want {
 		t.Fatalf("query log height = %d, want %d", got, want)
 	}
 	if got := lipgloss.Width(view); got > 80 {
@@ -322,9 +322,9 @@ func TestResize_results_reflows_loaded_titles_without_replacing_rows(t *testing.
 	model = resizeModel(model, 80, 24)
 
 	// Then
-	assertTableTitlesAndPositiveWidths(t, model.results, []string{"ID", "Name", "Status"})
-	assertTableRows(t, model.results, []table.Row{{"1", "first", "NULL"}, {"2", "second", "active"}})
-	assertTableRenderGeometry(t, model.results)
+	assertTableTitlesAndPositiveWidths(t, model.queryLog.results, []string{"ID", "Name", "Status"})
+	assertTableRows(t, model.queryLog.results, []table.Row{{"1", "first", "NULL"}, {"2", "second", "active"}})
+	assertTableRenderGeometry(t, model.queryLog.results)
 }
 
 func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows(t *testing.T) {
@@ -347,8 +347,8 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	model = resizeModel(model, 80, 24)
 
 	// Then
-	assertTableTitlesAndPositiveWidths(t, model.structure, []string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"})
-	rows := model.structure.Rows()
+	assertTableTitlesAndPositiveWidths(t, model.structure.table, []string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"})
+	rows := model.structure.table.Rows()
 	if len(rows) != 2 || !strings.Contains(rows[0][1], iconPrimaryKey+" PK") || !strings.Contains(rows[1][1], iconUnique+" UQ") || !strings.Contains(rows[1][1], iconRegular+" IX") || ansi.Strip(rows[1][1]) != iconUnique+" UQ | "+iconRegular+" IX" || !strings.Contains(rows[0][1], "\x1b[") || !strings.Contains(rows[1][1], "\x1b[") {
 		t.Fatalf("structure index markers = %#v, want colored primary, unique, and regular icons", rows)
 	}
@@ -361,28 +361,28 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	if got, want := rows[1][5], "NULL"; got != want {
 		t.Fatalf("nullable column without default = %q, want %q", got, want)
 	}
-	assertTableRenderGeometry(t, model.structure)
+	assertTableRenderGeometry(t, model.structure.table)
 
-	assertTableTitlesAndPositiveWidths(t, model.browse, []string{"id", "name", "state"})
-	assertTableRows(t, model.browse, []table.Row{{"1", "first", "open"}})
-	assertTableRenderGeometry(t, model.browse)
+	assertTableTitlesAndPositiveWidths(t, model.browse.table, []string{"id", "name", "state"})
+	assertTableRows(t, model.browse.table, []table.Row{{"1", "first", "open"}})
+	assertTableRenderGeometry(t, model.browse.table)
 }
 
 func TestResize_tiny_multicolumn_results_render_within_viewport(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.results.SetColumns(tableColumns([]string{"ID", "Name", "Status"}, []table.Row{{"1", "first", "open"}}))
-	model.results.SetRows([]table.Row{{"1", "first", "open"}})
+	model.queryLog.results.SetColumns(tableColumns([]string{"ID", "Name", "Status"}, []table.Row{{"1", "first", "open"}}))
+	model.queryLog.results.SetRows([]table.Row{{"1", "first", "open"}})
 
 	// When
 	model = resizeModel(model, 1, 4)
 
 	// Then
-	if model.schemaWidth < 0 || model.editorWidth < 0 || model.editorHeight < 0 || model.resultsHeight < 0 {
-		t.Fatalf("negative layout dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.schemaWidth, model.editorWidth, model.editorHeight, model.resultsHeight)
+	if model.layout.schemaWidth < 0 || model.layout.editorWidth < 0 || model.layout.editorHeight < 0 || model.layout.resultsHeight < 0 {
+		t.Fatalf("negative layout dimensions: schema=%d editor=%d editorHeight=%d resultsHeight=%d", model.layout.schemaWidth, model.layout.editorWidth, model.layout.editorHeight, model.layout.resultsHeight)
 	}
-	assertTableTitlesAndPositiveWidths(t, model.results, []string{"ID", "Name", "Status"})
-	assertTableRenderGeometry(t, model.results)
+	assertTableTitlesAndPositiveWidths(t, model.queryLog.results, []string{"ID", "Name", "Status"})
+	assertTableRenderGeometry(t, model.queryLog.results)
 }
 
 func TestResultsTable_HeaderMatchesBodyWidth(t *testing.T) {
@@ -527,7 +527,7 @@ func TestStructureTable_selected_empty_primary_key_preserves_final_cell(t *testi
 
 	// Then
 	body := strings.Split(model.structureView(), "\n")[1]
-	if got, want := lipgloss.Width(body), model.structure.Width(); got != want {
+	if got, want := lipgloss.Width(body), model.structure.table.Width(); got != want {
 		t.Fatalf("selected structure row width = %d, want table width %d", got, want)
 	}
 }
@@ -574,7 +574,7 @@ func TestSQLPane_borderRightCornersStayAligned(t *testing.T) {
 	model := readyModel(t)
 	model = resizeModel(model, 100, 24)
 	model.Tab = tabSQL
-	model.editor.setValue("SELECT 1")
+	model.queryLog.editor.setValue("SELECT 1")
 	border := lipgloss.RoundedBorder()
 	lines := strings.Split(ansi.Strip(model.rightView()), "\n")
 
@@ -593,14 +593,14 @@ func TestSQLPane_borderRightCornersStayAligned(t *testing.T) {
 	// Then — both right corners share their rows with the SQL frame's left
 	// corners, rather than being wrapped into the next line.
 	left := sqlColumn - 1
-	width := lipgloss.Width(sqlEditorBox(model.editor.View(), colorSuccess))
+	width := lipgloss.Width(sqlEditorBox(model.queryLog.editor.View(), colorSuccess))
 	for _, corner := range []struct {
 		line  int
 		left  string
 		right string
 	}{
 		{contentLine - 1, border.TopLeft, border.TopRight},
-		{contentLine + model.editor.height, border.BottomLeft, border.BottomRight},
+		{contentLine + model.queryLog.editor.height, border.BottomLeft, border.BottomRight},
 	} {
 		runes := []rune(lines[corner.line])
 		if len(runes) <= left+width-1 || string(runes[left]) != corner.left || string(runes[left+width-1]) != corner.right {
@@ -710,13 +710,13 @@ func schemaModel(t *testing.T, fullscreen bool, width, height int) Model {
 	t.Helper()
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus = stateReady, focusSchema
-	model.fullscreen = fullscreen
-	model.layout(width, height)
-	model.schema.SetItems([]list.Item{
+	model.layout.fullscreen = fullscreen
+	model.applyLayout(width, height)
+	model.schema.list.SetItems([]list.Item{
 		schemaItem{title: "accounts", description: "table", database: "main", table: "accounts", kind: "table"},
 		schemaItem{title: "queue_1", description: "table", database: "main", table: "queue_1", kind: "table"},
 	})
-	model.schema.Select(0)
+	model.schema.list.Select(0)
 	return model
 }
 
@@ -732,7 +732,7 @@ func TestCompactClick_schemaRowSelectsRenderedTable(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			model := schemaModel(t, tc.fullscreen, tc.width, tc.height)
-			if !model.compact {
+			if !model.layout.compact {
 				t.Fatal("test setup did not produce the compact layout")
 			}
 			clickY := renderedRowY(t, model, "queue_1")
@@ -749,7 +749,7 @@ func TestCompactClick_workspaceTabSwitchesOnRenderedRow(t *testing.T) {
 	model := readyModel(t)
 	model.Focus = focusWorkspace
 	model = resizeModel(model, 80, 24)
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("test setup did not produce the compact layout")
 	}
 	tabY := renderedRowY(t, model, "Foreign Keys")
@@ -762,7 +762,7 @@ func TestCompactClick_workspaceTabSwitchesOnRenderedRow(t *testing.T) {
 
 func TestCompactClick_browseRowSelectsClickedCell(t *testing.T) {
 	model := resizeModel(readyBrowseModel(t), 80, 24)
-	if !model.compact {
+	if !model.layout.compact {
 		t.Fatal("test setup did not produce the compact layout")
 	}
 	for _, tc := range []struct {
@@ -775,7 +775,7 @@ func TestCompactClick_browseRowSelectsClickedCell(t *testing.T) {
 		clickY := renderedRowY(t, model, tc.needle)
 		updated, _ := model.Update(tea.MouseClickMsg{X: 3, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if got, want := model.browse.Cursor(), tc.wantRow; got != want {
+		if got, want := model.browse.table.Cursor(), tc.wantRow; got != want {
 			t.Fatalf("compact click on %q selected row %d, want %d", tc.needle, got, want)
 		}
 	}
@@ -789,23 +789,23 @@ func TestCompactClick_queryLogSelectsRenderedRow(t *testing.T) {
 	// The query log renders newest first, so the newest entry is row 0.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got, want := model.queryLog.Cursor(), 0; got != want {
+	if got, want := model.queryLog.table.Cursor(), 0; got != want {
 		t.Fatalf("compact click on newest row = cursor %d, want %d", got, want)
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT first"), Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got, want := model.queryLog.Cursor(), 1; got != want {
+	if got, want := model.queryLog.table.Cursor(), 1; got != want {
 		t.Fatalf("compact click on oldest row = cursor %d, want %d", got, want)
 	}
 	// A click at the start of the Statement column (third column) must
 	// select that column, not fall back to column 0.
 	clickX := 1 // pane left border
-	for _, column := range model.queryLog.Columns()[:2] {
+	for _, column := range model.queryLog.table.Columns()[:2] {
 		clickX += column.Width + 2*spaceCompact
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got, want := model.queryLogColumn, 2; got != want {
+	if got, want := model.layout.queryLogColumn, 2; got != want {
 		t.Fatalf("compact click on Statement column = column %d, want %d", got, want)
 	}
 }
@@ -815,11 +815,11 @@ func TestCompactRightClick_schemaOpensContextMenu(t *testing.T) {
 	clickY := renderedRowY(t, model, "queue_1")
 	updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: clickY, Button: tea.MouseRight})
 	model = updated.(Model)
-	if model.contextMenu == nil {
+	if model.overlay.contextMenu == nil {
 		t.Fatal("compact right-click did not open a context menu")
 	}
-	if len(model.contextMenu.options) != 2 {
-		t.Fatalf("context menu options = %d, want 2", len(model.contextMenu.options))
+	if len(model.overlay.contextMenu.options) != 2 {
+		t.Fatalf("context menu options = %d, want 2", len(model.overlay.contextMenu.options))
 	}
 }
 
@@ -827,7 +827,7 @@ func TestCompactClick_formFieldFocusesOnClick(t *testing.T) {
 	model := resizeModel(openColumn(t, "name", "TEXT"), 80, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.columnForm.form.GetFocusedField().GetKey(); got != "type" {
+	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "type" {
 		t.Fatalf("compact form click focused %q, want type", got)
 	}
 }

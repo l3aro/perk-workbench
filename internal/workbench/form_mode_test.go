@@ -17,7 +17,7 @@ func TestFormMode_normalSQLTextDoesNotMutateHuhValue(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "" {
+	if got := model.queryLog.editor.value; got != "" {
 		t.Fatalf("normal-mode text changed SQL to %q", got)
 	}
 }
@@ -43,26 +43,26 @@ func TestFormMode_iRoutesSQLTextToHuhUntilEscape(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "S" {
+	if got := model.queryLog.editor.value; got != "S" {
 		t.Fatalf("SQL value = %q, want S after insert then escape", got)
 	}
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("SQL escape mode = %d, want normal", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("SQL escape mode = %d, want normal", model.overlay.formMode.mode)
 	}
 }
 
 func TestFormMode_confirmEscapeReturnsToNormal(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.formMode.beginConfirm()
+	model.overlay.formMode.beginConfirm()
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 
 	// Then
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("confirm escape mode = %d, want normal", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("confirm escape mode = %d, want normal", model.overlay.formMode.mode)
 	}
 }
 
@@ -70,16 +70,16 @@ func TestFormMode_confirmModeDoesNotMutateSQLText(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus, model.Tab = focusWorkspace, tabSQL
-	model.editor.setValue("SELECT ")
-	model.editor.text.Focus()
-	model.formMode.beginConfirm()
+	model.queryLog.editor.setValue("SELECT ")
+	model.queryLog.editor.text.Focus()
+	model.overlay.formMode.beginConfirm()
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updated.(Model)
 
 	// Then
-	if got := model.editor.value; got != "SELECT " {
+	if got := model.queryLog.editor.value; got != "SELECT " {
 		t.Fatalf("confirm-mode text changed SQL to %q", got)
 	}
 }
@@ -92,14 +92,14 @@ func TestFormMode_normalEscapeOpensExistingDiscard(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	model.columnForm.values.name = "renamed"
+	model.structure.columnForm.values.name = "renamed"
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 
 	// Then
-	if !model.columnForm.confirming() {
+	if !model.structure.columnForm.confirming() {
 		t.Fatal("normal escape did not reach existing discard handling")
 	}
 }
@@ -120,8 +120,8 @@ func TestFormMode_runningQueryEscapePrecedesSQLInsert(t *testing.T) {
 		t.Fatal("running-query escape did not keep the request active until completion")
 	}
 	updated, _ = model.Update(queryCanceledMsg{requestID: requestID})
-	if model.formMode.mode != formModeInsert {
-		t.Fatalf("running-query escape changed SQL mode to %d, want insert", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeInsert {
+		t.Fatalf("running-query escape changed SQL mode to %d, want insert", model.overlay.formMode.mode)
 	}
 }
 
@@ -138,34 +138,34 @@ func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
 	// Press Enter → opens column form (deferred Init cmd but form exists immediately)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	model.columnForm.values.name = "renamed"
+	model.structure.columnForm.values.name = "renamed"
 	// Press Escape → triggers discard confirmation (formModeConfirm)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if !model.columnForm.confirming() {
+	if !model.structure.columnForm.confirming() {
 		t.Fatal("Escape did not reach discard confirmation")
 	}
-	if model.formMode.mode != formModeConfirm {
-		t.Fatalf("form mode = %d, want confirm", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeConfirm {
+		t.Fatalf("form mode = %d, want confirm", model.overlay.formMode.mode)
 	}
 
 	// When — navigate to "No" (second option) then press Enter
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	model = updated.(Model)
-	if !model.columnForm.confirming() {
+	if !model.structure.columnForm.confirming() {
 		t.Fatal("right arrow dismissed the confirmation")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
 	// Then — dialog completed with "cancel" (No), form stays open, mode is normal
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("Enter on confirmation set mode = %d, want normal", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("Enter on confirmation set mode = %d, want normal", model.overlay.formMode.mode)
 	}
-	if model.columnForm.confirming() {
+	if model.structure.columnForm.confirming() {
 		t.Fatal("Enter on confirmation did not clear the dialog")
 	}
-	if !model.columnForm.active() {
+	if !model.structure.columnForm.active() {
 		t.Fatal("Enter on confirmation closed the form (cancel action should keep it open)")
 	}
 }
@@ -178,10 +178,10 @@ func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	model.columnForm.values.name = "renamed"
+	model.structure.columnForm.values.name = "renamed"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if !model.columnForm.confirming() {
+	if !model.structure.columnForm.confirming() {
 		t.Fatal("Escape did not reach discard confirmation")
 	}
 
@@ -190,10 +190,10 @@ func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — dialog completed with "confirm", form closes, mode is normal
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("Enter on confirm set mode = %d, want normal", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("Enter on confirm set mode = %d, want normal", model.overlay.formMode.mode)
 	}
-	if model.columnForm.active() {
+	if model.structure.columnForm.active() {
 		t.Fatal("Enter on confirm did not close the form")
 	}
 }
@@ -212,11 +212,11 @@ func TestFormMode_quitDialogFromSQLTab_EnterCancelStaysNormal(t *testing.T) {
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
 	model = updated.(Model)
 
-	if model.quitDialog == nil {
+	if model.overlay.quitDialog == nil {
 		t.Fatal("Ctrl+Q did not open quit dialog")
 	}
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("form mode = %d, want normal after quit dialog opened", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal after quit dialog opened", model.overlay.formMode.mode)
 	}
 
 	// When — navigate to "Cancel" (third option, index 2), then Enter
@@ -228,10 +228,10 @@ func TestFormMode_quitDialogFromSQLTab_EnterCancelStaysNormal(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — dialog cleared, formMode unchanged (not insert)
-	if model.quitDialog != nil {
+	if model.overlay.quitDialog != nil {
 		t.Fatal("Enter on quit dialog did not clear the dialog")
 	}
-	if model.formMode.mode != formModeNormal {
-		t.Fatalf("Enter on quit dialog set mode = %d, want normal", model.formMode.mode)
+	if model.overlay.formMode.mode != formModeNormal {
+		t.Fatalf("Enter on quit dialog set mode = %d, want normal", model.overlay.formMode.mode)
 	}
 }

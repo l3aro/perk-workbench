@@ -75,7 +75,7 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 	}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.input.SetValue("insert a row")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -171,7 +171,7 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 	}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.input.SetValue("insert")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -253,7 +253,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.input.SetValue("update")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -342,7 +342,7 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.input.SetValue("insert")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -459,7 +459,7 @@ func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 	}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	model.chat.input.SetValue("insert a row")
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i'})
@@ -512,7 +512,7 @@ func TestChat_assistantWrite_yolo(t *testing.T) {
 	}
 	model.SetAI(tc, nil)
 	model.Focus = focusChat
-	model.layout(140, 32)
+	model.applyLayout(140, 32)
 
 	// Enable YOLO via the AI slash command.
 	model.chat.input.SetValue("/yolo-on")

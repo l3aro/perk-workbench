@@ -37,7 +37,7 @@ func newConfirmationDialog(title, description string, options []confirmationOpti
 // openQuitDialog opens the quit confirmation dialog, shared by the Ctrl+Q
 // keybinding and the header quit button.
 func (m Model) openQuitDialog() Model {
-	m.quitDialog = newConfirmationDialog("Quit?", "", []confirmationOption{
+	m.overlay.quitDialog = newConfirmationDialog("Quit?", "", []confirmationOption{
 		{label: "Disconnect", action: "disconnect"},
 		{label: "Quit", action: "quit"},
 		{label: "Cancel", action: "cancel"},

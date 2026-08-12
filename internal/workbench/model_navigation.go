@@ -9,18 +9,18 @@ import (
 // accordion animation) or moves the cursor to its first child when already
 // expanded. Leaves are a no-op.
 func (m Model) expandSchemaLevel() (tea.Model, tea.Cmd) {
-	item, ok := m.schema.SelectedItem().(schemaItem)
+	item, ok := m.schema.list.SelectedItem().(schemaItem)
 	if !ok {
 		return m, nil
 	}
 	switch {
 	case item.root:
-		if m.expandedDatabases[item.database] {
+		if m.schema.expandedDatabases[item.database] {
 			return m.schemaSelectFirstChild(item)
 		}
 		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
 	case item.kind == "schema":
-		if m.expandedSchemas[m.schemaExpansionKey(item.database, item.schema)] {
+		if m.schema.expandedSchemas[m.schemaExpansionKey(item.database, item.schema)] {
 			return m.schemaSelectFirstChild(item)
 		}
 		return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
@@ -34,19 +34,19 @@ func (m Model) expandSchemaLevel() (tea.Model, tea.Cmd) {
 // for a PostgreSQL table, the database root for anything else. Roots that
 // are already collapsed are a no-op.
 func (m Model) collapseSchemaLevel() (tea.Model, tea.Cmd) {
-	item, ok := m.schema.SelectedItem().(schemaItem)
+	item, ok := m.schema.list.SelectedItem().(schemaItem)
 	if !ok {
 		return m, nil
 	}
 	switch {
 	case item.root:
-		if !m.expandedDatabases[item.database] {
+		if !m.schema.expandedDatabases[item.database] {
 			return m, nil
 		}
 		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
 	case item.kind == "schema":
 		key := m.schemaExpansionKey(item.database, item.schema)
-		if m.expandedSchemas[key] {
+		if m.schema.expandedSchemas[key] {
 			return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
 		}
 		return m.schemaSelectParent(item)
@@ -58,8 +58,8 @@ func (m Model) collapseSchemaLevel() (tea.Model, tea.Cmd) {
 // schemaSelectFirstChild moves the cursor to the first visible child row of
 // an expanded node: the next row when it belongs to the node's subtree.
 func (m Model) schemaSelectFirstChild(item schemaItem) (tea.Model, tea.Cmd) {
-	items := m.schema.Items()
-	index := m.schema.Index()
+	items := m.schema.list.Items()
+	index := m.schema.list.Index()
 	if index+1 >= len(items) {
 		return m, nil
 	}
@@ -70,28 +70,28 @@ func (m Model) schemaSelectFirstChild(item schemaItem) (tea.Model, tea.Cmd) {
 	if item.kind == "schema" && next.schema != item.schema {
 		return m, nil
 	}
-	m.schema.Select(index + 1)
+	m.schema.list.Select(index + 1)
 	return m, nil
 }
 
 // schemaSelectParent moves the cursor to the parent row of the selected
 // item: the schema row for a PostgreSQL table, the database root otherwise.
 func (m Model) schemaSelectParent(item schemaItem) (tea.Model, tea.Cmd) {
-	items := m.schema.Items()
-	for index := m.schema.Index() - 1; index >= 0; index-- {
+	items := m.schema.list.Items()
+	for index := m.schema.list.Index() - 1; index >= 0; index-- {
 		parent, ok := items[index].(schemaItem)
 		if !ok || parent.database != item.database {
 			continue
 		}
 		if m.databaseInfo.Product == "PostgreSQL" && (item.kind == "table" || item.kind == "view") {
 			if parent.kind == "schema" && parent.schema == item.schema {
-				m.schema.Select(index)
+				m.schema.list.Select(index)
 				return m, nil
 			}
 			continue
 		}
 		if parent.root {
-			m.schema.Select(index)
+			m.schema.list.Select(index)
 			return m, nil
 		}
 	}
@@ -178,12 +178,12 @@ func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	// The landing tab is configurable; SelectTable defaults to the
 	// Structure (columns) tab.
 	m.Tab = tableOpenTargetTab()
-	m.browseSettings = browseSettings{}
-	m.structureColumns = nil
-	m.foreignKeyInfo = nil
-	m.referencingForeignKeyInfo = nil
-	m.relationshipDiagram = false
-	m.browsePending = true
+	m.browse.settings = browseSettings{}
+	m.structure.columns = nil
+	m.structure.foreignKeyInfo = nil
+	m.structure.referencingForeignKeyInfo = nil
+	m.structure.relationshipDiagram = false
+	m.browse.pending = true
 	m.focusActiveTable()
 	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
 }
@@ -195,53 +195,53 @@ func (m *Model) toggleTab(forward bool) tea.Cmd {
 }
 
 func (m *Model) loadPendingBrowse() tea.Cmd {
-	if !m.browsePending || m.Tab != tabBrowse {
+	if !m.browse.pending || m.Tab != tabBrowse {
 		return nil
 	}
-	m.browsePending = false
+	m.browse.pending = false
 	return m.loadBrowse()
 }
 
 func (m *Model) focusActiveTable() {
-	m.editor.text.Blur()
+	m.queryLog.editor.text.Blur()
 	m.blurTables()
 	switch m.Tab {
 	case tabStructure:
-		m.structure.Focus()
+		m.structure.table.Focus()
 	case tabBrowse:
-		m.browse.Focus()
+		m.browse.table.Focus()
 	case tabSQL:
 		if !m.vimMode {
 			// No modal modes: the editor is the SQL tab's text target, so
 			// typing works the moment the tab gains focus. The focus cmd is
 			// dropped by design; Focused is set synchronously.
-			m.formMode.beginInsert(m.editor)
+			m.overlay.formMode.beginInsert(m.queryLog.editor)
 			return
 		}
-		if len(m.results.Rows()) > 0 {
-			m.results.Focus()
+		if len(m.queryLog.results.Rows()) > 0 {
+			m.queryLog.results.Focus()
 		}
 	case tabIndexes:
-		m.indexes.Focus()
+		m.structure.indexes.Focus()
 	case tabForeignKeys:
-		m.foreignKeys.Focus()
+		m.structure.foreignKeys.Focus()
 	}
 }
 
 func (m *Model) blurTables() {
-	m.structure.Blur()
-	m.browse.Blur()
-	m.results.Blur()
-	m.indexes.Blur()
-	m.foreignKeys.Blur()
-	m.queryLog.Blur()
+	m.structure.table.Blur()
+	m.browse.table.Blur()
+	m.queryLog.results.Blur()
+	m.structure.indexes.Blur()
+	m.structure.foreignKeys.Blur()
+	m.queryLog.table.Blur()
 	m.chat.input.Blur()
 }
 
 func (m *Model) cycleFocus(forward bool) {
-	m.editor.text.Blur()
+	m.queryLog.editor.text.Blur()
 	m.blurTables()
-	m.queryLogPendingG = false
+	m.queryLog.pendingG = false
 
 	focusCount := focus(3)
 	if m.chat.visible {
@@ -258,9 +258,9 @@ func (m *Model) cycleFocus(forward bool) {
 	case focusWorkspace:
 		m.focusActiveTable()
 	case focusQueryLog:
-		m.queryLog.Focus()
-		if len(m.queryLog.Rows()) > 0 && m.queryLog.Cursor() < 0 {
-			m.queryLog.SetCursor(0)
+		m.queryLog.table.Focus()
+		if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
+			m.queryLog.table.SetCursor(0)
 		}
 	case focusChat:
 		m.chat.chatMode = formModeNormal
@@ -284,51 +284,51 @@ const mouseHorizontalStep = 6
 func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
 	switch m.Tab {
 	case tabBrowse:
-		moveTableColumn(&m.browse, &m.browseColumn, &m.browseOffset, m.tableViewportWidth, step)
+		moveTableColumn(&m.browse.table, &m.layout.browseColumn, &m.layout.browseOffset, m.layout.tableViewportWidth, step)
 		m.refreshBrowseStatus()
 		return
 	case tabSQL:
-		moveTableColumn(&m.results, &m.resultsColumn, &m.resultsOffset, m.tableViewportWidth, step)
+		moveTableColumn(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, step)
 		return
 	}
 	var resultTable *table.Model
 	var offset *int
 	switch m.Tab {
 	case tabStructure:
-		resultTable, offset = &m.structure, &m.structureOffset
+		resultTable, offset = &m.structure.table, &m.layout.structureOffset
 	case tabIndexes:
-		resultTable, offset = &m.indexes, &m.indexesOffset
+		resultTable, offset = &m.structure.indexes, &m.layout.indexesOffset
 	case tabForeignKeys:
-		resultTable, offset = &m.foreignKeys, &m.foreignKeysOffset
+		resultTable, offset = &m.structure.foreignKeys, &m.layout.foreignKeysOffset
 	default:
 		return
 	}
-	*offset = tableOffset(*resultTable, *offset+step*mouseHorizontalStep, m.tableViewportWidth)
+	*offset = tableOffset(*resultTable, *offset+step*mouseHorizontalStep, m.layout.tableViewportWidth)
 }
 
 func (m *Model) scrollActiveWorkspaceTable(step int) {
 	switch m.Tab {
 	case tabStructure:
-		rows := m.structure.Rows()
-		newCursor := clamp(m.structure.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.structure.SetCursor(newCursor)
+		rows := m.structure.table.Rows()
+		newCursor := clamp(m.structure.table.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.structure.table.SetCursor(newCursor)
 	case tabBrowse:
-		rows := m.browse.Rows()
-		newCursor := clamp(m.browse.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.browse.SetCursor(newCursor)
+		rows := m.browse.table.Rows()
+		newCursor := clamp(m.browse.table.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.browse.table.SetCursor(newCursor)
 		m.refreshBrowseStatus()
 	case tabSQL:
-		rows := m.results.Rows()
-		newCursor := clamp(m.results.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.results.SetCursor(newCursor)
+		rows := m.queryLog.results.Rows()
+		newCursor := clamp(m.queryLog.results.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.queryLog.results.SetCursor(newCursor)
 	case tabIndexes:
-		rows := m.indexes.Rows()
-		newCursor := clamp(m.indexes.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.indexes.SetCursor(newCursor)
+		rows := m.structure.indexes.Rows()
+		newCursor := clamp(m.structure.indexes.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.structure.indexes.SetCursor(newCursor)
 	case tabForeignKeys:
-		rows := m.foreignKeys.Rows()
-		newCursor := clamp(m.foreignKeys.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.foreignKeys.SetCursor(newCursor)
+		rows := m.structure.foreignKeys.Rows()
+		newCursor := clamp(m.structure.foreignKeys.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.structure.foreignKeys.SetCursor(newCursor)
 	}
 }
 

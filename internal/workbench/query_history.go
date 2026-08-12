@@ -49,12 +49,12 @@ func queryLogPageSize() int {
 // opened a fresh connection and re-ran the full migration/import sequence on
 // the UI goroutine.
 func (m *Model) queryLogDB() *sql.DB {
-	if m.queryLogDatabase == nil && m.queryLogPath != "" {
-		if db, err := openQueryLog(m.queryLogPath); err == nil {
-			m.queryLogDatabase = db
+	if m.queryLog.database == nil && m.queryLog.path != "" {
+		if db, err := openQueryLog(m.queryLog.path); err == nil {
+			m.queryLog.database = db
 		}
 	}
-	return m.queryLogDatabase
+	return m.queryLog.database
 }
 
 func loadQueryLog(path, connectionID string) []queryLogEntry {

@@ -12,7 +12,6 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/huh/v2"
 	"github.com/go-sql-driver/mysql"
 	"github.com/l3aro/perk-workbench/internal/core"
 	"github.com/l3aro/perk-workbench/internal/log"
@@ -47,108 +46,178 @@ const (
 
 type Model struct {
 	core.Workflow
-	pickerDir                                                  string
-	appContext                                                 context.Context
-	openDatabase                                               OpenDatabase
-	browseLoading, browsePending                               bool
-	reconnectPending                                           bool
-	openTag                                                    uint64
-	treeAnim                                                   *treeAnim
-	browsePageTag, editorEditTag, completionRequestTag         uint64
-	editorValidity                                             sqlValidity
-	sqlValidationTag                                           uint64
-	schema, picker, recent                                     list.Model
-	schemaFilter, recentFilter                                 textinput.Model
-	structure, browse, results, indexes, foreignKeys, queryLog table.Model
-	structureRows, indexRows, foreignKeyRows                   []table.Row
-	structureColumns                                           []sharedsql.ColumnInfo
-	completionColumns                                          map[string][]string
-	completionTable                                            string
-	indexInfo                                                  []sharedsql.IndexInfo
-	foreignKeyInfo                                             []sharedsql.ForeignKeyInfo
-	referencingForeignKeyInfo                                  []sharedsql.ReferencingForeignKeyInfo
-	browseNumericColumns, resultsNumericColumns                []bool
-	databaseInfo                                               sharedsql.DatabaseInfo
-	browseResult                                               sharedsql.Result
-	resultsRaw                                                 [][]*string
-	resultsStatus, browseStatus                                string
-	queryLogEntries                                            []queryLogEntry
-	queryLogDetail                                             *queryLogEntry
-	queryLogPage, queryLogPageSize                             int
-	queryLogPendingG                                           bool
-	queryHistory                                               []string
-	historyIndex                                               int
-	editor                                                     *editor
-	chat                                                       chatModel
-	explainPicker                                              *explainPicker
-	chatHistoryPicker                                          *huh.Form
-	formMode                                                   *formModeController
-	columnForm                                                 columnForm
-	tableForm                                                  tableForm
-	tableFormRunning                                           bool
-	browseForm                                                 browseForm
-	browseFilterForm                                           *browseFilterForm
-	browseSettings                                             browseSettings
-	browsePageSize                                             int
-	indexForm                                                  indexForm
-	foreignKeyForm                                             foreignKeyForm
-	cellEditor                                                 *cellEditor
-	documentEditor                                             *documentEditor
-	cellViewer                                                 *cellViewer
-	connection                                                 connectionForm
-	connectionID                                               string
-	recentConnections                                          []recentConnection
-	schemaObjects                                              []sharedsql.SchemaObject
-	expandedDatabases                                          map[string]bool
-	expandedSchemas                                            map[string]bool
-	commandPalette                                             *commandPalette
-	themePicker                                                *themePicker
-	tableTargetPicker                                          *tableTargetPicker
-	quitDialog                                                 *confirmationDialog
-	queryConfirmation                                          *queryConfirmation
-	recentPath, queryLogPath, configPath, notificationPath     string
-	queryLogDatabase                                           *sql.DB
-	notificationDatabase                                       *sql.DB
-	notificationEntries                                        []notificationEntry
-	notificationPopup                                          *notificationEntry
-	notificationDetail                                         *notificationEntry
-	notificationHistory                                        *notificationHistory
-	notificationGeneration                                     uint64
-	notificationPopupSwallowRelease                            bool
-	statusRevision                                             uint64
-	// skipStatusPopup suppresses the plain status popup for the current
-	// update; the status change is surfaced as a log notification instead.
-	skipStatusPopup bool
-	// skipNotificationPersist keeps the next drained log notification
-	// transient: the popup and event.log stay, but history persistence is
-	// skipped. The opening transition logs before the connection profile
-	// exists, so persisting it would bind it to the wrong scope.
-	skipNotificationPersist                                                                        bool
-	keybindings                                                                                    Keybindings
-	tableFilterInput                                                                               textinput.Model
-	width, height, schemaWidth, editorWidth, chatWidth                                             int
-	workspaceHeight, queryLogHeight                                                                int
-	editorHeight, resultsHeight, tableViewportWidth                                                int
-	structureOffset, browseOffset, resultsOffset, indexesOffset, foreignKeysOffset, queryLogOffset int
-	structureColumn, browseColumn, resultsColumn, indexesColumn, foreignKeysColumn, queryLogColumn int
-	compact, fullscreen, relationshipDiagram, tableFiltering                                       bool
-	tableFilterTab                                                                                 workspaceTab
-	structureFilter, indexesFilter, foreignKeysFilter                                              string
-	lastClickTime                                                                                  time.Time
-	lastClickX, lastClickY                                                                         int
-	lastClickTab                                                                                   workspaceTab
-	lastClickRow                                                                                   int
-	lastFormClickTime                                                                              time.Time
-	lastFormClickX, lastFormClickY                                                                 int
-	chatKeepInsert                                                                                 bool
-	formButtonHit                                                                                  bool
-	vimMode                                                                                        bool
-	contextMenu                                                                                    *contextMenuModel
-	deleteConfirm                                                                                  *confirmationDialog
-	deletePending                                                                                  string
-	deletePendingName                                                                              string
-	deletePendingDatabase                                                                          string
-	deletePendingConnection                                                                        *recentConnection
+	// Global lifecycle: application context, database opener, and the
+	// connection scope that binds query log, notifications, and chat
+	// history to the active profile. Feature-owned state lives in the
+	// grouped structs below; root coordinates, features render.
+	appContext       context.Context
+	openDatabase     OpenDatabase
+	reconnectPending bool
+	openTag          uint64
+	connectionID     string
+	databaseInfo     sharedsql.DatabaseInfo
+	keybindings      Keybindings
+	vimMode          bool
+	configPath       string
+	connection       connectionState
+	schema           schemaState
+	queryLog         queryState
+	browse           browseState
+	structure        structureState
+	notifications    notificationState
+	overlay          overlayState
+	layout           layoutState
+	chat             chatModel
+}
+
+// connectionState owns the connection screen: the profile form, recent
+// profile list and filter, the database file picker, and persisted
+// profile storage.
+type connectionState struct {
+	form              connectionForm
+	picker            list.Model
+	pickerDir         string
+	recent            list.Model
+	recentFilter      textinput.Model
+	recentConnections []recentConnection
+	recentPath        string
+}
+
+// schemaState owns the schema sidebar: its list and filter, the loaded
+// schema objects, database/schema expansion, and the accordion animation.
+type schemaState struct {
+	list              list.Model
+	filter            textinput.Model
+	objects           []sharedsql.SchemaObject
+	expandedDatabases map[string]bool
+	expandedSchemas   map[string]bool
+	anim              *treeAnim
+}
+
+// queryState owns the SQL workspace: the editor, result table and raw
+// result, completion, validation, and query-log history state.
+type queryState struct {
+	table                 table.Model // query log table
+	entries               []queryLogEntry
+	detail                *queryLogEntry
+	page, pageSize        int
+	pendingG              bool
+	path                  string
+	database              *sql.DB
+	history               []string
+	historyIndex          int
+	editor                *editor
+	editorValidity        sqlValidity
+	editorEditTag         uint64
+	validationTag         uint64
+	completionRequestTag  uint64
+	completionColumns     map[string][]string
+	completionTable       string
+	results               table.Model
+	resultsRaw            [][]*string
+	resultsStatus         string
+	resultsNumericColumns []bool
+}
+
+// browseState owns the browse tab: the result table, row/document
+// editors, cell viewer, settings, filter form, and paging state.
+type browseState struct {
+	table            table.Model
+	result           sharedsql.Result
+	status           string
+	numericColumns   []bool
+	loading, pending bool
+	pageTag          uint64
+	settings         browseSettings
+	form             browseForm
+	filterForm       *browseFilterForm
+	pageSize         int
+	cellEditor       *cellEditor
+	documentEditor   *documentEditor
+	cellViewer       *cellViewer
+}
+
+// structureState owns the structure/index/foreign-key tabs: their tables,
+// forms, filters, row metadata, and the relationship diagram.
+type structureState struct {
+	table                     table.Model
+	rows                      []table.Row
+	columns                   []sharedsql.ColumnInfo
+	structureFilter           string
+	indexes                   table.Model
+	indexRows                 []table.Row
+	indexInfo                 []sharedsql.IndexInfo
+	indexesFilter             string
+	indexForm                 indexForm
+	foreignKeys               table.Model
+	foreignKeyRows            []table.Row
+	foreignKeyInfo            []sharedsql.ForeignKeyInfo
+	referencingForeignKeyInfo []sharedsql.ReferencingForeignKeyInfo
+	foreignKeysFilter         string
+	foreignKeyForm            foreignKeyForm
+	columnForm                columnForm
+	tableForm                 tableForm
+	tableFormRunning          bool
+	relationshipDiagram       bool
+	tableFiltering            bool
+	tableFilterInput          textinput.Model
+	tableFilterTab            workspaceTab
+}
+
+// notificationState owns the notification pipeline: history persistence,
+// popup/detail state, filter/sort/page behavior, and status-popup
+// suppression.
+type notificationState struct {
+	database                *sql.DB
+	entries                 []notificationEntry
+	popup                   *notificationEntry
+	detail                  *notificationEntry
+	history                 *notificationHistory
+	generation              uint64
+	popupSwallowRelease     bool
+	path                    string
+	skipStatusPopup         bool
+	skipNotificationPersist bool
+	statusRevision          uint64
+}
+
+// overlayState owns transient root overlays: palette, pickers, menus,
+// confirmations, quit/delete dialogs, and the shared form-mode
+// controller.
+type overlayState struct {
+	commandPalette          *commandPalette
+	themePicker             *themePicker
+	tableTargetPicker       *tableTargetPicker
+	quitDialog              *confirmationDialog
+	queryConfirmation       *queryConfirmation
+	explainPicker           *explainPicker
+	contextMenu             *contextMenuModel
+	deleteConfirm           *confirmationDialog
+	deletePending           string
+	deletePendingName       string
+	deletePendingDatabase   string
+	deletePendingConnection *recentConnection
+	formMode                *formModeController
+}
+
+// layoutState owns terminal geometry and pointer tracking: window and
+// pane dimensions, table offsets/columns, and click debounce state.
+type layoutState struct {
+	width, height, schemaWidth, editorWidth, chatWidth int
+	workspaceHeight, queryLogHeight                    int
+	editorHeight, resultsHeight, tableViewportWidth    int
+	structureOffset, browseOffset, resultsOffset       int
+	indexesOffset, foreignKeysOffset, queryLogOffset   int
+	structureColumn, browseColumn, resultsColumn       int
+	indexesColumn, foreignKeysColumn, queryLogColumn   int
+	compact, fullscreen                                bool
+	lastClickTime                                      time.Time
+	lastClickX, lastClickY                             int
+	lastClickTab                                       workspaceTab
+	lastClickRow                                       int
+	lastFormClickTime                                  time.Time
+	lastFormClickX, lastFormClickY                     int
+	formButtonHit                                      bool
 }
 
 type pickerItem struct{ raw, title, description string }
@@ -223,64 +292,76 @@ type OpenDatabase func(context.Context, string) (sharedsql.Opened, error)
 
 func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly bool) Model {
 	model := Model{
-		Workflow:          core.New(target),
-		appContext:        ctx,
-		openDatabase:      openDatabase,
-		schema:            newSchemaList(),
-		picker:            newList("Choose database", true),
-		recent:            newList("", true),
-		schemaFilter:      newFilterInput(),
-		recentFilter:      newFilterInput(),
-		expandedDatabases: map[string]bool{},
-		expandedSchemas:   map[string]bool{},
-		structure:         newResultsTable(),
-		browse:            newResultsTable(),
-		results:           newResultsTable(),
-		indexes:           newResultsTable(),
-		foreignKeys:       newResultsTable(),
-		queryLog:          newResultsTable(),
-		editor:            newEditor(),
-		chat:              newChatModel(),
-		formMode:          &formModeController{},
-		connection:        newConnectionForm(),
-		completionColumns: map[string][]string{},
-		keybindings:       DefaultKeybindings(),
-		vimMode:           vimModeEnabled(),
-		browsePageSize:    browsePageSizeDefault(),
-		historyIndex:      -1,
-		queryLogPageSize:  queryLogPageSize(),
+		Workflow:     core.New(target),
+		appContext:   ctx,
+		openDatabase: openDatabase,
+		connection: connectionState{
+			form:         newConnectionForm(),
+			picker:       newList("Choose database", true),
+			recent:       newList("", true),
+			recentFilter: newFilterInput(),
+		},
+		schema: schemaState{
+			list:              newSchemaList(),
+			filter:            newFilterInput(),
+			expandedDatabases: map[string]bool{},
+			expandedSchemas:   map[string]bool{},
+		},
+		queryLog: queryState{
+			table:             newResultsTable(),
+			results:           newResultsTable(),
+			editor:            newEditor(),
+			completionColumns: map[string][]string{},
+			historyIndex:      -1,
+			pageSize:          queryLogPageSize(),
+		},
+		browse: browseState{
+			table:    newResultsTable(),
+			pageSize: browsePageSizeDefault(),
+		},
+		structure: structureState{
+			table:       newResultsTable(),
+			indexes:     newResultsTable(),
+			foreignKeys: newResultsTable(),
+		},
+		overlay: overlayState{
+			formMode: &formModeController{},
+		},
+		chat:        newChatModel(),
+		keybindings: DefaultKeybindings(),
+		vimMode:     vimModeEnabled(),
 	}
 	model.ReadOnly = readOnly || appConfig.ReadOnly
 	if appConfig.ReadOnly {
 		// Pre-check the per-connection toggle so fresh forms keep the
 		// configured default; the user can still opt a connection back.
-		model.connection.values.readOnly = true
+		model.connection.form.values.readOnly = true
 	}
-	model.commandPalette = newCommandPalette(model)
-	model.recent.SetShowTitle(false)
+	model.overlay.commandPalette = newCommandPalette(model)
+	model.connection.recent.SetShowTitle(false)
 	// The profiles pane renders its own persistent filter input (like the
 	// schema sidebar); the list's built-in filter bar and keybinding are
 	// unused.
-	model.recent.SetShowFilter(false)
-	model.recent.KeyMap.Filter = key.NewBinding(key.WithDisabled())
-	model.queryLog.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
-	model.queryLog.Blur()
+	model.connection.recent.SetShowFilter(false)
+	model.connection.recent.KeyMap.Filter = key.NewBinding(key.WithDisabled())
+	model.queryLog.table.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
+	model.queryLog.table.Blur()
 	model.focusActiveTable()
-	model.queryLogPath, _ = queryLogPath()
-	model.queryLogEntries = loadQueryLog(model.queryLogPath, "")
-	model.notificationPath, _ = notificationPath()
+	model.queryLog.path, _ = queryLogPath()
+	model.queryLog.entries = loadQueryLog(model.queryLog.path, "")
+	model.notifications.path, _ = notificationPath()
 	model.renderQueryLog()
-	model.recentPath, _ = recentConnectionsPath()
+	model.connection.recentPath, _ = recentConnectionsPath()
 	model.configPath = ConfigPath()
 	var migrated bool
-	model.recentConnections, migrated = loadRecentConnections(model.recentPath)
+	model.connection.recentConnections, migrated = loadRecentConnections(model.connection.recentPath)
 	if migrated {
 		// Best-effort: persist the assigned legacy profile IDs immediately.
-		_ = saveRecentConnections(model.recentPath, model.recentConnections)
+		_ = saveRecentConnections(model.connection.recentPath, model.connection.recentConnections)
 	}
 	// Route every logged event into the notification popup pipeline.
 	log.SetNotifier(enqueueLogNotification)
-	_ = model.recent.SetItems(recentListItems(model.recentConnections))
+	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
 	return model
 }
 
@@ -325,7 +406,7 @@ func (m Model) reconnectDatabase(database string) (tea.Model, tea.Cmd) {
 	// switch loads; the previous database stays usable until the swap.
 	m.reconnectPending = true
 	m.openTag++
-	m.treeAnim = nil
+	m.schema.anim = nil
 	m.setStatus(safeText("switching to " + database))
 	return m, m.reopenTarget(target)
 }
@@ -358,7 +439,7 @@ func (m Model) databaseRootConnected(database string) bool {
 	if connected := m.connectedDatabase(); connected != "" {
 		return connected == database
 	}
-	for _, object := range m.schemaObjects {
+	for _, object := range m.schema.objects {
 		if object.Type == "schema" && object.Database == database {
 			return true
 		}
@@ -370,7 +451,7 @@ func (m *Model) Service() sharedsql.Service { return m.Database }
 
 func (m *Model) SetKeybindings(b Keybindings) {
 	m.keybindings = b
-	m.commandPalette = newCommandPalette(*m)
+	m.overlay.commandPalette = newCommandPalette(*m)
 }
 
 // browsePageSizeDefault returns the configured default browse page size,
@@ -386,49 +467,26 @@ func (m *Model) disconnect() {
 	if m.Database != nil {
 		_ = m.Database.Close()
 	}
-	if m.notificationDatabase != nil {
-		_ = m.notificationDatabase.Close()
-		m.notificationDatabase = nil
-	}
-	m.notificationEntries = nil
-	m.notificationPopup = nil
-	m.notificationDetail = nil
-	m.notificationHistory = nil
+	m.notifications.reset()
 	m.State = stateConnection
 	m.reconnectPending = false
-	m.treeAnim = nil
+	// The accordion animation is dropped before relayout, matching the
+	// original transition order; schema.reset() below re-clears it.
+	m.schema.anim = nil
 	m.openTag++ // supersede any open still in flight
-	m.layout(m.width, m.height)
+	m.applyLayout(m.layout.width, m.layout.height)
 	m.Database = nil
 	m.SelectedTable = ""
 	m.BrowsePage = 0
 	m.setStatus("")
-	m.queryLogEntries = nil
-	m.queryLogPage = 0
-	m.queryHistory = nil
-	m.historyIndex = -1
-	m.queryLog.SetRows(nil)
-	m.editor.setValue("")
-	m.editorValidity = sqlValidityPending
-	m.sqlValidationTag++
-	m.completionColumns = map[string][]string{}
-	m.completionTable = ""
-	m.schemaObjects = nil
-	m.expandedDatabases = map[string]bool{}
-	m.expandedSchemas = map[string]bool{}
+	m.queryLog.reset()
+	m.schema.reset()
 	m.databaseInfo = sharedsql.DatabaseInfo{}
 	m.connectionID = ""
-	m.schema.SetItems(nil)
-	m.structure.SetRows(nil)
-	m.browse.SetRows(nil)
-	m.resultsRaw = nil
-	m.browseResult = sharedsql.Result{}
-	m.results.SetRows(nil)
-	m.indexes.SetRows(nil)
-	m.foreignKeys.SetRows(nil)
-	m.recentPath, _ = recentConnectionsPath()
-	m.recentConnections, _ = loadRecentConnections(m.recentPath)
-	_ = m.recent.SetItems(recentListItems(m.recentConnections))
+	m.structure.reset()
+	m.browse.reset()
+	m.connection.reset()
+	m.overlay.reset()
 	m.chat.yoloWrites = false
 	for _, run := range m.chat.runs {
 		if run.roundState != nil {
@@ -440,48 +498,115 @@ func (m *Model) disconnect() {
 	}
 	m.chat.runs = map[string]*chatRun{}
 	m.chat.activeID = ""
-	m.schema.ResetFilter()
-	m.schemaFilter.SetValue("")
-	m.schemaFilter.Blur()
-	m.recent.ResetFilter()
-	m.recentFilter.SetValue("")
-	m.recentFilter.Blur()
+}
+
+// reset clears query workspace state: the editor, result table, raw
+// result, completion data, validation tag, and query-log history.
+func (s *queryState) reset() {
+	s.entries = nil
+	s.page = 0
+	s.history = nil
+	s.historyIndex = -1
+	s.table.SetRows(nil)
+	s.editor.setValue("")
+	s.editorValidity = sqlValidityPending
+	s.validationTag++
+	s.completionColumns = map[string][]string{}
+	s.completionTable = ""
+	s.resultsRaw = nil
+	s.results.SetRows(nil)
+}
+
+// reset clears the schema sidebar: loaded objects, expansion, the tree
+// list, and the filter input.
+func (s *schemaState) reset() {
+	s.anim = nil
+	s.objects = nil
+	s.expandedDatabases = map[string]bool{}
+	s.expandedSchemas = map[string]bool{}
+	s.list.SetItems(nil)
+	s.list.ResetFilter()
+	s.filter.SetValue("")
+	s.filter.Blur()
+}
+
+// reset clears the structure, index, and foreign-key tables.
+func (s *structureState) reset() {
+	s.table.SetRows(nil)
+	s.indexes.SetRows(nil)
+	s.foreignKeys.SetRows(nil)
+}
+
+// reset clears the browse result table and result data.
+func (s *browseState) reset() {
+	s.table.SetRows(nil)
+	s.result = sharedsql.Result{}
+}
+
+// reset reloads the persisted profile list and clears the profile list
+// and filter inputs.
+func (s *connectionState) reset() {
+	s.recentPath, _ = recentConnectionsPath()
+	s.recentConnections, _ = loadRecentConnections(s.recentPath)
+	_ = s.recent.SetItems(recentListItems(s.recentConnections))
+	s.recent.ResetFilter()
+	s.recentFilter.SetValue("")
+	s.recentFilter.Blur()
+}
+
+// reset closes the notification history database and clears popup,
+// detail, and history state.
+func (s *notificationState) reset() {
+	if s.database != nil {
+		_ = s.database.Close()
+		s.database = nil
+	}
+	s.entries = nil
+	s.popup = nil
+	s.detail = nil
+	s.history = nil
+}
+
+// reset clears connection-scoped overlays. The current disconnect
+// transition leaves transient overlays (palette, menus, dialogs) alone;
+// this is the hook that owns them when a later step needs to.
+func (s *overlayState) reset() {
 }
 func (m Model) Init() tea.Cmd {
 	if m.State == core.StateOpening {
 		return m.openTarget(m.Target)
 	}
 	if m.State == core.StateConnection {
-		return m.connection.form.Init()
+		return m.connection.form.form.Init()
 	}
 	return nil
 }
 
 func (m *Model) setSchemaObjects(objects []sharedsql.SchemaObject) tea.Cmd {
-	m.schemaObjects = objects
-	m.treeAnim = nil // the tree changed wholesale; no accordion to continue
-	if m.expandedDatabases == nil {
-		m.expandedDatabases = map[string]bool{}
+	m.schema.objects = objects
+	m.schema.anim = nil // the tree changed wholesale; no accordion to continue
+	if m.schema.expandedDatabases == nil {
+		m.schema.expandedDatabases = map[string]bool{}
 	}
-	if m.expandedSchemas == nil {
-		m.expandedSchemas = map[string]bool{}
+	if m.schema.expandedSchemas == nil {
+		m.schema.expandedSchemas = map[string]bool{}
 	}
 	// Default expansion mirrors the toggle rule: server products open
 	// exactly one database root (the connected one, else the first) and
 	// PostgreSQL exactly one schema, so a fresh tree never shows every
 	// database's or schema's children at once. Single-root products
 	// (SQLite, MongoDB) have nothing to collapse.
-	m.expandedDatabases = m.initialDatabaseExpansion(objects)
-	m.expandedSchemas = m.initialSchemaExpansion(objects)
+	m.schema.expandedDatabases = m.initialDatabaseExpansion(objects)
+	m.schema.expandedSchemas = m.initialSchemaExpansion(objects)
 	cmd := m.rebuildSchemaTree()
 	// Keep the cursor on the connected root: switching databases rebuilds
 	// the tree, and with roots in stable alphabetical order the selection
 	// must land where the user picked, not on the first item.
 	if m.databaseInfo.Product == "PostgreSQL" {
 		if connected := m.connectedDatabase(); connected != "" {
-			for index, item := range m.schema.Items() {
+			for index, item := range m.schema.list.Items() {
 				if root, ok := item.(schemaItem); ok && root.root && root.database == connected {
-					m.schema.Select(index)
+					m.schema.list.Select(index)
 					break
 				}
 			}
@@ -500,15 +625,15 @@ func (m Model) schemaExpansionKey(database, schema string) string {
 // expanded; expanding one root collapses every other, so at most one
 // database shows children at a time. It returns the accordion tick command.
 func (m *Model) toggleDatabase(database string) tea.Cmd {
-	expanding := !m.expandedDatabases[database]
+	expanding := !m.schema.expandedDatabases[database]
 	total := m.schemaChildRowCount(database, "", expanding)
-	if m.expandedDatabases[database] {
-		m.expandedDatabases[database] = false
+	if m.schema.expandedDatabases[database] {
+		m.schema.expandedDatabases[database] = false
 	} else {
-		for db := range m.expandedDatabases {
-			m.expandedDatabases[db] = false
+		for db := range m.schema.expandedDatabases {
+			m.schema.expandedDatabases[db] = false
 		}
-		m.expandedDatabases[database] = true
+		m.schema.expandedDatabases[database] = true
 	}
 	return m.startTreeAnim(database, "", expanding, total)
 }
@@ -518,15 +643,15 @@ func (m *Model) toggleDatabase(database string) tea.Cmd {
 // schema shows its tables at a time. It returns the accordion tick command.
 func (m *Model) toggleSchema(database, schema string) tea.Cmd {
 	key := m.schemaExpansionKey(database, schema)
-	expanding := !m.expandedSchemas[key]
+	expanding := !m.schema.expandedSchemas[key]
 	total := m.schemaChildRowCount(database, schema, expanding)
-	if m.expandedSchemas[key] {
-		m.expandedSchemas[key] = false
+	if m.schema.expandedSchemas[key] {
+		m.schema.expandedSchemas[key] = false
 	} else {
-		for k := range m.expandedSchemas {
-			m.expandedSchemas[k] = false
+		for k := range m.schema.expandedSchemas {
+			m.schema.expandedSchemas[k] = false
 		}
-		m.expandedSchemas[key] = true
+		m.schema.expandedSchemas[key] = true
 	}
 	return m.startTreeAnim(database, schema, expanding, total)
 }
@@ -623,7 +748,7 @@ func (m Model) initialSchemaExpansion(objects []sharedsql.SchemaObject) map[stri
 		}
 	}
 	for _, object := range objects {
-		if object.Type == "schema" && m.expandedDatabases[object.Database] {
+		if object.Type == "schema" && m.schema.expandedDatabases[object.Database] {
 			expanded[m.schemaExpansionKey(object.Database, object.Name)] = true
 			break
 		}
@@ -632,15 +757,15 @@ func (m Model) initialSchemaExpansion(objects []sharedsql.SchemaObject) map[stri
 }
 
 func (m *Model) rebuildSchemaTree() tea.Cmd {
-	items := make([]list.Item, 0, len(m.schemaObjects))
+	items := make([]list.Item, 0, len(m.schema.objects))
 	schemaCounts, databaseCounts := m.schemaChildCounts()
 	animDatabase, animSchema, revealBudget := m.schemaReveal()
 	revealUsed := 0
-	for _, object := range m.schemaObjects {
+	for _, object := range m.schema.objects {
 		switch object.Type {
 		case "database":
 			description := ""
-			if !m.expandedDatabases[object.Database] {
+			if !m.schema.expandedDatabases[object.Database] {
 				description = "collapsed"
 			}
 			// PostgreSQL objects outside the connected database are not
@@ -655,7 +780,7 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 		case "schema":
 			// PostgreSQL only: schemas nest under the connected
 			// database's root.
-			if !m.expandedDatabases[object.Database] {
+			if !m.schema.expandedDatabases[object.Database] {
 				// A closing subtree keeps rendering during its collapse.
 				if animDatabase != object.Database || animSchema != "" {
 					continue
@@ -669,14 +794,14 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 				}
 			}
 			description := ""
-			if !m.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
+			if !m.schema.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
 				description = "collapsed"
 			}
 			item := schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema", count: schemaCounts[m.schemaExpansionKey(object.Database, object.Name)]}
 			item.open = m.schemaOpenPath(item)
 			items = append(items, item)
 		default: // table or view
-			if !m.expandedDatabases[object.Database] {
+			if !m.schema.expandedDatabases[object.Database] {
 				if animDatabase != object.Database || animSchema != "" {
 					continue
 				}
@@ -691,7 +816,7 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 				if !found {
 					continue
 				}
-				if !m.expandedSchemas[m.schemaExpansionKey(object.Database, schema)] {
+				if !m.schema.expandedSchemas[m.schemaExpansionKey(object.Database, schema)] {
 					// A closing schema keeps rendering its tables during
 					// the collapse; other schemas stay hidden.
 					if animDatabase != object.Database || animSchema != schema {
@@ -715,7 +840,7 @@ func (m *Model) rebuildSchemaTree() tea.Cmd {
 			items = append(items, item)
 		}
 	}
-	return m.schema.SetItems(items)
+	return m.schema.list.SetItems(items)
 }
 
 // schemaOpenPath reports whether item lies on the path from its root down to
@@ -762,7 +887,7 @@ func (m Model) schemaOpenPath(item schemaItem) bool {
 func (m Model) schemaChildCounts() (schemaCounts, databaseCounts map[string]int) {
 	schemaCounts = map[string]int{}
 	databaseCounts = map[string]int{}
-	for _, object := range m.schemaObjects {
+	for _, object := range m.schema.objects {
 		switch object.Type {
 		case "table", "view", "collection":
 			databaseCounts[object.Database]++
@@ -780,11 +905,11 @@ func (m Model) schemaChildCounts() (schemaCounts, databaseCounts map[string]int)
 // list, which filters its items and reports the committed state the status
 // line mirrors.
 func (m *Model) applySchemaFilter() {
-	if query := strings.TrimSpace(m.schemaFilter.Value()); query != "" {
-		m.schema.SetFilterText(query)
+	if query := strings.TrimSpace(m.schema.filter.Value()); query != "" {
+		m.schema.list.SetFilterText(query)
 		return
 	}
-	m.schema.ResetFilter()
+	m.schema.list.ResetFilter()
 }
 
 func (m Model) schemaTable(item schemaItem) string {

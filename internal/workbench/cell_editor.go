@@ -87,21 +87,21 @@ func (m *Model) openCellEditor() tea.Cmd {
 		// Document stores edit the whole document instead of one cell.
 		return m.openEditDocument()
 	}
-	row := m.browse.Cursor()
-	if row < 0 || row >= len(m.browseResult.Rows) {
+	row := m.browse.table.Cursor()
+	if row < 0 || row >= len(m.browse.result.Rows) {
 		m.setStatus("select a row")
 		return nil
 	}
-	col := m.browseColumn
-	columns := m.browseResult.Columns
+	col := m.layout.browseColumn
+	columns := m.browse.result.Columns
 	if col < 0 || col >= len(columns) {
 		return nil
 	}
-	browseRow := m.browseResult.Rows[row]
+	browseRow := m.browse.result.Rows[row]
 
 	// Find primary key indices from structure info
 	var primaryKeys []int
-	for _, info := range m.structureColumns {
+	for _, info := range m.structure.columns {
 		if info.PrimaryKey > 0 {
 			for ci, name := range columns {
 				if strings.EqualFold(name, info.Name) {
@@ -124,14 +124,14 @@ func (m *Model) openCellEditor() tea.Cmd {
 
 	// Detect column type for choosing input vs text field
 	colType := ""
-	for _, info := range m.structureColumns {
+	for _, info := range m.structure.columns {
 		if strings.EqualFold(info.Name, columns[col]) {
 			colType = info.Type
 			break
 		}
 	}
 
-	width := max(m.tableViewportWidth, 40)
+	width := max(m.layout.tableViewportWidth, 40)
 
 	e := &cellEditor{
 		table:       m.SelectedTable,
@@ -167,7 +167,7 @@ func (m *Model) openCellEditor() tea.Cmd {
 	e.input = newForm(
 		huh.NewGroup(field),
 	).WithShowHelp(true).WithWidth(width).WithKeyMap(km)
-	m.cellEditor = e
+	m.browse.cellEditor = e
 	return e.input.Init()
 }
 
@@ -185,12 +185,12 @@ func (m Model) executeCellUpdate() tea.Cmd {
 	if writer == nil {
 		return func() tea.Msg { return cellEditorUpdatedMsg{err: m.rowWriteUnsupportedError()} }
 	}
-	key, err := m.cellEditor.keyValues()
+	key, err := m.browse.cellEditor.keyValues()
 	if err != nil {
 		return func() tea.Msg { return cellEditorUpdatedMsg{err: err} }
 	}
-	values := []sharedsql.RowValue{{Name: m.cellEditor.columnName, Value: sharedsql.Value{Kind: sharedsql.ValueString, String: m.cellEditor.editedVal}}}
-	preview := m.cellEditor.preview()
+	values := []sharedsql.RowValue{{Name: m.browse.cellEditor.columnName, Value: sharedsql.Value{Kind: sharedsql.ValueString, String: m.browse.cellEditor.editedVal}}}
+	preview := m.browse.cellEditor.preview()
 	table, startedAt := m.SelectedTable, time.Now()
 	return func() tea.Msg {
 		result, err := writer.UpdateRow(m.appContext, table, key, values)
@@ -209,7 +209,7 @@ func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea
 		m.setStatus(safeText(fmt.Sprintf("updating cell: %v", msg.err)))
 		return m, nil
 	}
-	m.cellEditor = nil
+	m.browse.cellEditor = nil
 	m.setStatus("cell updated")
 	return m, m.loadBrowse()
 }
@@ -252,15 +252,15 @@ func (e *cellEditor) confirmContent() string {
 // button ("save"/"cancel"), replicating drawConfirmDialog's centered layout.
 // The buttons row is the last content line.
 func (m Model) cellEditorButtonAt(x, y int) string {
-	e := m.cellEditor
+	e := m.browse.cellEditor
 	if e == nil || e.confirming {
 		return ""
 	}
 	contentLines := len(strings.Split(e.input.View(), "\n")) + 1 // + buttons row
-	dialogW := min(e.width, max(m.width-6, 1))
-	dialogH := min(contentLines, max(m.height-6, 1))
-	boxX := max(0, (m.width-dialogW-2)/2)
-	boxY := max(0, (m.height-dialogH-2)/2)
+	dialogW := min(e.width, max(m.layout.width-6, 1))
+	dialogH := min(contentLines, max(m.layout.height-6, 1))
+	boxX := max(0, (m.layout.width-dialogW-2)/2)
+	boxY := max(0, (m.layout.height-dialogH-2)/2)
 	if y != boxY+dialogH {
 		return ""
 	}
