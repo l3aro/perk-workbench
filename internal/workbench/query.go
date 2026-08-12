@@ -14,6 +14,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 type tableInfoMsg struct {
@@ -116,8 +117,8 @@ func (m Model) loadTableInfo() tea.Cmd {
 func (m Model) loadBrowse() tea.Cmd {
 	tableName, page, tag, service := m.SelectedTable, m.BrowsePage, m.browse.component.PageTag, m.Database
 	settings := m.browse.component.Settings
-	columns := make([]string, len(m.structure.columns))
-	for index, column := range m.structure.columns {
+	columns := make([]string, len(m.schema.component.Structure.Columns))
+	for index, column := range m.schema.component.Structure.Columns {
 		columns[index] = column.Name
 	}
 	startedAt := time.Now()
@@ -135,12 +136,34 @@ func (m Model) loadBrowse() tea.Cmd {
 	}
 }
 
+// openColumnForm opens the edit form for the selected structure column;
+// without vim mode the form enters insert mode on the focused field.
+func (m *Model) openColumnForm() tea.Cmd {
+	component, cmd := m.schema.component.OpenColumnForm(m.schemaSnapshot(), m.workspaceLayout(), m.keybindings)
+	m.schema.component = component
+	if !component.Structure.ColumnForm.Active() {
+		m.setStatus("select a column")
+		return nil
+	}
+	m.overlay.formMode.ButtonsFocused = false
+	return m.openForm(cmd, component.Structure.ColumnForm.Focus)
+}
+
+// openNewColumnForm opens the add-column form; without vim mode the form
+// enters insert mode on the focused field.
+func (m *Model) openNewColumnForm() tea.Cmd {
+	component, cmd := m.schema.component.OpenNewColumnForm(m.schemaSnapshot(), m.workspaceLayout(), m.keybindings)
+	m.schema.component = component
+	m.overlay.formMode.ButtonsFocused = false
+	return m.openForm(cmd, component.Structure.ColumnForm.Focus)
+}
+
 func (m Model) alterColumn() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return columnAlteredMsg{kind: "altered", err: fmt.Errorf("connection is read-only")} }
 	}
 	table, service := m.SelectedTable, m.Database
-	change, err := m.structure.columnForm.change()
+	change, err := m.schema.component.Structure.ColumnForm.Change()
 	if err != nil {
 		return func() tea.Msg { return columnAlteredMsg{kind: "altered", err: err} }
 	}
@@ -155,7 +178,7 @@ func (m Model) addColumn() tea.Cmd {
 		return func() tea.Msg { return columnAlteredMsg{kind: "added", err: fmt.Errorf("connection is read-only")} }
 	}
 	table, service := m.SelectedTable, m.Database
-	def, err := m.structure.columnForm.columnDef()
+	def, err := m.schema.component.Structure.ColumnForm.ColumnDef()
 	if err != nil {
 		return func() tea.Msg { return columnAlteredMsg{kind: "added", err: err} }
 	}
@@ -171,7 +194,7 @@ func (m Model) deleteColumn() tea.Cmd {
 	}
 	name := m.overlay.deletePendingName
 	if name == "" {
-		name = m.structure.columnForm.previousName
+		name = m.schema.component.Structure.ColumnForm.PreviousName
 	}
 	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropColumnStatement(table, name), time.Now()
@@ -238,12 +261,12 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 			row[4] = strings.Repeat(" ", (nullableColWidth-contentWidth)/2) + row[4]
 		}
 	}
-	m.structure.table.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"}, rows))
-	resizeResultsTable(&m.structure.table, m.layout.tableViewportWidth, m.structure.table.Height()+1)
-	m.structure.rows = rows
-	m.structure.columns = message.columns
+	m.schema.component.Structure.Table.SetColumns(tableColumns([]string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"}, rows))
+	resizeResultsTable(&m.schema.component.Structure.Table, m.layout.tableViewportWidth, m.schema.component.Structure.Table.Height()+1)
+	m.schema.component.Structure.Rows = rows
+	m.schema.component.Structure.Columns = message.columns
 	m.browse.component.Structure = message.columns
-	m.applyTableFilter(tabStructure)
+	m.schema.component.ApplyTableFilter(tabStructure)
 	m.layout.structureOffset = 0
 	return m, nil
 }
@@ -263,11 +286,11 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 		if message.kind == "added" {
 			actionMsg = "adding column"
 		}
-		m.structure.columnForm.saving = false
+		m.schema.component.Structure.ColumnForm.Saving = false
 		m.setStatus(safeText(fmt.Sprintf(actionMsg+": %v", message.err)))
 		return m, nil
 	}
-	m.structure.columnForm = columnForm{}
+	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 	m.setStatus(status)
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
@@ -277,11 +300,11 @@ func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped column"))
 	}
 	if message.err != nil {
-		m.structure.columnForm.saving = false
+		m.schema.component.Structure.ColumnForm.Saving = false
 		m.setStatus(safeText(fmt.Sprintf("deleting column: %v", message.err)))
 		return m, nil
 	}
-	m.structure.columnForm = columnForm{}
+	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 	m.setStatus("column deleted")
 	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
 }
@@ -342,7 +365,7 @@ func (m Model) deleteRow() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	if len(m.structure.columns) == 0 || m.browse.component.Table.Cursor() < 0 || m.browse.component.Table.Cursor() >= len(m.browse.component.Result.Rows) {
+	if len(m.schema.component.Structure.Columns) == 0 || m.browse.component.Table.Cursor() < 0 || m.browse.component.Table.Cursor() >= len(m.browse.component.Result.Rows) {
 		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("no row selected")} }
 	}
 	columns := m.browse.component.Result.Columns
@@ -350,11 +373,11 @@ func (m Model) deleteRow() tea.Cmd {
 	table, startedAt := m.SelectedTable, time.Now()
 	capabilities := m.writeCapabilities()
 	if capabilities.RowWriter {
-		key, err := rowKeyValues(columns, row, browsePrimaryKeys(m.structure.columns, columns))
+		key, err := rowKeyValues(columns, row, browsePrimaryKeys(m.schema.component.Structure.Columns, columns))
 		if err != nil {
 			return func() tea.Msg { return deleteRowMsg{err: err} }
 		}
-		preview := browseDeletePreview(table, columns, row, browsePrimaryKeys(m.structure.columns, columns))
+		preview := browseDeletePreview(table, columns, row, browsePrimaryKeys(m.schema.component.Structure.Columns, columns))
 		writer := m.rowWriter()
 		return func() tea.Msg {
 			result, err := writer.DeleteRow(m.appContext, table, key)

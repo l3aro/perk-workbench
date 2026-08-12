@@ -7,18 +7,19 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 // officeDemoItems mirrors the sidebar shape of the MySQL office demo:
 // database roots plus tables under them.
 func officeDemoItems() []list.Item {
 	return []list.Item{
-		schemaItem{title: "information_schema", root: true},
-		schemaItem{title: "mysql", root: true},
-		schemaItem{title: "office", root: true},
-		schemaItem{title: "customers", database: "office", table: "customers", kind: "table"},
-		schemaItem{title: "offices", database: "office", table: "offices", kind: "table"},
-		schemaItem{title: "rez_abc_", database: "office", table: "rez_abc_", kind: "table"},
+		schema.Item{Name: "information_schema", Root: true},
+		schema.Item{Name: "mysql", Root: true},
+		schema.Item{Name: "office", Root: true},
+		schema.Item{Name: "customers", Database: "office", Table: "customers", Kind: "table"},
+		schema.Item{Name: "offices", Database: "office", Table: "offices", Kind: "table"},
+		schema.Item{Name: "rez_abc_", Database: "office", Table: "rez_abc_", Kind: "table"},
 	}
 }
 
@@ -31,7 +32,7 @@ func schemaFilterTargets(items []list.Item) []string {
 }
 
 func schemaFilterMatches(term string, targets []string) []string {
-	ranks := schemaListFilter(term, targets)
+	ranks := schema.ListFilter(term, targets)
 	got := make([]string, 0, len(ranks))
 	for _, rank := range ranks {
 		got = append(got, targets[rank.Index])
@@ -83,7 +84,7 @@ func TestSchemaListFilter_plainTermKeepsFuzzyMatching(t *testing.T) {
 func TestFocus_schema_filter_globPattern(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus = stateReady, focusSchema
-	if err := model.schema.list.SetItems(officeDemoItems()); err != nil {
+	if err := model.schema.component.List.SetItems(officeDemoItems()); err != nil {
 		t.Fatalf("setting schema items: %v", err)
 	}
 
@@ -93,7 +94,7 @@ func TestFocus_schema_filter_globPattern(t *testing.T) {
 		updated, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
 		model = updated.(Model)
 	}
-	if got := model.schema.list.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "rez_abc_" {
+	if got := model.schema.component.List.VisibleItems(); len(got) != 1 || got[0].(schema.Item).Title() != "rez_abc_" {
 		t.Fatalf("visible items = %#v, want only rez_abc_", got)
 	}
 }

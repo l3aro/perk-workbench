@@ -48,7 +48,7 @@ func TestNonVim_singleClickEntersInsertOnFormField(t *testing.T) {
 	for _, ch := range "renamed" {
 		model = updateColumn(model, tea.KeyPressMsg{Code: ch, Text: string(ch)})
 	}
-	if got := model.structure.columnForm.values.name; !strings.Contains(got, "renamed") {
+	if got := model.schema.component.Structure.ColumnForm.Values.Name; !strings.Contains(got, "renamed") {
 		t.Fatalf("name = %q, want typed text", got)
 	}
 }
@@ -204,7 +204,7 @@ func TestBrowseForm_doubleClickInInsertModeKeepsEditingField(t *testing.T) {
 func TestBrowseFilterForm_clickSelectsRowAndDoubleClickEdits(t *testing.T) {
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabBrowse
-	model.structure.columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT"}}
+	model.schema.component.Structure.Columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT"}}
 	model = resizeModel(model, 100, 26)
 	_ = model.openBrowseFilterForm()
 	// View: line 0 header, line 1 id row, line 2 name row, line 3 Rows row.
@@ -229,7 +229,7 @@ func TestColumnForm_clickFocusesClickedFieldInNormalMode(t *testing.T) {
 	// Name block is view lines 0-2; the Type* title is at view line 3.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "type" {
+	if got := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(); got != "type" {
 		t.Fatalf("focused field = %q, want type", got)
 	}
 	if model.overlay.formMode.Mode != formModeNormal {
@@ -247,7 +247,7 @@ func TestColumnForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	if model.overlay.formMode.Mode != formModeInsert {
 		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
-	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "name" {
+	if got := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
 	}
 }
@@ -257,11 +257,11 @@ func TestIndexForm_clickFocusesClickedField(t *testing.T) {
 	model.SelectedTable, model.Tab = "items", tabIndexes
 	model = resizeModel(model, 100, 26)
 	_ = model.openIndexForm(nil)
-	_ = model.structure.indexForm.form.Init()
+	_ = model.schema.component.Structure.IndexForm.Form.Init()
 	// Columns* title is at view line 3 (name block 0-2).
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.structure.indexForm.form.GetFocusedField().GetKey(); got != "columns" {
+	if got := model.schema.component.Structure.IndexForm.Form.GetFocusedField().GetKey(); got != "columns" {
 		t.Fatalf("focused field = %q, want columns", got)
 	}
 	if model.overlay.formMode.Mode != formModeNormal {
@@ -274,7 +274,7 @@ func TestIndexForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	model.SelectedTable, model.Tab = "items", tabIndexes
 	model = resizeModel(model, 100, 24)
 	_ = model.openIndexForm(nil)
-	_ = model.structure.indexForm.form.Init()
+	_ = model.schema.component.Structure.IndexForm.Form.Init()
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
@@ -282,7 +282,7 @@ func TestIndexForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	if model.overlay.formMode.Mode != formModeInsert {
 		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
-	if got := model.structure.indexForm.form.GetFocusedField().GetKey(); got != "name" {
+	if got := model.schema.component.Structure.IndexForm.Form.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
 	}
 }
@@ -292,11 +292,11 @@ func TestForeignKeyForm_clickFocusesClickedField(t *testing.T) {
 	model.SelectedTable, model.Tab = "items", tabForeignKeys
 	model = resizeModel(model, 100, 30)
 	_ = model.openForeignKeyForm(nil)
-	_ = model.structure.foreignKeyForm.form.Init()
+	_ = model.schema.component.Structure.ForeignKeyForm.Form.Init()
 	// Reference columns* title is at view line 6 (two 3-line blocks before it).
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 10, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.structure.foreignKeyForm.form.GetFocusedField().GetKey(); got != "reference-columns" {
+	if got := model.schema.component.Structure.ForeignKeyForm.Form.GetFocusedField().GetKey(); got != "reference-columns" {
 		t.Fatalf("focused field = %q, want reference-columns", got)
 	}
 }
@@ -306,7 +306,7 @@ func TestForeignKeyForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	model.SelectedTable, model.Tab = "items", tabForeignKeys
 	model = resizeModel(model, 100, 24)
 	_ = model.openForeignKeyForm(nil)
-	_ = model.structure.foreignKeyForm.form.Init()
+	_ = model.schema.component.Structure.ForeignKeyForm.Form.Init()
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
@@ -314,7 +314,7 @@ func TestForeignKeyForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	if model.overlay.formMode.Mode != formModeInsert {
 		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
-	if got := model.structure.foreignKeyForm.form.GetFocusedField().GetKey(); got != "columns" {
+	if got := model.schema.component.Structure.ForeignKeyForm.Form.GetFocusedField().GetKey(); got != "columns" {
 		t.Fatalf("focused field = %q, want columns", got)
 	}
 }

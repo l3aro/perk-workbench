@@ -12,6 +12,7 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func isIdentStart(text string) bool {
@@ -462,7 +463,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.browse.component.Loading = true
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
-		if m.structure.tableFiltering {
+		if m.schema.component.Structure.TableFiltering {
 			return m, m.updateTableFilter(message)
 		}
 		if m.keybindings.Match(message, "editor.external", []scope{scopeGlobal}) {
@@ -476,7 +477,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
-		if quit && !m.formActive() && !m.schema.filter.Focused() &&
+		if quit && !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
 			!(m.sqlEditorActive() && m.overlay.formMode.Editing()) &&
 			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.queryLog.editor.value == "") {
@@ -499,7 +500,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateChat(message)
 		}
 
-		if m.State == stateReady && !m.formActive() && !m.schema.filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.Editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
+		if m.State == stateReady && !m.formActive() && !m.schema.component.Filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.Editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
@@ -643,7 +644,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch message := message.(type) {
 	case tea.MouseClickMsg:
-		if m.structure.tableFiltering {
+		if m.schema.component.Structure.TableFiltering {
 			m.closeTableFilter()
 		}
 		cmds := []tea.Cmd{}
@@ -683,7 +684,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseWheelMsg:
 		if !m.hasOverlay() && m.overlay.contextMenu == nil {
-			if (m.formActive() || m.State == stateConnection) && !m.structure.tableFiltering {
+			if (m.formActive() || m.State == stateConnection) && !m.schema.component.Structure.TableFiltering {
 				return m.scrollForm(message)
 			}
 			return m.handleMouseWheel(message)
@@ -841,8 +842,10 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	case sqlEditorFinishedMsg:
 		return m.updateExternalEditor(message)
 
-	case treeAnimTickMsg:
-		return m.updateTreeAnim(message)
+	case schema.TreeAnimTickMsg:
+		component, _, cmd := m.schema.component.Update(message, m.schemaLayout(), m.keybindings, m.schemaSnapshot())
+		m.schema.component = component
+		return m, cmd
 	}
 
 	// Route the table popup before ordinary active dispatch; like the other
@@ -851,15 +854,15 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	// a rejected DDL restores it, a success closes it and refreshes the
 	// sidebar.
 	if m.tableFormOpen() {
-		command, action := m.structure.tableForm.Update(message, m.overlay.formMode)
+		command, action := m.schema.component.Structure.TableForm.Update(message, m.overlay.formMode)
 		switch action {
-		case tableFormClose:
-			m.structure.tableForm = tableForm{}
-		case tableFormSave:
-			m.structure.tableForm.confirmation.Description = m.structure.tableForm.statement(m)
-		case tableFormExecute:
-			statement := m.structure.tableForm.statement(m)
-			m.structure.tableFormRunning = true
+		case schema.TableFormClose:
+			m.schema.component.Structure.TableForm = schema.TableForm{}
+		case schema.TableFormSave:
+			m.schema.component.Structure.TableForm.Confirmation.Description = m.tableFormStatement()
+		case schema.TableFormExecute:
+			statement := m.tableFormStatement()
+			m.schema.component.Structure.TableFormRunning = true
 			return m.startQueryStatement(statement, true)
 		}
 		return m, command
@@ -875,6 +878,117 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m.updateActive(message)
+}
+
+// openTableFilter starts editing the active tab's table filter.
+func (m *Model) openTableFilter() tea.Cmd {
+	return m.schema.component.OpenTableFilter(m.Tab)
+}
+
+// closeTableFilter ends table-filter editing.
+func (m *Model) closeTableFilter() {
+	m.schema.component.CloseTableFilter()
+}
+
+// updateTableFilter routes one key through the active table filter input.
+func (m *Model) updateTableFilter(message tea.KeyPressMsg) tea.Cmd {
+	return m.schema.component.UpdateTableFilter(message)
+}
+
+// resetTableFilter clears the active tab's table filter.
+func (m *Model) resetTableFilter() {
+	m.schema.component.ResetTableFilter(m.Tab)
+}
+
+// openTableForm opens the create/rename table popup through the component;
+// the form-mode controller enters insert mode on the name field, matching
+// the pre-refactor openPopup.
+func (m *Model) openTableForm(database, table string) tea.Cmd {
+	component, _ := m.schema.component.OpenTableForm(database, table, m.workspaceLayout(), m.keybindings)
+	m.schema.component = component
+	return m.overlay.formMode.BeginHuh(component.Structure.TableForm.Focus())
+}
+
+// openDatabaseForm opens the create/rename database popup; only PostgreSQL
+// renames databases.
+func (m *Model) openDatabaseForm(originalName string) tea.Cmd {
+	if originalName != "" && m.databaseInfo.Product != "PostgreSQL" {
+		return nil
+	}
+	component, _ := m.schema.component.OpenDatabaseForm(originalName, m.workspaceLayout(), m.keybindings)
+	m.schema.component = component
+	return m.overlay.formMode.BeginHuh(component.Structure.TableForm.Focus())
+}
+
+// openSchemaForm opens the create/rename schema popup; only PostgreSQL has
+// schemas.
+func (m *Model) openSchemaForm(originalName string) tea.Cmd {
+	if !m.supportsSchemas() {
+		return nil
+	}
+	component, _ := m.schema.component.OpenSchemaForm(originalName, m.workspaceLayout(), m.keybindings)
+	m.schema.component = component
+	return m.overlay.formMode.BeginHuh(component.Structure.TableForm.Focus())
+}
+
+// supportsSchemas reports whether the connected product nests tables under
+// schemas (PostgreSQL only).
+func (m Model) supportsSchemas() bool { return m.databaseInfo.Product == "PostgreSQL" }
+
+// tableFormStatement returns the DDL for the pending table-popup create or
+// rename, quoting identifiers with the active product's rules and keeping
+// the typed name verbatim. MySQL qualifies names with the selected database
+// so the ALTER targets the right schema; PostgreSQL table creates carry the
+// target schema.
+func (m Model) tableFormStatement() string {
+	form := m.schema.component.Structure.TableForm
+	switch form.ObjectKind {
+	case schema.TableFormDatabase:
+		if form.OriginalName == "" {
+			return "CREATE DATABASE " + m.quoteIdentifier(form.Name)
+		}
+		if m.databaseInfo.Product == "PostgreSQL" {
+			return "ALTER DATABASE " + m.quoteIdentifier(form.OriginalName) + " RENAME TO " + m.quoteIdentifier(form.Name)
+		}
+		return ""
+	case schema.TableFormSchema:
+		if m.databaseInfo.Product != "PostgreSQL" {
+			return ""
+		}
+		if form.OriginalName == "" {
+			return "CREATE SCHEMA " + m.quoteIdentifier(form.Name)
+		}
+		return "ALTER SCHEMA " + m.quoteIdentifier(form.OriginalName) + " RENAME TO " + m.quoteIdentifier(form.Name)
+	}
+	if form.OriginalName != "" {
+		oldName := form.Table
+		if m.databaseInfo.Product == "MySQL" {
+			oldName = m.qualifiedTableName(form.Database, form.OriginalName)
+		}
+		newName := form.Name
+		if m.databaseInfo.Product == "MySQL" {
+			newName = m.qualifiedTableName(form.Database, form.Name)
+		}
+		return "ALTER TABLE " + m.actionIdentifier(oldName) + " RENAME TO " + m.actionIdentifier(newName)
+	}
+	createName := form.Name
+	switch m.databaseInfo.Product {
+	case "MySQL":
+		createName = m.qualifiedTableName(form.Database, form.Name)
+	case "PostgreSQL":
+		// form.Database carries the target schema from the sidebar item.
+		createName = form.Database + "." + form.Name
+	}
+	return "CREATE TABLE " + m.actionIdentifier(createName) + " (id INTEGER PRIMARY KEY)"
+}
+
+// qualifiedTableName returns name for SQLite and PostgreSQL (whose sidebar
+// tables already carry schema.table) and database.name for MySQL.
+func (m Model) qualifiedTableName(database, name string) string {
+	if m.databaseInfo.Product == "MySQL" {
+		return database + "." + name
+	}
+	return name
 }
 
 func (m Model) executeQuery() (tea.Model, tea.Cmd) {

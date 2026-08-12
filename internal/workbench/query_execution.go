@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 type querySucceededMsg struct {
@@ -123,8 +124,8 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 	m.queryLog.editorValidity = sqlValidityPending
 	if message.reloadSchema {
 		// A table action succeeded: close its popup and refresh the sidebar.
-		m.structure.tableForm = tableForm{}
-		m.structure.tableFormRunning = false
+		m.schema.component.Structure.TableForm = schema.TableForm{}
+		m.schema.component.Structure.TableFormRunning = false
 		return m, tea.Batch(m.scheduleSQLValidation(), m.loadSchema())
 	}
 	return m, m.scheduleSQLValidation()
@@ -141,10 +142,10 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 	if quit {
 		return m, tea.Quit
 	}
-	if m.structure.tableFormRunning {
+	if m.schema.component.Structure.TableFormRunning {
 		// The table DDL was rejected: keep the popup open with its typed
 		// name so the user can adjust or discard it.
-		m.structure.tableFormRunning = false
+		m.schema.component.Structure.TableFormRunning = false
 		m.overlay.formMode.Mode = formModeNormal
 		m.setStatus(safeText("table action failed: " + message.err.Error()))
 	}
@@ -160,9 +161,9 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 	if quit {
 		return m, tea.Quit
 	}
-	if m.structure.tableFormRunning {
+	if m.schema.component.Structure.TableFormRunning {
 		// The statement never ran; restore the popup.
-		m.structure.tableFormRunning = false
+		m.schema.component.Structure.TableFormRunning = false
 		m.overlay.formMode.Mode = formModeNormal
 	}
 	return m, nil

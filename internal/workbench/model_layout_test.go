@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestResize_wide_and_compact_focus_layout(t *testing.T) {
@@ -347,8 +348,8 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	model = resizeModel(model, 80, 24)
 
 	// Then
-	assertTableTitlesAndPositiveWidths(t, model.structure.table, []string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"})
-	rows := model.structure.table.Rows()
+	assertTableTitlesAndPositiveWidths(t, model.schema.component.Structure.Table, []string{"Column", "Indexes", "Type", "Attributes", "Nullable", "Default"})
+	rows := model.schema.component.Structure.Table.Rows()
 	if len(rows) != 2 || !strings.Contains(rows[0][1], iconPrimaryKey+" PK") || !strings.Contains(rows[1][1], iconUnique+" UQ") || !strings.Contains(rows[1][1], iconRegular+" IX") || ansi.Strip(rows[1][1]) != iconUnique+" UQ | "+iconRegular+" IX" || !strings.Contains(rows[0][1], "\x1b[") || !strings.Contains(rows[1][1], "\x1b[") {
 		t.Fatalf("structure index markers = %#v, want colored primary, unique, and regular icons", rows)
 	}
@@ -361,7 +362,7 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	if got, want := rows[1][5], "NULL"; got != want {
 		t.Fatalf("nullable column without default = %q, want %q", got, want)
 	}
-	assertTableRenderGeometry(t, model.structure.table)
+	assertTableRenderGeometry(t, model.schema.component.Structure.Table)
 
 	assertTableTitlesAndPositiveWidths(t, model.browse.component.Table, []string{"id", "name", "state"})
 	assertTableRows(t, model.browse.component.Table, []table.Row{{"1", "first", "open"}})
@@ -527,7 +528,7 @@ func TestStructureTable_selected_empty_primary_key_preserves_final_cell(t *testi
 
 	// Then
 	body := strings.Split(model.structureView(), "\n")[1]
-	if got, want := lipgloss.Width(body), model.structure.table.Width(); got != want {
+	if got, want := lipgloss.Width(body), model.schema.component.Structure.Table.Width(); got != want {
 		t.Fatalf("selected structure row width = %d, want table width %d", got, want)
 	}
 }
@@ -712,11 +713,11 @@ func schemaModel(t *testing.T, fullscreen bool, width, height int) Model {
 	model.State, model.Focus = stateReady, focusSchema
 	model.layout.fullscreen = fullscreen
 	model.applyLayout(width, height)
-	model.schema.list.SetItems([]list.Item{
-		schemaItem{title: "accounts", description: "table", database: "main", table: "accounts", kind: "table"},
-		schemaItem{title: "queue_1", description: "table", database: "main", table: "queue_1", kind: "table"},
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Detail: "table", Database: "main", Table: "accounts", Kind: "table"},
+		schema.Item{Name: "queue_1", Detail: "table", Database: "main", Table: "queue_1", Kind: "table"},
 	})
-	model.schema.list.Select(0)
+	model.schema.component.List.Select(0)
 	return model
 }
 
@@ -827,7 +828,7 @@ func TestCompactClick_formFieldFocusesOnClick(t *testing.T) {
 	model := resizeModel(openColumn(t, "name", "TEXT"), 80, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: 40, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "type" {
+	if got := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(); got != "type" {
 		t.Fatalf("compact form click focused %q, want type", got)
 	}
 }

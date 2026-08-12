@@ -3,7 +3,6 @@ package workbench
 import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
@@ -11,24 +10,9 @@ import (
 // accordion animation) or moves the cursor to its first child when already
 // expanded. Leaves are a no-op.
 func (m Model) expandSchemaLevel() (tea.Model, tea.Cmd) {
-	item, ok := m.schema.list.SelectedItem().(schemaItem)
-	if !ok {
-		return m, nil
-	}
-	switch {
-	case item.root:
-		if m.schema.expandedDatabases[item.database] {
-			return m.schemaSelectFirstChild(item)
-		}
-		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
-	case item.kind == "schema":
-		if m.schema.expandedSchemas[m.schemaExpansionKey(item.database, item.schema)] {
-			return m.schemaSelectFirstChild(item)
-		}
-		return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
-	default:
-		return m, nil // table/view leaf
-	}
+	component, cmd := m.schema.component.SchemaExpand(m.schemaSnapshot())
+	m.schema.component = component
+	return m, cmd
 }
 
 // collapseSchemaLevel collapses the selected node when expanded (with the
@@ -36,68 +20,9 @@ func (m Model) expandSchemaLevel() (tea.Model, tea.Cmd) {
 // for a PostgreSQL table, the database root for anything else. Roots that
 // are already collapsed are a no-op.
 func (m Model) collapseSchemaLevel() (tea.Model, tea.Cmd) {
-	item, ok := m.schema.list.SelectedItem().(schemaItem)
-	if !ok {
-		return m, nil
-	}
-	switch {
-	case item.root:
-		if !m.schema.expandedDatabases[item.database] {
-			return m, nil
-		}
-		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
-	case item.kind == "schema":
-		key := m.schemaExpansionKey(item.database, item.schema)
-		if m.schema.expandedSchemas[key] {
-			return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
-		}
-		return m.schemaSelectParent(item)
-	default:
-		return m.schemaSelectParent(item)
-	}
-}
-
-// schemaSelectFirstChild moves the cursor to the first visible child row of
-// an expanded node: the next row when it belongs to the node's subtree.
-func (m Model) schemaSelectFirstChild(item schemaItem) (tea.Model, tea.Cmd) {
-	items := m.schema.list.Items()
-	index := m.schema.list.Index()
-	if index+1 >= len(items) {
-		return m, nil
-	}
-	next, ok := items[index+1].(schemaItem)
-	if !ok || next.database != item.database {
-		return m, nil
-	}
-	if item.kind == "schema" && next.schema != item.schema {
-		return m, nil
-	}
-	m.schema.list.Select(index + 1)
-	return m, nil
-}
-
-// schemaSelectParent moves the cursor to the parent row of the selected
-// item: the schema row for a PostgreSQL table, the database root otherwise.
-func (m Model) schemaSelectParent(item schemaItem) (tea.Model, tea.Cmd) {
-	items := m.schema.list.Items()
-	for index := m.schema.list.Index() - 1; index >= 0; index-- {
-		parent, ok := items[index].(schemaItem)
-		if !ok || parent.database != item.database {
-			continue
-		}
-		if m.databaseInfo.Product == "PostgreSQL" && (item.kind == "table" || item.kind == "view") {
-			if parent.kind == "schema" && parent.schema == item.schema {
-				m.schema.list.Select(index)
-				return m, nil
-			}
-			continue
-		}
-		if parent.root {
-			m.schema.list.Select(index)
-			return m, nil
-		}
-	}
-	return m, nil
+	component, cmd := m.schema.component.SchemaCollapse(m.schemaSnapshot())
+	m.schema.component = component
+	return m, cmd
 }
 
 func moveTableCell(resultTable *table.Model, selectedColumn, offset *int, viewportWidth int, keyPress tea.KeyPressMsg) bool {
@@ -175,23 +100,6 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 	}
 }
 
-func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
-	m.SelectTable(m.schemaTable(item))
-	// The landing tab is configurable; SelectTable defaults to the
-	// Structure (columns) tab.
-	m.Tab = tableOpenTargetTab()
-	m.browse.component.Settings = browse.Settings{}
-	m.structure.columns = nil
-	m.browse.component.Structure = nil
-	m.browse.component.Page = 0
-	m.structure.foreignKeyInfo = nil
-	m.structure.referencingForeignKeyInfo = nil
-	m.structure.relationshipDiagram = false
-	m.browse.component.Pending = true
-	m.focusActiveTable()
-	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
-}
-
 func (m *Model) toggleTab(forward bool) tea.Cmd {
 	m.Workflow.ToggleTab(forward)
 	m.focusActiveTable()
@@ -211,7 +119,7 @@ func (m *Model) focusActiveTable() {
 	m.blurTables()
 	switch m.Tab {
 	case tabStructure:
-		m.structure.table.Focus()
+		m.schema.component.Structure.Table.Focus()
 	case tabBrowse:
 		m.browse.component.Table.Focus()
 	case tabSQL:
@@ -226,18 +134,18 @@ func (m *Model) focusActiveTable() {
 			m.queryLog.results.Focus()
 		}
 	case tabIndexes:
-		m.structure.indexes.Focus()
+		m.schema.component.Structure.Indexes.Focus()
 	case tabForeignKeys:
-		m.structure.foreignKeys.Focus()
+		m.schema.component.Structure.ForeignKeys.Focus()
 	}
 }
 
 func (m *Model) blurTables() {
-	m.structure.table.Blur()
+	m.schema.component.Structure.Table.Blur()
 	m.browse.component.Table.Blur()
 	m.queryLog.results.Blur()
-	m.structure.indexes.Blur()
-	m.structure.foreignKeys.Blur()
+	m.schema.component.Structure.Indexes.Blur()
+	m.schema.component.Structure.ForeignKeys.Blur()
 	m.queryLog.component.Blur()
 	m.chat.component.Input.Blur()
 }
@@ -297,11 +205,11 @@ func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
 	var offset *int
 	switch m.Tab {
 	case tabStructure:
-		resultTable, offset = &m.structure.table, &m.layout.structureOffset
+		resultTable, offset = &m.schema.component.Structure.Table, &m.layout.structureOffset
 	case tabIndexes:
-		resultTable, offset = &m.structure.indexes, &m.layout.indexesOffset
+		resultTable, offset = &m.schema.component.Structure.Indexes, &m.layout.indexesOffset
 	case tabForeignKeys:
-		resultTable, offset = &m.structure.foreignKeys, &m.layout.foreignKeysOffset
+		resultTable, offset = &m.schema.component.Structure.ForeignKeys, &m.layout.foreignKeysOffset
 	default:
 		return
 	}
@@ -311,9 +219,9 @@ func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
 func (m *Model) scrollActiveWorkspaceTable(step int) {
 	switch m.Tab {
 	case tabStructure:
-		rows := m.structure.table.Rows()
-		newCursor := clamp(m.structure.table.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.structure.table.SetCursor(newCursor)
+		rows := m.schema.component.Structure.Table.Rows()
+		newCursor := clamp(m.schema.component.Structure.Table.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.schema.component.Structure.Table.SetCursor(newCursor)
 	case tabBrowse:
 		rows := m.browse.component.Table.Rows()
 		newCursor := clamp(m.browse.component.Table.Cursor()+step, 0, max(len(rows)-1, 0))
@@ -324,13 +232,13 @@ func (m *Model) scrollActiveWorkspaceTable(step int) {
 		newCursor := clamp(m.queryLog.results.Cursor()+step, 0, max(len(rows)-1, 0))
 		m.queryLog.results.SetCursor(newCursor)
 	case tabIndexes:
-		rows := m.structure.indexes.Rows()
-		newCursor := clamp(m.structure.indexes.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.structure.indexes.SetCursor(newCursor)
+		rows := m.schema.component.Structure.Indexes.Rows()
+		newCursor := clamp(m.schema.component.Structure.Indexes.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.schema.component.Structure.Indexes.SetCursor(newCursor)
 	case tabForeignKeys:
-		rows := m.structure.foreignKeys.Rows()
-		newCursor := clamp(m.structure.foreignKeys.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.structure.foreignKeys.SetCursor(newCursor)
+		rows := m.schema.component.Structure.ForeignKeys.Rows()
+		newCursor := clamp(m.schema.component.Structure.ForeignKeys.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.schema.component.Structure.ForeignKeys.SetCursor(newCursor)
 	}
 }
 

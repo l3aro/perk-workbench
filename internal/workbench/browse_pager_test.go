@@ -320,15 +320,15 @@ func TestStructure_horizontalWheelPansViewport(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 100, 24)
 	// Row-based tables have no column selection: the wheel pans.
-	resizeResultsTable(&model.structure.table, model.layout.tableViewportWidth, 5)
-	model.structure.table.SetRows(nil) // drop the fixture's 6-cell rows first
-	model.structure.table.SetColumns([]table.Column{
+	resizeResultsTable(&model.schema.component.Structure.Table, model.layout.tableViewportWidth, 5)
+	model.schema.component.Structure.Table.SetRows(nil) // drop the fixture's 6-cell rows first
+	model.schema.component.Structure.Table.SetColumns([]table.Column{
 		{Title: "ID", Width: 4},
 		{Title: "Left", Width: 40},
 		{Title: "Right", Width: 40},
 	})
-	model.structure.table.SetRows([]table.Row{{"1", strings.Repeat("a", 40), strings.Repeat("b", 40)}})
-	resizeResultsTable(&model.structure.table, model.layout.tableViewportWidth, 5)
+	model.schema.component.Structure.Table.SetRows([]table.Row{{"1", strings.Repeat("a", 40), strings.Repeat("b", 40)}})
+	resizeResultsTable(&model.schema.component.Structure.Table, model.layout.tableViewportWidth, 5)
 	model.Tab, model.layout.structureOffset = tabStructure, 0
 
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})

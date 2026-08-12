@@ -8,9 +8,7 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/go-sql-driver/mysql"
 	"github.com/l3aro/perk-workbench/internal/core"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -20,6 +18,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
@@ -68,7 +67,6 @@ type Model struct {
 	schema           schemaState
 	queryLog         queryState
 	browse           browseState
-	structure        structureState
 	notifications    notificationState
 	overlay          overlayState
 	layout           layoutState
@@ -97,15 +95,13 @@ type connectionState struct {
 	pickerDir string
 }
 
-// schemaState owns the schema sidebar: its list and filter, the loaded
-// schema objects, database/schema expansion, and the accordion animation.
+// schemaState owns the schema sidebar and the structure/index/foreign-key
+// tabs: the tree list and filter, the loaded schema objects, database/schema
+// expansion, the accordion animation, the structure tables and forms, and
+// the relationship diagram all live in the schema component; root keeps the
+// query lifecycle, the confirmations, and the dispatch.
 type schemaState struct {
-	list              list.Model
-	filter            textinput.Model
-	objects           []sharedsql.SchemaObject
-	expandedDatabases map[string]bool
-	expandedSchemas   map[string]bool
-	anim              *treeAnim
+	component schema.Model
 }
 
 // queryState owns the SQL workspace: the editor, result table and raw
@@ -137,33 +133,6 @@ type queryState struct {
 type browseState struct {
 	component browse.Model
 	backend   browse.Backend
-}
-
-// structureState owns the structure/index/foreign-key tabs: their tables,
-// forms, filters, row metadata, and the relationship diagram.
-type structureState struct {
-	table                     table.Model
-	rows                      []table.Row
-	columns                   []sharedsql.ColumnInfo
-	structureFilter           string
-	indexes                   table.Model
-	indexRows                 []table.Row
-	indexInfo                 []sharedsql.IndexInfo
-	indexesFilter             string
-	indexForm                 indexForm
-	foreignKeys               table.Model
-	foreignKeyRows            []table.Row
-	foreignKeyInfo            []sharedsql.ForeignKeyInfo
-	referencingForeignKeyInfo []sharedsql.ReferencingForeignKeyInfo
-	foreignKeysFilter         string
-	foreignKeyForm            foreignKeyForm
-	columnForm                columnForm
-	tableForm                 tableForm
-	tableFormRunning          bool
-	relationshipDiagram       bool
-	tableFiltering            bool
-	tableFilterInput          textinput.Model
-	tableFilterTab            workspaceTab
 }
 
 // notificationState owns the notification pipeline's root half: history
@@ -242,29 +211,6 @@ type contextMenuModel struct {
 	visible  bool
 }
 
-type schemaItem struct {
-	title, description string
-	database, table    string
-	schema             string
-	kind               string
-	root               bool
-	open               bool   // on the path from the root to the open table
-	count              int    // child tables/views; -1 = unknown (not rendered)
-	rowCount           *int64 // estimated rows for tables; nil = unknown
-}
-
-func (i schemaItem) FilterValue() string {
-	// Positional fields joined with a unit separator: database, title,
-	// schema, kind. The schema sidebar filter glob-matches the title,
-	// schema, and kind fields (skipping the containing database); fuzzy
-	// matching replaces the separator with a space to keep the historical
-	// behavior.
-	return strings.Join([]string{i.database, i.title, i.schema, i.kind}, "\x00")
-}
-
-func (i schemaItem) Title() string       { return i.title }
-func (i schemaItem) Description() string { return i.description }
-
 type databaseOpenedMsg struct {
 	target    string
 	service   sharedsql.Service
@@ -299,10 +245,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 			picker:    newList("Choose database", true),
 		},
 		schema: schemaState{
-			list:              newSchemaList(),
-			filter:            uikit.NewFilterInput(),
-			expandedDatabases: map[string]bool{},
-			expandedSchemas:   map[string]bool{},
+			component: schema.New(),
 		},
 		queryLog: queryState{
 			component:         querylog.New(queryLogPageSize()),
@@ -313,11 +256,6 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		},
 		browse: browseState{
 			component: browse.New(),
-		},
-		structure: structureState{
-			table:       newResultsTable(),
-			indexes:     newResultsTable(),
-			foreignKeys: newResultsTable(),
 		},
 		overlay: overlayState{
 			formMode: &formModeController{},
@@ -352,6 +290,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	// Route every logged event into the notification popup pipeline.
 	log.SetNotifier(notification.EnqueueLogEntry)
 	notification.SetNerdFont(appConfig.NerdFont == nil || *appConfig.NerdFont)
+	schema.SetNerdFont(appConfig.NerdFont == nil || *appConfig.NerdFont)
 	return model
 }
 
@@ -396,7 +335,7 @@ func (m Model) reconnectDatabase(database string) (tea.Model, tea.Cmd) {
 	// switch loads; the previous database stays usable until the swap.
 	m.reconnectPending = true
 	m.openTag++
-	m.schema.anim = nil
+	m.schema.component.Anim = nil
 	m.setStatus(safeText("switching to " + database))
 	return m, m.reopenTarget(target)
 }
@@ -429,7 +368,7 @@ func (m Model) databaseRootConnected(database string) bool {
 	if connected := m.connectedDatabase(); connected != "" {
 		return connected == database
 	}
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Type == "schema" && object.Database == database {
 			return true
 		}
@@ -461,8 +400,8 @@ func (m *Model) disconnect() {
 	m.State = stateConnection
 	m.reconnectPending = false
 	// The accordion animation is dropped before relayout, matching the
-	// original transition order; schema.reset() below re-clears it.
-	m.schema.anim = nil
+	// original transition order; the component reset below re-clears it.
+	m.schema.component.Anim = nil
 	m.openTag++ // supersede any open still in flight
 	m.applyLayout(m.layout.width, m.layout.height)
 	m.Database = nil
@@ -471,10 +410,9 @@ func (m *Model) disconnect() {
 	m.setStatus("")
 	m.refreshBrowseBackend()
 	m.queryLog.reset()
-	m.schema.reset()
+	m.schema.component.Reset()
 	m.databaseInfo = sharedsql.DatabaseInfo{}
 	m.connectionID = ""
-	m.structure.reset()
 	m.browse.reset()
 	m.connection.reset()
 	m.overlay.reset()
@@ -503,26 +441,6 @@ func (s *queryState) reset() {
 	s.completionTable = ""
 	s.resultsRaw = nil
 	s.results.SetRows(nil)
-}
-
-// reset clears the schema sidebar: loaded objects, expansion, the tree
-// list, and the filter input.
-func (s *schemaState) reset() {
-	s.anim = nil
-	s.objects = nil
-	s.expandedDatabases = map[string]bool{}
-	s.expandedSchemas = map[string]bool{}
-	s.list.SetItems(nil)
-	s.list.ResetFilter()
-	s.filter.SetValue("")
-	s.filter.Blur()
-}
-
-// reset clears the structure, index, and foreign-key tables.
-func (s *structureState) reset() {
-	s.table.SetRows(nil)
-	s.indexes.SetRows(nil)
-	s.foreignKeys.SetRows(nil)
 }
 
 // reset clears the browse result table and result data.
@@ -567,36 +485,12 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m *Model) setSchemaObjects(objects []sharedsql.SchemaObject) tea.Cmd {
-	m.schema.objects = objects
-	m.schema.anim = nil // the tree changed wholesale; no accordion to continue
-	if m.schema.expandedDatabases == nil {
-		m.schema.expandedDatabases = map[string]bool{}
-	}
-	if m.schema.expandedSchemas == nil {
-		m.schema.expandedSchemas = map[string]bool{}
-	}
-	// Default expansion mirrors the toggle rule: server products open
-	// exactly one database root (the connected one, else the first) and
-	// PostgreSQL exactly one schema, so a fresh tree never shows every
-	// database's or schema's children at once. Single-root products
-	// (SQLite, MongoDB) have nothing to collapse.
-	m.schema.expandedDatabases = m.initialDatabaseExpansion(objects)
-	m.schema.expandedSchemas = m.initialSchemaExpansion(objects)
-	cmd := m.rebuildSchemaTree()
-	// Keep the cursor on the connected root: switching databases rebuilds
-	// the tree, and with roots in stable alphabetical order the selection
-	// must land where the user picked, not on the first item.
-	if m.databaseInfo.Product == "PostgreSQL" {
-		if connected := m.connectedDatabase(); connected != "" {
-			for index, item := range m.schema.list.Items() {
-				if root, ok := item.(schemaItem); ok && root.root && root.database == connected {
-					m.schema.list.Select(index)
-					break
-				}
-			}
-		}
-	}
-	return cmd
+	return m.schema.component.SetObjects(objects, m.schemaSnapshot())
+}
+
+// rebuildSchemaTree rebuilds the schema sidebar from the loaded objects.
+func (m *Model) rebuildSchemaTree() tea.Cmd {
+	return m.schema.component.RebuildTree(m.schemaSnapshot())
 }
 
 // schemaExpansionKey identifies a schema under a database root; the
@@ -605,304 +499,183 @@ func (m Model) schemaExpansionKey(database, schema string) string {
 	return database + "\x00" + schema
 }
 
-// toggleDatabase expands database when collapsed and collapses it when
-// expanded; expanding one root collapses every other, so at most one
-// database shows children at a time. It returns the accordion tick command.
-func (m *Model) toggleDatabase(database string) tea.Cmd {
-	expanding := !m.schema.expandedDatabases[database]
-	total := m.schemaChildRowCount(database, "", expanding)
-	if m.schema.expandedDatabases[database] {
-		m.schema.expandedDatabases[database] = false
-	} else {
-		for db := range m.schema.expandedDatabases {
-			m.schema.expandedDatabases[db] = false
-		}
-		m.schema.expandedDatabases[database] = true
-	}
-	return m.startTreeAnim(database, "", expanding, total)
+// schemaTable returns the qualified name of a schema item for the active
+// product (MySQL qualifies with the database).
+func (m Model) schemaTable(item schema.Item) string {
+	return m.schema.component.TableName(item, m.schemaSnapshot())
 }
 
-// toggleSchema expands schema when collapsed and collapses it when
-// expanded; expanding one schema collapses every other, so at most one
-// schema shows its tables at a time. It returns the accordion tick command.
-func (m *Model) toggleSchema(database, schema string) tea.Cmd {
-	key := m.schemaExpansionKey(database, schema)
-	expanding := !m.schema.expandedSchemas[key]
-	total := m.schemaChildRowCount(database, schema, expanding)
-	if m.schema.expandedSchemas[key] {
-		m.schema.expandedSchemas[key] = false
-	} else {
-		for k := range m.schema.expandedSchemas {
-			m.schema.expandedSchemas[k] = false
-		}
-		m.schema.expandedSchemas[key] = true
+// schemaSnapshot builds the session snapshot root hands to the schema
+// component for one update or render.
+func (m Model) schemaSnapshot() schema.Snapshot {
+	return schema.Snapshot{
+		SelectedTable: m.SelectedTable,
+		Database:      m.databaseInfo,
+		Target:        m.Target,
+		ReadOnly:      m.ReadOnly,
 	}
-	return m.startTreeAnim(database, schema, expanding, total)
 }
 
-// initialDatabaseExpansion returns the load-time database expansion: the
-// root holding the open table, else the connected database, else the
-// first root. Server products expand exactly one root so a fresh session
-// never shows every database's tables at once; single-root products
-// expand everything (their only root).
-func (m Model) initialDatabaseExpansion(objects []sharedsql.SchemaObject) map[string]bool {
-	expanded := map[string]bool{}
-	if m.databaseInfo.Product != "MySQL" && m.databaseInfo.Product != "PostgreSQL" {
-		for _, object := range objects {
-			if object.Type == "database" {
-				expanded[object.Database] = true
-			}
-		}
-		return expanded
+// schemaLayout builds the layout snapshot root hands to the schema
+// component for the sidebar: the pane's own width and the shared form
+// viewport height.
+func (m Model) schemaLayout() uikit.Layout {
+	return uikit.Layout{
+		Width:         m.layout.width,
+		Height:        m.layout.height,
+		ViewportWidth: m.layout.schemaWidth,
+		PaneHeight:    m.formViewportHeight(),
 	}
-	preferred := m.preferredDatabase()
-	if m.SelectedTable != "" {
-		switch m.databaseInfo.Product {
-		case "MySQL":
-			// MySQL qualifies tables as database.table.
-			if database, _, ok := strings.Cut(m.SelectedTable, "."); ok {
-				preferred = database
-			}
-		case "PostgreSQL":
-			if connected := m.connectedDatabase(); connected != "" {
-				preferred = connected
-			}
-		}
-	}
-	first := ""
-	for _, object := range objects {
-		if object.Type != "database" {
-			continue
-		}
-		if first == "" {
-			first = object.Database
-		}
-		if preferred != "" && object.Database == preferred {
-			expanded[preferred] = true
-			return expanded
-		}
-	}
-	if first != "" {
-		expanded[first] = true
-	}
-	return expanded
 }
 
-// preferredDatabase is the database the session is connected to when the
-// product tracks one: PostgreSQL names it in the target URL, MySQL in the
-// DSN's database field.
-func (m Model) preferredDatabase() string {
-	switch m.databaseInfo.Product {
-	case "PostgreSQL":
-		return m.connectedDatabase()
-	case "MySQL":
-		return m.mysqlDatabase()
+// workspaceLayout builds the layout snapshot root hands to the schema
+// component for the workspace tabs: the table viewport width and the
+// workspace body height.
+func (m Model) workspaceLayout() uikit.Layout {
+	return uikit.Layout{
+		Width:         m.layout.width,
+		Height:        m.layout.workspaceHeight,
+		ViewportWidth: m.layout.tableViewportWidth,
+		PaneHeight:    m.formViewportHeight(),
 	}
-	return ""
 }
 
-// mysqlDatabase extracts the database name from the MySQL DSN target.
-func (m Model) mysqlDatabase() string {
-	dsn, ok := strings.CutPrefix(m.Target, "mysql:")
-	if !ok {
-		return ""
+// applySchemaEvent applies one schema component event: status transitions,
+// clipboard copies, table selection, DDL execution, schema reloads,
+// reconnects, delete confirmations, and context menus all stay root-owned.
+func (m Model) applySchemaEvent(event schema.Event, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch e := event.(type) {
+	case nil:
+		return m, cmd
+	case uikit.StatusChanged:
+		m.setStatus(uikit.SafeText(e.Text))
+		return m, cmd
+	case uikit.ClipboardRequested:
+		m.setStatus("copied to clipboard")
+		if cmd == nil {
+			return m, copyQueryLogStatement(e.Text)
+		}
+		return m, tea.Batch(cmd, copyQueryLogStatement(e.Text))
+	case schema.TableSelected:
+		cmd := m.selectSchemaTableBy(e.Table)
+		return m, cmd
+	case schema.QueryRequested:
+		return m.startQueryStatement(e.Statement, e.ReadOnly)
+	case schema.SchemaRequested:
+		return m, tea.Batch(cmd, m.loadSchema())
+	case schema.ReconnectRequested:
+		return m.reconnectDatabase(e.Database)
+	case schema.DeleteTableRequested:
+		m.confirmTableDelete(e.Database, e.Table)
+		return m, cmd
+	case schema.ColumnDeleteRequested:
+		m.overlay.deletePending = "column"
+		m.overlay.deletePendingName = e.Name
+		m.overlay.deleteConfirm = newConfirmationDialog("Delete column?", "", []confirmationOption{
+			{Label: "Yes, delete", Action: "delete"},
+			{Label: "Cancel", Action: "cancel"},
+		})
+		return m, cmd
+	case schema.IndexDeleteRequested:
+		m.overlay.deletePending = "index"
+		m.overlay.deletePendingName = e.Name
+		m.overlay.deleteConfirm = newConfirmationDialog("Delete index?", "", []confirmationOption{
+			{Label: "Yes, delete", Action: "delete"},
+			{Label: "Cancel", Action: "cancel"},
+		})
+		return m, cmd
+	case schema.ForeignKeyDeleteRequested:
+		m.overlay.deletePending = "foreign_key"
+		m.overlay.deletePendingName = e.ID
+		m.overlay.deleteConfirm = newConfirmationDialog("Delete foreign key?", "", []confirmationOption{
+			{Label: "Yes, delete", Action: "delete"},
+			{Label: "Cancel", Action: "cancel"},
+		})
+		return m, cmd
+	case schema.ColumnFormRequested:
+		cmd := m.openColumnForm()
+		return m, cmd
+	case schema.NewColumnFormRequested:
+		cmd := m.openNewColumnForm()
+		return m, cmd
+	case schema.IndexFormRequested:
+		if e.Selected {
+			if index := m.schema.component.SelectedIndex(); index != nil {
+				cmd := m.openIndexForm(index)
+				return m, cmd
+			}
+			return m, nil
+		}
+		cmd := m.openIndexForm(nil)
+		return m, cmd
+	case schema.ForeignKeyFormRequested:
+		if e.Selected {
+			if foreignKey := m.schema.component.SelectedForeignKey(); foreignKey != nil {
+				cmd := m.openForeignKeyForm(foreignKey)
+				return m, cmd
+			}
+			return m, nil
+		}
+		cmd := m.openForeignKeyForm(nil)
+		return m, cmd
+	case schema.TableFormRequested:
+		switch e.Kind {
+		case schema.TableFormDatabase:
+			cmd := m.openDatabaseForm(e.OriginalName)
+			return m, cmd
+		case schema.TableFormSchema:
+			cmd := m.openSchemaForm(e.OriginalName)
+			return m, cmd
+		default:
+			cmd := m.openTableForm(e.Database, e.Table)
+			return m, cmd
+		}
+	case schema.ContextMenuRequested:
+		m.openSchemaComponentMenu(e.Menu)
+		return m, cmd
 	}
-	config, err := mysql.ParseDSN(dsn)
-	if err != nil {
-		return ""
-	}
-	return config.DBName
+	return m, cmd
 }
 
-// initialSchemaExpansion returns the load-time PostgreSQL schema
-// expansion: the schema holding the open table, else the first schema of
-// the expanded database. Exactly one schema is expanded so a fresh
-// session never shows every schema's tables at once.
-func (m Model) initialSchemaExpansion(objects []sharedsql.SchemaObject) map[string]bool {
-	expanded := map[string]bool{}
-	preferred := ""
-	if m.SelectedTable != "" {
-		// PostgreSQL qualifies tables as schema.table.
-		preferred, _, _ = strings.Cut(m.SelectedTable, ".")
+// openSchemaComponentMenu maps a component-built schema menu onto the root's
+// context-menu overlay.
+func (m *Model) openSchemaComponentMenu(menu schema.Menu) {
+	options := make([]menuOption, 0, len(menu.Options))
+	for _, option := range menu.Options {
+		options = append(options, menuOption{label: option.Label, action: option.Action, keys: option.Keys})
 	}
-	for _, object := range objects {
-		if object.Type == "schema" && object.Name == preferred {
-			expanded[m.schemaExpansionKey(object.Database, object.Name)] = true
-			return expanded
-		}
+	m.overlay.contextMenu = &contextMenuModel{
+		options:  options,
+		selected: 0,
+		visible:  true,
+		x:        menu.X,
+		y:        menu.Y,
+		database: menu.Database,
+		schema:   menu.Schema,
+		table:    menu.Table,
 	}
-	for _, object := range objects {
-		if object.Type == "schema" && m.schema.expandedDatabases[object.Database] {
-			expanded[m.schemaExpansionKey(object.Database, object.Name)] = true
-			break
-		}
-	}
-	return expanded
 }
 
-func (m *Model) rebuildSchemaTree() tea.Cmd {
-	items := make([]list.Item, 0, len(m.schema.objects))
-	schemaCounts, databaseCounts := m.schemaChildCounts()
-	animDatabase, animSchema, revealBudget := m.schemaReveal()
-	revealUsed := 0
-	for _, object := range m.schema.objects {
-		switch object.Type {
-		case "database":
-			description := ""
-			if !m.schema.expandedDatabases[object.Database] {
-				description = "collapsed"
-			}
-			// PostgreSQL objects outside the connected database are not
-			// introspected, so only its root gets a child count.
-			count := -1
-			if m.databaseInfo.Product != "PostgreSQL" || m.databaseRootConnected(object.Database) {
-				count = databaseCounts[object.Database]
-			}
-			item := schemaItem{title: object.Name, description: description, database: object.Database, root: true, count: count}
-			item.open = m.schemaOpenPath(item)
-			items = append(items, item)
-		case "schema":
-			// PostgreSQL only: schemas nest under the connected
-			// database's root.
-			if !m.schema.expandedDatabases[object.Database] {
-				// A closing subtree keeps rendering during its collapse.
-				if animDatabase != object.Database || animSchema != "" {
-					continue
-				}
-			}
-			// A database-scope accordion counts schema rows as children.
-			if animDatabase == object.Database && animSchema == "" {
-				revealUsed++
-				if revealUsed > revealBudget {
-					continue
-				}
-			}
-			description := ""
-			if !m.schema.expandedSchemas[m.schemaExpansionKey(object.Database, object.Name)] {
-				description = "collapsed"
-			}
-			item := schemaItem{title: object.Name, description: description, database: object.Database, schema: object.Name, kind: "schema", count: schemaCounts[m.schemaExpansionKey(object.Database, object.Name)]}
-			item.open = m.schemaOpenPath(item)
-			items = append(items, item)
-		default: // table or view
-			if !m.schema.expandedDatabases[object.Database] {
-				if animDatabase != object.Database || animSchema != "" {
-					continue
-				}
-			}
-			table := object.Name
-			schema := ""
-			if m.databaseInfo.Product == "PostgreSQL" {
-				// The name carries schema.table; only the connected
-				// database's tables are listed.
-				var found bool
-				schema, table, found = strings.Cut(object.Name, ".")
-				if !found {
-					continue
-				}
-				if !m.schema.expandedSchemas[m.schemaExpansionKey(object.Database, schema)] {
-					// A closing schema keeps rendering its tables during
-					// the collapse; other schemas stay hidden.
-					if animDatabase != object.Database || animSchema != schema {
-						continue
-					}
-				}
-			}
-			// The accordion budgets the animated subtree's rows: all rows
-			// of a database-scope reveal, or just the schema's tables.
-			if animDatabase == object.Database && (animSchema == "" || animSchema == schema) {
-				revealUsed++
-				if revealUsed > revealBudget {
-					continue
-				}
-			}
-			item := schemaItem{title: table, description: object.Type, database: object.Database, schema: schema, table: object.Name, kind: object.Type}
-			if object.Type == "table" {
-				item.rowCount = object.RowCount
-			}
-			item.open = m.schemaOpenPath(item)
-			items = append(items, item)
-		}
-	}
-	return m.schema.list.SetItems(items)
+// selectSchemaTableBy opens the given qualified table in the workflow and
+// loads its structure, index, and foreign-key data.
+func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
+	m.SelectTable(table)
+	// The landing tab is configurable; SelectTable defaults to the
+	// Structure (columns) tab.
+	m.Tab = tableOpenTargetTab()
+	m.browse.component.Settings = browse.Settings{}
+	m.schema.component.Structure.Columns = nil
+	m.browse.component.Structure = nil
+	m.browse.component.Page = 0
+	m.schema.component.Structure.ForeignKeyInfo = nil
+	m.schema.component.Structure.ReferencingForeignKeyInfo = nil
+	m.schema.component.Structure.RelationshipDiagram = false
+	m.browse.component.Pending = true
+	m.focusActiveTable()
+	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
 }
 
-// schemaOpenPath reports whether item lies on the path from its root down to
-// the currently open table, which is the sidebar's "opened" state.
-func (m Model) schemaOpenPath(item schemaItem) bool {
-	if m.SelectedTable == "" {
-		return false
-	}
-	switch m.databaseInfo.Product {
-	case "PostgreSQL":
-		if !m.databaseRootConnected(item.database) {
-			return false
-		}
-		schema, _, _ := strings.Cut(m.SelectedTable, ".")
-		switch {
-		case item.root:
-			return true
-		case item.kind == "schema":
-			return item.schema == schema
-		case item.table != "":
-			return item.table == m.SelectedTable
-		}
-	case "MySQL":
-		database, table, _ := strings.Cut(m.SelectedTable, ".")
-		switch {
-		case item.root:
-			return item.database == database
-		case item.table != "":
-			return item.database == database && item.table == table
-		}
-	default: // SQLite: a single root per file, tables are bare names.
-		switch {
-		case item.root:
-			return true
-		case item.table != "":
-			return item.table == m.SelectedTable
-		}
-	}
-	return false
-}
-
-// schemaChildCounts tallies the table/view objects under each database and
-// schema so expander rows can show child counts from data already loaded.
-func (m Model) schemaChildCounts() (schemaCounts, databaseCounts map[string]int) {
-	schemaCounts = map[string]int{}
-	databaseCounts = map[string]int{}
-	for _, object := range m.schema.objects {
-		switch object.Type {
-		case "table", "view", "collection":
-			databaseCounts[object.Database]++
-			if m.databaseInfo.Product == "PostgreSQL" {
-				if schema, _, ok := strings.Cut(object.Name, "."); ok {
-					schemaCounts[m.schemaExpansionKey(object.Database, schema)]++
-				}
-			}
-		}
-	}
-	return schemaCounts, databaseCounts
-}
-
-// applySchemaFilter pushes the visible filter input's value into the schema
-// list, which filters its items and reports the committed state the status
-// line mirrors.
-func (m *Model) applySchemaFilter() {
-	if query := strings.TrimSpace(m.schema.filter.Value()); query != "" {
-		m.schema.list.SetFilterText(query)
-		return
-	}
-	m.schema.list.ResetFilter()
-}
-
-func (m Model) schemaTable(item schemaItem) string {
-	table := item.table
-	if table == "" {
-		table = item.title
-	}
-	if m.databaseInfo.Product == "MySQL" {
-		return item.database + "." + table
-	}
-	return table
+// selectSchemaTable opens the table of the given sidebar item.
+func (m *Model) selectSchemaTable(item schema.Item) tea.Cmd {
+	return m.selectSchemaTableBy(m.schemaTable(item))
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 	"strings"
 )
 
@@ -327,15 +328,19 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (name TEXT)"); err != nil {
 		t.Fatalf("creating table: %v", err)
 	}
-	model.structure.columnForm = newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(model.databaseInfo))
-	model.structure.columnForm.values.name = "title"
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(model.databaseInfo))
+	form.SetKeys(DefaultKeybindings())
+	model.schema.component.Structure.ColumnForm = form
+	model.schema.component.Structure.ColumnForm.Values.Name = "title"
 
 	// When
 	updated, _ := model.Update(model.alterColumn()())
 	model = updated.(Model)
-	model.structure.indexForm = newIndexForm(nil)
-	model.structure.indexForm.values.name = "items_title"
-	model.structure.indexForm.values.columns = "title"
+	indexForm := schema.NewIndexForm(nil)
+	indexForm.SetKeys(DefaultKeybindings())
+	model.schema.component.Structure.IndexForm = indexForm
+	model.schema.component.Structure.IndexForm.Values.Name = "items_title"
+	model.schema.component.Structure.IndexForm.Values.Columns = "title"
 	updated, _ = model.Update(model.saveIndex()())
 	model = updated.(Model)
 
@@ -368,14 +373,18 @@ func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
 	if _, err := model.Database.Execute(model.appContext, "CREATE INDEX items_name ON items (name)"); err != nil {
 		t.Fatalf("creating index: %v", err)
 	}
-	model.structure.indexForm = newIndexForm(&sharedsql.IndexInfo{Name: "items_name", Columns: []string{"name"}})
-	model.structure.indexForm.values.name = "items_title"
-	model.structure.indexForm.values.columns = "title"
+	form := schema.NewIndexForm(&sharedsql.IndexInfo{Name: "items_name", Columns: []string{"name"}})
+	form.SetKeys(DefaultKeybindings())
+	model.schema.component.Structure.IndexForm = form
+	model.schema.component.Structure.IndexForm.Values.Name = "items_title"
+	model.schema.component.Structure.IndexForm.Values.Columns = "title"
 
 	// When
 	updated, _ := model.Update(model.saveIndex()())
 	model = updated.(Model)
-	model.structure.indexForm = newIndexForm(&sharedsql.IndexInfo{Name: "items_title", Columns: []string{"title"}})
+	indexForm2 := schema.NewIndexForm(&sharedsql.IndexInfo{Name: "items_title", Columns: []string{"title"}})
+	indexForm2.SetKeys(DefaultKeybindings())
+	model.schema.component.Structure.IndexForm = indexForm2
 	updated, _ = model.Update(model.deleteIndex()())
 	model = updated.(Model)
 

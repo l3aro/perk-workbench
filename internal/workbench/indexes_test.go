@@ -6,14 +6,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestIndexForm_usesHuhControlsForRequiredFields(t *testing.T) {
 	// Given
-	form := newIndexForm(nil)
+	form := schema.NewIndexForm(nil)
+	form.SetKeys(DefaultKeybindings())
 
 	// Then
-	if form.form == nil || form.form.GetFocusedField().GetKey() != "name" {
+	if form.Form == nil || form.Form.GetFocusedField().GetKey() != "name" {
 		t.Fatalf("index form = %#v, want Huh fields focused on name", form)
 	}
 }
@@ -34,7 +36,7 @@ func TestIndexForm_huhInputUpdatesIndexChange(t *testing.T) {
 		model = updateIndexForm(model, tea.KeyPressMsg{Code: character, Text: string(character)})
 	}
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	change, err := model.structure.indexForm.change()
+	change, err := model.schema.component.Structure.IndexForm.Change()
 
 	// Then
 	if err != nil || change.Name != "items_name" || !equalStrings(change.Columns, []string{"name"}) {
@@ -44,24 +46,24 @@ func TestIndexForm_huhInputUpdatesIndexChange(t *testing.T) {
 
 func TestIndexForm_blankRequiredFieldsCannotReachSaveConfirmation(t *testing.T) {
 	for _, test := range []struct {
-		values indexFormValues
+		Values schema.IndexFormValues
 		field  string
 	}{
-		{values: indexFormValues{columns: "name", kind: indexKindNormal}, field: "name"},
-		{values: indexFormValues{name: "items_name", kind: indexKindNormal}, field: "columns"},
+		{Values: schema.IndexFormValues{Columns: "name", Kind: schema.IndexKindNormal}, field: "name"},
+		{Values: schema.IndexFormValues{Name: "items_name", Kind: schema.IndexKindNormal}, field: "columns"},
 	} {
 		t.Run(test.field, func(t *testing.T) {
 			// Given
 			model := openIndexEditor(t, readyIndexesModel(t), nil)
-			model.structure.indexForm.values.name, model.structure.indexForm.values.columns, model.structure.indexForm.values.kind = test.values.name, test.values.columns, test.values.kind
+			model.schema.component.Structure.IndexForm.Values.Name, model.schema.component.Structure.IndexForm.Values.Columns, model.schema.component.Structure.IndexForm.Values.Kind = test.Values.Name, test.Values.Columns, test.Values.Kind
 
 			// When
 			model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 
 			// Then
-			field := model.structure.indexForm.form.GetFocusedField()
-			if model.structure.indexForm.confirming() || field.GetKey() != test.field || field.Error() == nil {
-				t.Fatalf("confirmation/focused error = %t/%q/%v, want false/%q/error", model.structure.indexForm.confirming(), field.GetKey(), field.Error(), test.field)
+			field := model.schema.component.Structure.IndexForm.Form.GetFocusedField()
+			if model.schema.component.Structure.IndexForm.Confirming() || field.GetKey() != test.field || field.Error() == nil {
+				t.Fatalf("confirmation/focused error = %t/%q/%v, want false/%q/error", model.schema.component.Structure.IndexForm.Confirming(), field.GetKey(), field.Error(), test.field)
 			}
 		})
 	}
@@ -70,16 +72,16 @@ func TestIndexForm_blankRequiredFieldsCannotReachSaveConfirmation(t *testing.T) 
 func TestIndexForm_invalidSaveRendersActiveHuhFieldError(t *testing.T) {
 	// Given
 	model := openIndexEditor(t, readyIndexesModel(t), nil)
-	model.structure.indexForm.setWidth(80)
-	model.structure.indexForm.values.columns = "name"
+	model.schema.component.Structure.IndexForm.SetWidth(80)
+	model.schema.component.Structure.IndexForm.Values.Columns = "name"
 
 	// When
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 
 	// Then
-	field := model.structure.indexForm.form.GetFocusedField()
-	if model.structure.indexForm.confirming() || field.GetKey() != "name" || field.Error() == nil || !strings.Contains(model.structure.indexForm.View(), "index name is required") {
-		t.Fatalf("index form = %q, want active name field error", model.structure.indexForm.View())
+	field := model.schema.component.Structure.IndexForm.Form.GetFocusedField()
+	if model.schema.component.Structure.IndexForm.Confirming() || field.GetKey() != "name" || field.Error() == nil || !strings.Contains(model.schema.component.Structure.IndexForm.View(), "index name is required") {
+		t.Fatalf("index form = %q, want active name field error", model.schema.component.Structure.IndexForm.View())
 	}
 }
 
@@ -99,10 +101,10 @@ func TestIndexForm_huhSelectPrimaryCreatesIndexWithoutName(t *testing.T) {
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyDown})
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyDown})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got := model.structure.indexForm.values.kind; got != indexKindPrimary {
-		t.Fatalf("selected kind = %q, want %q", got, indexKindPrimary)
+	if got := model.schema.component.Structure.IndexForm.Values.Kind; got != schema.IndexKindPrimary {
+		t.Fatalf("selected kind = %q, want %q", got, schema.IndexKindPrimary)
 	}
-	change, err := model.structure.indexForm.change()
+	change, err := model.schema.component.Structure.IndexForm.Change()
 	if err != nil || change.Name != "PRIMARY" || !change.PrimaryKey || change.Unique || !equalStrings(change.Columns, []string{"code"}) {
 		t.Fatalf("change/error = %#v/%v", change, err)
 	}
@@ -111,39 +113,39 @@ func TestIndexForm_huhSelectPrimaryCreatesIndexWithoutName(t *testing.T) {
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.structure.indexForm.active() || len(model.structure.indexes.Rows()) != 1 || model.structure.indexes.Rows()[0][0] != "PRIMARY" || model.structure.indexes.Rows()[0][1] != "primary key" || model.structure.indexes.Rows()[0][2] != "code" {
-		t.Fatalf("primary index rows = %#v", model.structure.indexes.Rows())
+	if model.schema.component.Structure.IndexForm.Active() || len(model.schema.component.Structure.Indexes.Rows()) != 1 || model.schema.component.Structure.Indexes.Rows()[0][0] != "PRIMARY" || model.schema.component.Structure.Indexes.Rows()[0][1] != "primary key" || model.schema.component.Structure.Indexes.Rows()[0][2] != "code" {
+		t.Fatalf("primary index rows = %#v", model.schema.component.Structure.Indexes.Rows())
 	}
 }
 
 func TestIndexForm_savesEditsAndDeletesOnlyAfterPositiveConfirmation(t *testing.T) {
 	// Given
 	model := openIndexEditor(t, readyIndexesModel(t), nil)
-	model.structure.indexForm.values.name, model.structure.indexForm.values.columns = "items_category", "category"
+	model.schema.component.Structure.IndexForm.Values.Name, model.schema.component.Structure.IndexForm.Values.Columns = "items_category", "category"
 
 	// When
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.indexForm.active() || model.structure.indexForm.confirming() {
+	if !model.schema.component.Structure.IndexForm.Active() || model.schema.component.Structure.IndexForm.Confirming() {
 		t.Fatal("negative save confirmation changed the index form")
 	}
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.structure.indexForm.active() || len(model.structure.indexes.Rows()) != 1 || model.structure.indexes.Rows()[0][0] != "items_category" {
-		t.Fatalf("created indexes = %#v", model.structure.indexes.Rows())
+	if model.schema.component.Structure.IndexForm.Active() || len(model.schema.component.Structure.Indexes.Rows()) != 1 || model.schema.component.Structure.Indexes.Rows()[0][0] != "items_category" {
+		t.Fatalf("created indexes = %#v", model.schema.component.Structure.Indexes.Rows())
 	}
 
 	// When
-	model.structure.indexes.SetCursor(0)
+	model.schema.component.Structure.Indexes.SetCursor(0)
 	model = openIndexEditor(t, model, &sharedsql.IndexInfo{Name: "items_category", Columns: []string{"category"}})
-	model.structure.indexForm.values.name, model.structure.indexForm.values.columns, model.structure.indexForm.values.kind = "items_category_unique", "category", indexKindUnique
+	model.schema.component.Structure.IndexForm.Values.Name, model.schema.component.Structure.IndexForm.Values.Columns, model.schema.component.Structure.IndexForm.Values.Kind = "items_category_unique", "category", schema.IndexKindUnique
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if got := model.structure.indexes.Rows(); len(got) != 1 || got[0][0] != "items_category_unique" || got[0][1] != "unique" {
+	if got := model.schema.component.Structure.Indexes.Rows(); len(got) != 1 || got[0][0] != "items_category_unique" || got[0][1] != "unique" {
 		t.Fatalf("edited indexes = %#v", got)
 	}
 
@@ -151,30 +153,31 @@ func TestIndexForm_savesEditsAndDeletesOnlyAfterPositiveConfirmation(t *testing.
 	model = openIndexEditor(t, model, &sharedsql.IndexInfo{Name: "items_category_unique", Unique: true, Columns: []string{"category"}})
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.indexForm.active() || model.structure.indexForm.confirming() {
+	if !model.schema.component.Structure.IndexForm.Active() || model.schema.component.Structure.IndexForm.Confirming() {
 		t.Fatal("negative delete confirmation changed the index form")
 	}
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if got := model.structure.indexes.Rows(); len(got) != 0 {
+	if got := model.schema.component.Structure.Indexes.Rows(); len(got) != 0 {
 		t.Fatalf("indexes after delete = %#v", got)
 	}
 }
 
 func TestIndexForm_primaryAndUniqueChangesAreMutuallyExclusive(t *testing.T) {
 	for kind, want := range map[string]sharedsql.IndexChange{
-		indexKindUnique:  {Name: "items_code", Unique: true, Columns: []string{"code"}},
-		indexKindPrimary: {Name: "PRIMARY", PrimaryKey: true, Columns: []string{"code"}},
+		schema.IndexKindUnique:  {Name: "items_code", Unique: true, Columns: []string{"code"}},
+		schema.IndexKindPrimary: {Name: "PRIMARY", PrimaryKey: true, Columns: []string{"code"}},
 	} {
 		t.Run(kind, func(t *testing.T) {
 			// Given
-			form := newIndexForm(nil)
-			form.values.name, form.values.columns, form.values.kind = "items_code", "code", kind
+			form := schema.NewIndexForm(nil)
+			form.SetKeys(DefaultKeybindings())
+			form.Values.Name, form.Values.Columns, form.Values.Kind = "items_code", "code", kind
 
 			// When
-			change, err := form.change()
+			change, err := form.Change()
 
 			// Then
 			if err != nil || change.Name != want.Name || change.Unique != want.Unique || change.PrimaryKey != want.PrimaryKey || !equalStrings(change.Columns, want.Columns) {
@@ -187,15 +190,15 @@ func TestIndexForm_primaryAndUniqueChangesAreMutuallyExclusive(t *testing.T) {
 func TestIndexForm_positiveDiscardConfirmationClosesWithoutPersistence(t *testing.T) {
 	// Given
 	model := openIndexEditor(t, readyIndexesModel(t), nil)
-	model.structure.indexForm.values.name, model.structure.indexForm.values.columns = "items_category", "category"
+	model.schema.component.Structure.IndexForm.Values.Name, model.schema.component.Structure.IndexForm.Values.Columns = "items_category", "category"
 
 	// When
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = resolveIndexCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.structure.indexForm.active() || len(model.structure.indexes.Rows()) != 0 {
-		t.Fatalf("discard form/indexes = %#v/%#v", model.structure.indexForm, model.structure.indexes.Rows())
+	if model.schema.component.Structure.IndexForm.Active() || len(model.schema.component.Structure.Indexes.Rows()) != 0 {
+		t.Fatalf("discard form/indexes = %#v/%#v", model.schema.component.Structure.IndexForm, model.schema.component.Structure.Indexes.Rows())
 	}
 }
 
@@ -207,7 +210,7 @@ func TestIndexForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T) 
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	// Then — form closes directly, no confirmation, mode normalized
-	if model.structure.indexForm.active() || model.structure.indexForm.confirming() {
+	if model.schema.component.Structure.IndexForm.Active() || model.schema.component.Structure.IndexForm.Confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
 	if model.overlay.formMode.Mode != formModeNormal {
@@ -229,8 +232,10 @@ func readyIndexesModel(t *testing.T) Model {
 func openIndexEditor(t *testing.T, model Model, index *sharedsql.IndexInfo) Model {
 	t.Helper()
 	if index != nil {
-		model.structure.indexForm = newIndexForm(index)
-		_ = model.structure.indexForm.form.Init()
+		form := schema.NewIndexForm(index)
+		form.SetKeys(DefaultKeybindings())
+		model.schema.component.Structure.IndexForm = form
+		_ = model.schema.component.Structure.IndexForm.Form.Init()
 		return model
 	}
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})

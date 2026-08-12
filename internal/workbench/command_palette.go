@@ -261,7 +261,7 @@ func commandLabel(m Model, id CommandID, raw string) string {
 func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "app.quit":
-		return !m.formActive() && !m.schema.filter.Focused() &&
+		return !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
 			!(m.sqlEditorActive() && m.overlay.formMode.Editing())
 	case "editor.external":
@@ -274,7 +274,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.chat.component.Visible
 	case "focus.schema", "focus.workspace", "focus.query_log",
 		"focus.toggle_fullscreen", "focus.cycle_forward", "focus.cycle_backward":
-		return m.State == stateReady && !m.formActive() && !m.schema.filter.Focused()
+		return m.State == stateReady && !m.formActive() && !m.schema.component.Filter.Focused()
 	case "query.execute":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
 	case "query.history", "app.quit_dialog":
@@ -307,9 +307,9 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
 			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
 	case "indexes.filter", "indexes.reset", "indexes.create", "indexes.edit", "indexes.delete":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.structure.indexForm.active()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.schema.component.Structure.IndexForm.Active()
 	case "foreign_keys.filter", "foreign_keys.reset", "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.structure.foreignKeyForm.active()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.schema.component.Structure.ForeignKeyForm.Active()
 	case "query_log.yank", "query_log.explain", "query_log.detail", "query_log.context_menu",
 		"query_log.cursor_down", "query_log.cursor_up", "query_log.top_first", "query_log.top_last", "query_log.next_page", "query_log.prev_page":
 		return m.State == stateReady && m.Focus == focusQueryLog
@@ -334,7 +334,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "form.save", "form.discard", "form.field_next", "form.field_prev":
 		return m.formActive()
 	case "form.delete":
-		return m.structure.indexForm.active() || m.structure.foreignKeyForm.active() || m.structure.columnForm.active()
+		return m.schema.component.Structure.IndexForm.Active() || m.schema.component.Structure.ForeignKeyForm.Active() || m.schema.component.Structure.ColumnForm.Active()
 	default:
 		return false
 	}

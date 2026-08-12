@@ -92,14 +92,14 @@ func TestFormMode_normalEscapeOpensExistingDiscard(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	model.structure.columnForm.values.name = "renamed"
+	model.schema.component.Structure.ColumnForm.Values.Name = "renamed"
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
 
 	// Then
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("normal escape did not reach existing discard handling")
 	}
 }
@@ -138,11 +138,11 @@ func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
 	// Press Enter → opens column form (deferred Init cmd but form exists immediately)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	model.structure.columnForm.values.name = "renamed"
+	model.schema.component.Structure.ColumnForm.Values.Name = "renamed"
 	// Press Escape → triggers discard confirmation (formModeConfirm)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("Escape did not reach discard confirmation")
 	}
 	if model.overlay.formMode.Mode != formModeConfirm {
@@ -152,7 +152,7 @@ func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
 	// When — navigate to "No" (second option) then press Enter
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	model = updated.(Model)
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("right arrow dismissed the confirmation")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -162,10 +162,10 @@ func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
 	if model.overlay.formMode.Mode != formModeNormal {
 		t.Fatalf("Enter on confirmation set mode = %d, want normal", model.overlay.formMode.Mode)
 	}
-	if model.structure.columnForm.confirming() {
+	if model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("Enter on confirmation did not clear the dialog")
 	}
-	if !model.structure.columnForm.active() {
+	if !model.schema.component.Structure.ColumnForm.Active() {
 		t.Fatal("Enter on confirmation closed the form (cancel action should keep it open)")
 	}
 }
@@ -178,10 +178,10 @@ func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	model.structure.columnForm.values.name = "renamed"
+	model.schema.component.Structure.ColumnForm.Values.Name = "renamed"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("Escape did not reach discard confirmation")
 	}
 
@@ -193,7 +193,7 @@ func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
 	if model.overlay.formMode.Mode != formModeNormal {
 		t.Fatalf("Enter on confirm set mode = %d, want normal", model.overlay.formMode.Mode)
 	}
-	if model.structure.columnForm.active() {
+	if model.schema.component.Structure.ColumnForm.Active() {
 		t.Fatal("Enter on confirm did not close the form")
 	}
 }

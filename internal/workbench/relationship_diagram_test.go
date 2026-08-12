@@ -14,9 +14,9 @@ func TestForeignKeysTab_togglesRelationshipDiagram_withIncomingAndOutgoingKeys(t
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
-	model.structure.columns = []sharedsql.ColumnInfo{{Name: "id", PrimaryKey: 1}, {Name: "customer_id"}}
-	model.structure.foreignKeyInfo = []sharedsql.ForeignKeyInfo{{Columns: []string{"customer_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}}}
-	model.structure.referencingForeignKeyInfo = []sharedsql.ReferencingForeignKeyInfo{{Table: "items", ForeignKeyInfo: sharedsql.ForeignKeyInfo{Columns: []string{"order_id"}, ReferenceTable: "orders", ReferenceColumns: []string{"id"}}}}
+	model.schema.component.Structure.Columns = []sharedsql.ColumnInfo{{Name: "id", PrimaryKey: 1}, {Name: "customer_id"}}
+	model.schema.component.Structure.ForeignKeyInfo = []sharedsql.ForeignKeyInfo{{Columns: []string{"customer_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}}}
+	model.schema.component.Structure.ReferencingForeignKeyInfo = []sharedsql.ReferencingForeignKeyInfo{{Table: "items", ForeignKeyInfo: sharedsql.ForeignKeyInfo{Columns: []string{"order_id"}, ReferenceTable: "orders", ReferenceColumns: []string{"id"}}}}
 	model = resizeModel(model, 80, 24)
 
 	// When
@@ -44,8 +44,8 @@ func TestForeignKeysTab_rendersSelfReferenceOnce(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.Focus = "tree", tabForeignKeys, focusWorkspace
-	model.structure.foreignKeyInfo = []sharedsql.ForeignKeyInfo{{Columns: []string{"parent_id"}, ReferenceTable: "tree", ReferenceColumns: []string{"id"}}}
-	model.structure.referencingForeignKeyInfo = []sharedsql.ReferencingForeignKeyInfo{{Table: "tree", ForeignKeyInfo: model.structure.foreignKeyInfo[0]}}
+	model.schema.component.Structure.ForeignKeyInfo = []sharedsql.ForeignKeyInfo{{Columns: []string{"parent_id"}, ReferenceTable: "tree", ReferenceColumns: []string{"id"}}}
+	model.schema.component.Structure.ReferencingForeignKeyInfo = []sharedsql.ReferencingForeignKeyInfo{{Table: "tree", ForeignKeyInfo: model.schema.component.Structure.ForeignKeyInfo[0]}}
 	model = resizeModel(model, 80, 24)
 
 	// When
@@ -66,7 +66,7 @@ func TestForeignKeysTab_mergesMultipleForeignKeysToTheSameTable(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
-	model.structure.foreignKeyInfo = []sharedsql.ForeignKeyInfo{
+	model.schema.component.Structure.ForeignKeyInfo = []sharedsql.ForeignKeyInfo{
 		{Columns: []string{"customer_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}},
 		{Columns: []string{"billing_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}},
 	}
@@ -92,7 +92,7 @@ func TestForeignKeysTab_boundsFallbackRowsToTheWorkspace(t *testing.T) {
 	// Given — a diagram so wide the hub cannot fit the workspace viewport.
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
-	model.structure.foreignKeyInfo = []sharedsql.ForeignKeyInfo{
+	model.schema.component.Structure.ForeignKeyInfo = []sharedsql.ForeignKeyInfo{
 		{Columns: []string{"a_very_long_foreign_key_column_name"}, ReferenceTable: "a_very_long_reference_table_name", ReferenceColumns: []string{"a_very_long_primary_key_column_name"}},
 		{Columns: []string{"another_very_long_foreign_key_column_name"}, ReferenceTable: "another_very_long_reference_table_name", ReferenceColumns: []string{"another_very_long_primary_key_column_name"}},
 	}
@@ -126,7 +126,7 @@ func TestForeignKeysTab_usesRelationshipList_whenDiagramExceedsWideHeight(t *tes
 	for index := range 24 {
 		columns = append(columns, sharedsql.ColumnInfo{Name: fmt.Sprintf("column_number_%02d", index), PrimaryKey: index + 1})
 	}
-	model.structure.columns = columns
+	model.schema.component.Structure.Columns = columns
 	model = resizeModel(model, 100, 24)
 
 	// When

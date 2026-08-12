@@ -1,13 +1,147 @@
-package workbench
+package schema
 
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/chrome"
+	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
+
+// View renders the schema pane body: the persistent filter row above the
+// schema list. The row is omitted when the pane is too narrow to show it.
+func (m Model) View(layout uikit.Layout) string {
+	if row := m.FilterRow(layout); row != "" {
+		return row + "\n" + m.List.View()
+	}
+	return m.List.View()
+}
+
+// Draw renders nothing: the schema pane is a lipgloss pane; its overlays
+// (confirmations, context menus) are drawn by the root from the shared
+// uikit dialogs. The contract mirrors the other feature components.
+func (m Model) Draw(canvas uv.ScreenBuffer, layout uikit.Layout) {}
+
+// Resize refits the schema list and filter to the pane geometry. The
+// equations mirror the root layout pass exactly: the list spans the pane
+// body below the filter box (3 rows when the pane is wide enough).
+func (m *Model) Resize(layout uikit.Layout) {
+	contentHeight := max(layout.Height-4, 0)
+	schemaListHeight := max(contentHeight-2, 0)
+	if m.FilterShown(layout) {
+		// The filter box takes 3 rows; the list must yield two of its own.
+		schemaListHeight = max(schemaListHeight-2, 0)
+	}
+	// The pane body content is two cells narrower than the pane (border +
+	// padding each side); sizing the list wider wraps every full-width row
+	// onto a second line inside the bordered pane.
+	m.List.SetSize(max(layout.ViewportWidth-6, 0), schemaListHeight)
+	m.Filter.SetWidth(max(layout.ViewportWidth-6, 0))
+}
+
+// ResizeTables fits the structure, index, and foreign-key tables to the
+// workspace viewport. The height equation is preserved from the root layout
+// pass: the tab tables yield one row to the blank line that separates their
+// status line from the mode/tab-hint footer.
+func (m *Model) ResizeTables(width, height int) {
+	uikit.ResizeResultsTable(&m.Structure.Table, width, height)
+	uikit.ResizeResultsTable(&m.Structure.Indexes, width, height)
+	uikit.ResizeResultsTable(&m.Structure.ForeignKeys, width, height)
+}
+
+// RefreshTheme re-applies the shared theme styles to the schema list and
+// any open schema forms after the root switches the palette. The root calls
+// it from its theme apply path, matching the pre-refactor list re-theming.
+func (m *Model) RefreshTheme() {
+	m.List.SetDelegate(schemaItemDelegate{})
+	applyListTheme(&m.List)
+	for _, form := range []*huh.Form{
+		m.Structure.ColumnForm.Form,
+		m.Structure.IndexForm.Form,
+		m.Structure.ForeignKeyForm.Form,
+	} {
+		if form != nil {
+			form.WithTheme(uikit.FormTheme)
+		}
+	}
+}
+
+// FilterRow renders the schema sidebar's filter input, omitted when the
+// pane is too narrow to show it.
+func (m Model) FilterRow(layout uikit.Layout) string {
+	if !m.FilterShown(layout) {
+		return ""
+	}
+	return filterInputRow(m.Filter, max(layout.ViewportWidth-4, 0))
+}
+
+// filterInputRow renders a filter input in a bordered box with a
+// magnifying-glass suffix, sized to the given width. The border turns
+// primary while the input is focused. The input is truncated because its
+// placeholder view renders one cell wider than Width.
+func filterInputRow(input textinput.Model, width int) string {
+	icon := lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorMuted)).Render("🔍")
+	borderColor := uikit.ColorBorder
+	if input.Focused() {
+		borderColor = uikit.ColorPrimary
+	}
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(borderColor)).
+		Padding(0, 1).
+		Width(max(width-2, 0))
+	// Box content area: width-2 (box) - 2 (borders) - 2 (padding) - 2 (icon).
+	return box.Render(ansi.Truncate(input.View(), max(width-8, 0), "") + icon)
+}
+
+// StructureView renders the structure tab: the column form when active,
+// otherwise the columns table with its filter status line.
+func (m Model) StructureView(layout uikit.Layout, offset int) string {
+	if m.Structure.ColumnForm.Active() {
+		return viewportSlice(m.Structure.ColumnForm.View(), m.Structure.ColumnForm.ScrollOffset, layout)
+	}
+	return uikit.TableViewportViewWithAlignment(m.Structure.Table, nil, offset, layout.ViewportWidth, -1) + "\n" + chrome.PaneStatus(m.TableFilterStatus(core.TabStructure), "", layout.ViewportWidth)
+}
+
+// IndexesView renders the indexes tab: the index form when active,
+// otherwise the indexes table with its filter status line.
+func (m Model) IndexesView(layout uikit.Layout, offset int) string {
+	if m.Structure.IndexForm.Active() {
+		return viewportSlice(m.Structure.IndexForm.View(), m.Structure.IndexForm.ScrollOffset, layout)
+	}
+	return uikit.TableViewportViewWithAlignment(m.Structure.Indexes, nil, offset, layout.ViewportWidth, -1) + "\n" + chrome.PaneStatus(m.TableFilterStatus(core.TabIndexes), "", layout.ViewportWidth)
+}
+
+// ForeignKeysView renders the foreign-keys tab: the foreign-key form when
+// active, the relationship diagram when toggled, otherwise the foreign-keys
+// table with its filter status line.
+func (m Model) ForeignKeysView(layout uikit.Layout, offset int, snapshot Snapshot) string {
+	if m.Structure.ForeignKeyForm.Active() {
+		return viewportSlice(m.Structure.ForeignKeyForm.View(), m.Structure.ForeignKeyForm.ScrollOffset, layout)
+	}
+	if m.Structure.RelationshipDiagram {
+		return m.RelationshipView(layout, snapshot)
+	}
+	return uikit.TableViewportViewWithAlignment(m.Structure.ForeignKeys, nil, offset, layout.ViewportWidth, -1) + "\n" + chrome.PaneStatus(m.TableFilterStatus(core.TabForeignKeys), "", layout.ViewportWidth)
+}
+
+// viewportSlice clips a form view to the pane body height at the given
+// scroll offset, matching the root formViewport helper.
+func viewportSlice(view string, offset int, layout uikit.Layout) string {
+	height := layout.PaneHeight
+	lines := strings.Split(view, "\n")
+	if len(lines) <= height {
+		return view
+	}
+	offset = min(max(offset, 0), len(lines)-height)
+	return strings.Join(lines[offset:offset+height], "\n")
+}
 
 // relationshipEdge describes one neighbor of the selected table and every
 // foreign key connecting the two tables.
@@ -16,10 +150,12 @@ type relationshipEdge struct {
 	pairs []string // "fk column → referenced column" labels
 }
 
-func (m Model) relationshipView() string {
-	diagram := m.relationshipDiagramView()
-	if lipgloss.Width(diagram) > m.layout.tableViewportWidth || strings.Count(diagram, "\n")+1 > max(m.layout.workspaceHeight-2, 1) {
-		return m.relationshipListView() + "\n" + chrome.PaneStatus("", statusStyle.Render("Press f for full-screen diagram"), m.layout.tableViewportWidth)
+// RelationshipView renders the relationship diagram, falling back to the
+// flat relationship list when the diagram does not fit the workspace.
+func (m Model) RelationshipView(layout uikit.Layout, snapshot Snapshot) string {
+	diagram := m.relationshipDiagramView(layout, snapshot)
+	if lipgloss.Width(diagram) > layout.ViewportWidth || strings.Count(diagram, "\n")+1 > max(layout.Height-2, 1) {
+		return m.relationshipListView(layout, snapshot) + "\n" + chrome.PaneStatus("", uikit.StatusStyle.Render("Press f for full-screen diagram"), layout.ViewportWidth)
 	}
 	return diagram
 }
@@ -28,11 +164,11 @@ func (m Model) relationshipView() string {
 // tables referencing it above, tables it references below, every connector
 // landing on the center of the selected card and labeled with its column
 // mapping.
-func (m Model) relationshipDiagramView() string {
-	incoming, outgoing := m.relationshipEdges()
+func (m Model) relationshipDiagramView(layout uikit.Layout, snapshot Snapshot) string {
+	incoming, outgoing := m.relationshipEdges(snapshot)
 	topRows, topStubs := relationshipLane(incoming)
 	bottomRows, bottomStubs := relationshipLane(outgoing)
-	center := m.relationshipCenterCard(len(bottomStubs) > 0)
+	center := m.relationshipCenterCard(len(bottomStubs) > 0, snapshot)
 	centerWidth := ansi.StringWidth(center[0])
 
 	topMid, bottomMid := 0, 0
@@ -80,28 +216,28 @@ func (m Model) relationshipDiagramView() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m Model) relationshipListView() string {
-	lines := []string{headerStyle.Render(relationshipLine(m.SelectedTable+" relationships", max(m.layout.tableViewportWidth-2, 1)))}
-	for _, foreignKey := range m.structure.foreignKeyInfo {
-		lines = append(lines, relationshipLine(m.SelectedTable+" → "+foreignKey.ReferenceTable, m.layout.tableViewportWidth))
+func (m Model) relationshipListView(layout uikit.Layout, snapshot Snapshot) string {
+	lines := []string{uikit.HeaderStyle.Render(relationshipLine(snapshot.SelectedTable+" relationships", max(layout.ViewportWidth-2, 1)))}
+	for _, foreignKey := range m.Structure.ForeignKeyInfo {
+		lines = append(lines, relationshipLine(snapshot.SelectedTable+" → "+foreignKey.ReferenceTable, layout.ViewportWidth))
 	}
-	for _, foreignKey := range m.structure.referencingForeignKeyInfo {
-		if strings.EqualFold(foreignKey.Table, m.SelectedTable) {
+	for _, foreignKey := range m.Structure.ReferencingForeignKeyInfo {
+		if strings.EqualFold(foreignKey.Table, snapshot.SelectedTable) {
 			continue
 		}
-		lines = append(lines, relationshipLine(foreignKey.Table+" → "+m.SelectedTable, m.layout.tableViewportWidth))
+		lines = append(lines, relationshipLine(foreignKey.Table+" → "+snapshot.SelectedTable, layout.ViewportWidth))
 	}
-	return strings.Join(lines[:min(len(lines), max(m.layout.workspaceHeight-3, 0))], "\n")
+	return strings.Join(lines[:min(len(lines), max(layout.Height-3, 0))], "\n")
 }
 
 func relationshipLine(value string, width int) string {
-	return ansi.Truncate(safeText(value), max(width, 1), "…")
+	return ansi.Truncate(uikit.SafeText(value), max(width, 1), "…")
 }
 
 // relationshipEdges groups the foreign keys by neighbor table. incoming are
 // tables that reference the selected table; outgoing are tables the selected
 // table references. Self-references stay on the selected card.
-func (m Model) relationshipEdges() (incoming, outgoing []relationshipEdge) {
+func (m Model) relationshipEdges(snapshot Snapshot) (incoming, outgoing []relationshipEdge) {
 	type edgeSlot struct {
 		edges *[]relationshipEdge
 		at    int
@@ -115,8 +251,8 @@ func (m Model) relationshipEdges() (incoming, outgoing []relationshipEdge) {
 		index[key] = edgeSlot{edges, len(*edges)}
 		*edges = append(*edges, edge)
 	}
-	for _, foreignKey := range m.structure.foreignKeyInfo {
-		if strings.EqualFold(foreignKey.ReferenceTable, m.SelectedTable) {
+	for _, foreignKey := range m.Structure.ForeignKeyInfo {
+		if strings.EqualFold(foreignKey.ReferenceTable, snapshot.SelectedTable) {
 			continue
 		}
 		merge(&outgoing, "out:"+strings.ToLower(foreignKey.ReferenceTable), relationshipEdge{
@@ -124,8 +260,8 @@ func (m Model) relationshipEdges() (incoming, outgoing []relationshipEdge) {
 			pairs: []string{relationshipPairLabel(foreignKey)},
 		})
 	}
-	for _, foreignKey := range m.structure.referencingForeignKeyInfo {
-		if strings.EqualFold(foreignKey.Table, m.SelectedTable) {
+	for _, foreignKey := range m.Structure.ReferencingForeignKeyInfo {
+		if strings.EqualFold(foreignKey.Table, snapshot.SelectedTable) {
 			continue
 		}
 		merge(&incoming, "in:"+strings.ToLower(foreignKey.Table), relationshipEdge{
@@ -152,21 +288,21 @@ func relationshipPairLabel(foreignKey sharedsql.ForeignKeyInfo) string {
 // relationshipCenterCard renders the selected table: primary-key and
 // foreign-key columns plus self-referencing mappings. Other columns stay
 // collapsed — the Columns tab shows the full schema.
-func (m Model) relationshipCenterCard(connector bool) []string {
+func (m Model) relationshipCenterCard(connector bool, snapshot Snapshot) []string {
 	foreignKeys := map[string]bool{}
-	for _, foreignKey := range m.structure.foreignKeyInfo {
+	for _, foreignKey := range m.Structure.ForeignKeyInfo {
 		for _, column := range foreignKey.Columns {
 			foreignKeys[column] = true
 		}
 	}
 	referenced := map[string]bool{}
-	for _, foreignKey := range m.structure.referencingForeignKeyInfo {
+	for _, foreignKey := range m.Structure.ReferencingForeignKeyInfo {
 		for _, column := range foreignKey.ReferenceColumns {
 			referenced[column] = true
 		}
 	}
-	rows := make([]string, 0, len(m.structure.columns)+2)
-	for _, column := range m.structure.columns {
+	rows := make([]string, 0, len(m.Structure.Columns)+2)
+	for _, column := range m.Structure.Columns {
 		switch {
 		case column.PrimaryKey > 0:
 			rows = append(rows, "🔑 "+column.Name)
@@ -174,12 +310,12 @@ func (m Model) relationshipCenterCard(connector bool) []string {
 			rows = append(rows, "🔗 "+column.Name)
 		}
 	}
-	for _, foreignKey := range m.structure.foreignKeyInfo {
-		if strings.EqualFold(foreignKey.ReferenceTable, m.SelectedTable) {
+	for _, foreignKey := range m.Structure.ForeignKeyInfo {
+		if strings.EqualFold(foreignKey.ReferenceTable, snapshot.SelectedTable) {
 			rows = append(rows, "↺ "+relationshipPairLabel(foreignKey))
 		}
 	}
-	return boxCard(m.SelectedTable, rows, true, 0, connector)
+	return boxCard(snapshot.SelectedTable, rows, true, 0, connector)
 }
 
 // relationshipLane lays cards out side by side and returns the rendered rows
@@ -234,7 +370,7 @@ func relationshipCard(edge relationshipEdge) []string {
 // border so the outgoing connector can attach without patching styled output.
 func boxCard(title string, rows []string, selected bool, minWidth int, connector bool) []string {
 	if selected {
-		title = connectionActionSelectedStyle.Render(title)
+		title = uikit.ActionSelectedStyle.Render(title)
 	}
 	titleWidth := ansi.StringWidth(title)
 	width := max(minWidth, titleWidth+5)
@@ -254,7 +390,7 @@ func boxCard(title string, rows []string, selected bool, minWidth int, connector
 	bottomLine := string(bottom)
 	lines = append(lines, bottomLine)
 	if selected {
-		border := lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary))
+		border := lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorPrimary))
 		lines[0] = border.Render(lines[0])
 		lines[len(lines)-1] = border.Render(lines[len(lines)-1])
 	}

@@ -86,7 +86,7 @@ func (m Model) dropForeignKeyStatement(table, previous string) string {
 
 func (m Model) columnChangeStatement(table string, change sharedsql.ColumnChange) string {
 	quotedTable := m.actionIdentifier(table)
-	if !m.structure.columnForm.typeChanged && !m.structure.columnForm.hadDefault && change.DefaultValue == nil && change.Nullable == m.structure.columnForm.values.nullable && (change.Attributes == nil || *change.Attributes == m.structure.columnForm.originalAttributes) {
+	if !m.schema.component.Structure.ColumnForm.TypeChanged && !m.schema.component.Structure.ColumnForm.HadDefault && change.DefaultValue == nil && change.Nullable == m.schema.component.Structure.ColumnForm.Values.Nullable && (change.Attributes == nil || *change.Attributes == m.schema.component.Structure.ColumnForm.OriginalAttributes) {
 		return "ALTER TABLE " + quotedTable + " RENAME COLUMN " + m.actionIdentifier(change.PreviousName) + " TO " + m.actionIdentifier(change.Name)
 	}
 	statement := "ALTER TABLE " + quotedTable + " ALTER COLUMN " + m.actionIdentifier(change.PreviousName) + " TYPE " + strings.TrimSpace(change.Type)

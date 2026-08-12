@@ -127,11 +127,11 @@ func (m Model) pagerBrowseCommand(delta int) (Model, tea.Cmd) {
 // openBrowseFilterForm opens the filter grid over the loaded structure
 // columns.
 func (m *Model) openBrowseFilterForm() tea.Cmd {
-	if len(m.structure.columns) == 0 {
+	if len(m.schema.component.Structure.Columns) == 0 {
 		m.setStatus("table columns are loading")
 		return nil
 	}
-	m.browse.component.FilterForm = browse.NewFilterForm(m.structure.columns, m.browse.component.Settings, m.browse.component.PageSize, m.layout.tableViewportWidth, m.formViewportHeight())
+	m.browse.component.FilterForm = browse.NewFilterForm(m.schema.component.Structure.Columns, m.browse.component.Settings, m.browse.component.PageSize, m.layout.tableViewportWidth, m.formViewportHeight())
 	m.overlay.formMode.Mode = formModeNormal
 	m.overlay.formMode.ButtonsFocused = false
 	if m.vimMode {
@@ -153,7 +153,7 @@ func (m *Model) openBrowseForm() tea.Cmd {
 		m.setStatus("select a row")
 		return nil
 	}
-	form, err := browse.NewForm(m.browse.component.Result.Columns, m.browse.component.Result.Rows[row], m.structure.columns)
+	form, err := browse.NewForm(m.browse.component.Result.Columns, m.browse.component.Result.Rows[row], m.schema.component.Structure.Columns)
 	if err != nil {
 		m.setStatus(safeText(err.Error()))
 		return nil
@@ -178,8 +178,8 @@ func (m *Model) openInsertRowForm() tea.Cmd {
 		m.setStatus(safeText(m.rowWriteUnsupportedError().Error()))
 		return nil
 	}
-	columns := make([]string, 0, len(m.structure.columns))
-	for _, info := range m.structure.columns {
+	columns := make([]string, 0, len(m.schema.component.Structure.Columns))
+	for _, info := range m.schema.component.Structure.Columns {
 		columns = append(columns, info.Name)
 	}
 	form, err := browse.NewInsertForm(columns)
@@ -202,7 +202,7 @@ func (m *Model) openCellEditor() tea.Cmd {
 		return m.openEditDocument()
 	}
 	width := max(m.layout.tableViewportWidth, 40)
-	m.browse.component.Structure = m.structure.columns
+	m.browse.component.Structure = m.schema.component.Structure.Columns
 	editor, command, err := m.browse.component.BuildCellEditor(m.SelectedTable, width)
 	if err != nil {
 		m.setStatus(safeText(err.Error()))

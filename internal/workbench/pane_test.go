@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestTitledPane_replacesTopBorderWithPlainTitle(t *testing.T) {
@@ -45,25 +46,25 @@ func TestAbbreviateCount(t *testing.T) {
 
 	// When/Then
 	for input, want := range cases {
-		if got := abbreviateCount(input); got != want {
-			t.Errorf("abbreviateCount(%d) = %q, want %q", input, got, want)
+		if got := schema.AbbreviateCount(input); got != want {
+			t.Errorf("schema.AbbreviateCount(%d) = %q, want %q", input, got, want)
 		}
 	}
 }
 
 func TestSchemaItemDelegate_rightAlignsBadgeAndTruncatesLongName(t *testing.T) {
 	count := int64(331_600)
-	model := newSchemaList()
+	model := schema.NewSchemaList()
 	model.SetSize(40, 10)
-	model.SetItems([]list.Item{schemaItem{
-		title:    "department_employee_that_have_a_very_long_name",
-		kind:     "table",
-		table:    "x",
-		rowCount: &count,
+	model.SetItems([]list.Item{schema.Item{
+		Name:     "department_employee_that_have_a_very_long_name",
+		Kind:     "table",
+		Table:    "x",
+		RowCount: &count,
 	}})
 
 	var buf strings.Builder
-	schemaItemDelegate{}.Render(&buf, model, 0, model.Items()[0])
+	schema.ItemDelegate{}.Render(&buf, model, 0, model.Items()[0])
 	plain := ansi.Strip(buf.String())
 
 	// One line of exactly the list width; name truncated with an ellipsis
@@ -86,7 +87,7 @@ func TestNewSchemaList_hidesInternalTitle(t *testing.T) {
 	// Given
 
 	// When
-	model := newSchemaList()
+	model := schema.NewSchemaList()
 
 	// Then
 	if model.ShowTitle() {

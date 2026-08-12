@@ -66,7 +66,7 @@ func readyDocumentModel(t *testing.T, capabilities sharedsql.WriteCapabilities) 
 	model.Database = service
 	model.databaseInfo = sharedsql.DatabaseInfo{Product: "MongoDB"}
 	model.SelectedTable, model.Tab, model.Focus = "things", tabBrowse, focusWorkspace
-	model.structure.columns = []sharedsql.ColumnInfo{
+	model.schema.component.Structure.Columns = []sharedsql.ColumnInfo{
 		{Name: "_id", Type: "objectId", PrimaryKey: 1},
 		{Name: "name", Type: "string", Nullable: true},
 	}

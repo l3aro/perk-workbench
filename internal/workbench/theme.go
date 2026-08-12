@@ -173,18 +173,14 @@ func (m *Model) commitTheme(name appTheme) {
 func (m *Model) applyTheme(name appTheme) {
 	setTheme(name)
 
-	m.schema.list.SetDelegate(schemaItemDelegate{})
+	m.schema.component.RefreshTheme()
 	m.connection.picker.SetDelegate(newListDelegate())
 	m.connection.component.Recent.SetDelegate(newListDelegate())
-	applyListTheme(&m.schema.list)
 	applyListTheme(&m.connection.picker)
 	applyListTheme(&m.connection.component.Recent)
 	applyFormTheme(
 		m.connection.component.Form.Huh,
-		m.structure.columnForm.form,
 		m.browse.component.Form.Form,
-		m.structure.indexForm.form,
-		m.structure.foreignKeyForm.form,
 	)
 	if m.browse.component.CellEditor != nil {
 		applyFormTheme(m.browse.component.CellEditor.Input)

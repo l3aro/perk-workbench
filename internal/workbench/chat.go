@@ -116,7 +116,7 @@ func (m Model) chatLayout() chat.Context {
 	return chat.Context{
 		ConnectionID: m.connectionID,
 		Database:     m.databaseInfo,
-		Schema:       m.schema.objects,
+		Schema:       m.schema.component.Objects,
 		Query:        m.queryLog.editor.value,
 		Results:      resultsSnapshot(m.queryLog.results),
 	}

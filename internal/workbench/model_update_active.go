@@ -3,6 +3,7 @@ package workbench
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
@@ -38,83 +39,14 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.queryLog.results, command = m.queryLog.results.Update(message)
 				return m, command
 			}
-			if m.schema.filter.Focused() {
-				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch keyPress.Code {
-					case tea.KeyEscape, tea.KeyEnter:
-						// Exit editing, keeping the applied filter.
-						m.schema.filter.Blur()
-						return m, nil
-					}
-				}
-				before := m.schema.filter.Value()
-				var filterCommand tea.Cmd
-				m.schema.filter, filterCommand = m.schema.filter.Update(message)
-				if m.schema.filter.Value() != before {
-					m.applySchemaFilter()
-				}
-				return m, filterCommand
-			}
-			if keyPress, ok := message.(tea.KeyPressMsg); ok {
-				switch {
-				case m.keybindings.Match(keyPress, "schema.filter", []scope{scopeView, scopeGlobal}):
-					m.schema.filter.Focus()
-					return m, nil
-				case m.keybindings.Match(keyPress, "schema.context_menu", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
-						m.openSchemaItemMenu(item, m.layout.schemaWidth/2, m.schemaRowY(m.schema.list.Index())+1)
-					} else if m.supportsCreateDatabase() {
-						m.openBlankServerMenu(m.layout.schemaWidth/2, m.schemaRowY(0)+1)
-					}
-					return m, nil
-				case m.keybindings.Match(keyPress, "schema.add_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
-						if target, ok := m.schemaAddTarget(item); ok {
-							return m, m.openTableForm(target, "")
-						}
-					}
-					return m, nil
-				case m.keybindings.Match(keyPress, "schema.create_database", []scope{scopeView, scopeGlobal}):
-					if m.supportsCreateDatabase() {
-						return m, m.openDatabaseForm("")
-					}
-					return m, nil
-				case m.keybindings.Match(keyPress, "schema.rename_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
-						return m, m.openTableForm(item.database, item.table)
-					}
-					return m, nil
-				case m.keybindings.Match(keyPress, "schema.delete_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
-						m.confirmTableDelete(item.database, item.table)
-					}
-					return m, nil
-				case m.keybindings.Match(keyPress, "schema.select_table", []scope{scopeView, scopeGlobal}):
-					if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
-						if item.kind == "schema" {
-							return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
-						}
-						if item.root {
-							if m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
-								return m.reconnectDatabase(item.database)
-							}
-							return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
-						}
-						return m, m.selectSchemaTable(item)
-					}
-				case m.keybindings.Match(keyPress, "schema.expand", []scope{scopeView, scopeGlobal}):
-					return m.expandSchemaLevel()
-				case m.keybindings.Match(keyPress, "schema.collapse", []scope{scopeView, scopeGlobal}):
-					return m.collapseSchemaLevel()
-				}
-			}
-			m.schema.list, command = m.schema.list.Update(message)
-			// The list's own keymap can clear the filter (esc in tree
-			// navigation); keep the visible input in sync.
-			if !m.schema.list.IsFiltered() && m.schema.filter.Value() != "" {
-				m.schema.filter.SetValue("")
-			}
-			return m, command
+			// Pane keys route into the schema component, which owns the
+			// filter input, the tree navigation and expansion, and the
+			// add/rename/delete-table keys; the root applies the returned
+			// events (table selection, reconnects, context menus, popup
+			// requests) through its own overlays and DB flows.
+			component, event, cmd := m.schema.component.Update(message, m.schemaLayout(), m.keybindings, m.schemaSnapshot())
+			m.schema.component = component
+			return m.applySchemaEvent(event, cmd)
 		case focusWorkspace:
 			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.overlay.formMode.Editing()) &&
 				m.keybindings.Match(keyPress, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
@@ -125,51 +57,30 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			switch m.Tab {
 			case tabStructure:
-				if m.structure.columnForm.active() {
-					m.structure.columnForm.height = m.layout.height
-					command, action := m.structure.columnForm.Update(message, m.overlay.formMode)
+				if m.schema.component.Structure.ColumnForm.Active() {
+					m.schema.component.Structure.ColumnForm.Height = m.layout.height
+					command, action := m.schema.component.Structure.ColumnForm.Update(message, m.overlay.formMode)
 					switch action {
-					case columnFormSave:
-						m.structure.columnForm.saving = true
-						if m.structure.columnForm.isNew {
+					case schema.ColumnFormSave:
+						m.schema.component.Structure.ColumnForm.Saving = true
+						if m.schema.component.Structure.ColumnForm.IsNew {
 							return m, m.addColumn()
 						}
 						return m, m.alterColumn()
-					case columnFormDiscard:
-						m.structure.columnForm = columnForm{}
-					case columnFormDelete:
-						m.structure.columnForm.saving = true
+					case schema.ColumnFormDiscard:
+						m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
+					case schema.ColumnFormDelete:
+						m.schema.component.Structure.ColumnForm.Saving = true
 						return m, m.deleteColumn()
 					}
 					return m, command
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch {
-					case m.keybindings.Match(keyPress, "structure.filter", []scope{scopeView, scopeGlobal}):
-						return m, m.openTableFilter()
-					case m.keybindings.Match(keyPress, "structure.reset", []scope{scopeView, scopeGlobal}):
-						m.resetTableFilter()
-						return m, nil
-					case m.keybindings.Match(keyPress, "structure.edit", []scope{scopeView, scopeGlobal}):
-						return m, m.openColumnForm()
-					case m.keybindings.Match(keyPress, "structure.add", []scope{scopeView, scopeGlobal}):
-						return m, m.openNewColumnForm()
-					case m.keybindings.Match(keyPress, "structure.delete", []scope{scopeView, scopeGlobal}):
-						if column := m.selectedColumn(); column != nil {
-							m.overlay.deletePending = "column"
-							m.overlay.deletePendingName = column.Name
-							m.overlay.deleteConfirm = newConfirmationDialog("Delete column?", "", []confirmationOption{
-								{Label: "Yes, delete", Action: "delete"},
-								{Label: "Cancel", Action: "cancel"},
-							})
-						}
-						return m, nil
-					}
-				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableRow(&m.structure.table, &m.layout.structureOffset, m.layout.tableViewportWidth, keyPress) {
-					return m, nil
-				}
-				m.structure.table, command = m.structure.table.Update(message)
+				// Pane keys and the table passthrough route into the
+				// component; the root applies the events (filter/edit/
+				// delete requests) and keeps the horizontal pan offset.
+				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabStructure, m.schemaSnapshot(), &m.layout.structureOffset)
+				m.schema.component = component
+				return m.applySchemaEvent(event, cmd)
 			case tabBrowse:
 				if m.browse.component.FilterForm != nil {
 					command, action := m.browse.component.FilterForm.Update(message, m.keybindings)
@@ -290,100 +201,49 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.queryLog.results, command = m.queryLog.results.Update(message)
 				}
 			case tabIndexes:
-				if m.structure.indexForm.active() {
-					m.structure.indexForm.height = m.layout.height
-					command, action := m.structure.indexForm.Update(message, m.overlay.formMode)
+				if m.schema.component.Structure.IndexForm.Active() {
+					m.schema.component.Structure.IndexForm.Height = m.layout.height
+					command, action := m.schema.component.Structure.IndexForm.Update(message, m.overlay.formMode)
 					switch action {
-					case indexFormSave:
-						m.structure.indexForm.saving = true
+					case schema.IndexFormSave:
+						m.schema.component.Structure.IndexForm.Saving = true
 						return m, m.saveIndex()
-					case indexFormDelete:
-						m.structure.indexForm.saving = true
+					case schema.IndexFormDelete:
+						m.schema.component.Structure.IndexForm.Saving = true
 						return m, m.deleteIndex()
-					case indexFormDiscard:
-						m.structure.indexForm.close()
+					case schema.IndexFormDiscard:
+						m.schema.component.Structure.IndexForm.Close()
 					}
 					return m, command
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch {
-					case m.keybindings.Match(keyPress, "indexes.filter", []scope{scopeView, scopeGlobal}):
-						return m, m.openTableFilter()
-					case m.keybindings.Match(keyPress, "indexes.reset", []scope{scopeView, scopeGlobal}):
-						m.resetTableFilter()
-						return m, nil
-					case m.keybindings.Match(keyPress, "indexes.create", []scope{scopeView, scopeGlobal}):
-						return m, m.openIndexForm(nil)
-					case m.keybindings.Match(keyPress, "indexes.edit", []scope{scopeView, scopeGlobal}):
-						if index := m.selectedIndex(); index != nil {
-							return m, m.openIndexForm(index)
-						}
-						return m, nil
-					case m.keybindings.Match(keyPress, "indexes.delete", []scope{scopeView, scopeGlobal}):
-						if index := m.selectedIndex(); index != nil {
-							m.overlay.deletePending = "index"
-							m.overlay.deletePendingName = index.Name
-							m.overlay.deleteConfirm = newConfirmationDialog("Delete index?", "", []confirmationOption{
-								{Label: "Yes, delete", Action: "delete"},
-								{Label: "Cancel", Action: "cancel"},
-							})
-						}
-						return m, nil
-					}
-					if moveTableRow(&m.structure.indexes, &m.layout.indexesOffset, m.layout.tableViewportWidth, keyPress) {
-						return m, nil
-					}
-				}
-				m.structure.indexes, command = m.structure.indexes.Update(message)
+				// Pane keys and the table passthrough route into the
+				// component; the root applies the events (filter/edit/
+				// delete requests) and keeps the horizontal pan offset.
+				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabIndexes, m.schemaSnapshot(), &m.layout.indexesOffset)
+				m.schema.component = component
+				return m.applySchemaEvent(event, cmd)
 			case tabForeignKeys:
-				if m.structure.foreignKeyForm.active() {
-					m.structure.foreignKeyForm.height = m.layout.height
-					command, action := m.structure.foreignKeyForm.Update(message, m.overlay.formMode)
+				if m.schema.component.Structure.ForeignKeyForm.Active() {
+					m.schema.component.Structure.ForeignKeyForm.Height = m.layout.height
+					command, action := m.schema.component.Structure.ForeignKeyForm.Update(message, m.overlay.formMode)
 					switch action {
-					case foreignKeyFormSave:
-						m.structure.foreignKeyForm.saving = true
+					case schema.ForeignKeyFormSave:
+						m.schema.component.Structure.ForeignKeyForm.Saving = true
 						return m, m.saveForeignKey()
-					case foreignKeyFormDelete:
-						m.structure.foreignKeyForm.saving = true
+					case schema.ForeignKeyFormDelete:
+						m.schema.component.Structure.ForeignKeyForm.Saving = true
 						return m, m.deleteForeignKey()
-					case foreignKeyFormDiscard:
-						m.structure.foreignKeyForm.close()
+					case schema.ForeignKeyFormDiscard:
+						m.schema.component.Structure.ForeignKeyForm.Close()
 					}
 					return m, command
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch {
-					case m.keybindings.Match(keyPress, "foreign_keys.filter", []scope{scopeView, scopeGlobal}):
-						return m, m.openTableFilter()
-					case m.keybindings.Match(keyPress, "foreign_keys.reset", []scope{scopeView, scopeGlobal}):
-						m.resetTableFilter()
-						return m, nil
-					case m.keybindings.Match(keyPress, "foreign_keys.toggle_diagram", []scope{scopeView, scopeGlobal}):
-						m.structure.relationshipDiagram = !m.structure.relationshipDiagram
-						return m, nil
-					case m.keybindings.Match(keyPress, "foreign_keys.create", []scope{scopeView, scopeGlobal}):
-						return m, m.openForeignKeyForm(nil)
-					case m.keybindings.Match(keyPress, "foreign_keys.edit", []scope{scopeView, scopeGlobal}):
-						if foreignKey := m.selectedForeignKey(); foreignKey != nil {
-							return m, m.openForeignKeyForm(foreignKey)
-						}
-						return m, nil
-					case m.keybindings.Match(keyPress, "foreign_keys.delete", []scope{scopeView, scopeGlobal}):
-						if foreignKey := m.selectedForeignKey(); foreignKey != nil {
-							m.overlay.deletePending = "foreign_key"
-							m.overlay.deletePendingName = foreignKey.ID
-							m.overlay.deleteConfirm = newConfirmationDialog("Delete foreign key?", "", []confirmationOption{
-								{Label: "Yes, delete", Action: "delete"},
-								{Label: "Cancel", Action: "cancel"},
-							})
-						}
-						return m, nil
-					}
-					if moveTableRow(&m.structure.foreignKeys, &m.layout.foreignKeysOffset, m.layout.tableViewportWidth, keyPress) {
-						return m, nil
-					}
-				}
-				m.structure.foreignKeys, command = m.structure.foreignKeys.Update(message)
+				// Pane keys and the table passthrough route into the
+				// component; the root applies the events (filter/edit/
+				// delete requests) and keeps the horizontal pan offset.
+				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabForeignKeys, m.schemaSnapshot(), &m.layout.foreignKeysOffset)
+				m.schema.component = component
+				return m.applySchemaEvent(event, cmd)
 			}
 			return m, command
 		case focusQueryLog:
@@ -482,5 +342,5 @@ func (m Model) applyQueryLogEvent(event uikit.Event, cmd tea.Cmd) (tea.Model, te
 }
 
 func (m Model) formActive() bool {
-	return m.structure.tableFiltering || m.structure.columnForm.active() || m.tableFormOpen() || m.browse.component.DocumentEditor != nil || m.browse.component.Form.Active() || m.browse.component.FilterForm != nil || m.structure.indexForm.active() || m.structure.foreignKeyForm.active()
+	return m.schema.component.Structure.TableFiltering || m.schema.component.Structure.ColumnForm.Active() || m.tableFormOpen() || m.browse.component.DocumentEditor != nil || m.browse.component.Form.Active() || m.browse.component.FilterForm != nil || m.schema.component.Structure.IndexForm.Active() || m.schema.component.Structure.ForeignKeyForm.Active()
 }

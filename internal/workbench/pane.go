@@ -2,15 +2,11 @@ package workbench
 
 import (
 	"fmt"
-	"io"
-	"strconv"
 	"strings"
 
-	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
@@ -71,107 +67,11 @@ func applyListTheme(model *list.Model) {
 	model.Styles.NoItems = statusStyle
 }
 
-type schemaItemDelegate struct{}
-
-func (schemaItemDelegate) Height() int                         { return 1 }
-func (schemaItemDelegate) Spacing() int                        { return 0 }
-func (schemaItemDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
-
-// treeMarkers returns the node marker for each tree level: database, schema,
-// table/view. Nerd Font icons are the default; config.json "nerd_font":
-// false falls back to geometric symbols for terminals without a Nerd Font.
-func treeMarkers() (database, schema, table string) {
-	if appConfig.NerdFont == nil || *appConfig.NerdFont {
-		return "\uf1c0", "\uf07b", "\uf0ce" // nf-fa-database, nf-fa-folder, nf-fa-table
-	}
-	return "▣", "▤", "▪"
-}
-
-// schemaItemDelegate renders each tree level with its own marker (database,
-// schema, table/view); state is conveyed by color: muted when idle,
-// secondary on the open table's path, primary when selected.
-func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
-	schema, ok := item.(schemaItem)
-	if !ok {
-		return
-	}
-	dbMarker, schemaMarker, tableMarker := treeMarkers()
-	marker, indent := tableMarker, ""
-	switch {
-	case schema.root:
-		marker = dbMarker
-	case schema.kind == "schema":
-		marker, indent = schemaMarker, "  "
-	case schema.kind == "view", schema.table != "":
-		if schema.schema != "" {
-			indent = "    "
-		} else {
-			indent = "  "
-		}
-	}
-	label := schema.Title()
-	if schema.root || schema.kind == "schema" {
-		if schema.count >= 0 {
-			label += fmt.Sprintf(" (%d)", schema.count)
-		}
-	}
-	if schema.kind == "view" {
-		label += " (view)"
-	}
-	// Estimated row counts (PostgreSQL reltuples, MySQL table_rows) show as
-	// a badge.
-	if schema.rowCount != nil {
-		label += " (" + abbreviateCount(*schema.rowCount) + ")"
-	}
-	color := colorMuted // idle
-	if schema.open {
-		color = colorSecondary
-	}
-	if index == model.Index() {
-		color = colorPrimary
-	}
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-	// The marker renders bold so the icon reads larger than the regular
-	// label; terminal cells are fixed size, so weight is the only scaling
-	// that keeps the layout intact.
-	prefix := indent + style.Bold(true).Render(marker+" ")
-	// Parenthetical badges (row counts, view marker) pin to the right edge
-	// of the sidebar; the name truncates with an ellipsis so a long name
-	// never wraps or overlaps the badge.
-	name, badge, hasBadge := strings.Cut(label, " (")
-	if hasBadge {
-		badge = " (" + badge
-		if lipgloss.Width(badge) >= model.Width()-lipgloss.Width(prefix) {
-			badge, hasBadge = "", false // sidebar too narrow for the badge
-		}
-	}
-	if limit := model.Width() - lipgloss.Width(prefix) - lipgloss.Width(badge); lipgloss.Width(name) > limit {
-		name = ansi.Truncate(name, max(limit, 0), "…")
-	}
-	line := prefix + style.Render(name)
-	if hasBadge {
-		line += strings.Repeat(" ", model.Width()-lipgloss.Width(line)-lipgloss.Width(badge)) + style.Render(badge)
-	}
-	fmt.Fprint(writer, line)
-}
-
-func newSchemaList() list.Model {
-	model := newList("", true)
-	model.SetShowTitle(false)
-	model.SetShowFilter(false)
-	model.SetShowStatusBar(false)
-	// The sidebar renders its own persistent filter input; the list's
-	// built-in filter bar and keybinding are unused.
-	model.KeyMap.Filter = key.NewBinding(key.WithDisabled())
-	model.Filter = schemaListFilter
-	model.SetDelegate(schemaItemDelegate{})
-	return model
-}
-
 // schemaFilterShown reports whether the pane is wide enough for the filter
-// box (3 rows: top border, input, bottom border).
+// box (3 rows: top border, input, bottom border). The equation lives in the
+// schema component; the root mirrors it for the profiles pane layout.
 func (m Model) schemaFilterShown() bool {
-	return m.layout.schemaWidth >= 7
+	return m.schema.component.FilterShown(m.schemaLayout())
 }
 
 // filterInputRow renders a filter input in a bordered box with a
@@ -193,15 +93,6 @@ func (m Model) filterInputRow(input textinput.Model, width int) string {
 	return box.Render(ansi.Truncate(input.View(), max(width-8, 0), "") + icon)
 }
 
-// schemaFilterRow renders the schema sidebar's filter input, omitted when
-// the pane is too narrow to show it.
-func (m Model) schemaFilterRow() string {
-	if !m.schemaFilterShown() {
-		return ""
-	}
-	return m.filterInputRow(m.schema.filter, max(m.layout.schemaWidth-4, 0))
-}
-
 // recentFilterRow renders the profiles pane's filter input, matching the
 // schema sidebar; both panes share the sidebar width.
 func (m Model) recentFilterRow() string {
@@ -209,24 +100,6 @@ func (m Model) recentFilterRow() string {
 		return ""
 	}
 	return m.filterInputRow(m.connection.component.RecentFilter, max(m.layout.schemaWidth-4, 0))
-}
-
-// abbreviateCount renders a compact human-readable count: 10k, 490k,
-// 1.23M; up to two decimals with trailing zeros trimmed, raw below 1k.
-func abbreviateCount(n int64) string {
-	trim := func(s string) string { return strings.TrimRight(strings.TrimRight(s, "0"), ".") }
-	switch {
-	case n >= 1_000_000_000_000:
-		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000_000_000)) + "T"
-	case n >= 1_000_000_000:
-		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000_000)) + "B"
-	case n >= 1_000_000:
-		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000)) + "M"
-	case n >= 1_000:
-		return trim(fmt.Sprintf("%.2f", float64(n)/1_000)) + "k"
-	default:
-		return strconv.FormatInt(n, 10)
-	}
 }
 
 func newResultsTable() table.Model {

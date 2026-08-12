@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 const doubleClickTimeout = 500 * time.Millisecond
@@ -234,7 +235,7 @@ func (m Model) handleRecentRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
-	m.schema.filter.Blur()
+	m.schema.component.Filter.Blur()
 	if m.Focus != focusWorkspace {
 		m.Focus = focusWorkspace
 		m.queryLog.component.ClearPendingG()
@@ -261,215 +262,16 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// schemaItemOffset returns the content Y of the first schema item line: the
-// pane title row plus the 3-row filter box (when shown). The list's status
-// bar is hidden, so nothing else precedes the items.
-func (m Model) schemaItemOffset() int {
-	if m.schemaFilterShown() {
-		return 4
-	}
-	return 1
-}
-
-// openBlankServerMenu opens the blank-sidebar context menu: creating a
-// database is valid on any server product and needs no selection.
-func (m *Model) openBlankServerMenu(x, y int) {
-	m.overlay.contextMenu = &contextMenuModel{
-		options:  []menuOption{{label: "Add new database", action: "create_database", keys: "A"}},
-		selected: 0,
-		visible:  true,
-		x:        x,
-		y:        y,
-	}
-}
-
-// schemaItemAt maps a schema-pane Y coordinate to its item, using the same
-// visible/filter/pagination mapping as the rendered sidebar, and selects it.
-func (m *Model) schemaItemAt(contentY int) (schemaItem, bool) {
-	// contentY = terminal Y - 1 (after header).
-	itemOffset := m.schemaItemOffset()
-	itemY := contentY - itemOffset
-	if itemY < 0 {
-		return schemaItem{}, false
-	}
-	items := m.schema.list.VisibleItems()
-	if len(items) == 0 {
-		return schemaItem{}, false
-	}
-	start, end := m.schema.list.Paginator.GetSliceBounds(len(items))
-	if itemY >= end-start {
-		return schemaItem{}, false
-	}
-	m.schema.list.Select(start + itemY)
-	item, ok := m.schema.list.SelectedItem().(schemaItem)
-	return item, ok
-}
-
-// schemaRowY returns the screen Y of the schema list item at the given
-// index, clamped to the visible window.
-func (m Model) schemaRowY(index int) int {
-	itemOffset := m.schemaItemOffset()
-	items := m.schema.list.VisibleItems()
-	start, _ := m.schema.list.Paginator.GetSliceBounds(len(items))
-	row := itemOffset + (index - start)
-	return max(row, itemOffset)
-}
-
-// schemaAddTarget returns the qualifier for a new table next to the
-// selected item: the database for SQLite/MySQL, the schema for PostgreSQL
-// (whose sidebar groups tables under database roots).
-func (m Model) schemaAddTarget(item schemaItem) (string, bool) {
-	if m.databaseInfo.Product == "PostgreSQL" {
-		switch item.kind {
-		case "schema":
-			return item.schema, true
-		case "table":
-			schema, _, found := strings.Cut(item.table, ".")
-			return schema, found
-		}
-		return "", false
-	}
-	if item.root || item.kind == "table" {
-		return item.database, true
-	}
-	return "", false
-}
-
-// openSchemaItemMenu opens the schema context menu for the given item:
-// each tree level offers its sibling, child, edit, and delete operations.
-// SQLite keeps the table-only menu; views expose no menu.
-func (m *Model) openSchemaItemMenu(item schemaItem, x, y int) {
-	switch {
-	case item.kind == "schema":
-		// database carries the schema-qualified Add table target (the
-		// table form uses it as the PostgreSQL schema); schema carries
-		// the same value for the schema-level actions.
-		m.overlay.contextMenu = &contextMenuModel{
-			options: []menuOption{
-				{label: "Add new schema", action: "create_schema", keys: "A"},
-				{label: "Add new table", action: "add_table", keys: "a"},
-				{label: "Edit schema", action: "rename_schema", keys: "r"},
-				{label: "Delete schema", action: "delete_schema", keys: "d"},
-			},
-			selected: 0,
-			visible:  true,
-			x:        x,
-			y:        y,
-			database: item.schema,
-			schema:   item.schema,
-		}
-	case item.root:
-		switch {
-		case m.databaseInfo.Product == "PostgreSQL":
-			// The connected database cannot be renamed or dropped in
-			// place; a root that is not the connected database offers
-			// Connect to switch to it and full database operations.
-			options := []menuOption{
-				{label: "Add new database", action: "create_database", keys: "A"},
-				{label: "Add new schema", action: "create_schema", keys: "a"},
-			}
-			if !m.databaseRootConnected(item.database) {
-				options = []menuOption{
-					{label: "Connect", action: "connect_database", keys: "enter"},
-					{label: "Add new database", action: "create_database", keys: "A"},
-					{label: "Edit database", action: "rename_database", keys: "r"},
-					{label: "Delete database", action: "delete_database", keys: "d"},
-				}
-			}
-			m.overlay.contextMenu = &contextMenuModel{
-				options:  options,
-				selected: 0,
-				visible:  true,
-				x:        x,
-				y:        y,
-				database: item.database,
-			}
-		case m.supportsCreateDatabase():
-			// MySQL treats database and schema as one level: sibling
-			// database actions plus the table child. Database rename
-			// has no safe DDL, so Edit database is not offered.
-			m.overlay.contextMenu = &contextMenuModel{
-				options: []menuOption{
-					{label: "Add new database", action: "create_database", keys: "A"},
-					{label: "Add new table", action: "add_table", keys: "a"},
-					{label: "Delete database", action: "delete_database", keys: "d"},
-				},
-				selected: 0,
-				visible:  true,
-				x:        x,
-				y:        y,
-				database: item.database,
-			}
-		default:
-			m.overlay.contextMenu = &contextMenuModel{
-				options:  []menuOption{{label: "Add table", action: "add_table", keys: "a"}},
-				selected: 0,
-				visible:  true,
-				x:        x,
-				y:        y,
-				database: item.database,
-			}
-		}
-	case item.kind == "table":
-		// Server products add the same-level Add new table; SQLite keeps
-		// its table-only menu.
-		options := []menuOption{
-			{label: "Rename table", action: "rename_table", keys: "r"},
-			{label: "Delete table", action: "delete_table", keys: "d"},
-		}
-		menuDatabase := item.database
-		if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
-			options = []menuOption{
-				{label: "Add new table", action: "add_table", keys: "a"},
-				{label: "Edit table", action: "rename_table", keys: "r"},
-				{label: "Delete table", action: "delete_table", keys: "d"},
-			}
-			if target, ok := m.schemaAddTarget(item); ok {
-				// PostgreSQL creates tables inside the table's schema,
-				// so the Add new table target is the schema.
-				menuDatabase = target
-			}
-		}
-		m.overlay.contextMenu = &contextMenuModel{
-			options:  options,
-			selected: 0,
-			visible:  true,
-			x:        x,
-			y:        y,
-			database: menuDatabase,
-			table:    item.table,
-		}
-	}
-}
-
 // schemaClick maps a schema-pane click to its item. A double-click on a
 // PostgreSQL root that is not the connected database reconnects to it
 // (matching the recent list's double-click-to-load); any other root or
-// schema click toggles the subtree, and a table click selects it.
+// schema click toggles the subtree, and a table click selects it. The
+// component owns the click mapping; the root supplies the double-click
+// detector and applies the returned events.
 func (m Model) schemaClick(x, contentY int) (tea.Model, tea.Cmd) {
-	// The filter box is the first body rows; clicking it focuses the
-	// input for typing.
-	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
-		m.schema.filter.Focus()
-		return m, nil
-	}
-	item, ok := m.schemaItemAt(contentY)
-	if !ok {
-		m.schema.filter.Blur()
-		return m, nil
-	}
-	// Item clicks leave filter editing so navigation keys work again.
-	m.schema.filter.Blur()
-	if item.kind == "schema" {
-		return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
-	}
-	if item.root {
-		if m.recordFormClick(x, contentY+1) && m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
-			return m.reconnectDatabase(item.database)
-		}
-		return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
-	}
-	return m, m.selectSchemaTable(item)
+	component, event, cmd := m.schema.component.HandleSchemaClick(x, contentY, m.schemaLayout(), m.schemaSnapshot(), m.recordFormClick)
+	m.schema.component = component
+	return m.applySchemaEvent(event, cmd)
 }
 
 // queryLogTop returns the screen Y of the query log pane's title row:
@@ -605,21 +407,21 @@ func (m Model) scrollForm(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch {
-	case m.structure.columnForm.active():
+	case m.schema.component.Structure.ColumnForm.Active():
 		if step > 0 {
-			return m, m.structure.columnForm.nextField()
+			return m, m.schema.component.Structure.ColumnForm.NextField()
 		}
-		return m, m.structure.columnForm.previousField()
+		return m, m.schema.component.Structure.ColumnForm.PreviousField()
 	case m.browse.component.FilterForm != nil:
 		m.browse.component.FilterForm.ScrollOffset = clamp(m.browse.component.FilterForm.ScrollOffset+step, 0, len(m.browse.component.FilterForm.Fields)+1)
 	case m.browse.component.DocumentEditor != nil:
 		m.browse.component.DocumentEditor.ScrollOffset = formScrollOffset(m.browse.component.DocumentEditor.View(), m.browse.component.DocumentEditor.ScrollOffset, step, m.formViewportHeight())
 	case m.browse.component.Form.Active():
 		m.browse.component.Form.ScrollOffset = formScrollOffset(m.browse.component.Form.View(), m.browse.component.Form.ScrollOffset, step, m.formViewportHeight())
-	case m.structure.indexForm.active():
-		m.structure.indexForm.scrollOffset = formScrollOffset(m.structure.indexForm.View(), m.structure.indexForm.scrollOffset, step, m.formViewportHeight())
-	case m.structure.foreignKeyForm.active():
-		m.structure.foreignKeyForm.scrollOffset = formScrollOffset(m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset, step, m.formViewportHeight())
+	case m.schema.component.Structure.IndexForm.Active():
+		m.schema.component.Structure.IndexForm.ScrollOffset = formScrollOffset(m.schema.component.Structure.IndexForm.View(), m.schema.component.Structure.IndexForm.ScrollOffset, step, m.formViewportHeight())
+	case m.schema.component.Structure.ForeignKeyForm.Active():
+		m.schema.component.Structure.ForeignKeyForm.ScrollOffset = formScrollOffset(m.schema.component.Structure.ForeignKeyForm.View(), m.schema.component.Structure.ForeignKeyForm.ScrollOffset, step, m.formViewportHeight())
 	}
 	return m, nil
 }
@@ -636,103 +438,41 @@ func formScrollOffset(view string, offset, step, height int) int {
 }
 
 // handleSchemaTableClick handles left-click on structure, indexes, or foreignKeys tables.
-// Row-level selection; double-click opens the edit form for the row.
+// handleSchemaTableClick handles left-click on structure, indexes, or
+// foreignKeys tables. Row-level selection; double-click opens the edit
+// form for the row. The component owns the click mapping and the
+// double-click detection; the root keeps the form-mode bookkeeping and the
+// form openers.
 func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State != stateReady || m.Focus != focusWorkspace || m.overlay.contextMenu != nil {
 		return m, nil
 	}
-
-	var targetTable *table.Model
-	switch m.Tab {
-	case tabStructure:
-		if m.structure.columnForm.active() {
-			return m, nil
-		}
-		targetTable = &m.structure.table
-	case tabIndexes:
-		if m.structure.indexForm.active() {
-			return m, nil
-		}
-		targetTable = &m.structure.indexes
-	case tabForeignKeys:
-		if m.structure.foreignKeyForm.active() || m.structure.relationshipDiagram {
-			return m, nil
-		}
-		targetTable = &m.structure.foreignKeys
-	default:
-		return m, nil
-	}
-
-	rows := targetTable.Rows()
-	if len(rows) == 0 {
-		return m, nil
-	}
-
-	// Workspace X: skip schema pane (left) and pane left border (1).
-	workspaceX := absX - 1 // Skip pane left border.
-	if !m.layout.compact {
-		workspaceX = max(absX-m.layout.schemaWidth, 0) - 1
-	}
-	if workspaceX < 0 || workspaceX >= m.layout.tableViewportWidth {
-		return m, nil
-	}
-
-	contentY := absY - 1
-	if contentY < 0 {
-		return m, nil
-	}
-
-	// Workspace pane: contentY=0 border, contentY=1 tab row, contentY=2 blank, contentY=3+ = table view.
-	tableLine := contentY - 3 // 0=header, 1..N=data rows
-	if tableLine < 1 {
-		return m, nil // Header or above.
-	}
-
-	rowHeight := targetTable.Height()
-	start := min(max(targetTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
-	dataRow := start + tableLine - 1
-	if dataRow < 0 || dataRow >= len(rows) {
-		return m, nil
-	}
-
-	targetTable.SetCursor(dataRow)
-
-	// Non-vim mode: the clicked table owns focus, so leave any text editing.
-	if !m.vimMode {
+	clock := schema.ClickClock{Time: m.layout.lastClickTime, X: m.layout.lastClickX, Y: m.layout.lastClickY, Tab: m.layout.lastClickTab, Row: m.layout.lastClickRow}
+	component, event, cmd, clock, hit := m.schema.component.HandleTableClick(absX, absY, m.workspaceLayout(), m.Tab, m.vimMode, m.layout.schemaWidth, m.layout.compact, clock, m.schemaSnapshot())
+	m.schema.component = component
+	m.layout.lastClickTime, m.layout.lastClickX, m.layout.lastClickY, m.layout.lastClickTab, m.layout.lastClickRow = clock.Time, clock.X, clock.Y, clock.Tab, clock.Row
+	if hit && !m.vimMode {
+		// Non-vim mode: the clicked table owns focus, so leave any text
+		// editing.
 		m.overlay.formMode.Mode = formModeNormal
 		m.queryLog.editor.text.Blur()
-		targetTable.Focus()
 	}
-
-	// Check for double-click at the same position on the same tab and row:
-	// open the row's edit form, matching the enter/i keybinding behavior.
-	now := time.Now()
-	if !m.layout.lastClickTime.IsZero() && now.Sub(m.layout.lastClickTime) < doubleClickTimeout &&
-		m.layout.lastClickX == absX && m.layout.lastClickY == absY &&
-		m.layout.lastClickTab == m.Tab && m.layout.lastClickRow == dataRow {
-		m.layout.lastClickTime = time.Time{}
+	if _, ok := event.(schema.TableRowActivated); ok {
 		switch m.Tab {
 		case tabStructure:
 			return m, m.openColumnForm()
 		case tabIndexes:
-			if index := m.selectedIndex(); index != nil {
+			if index := m.schema.component.SelectedIndex(); index != nil {
 				return m, m.openIndexForm(index)
 			}
 		case tabForeignKeys:
-			if foreignKey := m.selectedForeignKey(); foreignKey != nil {
+			if foreignKey := m.schema.component.SelectedForeignKey(); foreignKey != nil {
 				return m, m.openForeignKeyForm(foreignKey)
 			}
 		}
 		return m, nil
 	}
-
-	// Single click: select the row.
-	m.layout.lastClickTime = now
-	m.layout.lastClickX = absX
-	m.layout.lastClickY = absY
-	m.layout.lastClickTab = m.Tab
-	m.layout.lastClickRow = dataRow
-	return m, nil
+	return m, cmd
 }
 
 // handleBrowseClick handles left-click on the browse or results table.
@@ -915,25 +655,11 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		inSchema = m.Focus == focusSchema
 	}
 	if inSchema {
-		if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
-			// The filter box is not blank sidebar space.
-			return m, nil
+		component, menu, ok := m.schema.component.HandleSchemaRightClick(absX, absY, m.schemaLayout(), m.schemaSnapshot())
+		m.schema.component = component
+		if ok {
+			m.openSchemaComponentMenu(menu)
 		}
-		item, ok := m.schemaItemAt(contentY)
-		if !ok {
-			// Blank sidebar space on server products offers creating a
-			// database; the keyboard path shares this helper.
-			if m.supportsCreateDatabase() {
-				m.openBlankServerMenu(absX, absY+1)
-				return m, nil
-			}
-			item, ok = m.schema.list.SelectedItem().(schemaItem)
-			if !ok || item.database == "" {
-				return m, nil
-			}
-			item = schemaItem{database: item.database, root: true}
-		}
-		m.openSchemaItemMenu(item, absX, absY+1)
 		return m, nil
 	}
 	if m.layout.compact && m.Focus != focusWorkspace {

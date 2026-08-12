@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 // renderedRowY returns the screen Y of the first rendered line containing
@@ -194,7 +195,7 @@ func TestRowTables_scrollWithoutCellSelection(t *testing.T) {
 		{
 			name:   "columns",
 			setup:  func(m *Model) { m.Tab = tabStructure },
-			table:  func(m *Model) *table.Model { return &m.structure.table },
+			table:  func(m *Model) *table.Model { return &m.schema.component.Structure.Table },
 			column: func(m *Model) *int { return &m.layout.structureColumn },
 			offset: func(m *Model) *int { return &m.layout.structureOffset },
 			view:   func(m Model) string { return m.structureView() },
@@ -202,7 +203,7 @@ func TestRowTables_scrollWithoutCellSelection(t *testing.T) {
 		{
 			name:   "indexes",
 			setup:  func(m *Model) { m.Tab = tabIndexes },
-			table:  func(m *Model) *table.Model { return &m.structure.indexes },
+			table:  func(m *Model) *table.Model { return &m.schema.component.Structure.Indexes },
 			column: func(m *Model) *int { return &m.layout.indexesColumn },
 			offset: func(m *Model) *int { return &m.layout.indexesOffset },
 			view:   func(m Model) string { return m.indexesView() },
@@ -210,7 +211,7 @@ func TestRowTables_scrollWithoutCellSelection(t *testing.T) {
 		{
 			name:   "foreign keys",
 			setup:  func(m *Model) { m.Tab = tabForeignKeys },
-			table:  func(m *Model) *table.Model { return &m.structure.foreignKeys },
+			table:  func(m *Model) *table.Model { return &m.schema.component.Structure.ForeignKeys },
 			column: func(m *Model) *int { return &m.layout.foreignKeysColumn },
 			offset: func(m *Model) *int { return &m.layout.foreignKeysOffset },
 			view:   func(m Model) string { return m.foreignKeysView() },
@@ -410,7 +411,7 @@ func TestSchemaTable_mouseClickUsesRenderedRow(t *testing.T) {
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
-	if got := model.structure.indexes.Cursor(); got != 1 {
+	if got := model.schema.component.Structure.Indexes.Cursor(); got != 1 {
 		t.Fatalf("clicked rendered row selected cursor %d, want 1", got)
 	}
 }
@@ -474,7 +475,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.indexes.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 0 {
 			t.Fatalf("indexes cursor on first row = %d, want 0", got)
 		}
 	})
@@ -494,7 +495,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.indexes.Cursor(); got != 1 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 1 {
 			t.Fatalf("indexes cursor on second row = %d, want 1", got)
 		}
 	})
@@ -517,11 +518,11 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		}})
 		model = updated.(Model)
 		// Scroll near end.
-		rows := model.structure.indexes.Rows()
-		model.structure.indexes.SetCursor(len(rows) - 1)
+		rows := model.schema.component.Structure.Indexes.Rows()
+		model.schema.component.Structure.Indexes.SetCursor(len(rows) - 1)
 		// Compute expected first visible row from the handler's own formula.
-		h := model.structure.indexes.Height()
-		want := min(max(model.structure.indexes.Cursor()-h+1, 0), max(len(rows)-h, 0))
+		h := model.schema.component.Structure.Indexes.Height()
+		want := min(max(model.schema.component.Structure.Indexes.Cursor()-h+1, 0), max(len(rows)-h, 0))
 		if want <= 0 {
 			t.Fatalf("test setup: want=%d should be >0 for a scrolled assertion", want)
 		}
@@ -531,7 +532,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.indexes.Cursor(); got != want {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != want {
 			t.Fatalf("scrolled first-line cursor = %d, want %d", got, want)
 		}
 	})
@@ -544,14 +545,14 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 			{Name: "idx_category", Columns: []string{"category"}},
 		}})
 		model = updated.(Model)
-		model.structure.indexes.SetCursor(0)
+		model.schema.component.Structure.Indexes.SetCursor(0)
 		clickX := model.layout.schemaWidth + 10
 		clickY := 4 // contentY=3 → tableLine=0 → header
 
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.indexes.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 0 {
 			t.Fatalf("header click changed cursor to %d, want 0", got)
 		}
 	})
@@ -563,7 +564,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 			{Name: "idx_name", Columns: []string{"name"}},
 		}})
 		model = updated.(Model)
-		model.structure.indexes.SetCursor(0)
+		model.schema.component.Structure.Indexes.SetCursor(0)
 		// Right of table content: workspaceX >= tableViewportWidth.
 		clickX := model.layout.schemaWidth + 1 + model.layout.tableViewportWidth + 5
 		clickY := 5
@@ -571,7 +572,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.indexes.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 0 {
 			t.Fatalf("out-of-bounds X changed cursor to %d, want 0", got)
 		}
 	})
@@ -584,17 +585,17 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		}})
 		model = updated.(Model)
 		model = openIndexEditor(t, model, &sharedsql.IndexInfo{Name: "items_name", Columns: []string{"name"}})
-		model.structure.indexes.SetCursor(0)
+		model.schema.component.Structure.Indexes.SetCursor(0)
 		clickX := model.layout.schemaWidth + 10
 		clickY := 5
 
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if !model.structure.indexForm.active() {
+		if !model.schema.component.Structure.IndexForm.Active() {
 			t.Fatal("index form deactivated after click")
 		}
-		if got := model.structure.indexes.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 0 {
 			t.Fatalf("form-active click changed cursor to %d, want 0", got)
 		}
 	})
@@ -614,7 +615,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.table.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.Table.Cursor(); got != 0 {
 			t.Fatalf("structure cursor = %d, want 0", got)
 		}
 	})
@@ -629,15 +630,15 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		// Open column form.
 		updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 		model = updated.(Model)
-		_ = model.structure.columnForm.form.Init()
-		model.structure.table.SetCursor(0)
+		_ = model.schema.component.Structure.ColumnForm.Form.Init()
+		model.schema.component.Structure.Table.SetCursor(0)
 		clickX := model.layout.schemaWidth + 10
 		clickY := 5
 
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if !model.structure.columnForm.active() {
+		if !model.schema.component.Structure.ColumnForm.Active() {
 			t.Fatal("column form deactivated after click")
 		}
 	})
@@ -655,7 +656,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.foreignKeys.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.ForeignKeys.Cursor(); got != 0 {
 			t.Fatalf("foreign keys cursor = %d, want 0", got)
 		}
 	})
@@ -663,20 +664,20 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 	t.Run("foreign keys click with relationship diagram does not select row", func(t *testing.T) {
 		model := resizeModel(readyModel(t), 100, 24)
 		model.SelectedTable, model.Tab, model.Focus = "children", tabForeignKeys, focusWorkspace
-		model.structure.relationshipDiagram = true
+		model.schema.component.Structure.RelationshipDiagram = true
 		updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: []sharedsql.ForeignKeyInfo{
 			{ID: "fk1", Columns: []string{"parent_id"}, ReferenceTable: "parents", ReferenceColumns: []string{"id"}, OnDelete: "CASCADE", OnUpdate: "NO ACTION"},
 			{ID: "fk2", Columns: []string{"code"}, ReferenceTable: "parents", ReferenceColumns: []string{"code"}},
 		}})
 		model = updated.(Model)
-		model.structure.foreignKeys.SetCursor(1)
+		model.schema.component.Structure.ForeignKeys.SetCursor(1)
 		clickX := model.layout.schemaWidth + 10
 		clickY := 5
 
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.foreignKeys.Cursor(); got != 1 {
+		if got := model.schema.component.Structure.ForeignKeys.Cursor(); got != 1 {
 			t.Fatalf("diagram-mode click changed cursor to %d, want 1", got)
 		}
 	})
@@ -689,16 +690,18 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		}})
 		model = updated.(Model)
 		// Open FK form.
-		model.structure.foreignKeyForm = newForeignKeyForm(nil)
-		_ = model.structure.foreignKeyForm.form.Init()
-		model.structure.foreignKeys.SetCursor(0)
+		form := schema.NewForeignKeyForm(nil)
+		form.SetKeys(DefaultKeybindings())
+		model.schema.component.Structure.ForeignKeyForm = form
+		_ = model.schema.component.Structure.ForeignKeyForm.Form.Init()
+		model.schema.component.Structure.ForeignKeys.SetCursor(0)
 		clickX := model.layout.schemaWidth + 10
 		clickY := 5
 
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if !model.structure.foreignKeyForm.active() {
+		if !model.schema.component.Structure.ForeignKeyForm.Active() {
 			t.Fatal("FK form deactivated after click")
 		}
 	})
@@ -710,7 +713,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 			{Name: "idx_name", Columns: []string{"name"}},
 		}})
 		model = updated.(Model)
-		model.structure.indexes.SetCursor(0)
+		model.schema.component.Structure.Indexes.SetCursor(0)
 		// Y in the query log area below the workspace.
 		clickX := model.layout.schemaWidth + 10
 		clickY := model.layout.workspaceHeight + 10
@@ -718,7 +721,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if got := model.structure.indexes.Cursor(); got != 0 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 0 {
 			t.Fatalf("Y out-of-bounds changed cursor to %d, want 0", got)
 		}
 	})
@@ -741,10 +744,10 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if !model.structure.indexForm.active() {
+		if !model.schema.component.Structure.IndexForm.Active() {
 			t.Fatal("double click did not open index edit form")
 		}
-		if got := model.structure.indexForm.values.name; got != "idx_category" {
+		if got := model.schema.component.Structure.IndexForm.Values.Name; got != "idx_category" {
 			t.Fatalf("index form name = %q, want idx_category", got)
 		}
 	})
@@ -765,10 +768,10 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if !model.structure.columnForm.active() {
+		if !model.schema.component.Structure.ColumnForm.Active() {
 			t.Fatal("double click did not open column edit form")
 		}
-		if got := model.structure.columnForm.values.name; got != "name" {
+		if got := model.schema.component.Structure.ColumnForm.Values.Name; got != "name" {
 			t.Fatalf("column form name = %q, want name", got)
 		}
 	})
@@ -789,10 +792,10 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if !model.structure.foreignKeyForm.active() {
+		if !model.schema.component.Structure.ForeignKeyForm.Active() {
 			t.Fatal("double click did not open foreign key edit form")
 		}
-		if got := model.structure.foreignKeyForm.values.referenceTable; got != "parents" {
+		if got := model.schema.component.Structure.ForeignKeyForm.Values.ReferenceTable; got != "parents" {
 			t.Fatalf("foreign key form reference table = %q, want parents", got)
 		}
 	})
@@ -810,7 +813,7 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
 
-		if model.structure.indexForm.active() {
+		if model.schema.component.Structure.IndexForm.Active() {
 			t.Fatal("single click opened index edit form")
 		}
 	})
@@ -835,7 +838,7 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		// click state is still within the double-click window.
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if model.structure.columnForm.active() {
+		if model.schema.component.Structure.ColumnForm.Active() {
 			t.Fatal("setup: single click opened column form")
 		}
 		model.Tab = tabIndexes
@@ -843,17 +846,17 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		// First click on Indexes at the same position must only select.
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if model.structure.indexForm.active() {
+		if model.schema.component.Structure.IndexForm.Active() {
 			t.Fatal("first click after tab switch opened index edit form")
 		}
-		if got := model.structure.indexes.Cursor(); got != 1 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != 1 {
 			t.Fatalf("cross-tab click selected cursor %d, want 1", got)
 		}
 
 		// Second click on the same row is a genuine double-click.
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if !model.structure.indexForm.active() {
+		if !model.schema.component.Structure.IndexForm.Active() {
 			t.Fatal("second click after tab switch did not open index edit form")
 		}
 	})
@@ -874,18 +877,18 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 		model = updated.(Model)
 
 		// Scroll so the same Y now maps to a different row.
-		model.structure.indexes.SetCursor(len(rows) - 1)
-		start := min(max(model.structure.indexes.Cursor()-model.structure.indexes.Height()+1, 0), max(len(rows)-model.structure.indexes.Height(), 0))
+		model.schema.component.Structure.Indexes.SetCursor(len(rows) - 1)
+		start := min(max(model.schema.component.Structure.Indexes.Cursor()-model.schema.component.Structure.Indexes.Height()+1, 0), max(len(rows)-model.schema.component.Structure.Indexes.Height(), 0))
 		if start == 0 {
 			t.Fatal("test setup: expected scrolled start > 0")
 		}
 
 		updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if model.structure.indexForm.active() {
+		if model.schema.component.Structure.IndexForm.Active() {
 			t.Fatal("click on different row opened index edit form")
 		}
-		if got := model.structure.indexes.Cursor(); got != start+1 {
+		if got := model.schema.component.Structure.Indexes.Cursor(); got != start+1 {
 			t.Fatalf("shifted click selected cursor %d, want %d", got, start+1)
 		}
 	})

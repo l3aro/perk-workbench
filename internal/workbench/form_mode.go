@@ -100,8 +100,8 @@ func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
 		return m.overlay.formMode.BeginHuh(m.connection.component.Form.FocusForm())
 	case m.sqlEditorActive() && !m.tableFormOpen():
 		return beginInsert(m.overlay.formMode, m.queryLog.editor)
-	case m.structure.columnForm.active():
-		return m.overlay.formMode.BeginHuh(m.structure.columnForm.focus())
+	case m.schema.component.Structure.ColumnForm.Active():
+		return m.overlay.formMode.BeginHuh(m.schema.component.Structure.ColumnForm.Focus())
 	case m.browse.component.DocumentEditor != nil:
 		return m.overlay.formMode.BeginHuh(m.browse.component.DocumentEditor.Focus())
 	case m.browse.component.Form.Active():
@@ -109,12 +109,12 @@ func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
 	case m.browse.component.FilterForm != nil:
 		command, _ := m.browse.component.FilterForm.BeginEdit()
 		return command
-	case m.structure.indexForm.active():
-		return m.overlay.formMode.BeginHuh(m.structure.indexForm.focus())
-	case m.structure.foreignKeyForm.active():
-		return m.overlay.formMode.BeginHuh(m.structure.foreignKeyForm.focus())
+	case m.schema.component.Structure.IndexForm.Active():
+		return m.overlay.formMode.BeginHuh(m.schema.component.Structure.IndexForm.Focus())
+	case m.schema.component.Structure.ForeignKeyForm.Active():
+		return m.overlay.formMode.BeginHuh(m.schema.component.Structure.ForeignKeyForm.Focus())
 	case m.tableFormOpen():
-		return m.overlay.formMode.BeginHuh(m.structure.tableForm.focus())
+		return m.overlay.formMode.BeginHuh(m.schema.component.Structure.TableForm.Focus())
 	}
 	return nil
 }

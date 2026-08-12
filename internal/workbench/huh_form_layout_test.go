@@ -9,6 +9,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/sqlite"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T) {
@@ -17,8 +18,8 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 		view func(int) string
 	}{
 		{name: "column", view: func(width int) string {
-			form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-			form.setWidth(width)
+			form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+			form.SetWidth(width)
 			return form.View()
 		}},
 		{name: "browse", view: func(width int) string {
@@ -30,13 +31,15 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 			return form.View()
 		}},
 		{name: "index", view: func(width int) string {
-			form := newIndexForm(nil)
-			form.setWidth(width)
+			form := schema.NewIndexForm(nil)
+			form.SetKeys(DefaultKeybindings())
+			form.SetWidth(width)
 			return form.View()
 		}},
 		{name: "foreign key", view: func(width int) string {
-			form := newForeignKeyForm(nil)
-			form.setWidth(width)
+			form := schema.NewForeignKeyForm(nil)
+			form.SetKeys(DefaultKeybindings())
+			form.SetWidth(width)
 			return form.View()
 		}},
 		{name: "connection", view: func(width int) string {
@@ -90,24 +93,24 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 			// Given
 			model := resizeModel(readyModel(t), width, 24)
 			model.SelectedTable = "items"
-			model.structure.columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}
+			model.schema.component.Structure.Columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}
 			model.browse.component.Result = sqlite.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
 			model.browse.component.Table.SetCursor(0)
 
 			// When
 			model.Tab = tabStructure
 			_ = model.openColumnForm()
-			columnWidth := model.structure.columnForm.width
-			columnView := model.structure.columnForm.View()
+			columnWidth := model.schema.component.Structure.ColumnForm.Width
+			columnView := model.schema.component.Structure.ColumnForm.View()
 			_ = model.openBrowseForm()
 			browseWidth := model.browse.component.Form.Width
 			browseView := model.browse.component.Form.View()
 			_ = model.openIndexForm(nil)
-			indexWidth := model.structure.indexForm.width
-			indexView := model.structure.indexForm.View()
+			indexWidth := model.schema.component.Structure.IndexForm.Width
+			indexView := model.schema.component.Structure.IndexForm.View()
 			_ = model.openForeignKeyForm(nil)
-			foreignKeyWidth := model.structure.foreignKeyForm.width
-			foreignKeyView := model.structure.foreignKeyForm.View()
+			foreignKeyWidth := model.schema.component.Structure.ForeignKeyForm.Width
+			foreignKeyView := model.schema.component.Structure.ForeignKeyForm.View()
 			model.State = stateConnection
 			connectionLayoutWidth := model.connection.component.Form.Width
 			_ = model.newConnection()

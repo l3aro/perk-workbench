@@ -64,8 +64,8 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.browse.component.CellEditor != nil || m.browse.component.CellViewer != nil || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
-		m.structure.foreignKeyForm.confirming() || m.browse.component.Form.Confirming() ||
+	if m.browse.component.CellEditor != nil || m.browse.component.CellViewer != nil || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.schema.component.Structure.ColumnForm.Confirming() || m.schema.component.Structure.IndexForm.Confirming() ||
+		m.schema.component.Structure.ForeignKeyForm.Confirming() || m.browse.component.Form.Confirming() ||
 		m.connection.component.Form.Confirmation != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.overlay.queryConfirmation != nil || m.hasConfirming() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
@@ -146,12 +146,12 @@ func (m Model) headerView() string {
 // tableFormOpen reports whether the table popup is visible: open and not
 // mid-execution (the retained form hides while its DDL query runs).
 func (m Model) tableFormOpen() bool {
-	return m.structure.tableForm.active() && !m.structure.tableFormRunning
+	return m.schema.component.Structure.TableForm.Active() && !m.schema.component.Structure.TableFormRunning
 }
 
 func (m Model) hasConfirming() bool {
-	return m.overlay.explainPicker != nil || m.overlay.quitDialog != nil || m.overlay.queryConfirmation != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
-		m.structure.foreignKeyForm.confirming() || m.browse.component.Form.Confirming() || m.connection.component.Form.Confirmation != nil || m.tableFormOpen() ||
+	return m.overlay.explainPicker != nil || m.overlay.quitDialog != nil || m.overlay.queryConfirmation != nil || m.schema.component.Structure.ColumnForm.Confirming() || m.schema.component.Structure.IndexForm.Confirming() ||
+		m.schema.component.Structure.ForeignKeyForm.Confirming() || m.browse.component.Form.Confirming() || m.connection.component.Form.Confirmation != nil || m.tableFormOpen() ||
 		(m.browse.component.CellEditor != nil && m.browse.component.CellEditor.Confirming) ||
 		(m.browse.component.DocumentEditor != nil && m.browse.component.DocumentEditor.Confirming) ||
 		(m.chat.writeConfirmation != nil)
@@ -163,18 +163,18 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.overlay.queryConfirmation.dialog
 	case m.overlay.quitDialog != nil:
 		return m.overlay.quitDialog
-	case m.structure.columnForm.confirming():
-		return m.structure.columnForm.confirmation
+	case m.schema.component.Structure.ColumnForm.Confirming():
+		return m.schema.component.Structure.ColumnForm.Confirmation
 	case m.browse.component.Form.Confirming():
 		return m.browse.component.Form.Confirmation
-	case m.structure.indexForm.confirming():
-		return m.structure.indexForm.confirmation
-	case m.structure.foreignKeyForm.confirming():
-		return m.structure.foreignKeyForm.confirmation
+	case m.schema.component.Structure.IndexForm.Confirming():
+		return m.schema.component.Structure.IndexForm.Confirmation
+	case m.schema.component.Structure.ForeignKeyForm.Confirming():
+		return m.schema.component.Structure.ForeignKeyForm.Confirmation
 	case m.connection.component.Form.Confirmation != nil:
 		return m.connection.component.Form.Confirmation
-	case m.tableFormOpen() && m.structure.tableForm.confirming():
-		return m.structure.tableForm.confirmation
+	case m.tableFormOpen() && m.schema.component.Structure.TableForm.Confirming():
+		return m.schema.component.Structure.TableForm.Confirmation
 	case m.overlay.deleteConfirm != nil:
 		return m.overlay.deleteConfirm
 	case m.browse.component.CellEditor != nil && m.browse.component.CellEditor.Confirming:
@@ -202,19 +202,19 @@ func (m Model) confirmContent() string {
 	case m.overlay.explainPicker != nil:
 		raw = m.overlay.explainPicker.form.View()
 	case m.tableFormOpen():
-		raw = m.structure.tableForm.View()
+		raw = m.schema.component.Structure.TableForm.View()
 	case m.chat.component.HistoryPicker != nil:
 		raw = m.chat.component.HistoryPicker.View()
 	case m.overlay.quitDialog != nil:
 		raw = m.overlay.quitDialog.Content(m.layout.width)
-	case m.structure.columnForm.confirming():
-		raw = m.structure.columnForm.confirmation.Content(m.layout.width)
+	case m.schema.component.Structure.ColumnForm.Confirming():
+		raw = m.schema.component.Structure.ColumnForm.Confirmation.Content(m.layout.width)
 	case m.browse.component.Form.Confirming():
 		raw = m.browse.component.Form.Confirmation.Content(m.layout.width)
-	case m.structure.indexForm.confirming():
-		raw = m.structure.indexForm.confirmation.Content(m.layout.width)
-	case m.structure.foreignKeyForm.confirming():
-		raw = m.structure.foreignKeyForm.confirmation.Content(m.layout.width)
+	case m.schema.component.Structure.IndexForm.Confirming():
+		raw = m.schema.component.Structure.IndexForm.Confirmation.Content(m.layout.width)
+	case m.schema.component.Structure.ForeignKeyForm.Confirming():
+		raw = m.schema.component.Structure.ForeignKeyForm.Confirmation.Content(m.layout.width)
 	case m.connection.component.Form.Confirmation != nil:
 		raw = m.connection.component.Form.Confirmation.Content(m.layout.width)
 	case m.overlay.deleteConfirm != nil:
@@ -478,10 +478,7 @@ func (m Model) contentView() string {
 // schemaPaneBody is the sidebar body: the persistent filter row above the
 // schema list. The row is omitted when the pane is too narrow to show it.
 func (m Model) schemaPaneBody() string {
-	if row := m.schemaFilterRow(); row != "" {
-		return row + "\n" + m.schema.list.View()
-	}
-	return m.schema.list.View()
+	return m.schema.component.View(m.schemaLayout())
 }
 
 func (m Model) rightView() string {
@@ -583,10 +580,7 @@ func (m Model) editorBorderColor() string {
 }
 
 func (m Model) structureView() string {
-	if m.structure.columnForm.active() {
-		return m.formViewport(m.structure.columnForm.View(), m.structure.columnForm.scrollOffset)
-	}
-	return tableViewportViewWithAlignment(m.structure.table, nil, m.layout.structureOffset, m.layout.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabStructure), "", m.layout.tableViewportWidth)
+	return m.schema.component.StructureView(m.workspaceLayout(), m.layout.structureOffset)
 }
 
 func (m Model) browseView() string {
@@ -639,20 +633,11 @@ func (m Model) formViewport(view string, offset int) string {
 }
 
 func (m Model) indexesView() string {
-	if m.structure.indexForm.active() {
-		return m.formViewport(m.structure.indexForm.View(), m.structure.indexForm.scrollOffset)
-	}
-	return tableViewportViewWithAlignment(m.structure.indexes, nil, m.layout.indexesOffset, m.layout.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabIndexes), "", m.layout.tableViewportWidth)
+	return m.schema.component.IndexesView(m.workspaceLayout(), m.layout.indexesOffset)
 }
 
 func (m Model) foreignKeysView() string {
-	if m.structure.foreignKeyForm.active() {
-		return m.formViewport(m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset)
-	}
-	if m.structure.relationshipDiagram {
-		return m.relationshipView()
-	}
-	return tableViewportViewWithAlignment(m.structure.foreignKeys, nil, m.layout.foreignKeysOffset, m.layout.tableViewportWidth, -1) + "\n" + chrome.PaneStatus(m.tableFilterStatus(tabForeignKeys), "", m.layout.tableViewportWidth)
+	return m.schema.component.ForeignKeysView(m.workspaceLayout(), m.layout.foreignKeysOffset, m.schemaSnapshot())
 }
 
 func (m Model) footer() string {

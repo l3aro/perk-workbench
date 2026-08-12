@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestStructureForm_buttonsNavigableFromLastField(t *testing.T) {
@@ -17,7 +18,7 @@ func TestStructureForm_buttonsNavigableFromLastField(t *testing.T) {
 	for range 4 {
 		model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
-	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "attributes" {
+	if got := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(); got != "attributes" {
 		t.Fatalf("focused field = %q, want attributes", got)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -40,15 +41,15 @@ func TestStructureForm_buttonsNavigableFromLastField(t *testing.T) {
 	if model.overlay.formMode.ButtonsFocused {
 		t.Fatal("k on the button bar did not return to the fields")
 	}
-	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "attributes" {
+	if got := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(); got != "attributes" {
 		t.Fatalf("focused field = %q, want attributes", got)
 	}
 
 	// Enter on the focused Save button opens the save confirmation.
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !model.structure.columnForm.confirming() || !model.structure.columnForm.confirmationSave {
-		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
+	if !model.schema.component.Structure.ColumnForm.Confirming() || !model.schema.component.Structure.ColumnForm.ConfirmationSave {
+		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.schema.component.Structure.ColumnForm.Confirming(), model.schema.component.Structure.ColumnForm.ConfirmationSave)
 	}
 	if model.overlay.formMode.Mode != formModeConfirm {
 		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.Mode)
@@ -66,18 +67,18 @@ func TestStructureForm_barConfirmationDismissKeepsBarFocus(t *testing.T) {
 		t.Fatal("fixture: expected the button bar focused")
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !model.structure.columnForm.confirming() || !model.structure.columnForm.confirmationSave {
-		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
+	if !model.schema.component.Structure.ColumnForm.Confirming() || !model.schema.component.Structure.ColumnForm.ConfirmationSave {
+		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.schema.component.Structure.ColumnForm.Confirming(), model.schema.component.Structure.ColumnForm.ConfirmationSave)
 	}
 
 	// Dismiss the dialog (move to No, then Enter): the bar must keep focus,
 	// with the field underneath blurred.
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyRight})
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("right arrow dismissed the confirmation")
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if model.structure.columnForm.confirming() {
+	if model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("Enter on No did not dismiss the confirmation")
 	}
 	if model.overlay.formMode.Mode != formModeNormal {
@@ -89,17 +90,17 @@ func TestStructureForm_barConfirmationDismissKeepsBarFocus(t *testing.T) {
 
 	// Enter on the still-focused bar activates again.
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("Enter on the retained bar focus did not re-open the confirmation")
 	}
 }
 
 func TestStructureForm_usesHuhControlsForColumnEditing(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if form.form == nil {
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.Form == nil {
 		t.Fatal("column editor did not create a Huh form")
 	}
-	if form.form.GetFocusedField().GetKey() != "name" {
+	if form.Form.GetFocusedField().GetKey() != "name" {
 		t.Fatalf("column Huh form has unexpected initial state: %#v", form)
 	}
 }
@@ -108,10 +109,10 @@ func TestStructureForm_huhInputUpdatesPersistedChange(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if got := model.structure.columnForm.values.name; got != "namex" {
+	if got := model.schema.component.Structure.ColumnForm.Values.Name; got != "namex" {
 		t.Fatalf("Huh name = %q, want namex", got)
 	}
-	change, err := model.structure.columnForm.change()
+	change, err := model.schema.component.Structure.ColumnForm.Change()
 	if err != nil || change.Name != "namex" {
 		t.Fatalf("change/error = %#v/%v", change, err)
 	}
@@ -123,28 +124,28 @@ func TestStructureForm_positiveSaveConfirmationPersistsChange(t *testing.T) {
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.columnForm.active() || model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Active() || model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("negative save confirmation changed the form")
 	}
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if model.structure.columnForm.active() || model.structure.table.Rows()[0][0] != "title" {
-		t.Fatalf("saved form/rows = %#v/%#v", model.structure.columnForm, model.structure.table.Rows())
+	if model.schema.component.Structure.ColumnForm.Active() || model.schema.component.Structure.Table.Rows()[0][0] != "title" {
+		t.Fatalf("saved form/rows = %#v/%#v", model.schema.component.Structure.ColumnForm, model.schema.component.Structure.Table.Rows())
 	}
 }
 
 func TestStructureForm_positiveDiscardConfirmationClosesForm(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	model.structure.columnForm.values.name = "renamed"
+	model.schema.component.Structure.ColumnForm.Values.Name = "renamed"
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.columnForm.active() || model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Active() || model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("negative discard confirmation changed the form")
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
-	if model.structure.columnForm.active() {
+	if model.schema.component.Structure.ColumnForm.Active() {
 		t.Fatal("positive discard confirmation did not close the form")
 	}
 }
@@ -157,7 +158,7 @@ func TestStructureForm_discardWithoutChangesClosesWithoutConfirmation(t *testing
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	// Then — form closes directly, no confirmation, mode normalized
-	if model.structure.columnForm.active() || model.structure.columnForm.confirming() {
+	if model.schema.component.Structure.ColumnForm.Active() || model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
 	if model.overlay.formMode.Mode != formModeNormal {
@@ -173,7 +174,7 @@ func TestStructureForm_newColumnDiscardWithoutChangesClosesWithoutConfirmation(t
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
-	if !model.structure.columnForm.active() || !model.structure.columnForm.isNew {
+	if !model.schema.component.Structure.ColumnForm.Active() || !model.schema.component.Structure.ColumnForm.IsNew {
 		t.Fatal("fixture: 'a' did not open a new column form")
 	}
 
@@ -181,7 +182,7 @@ func TestStructureForm_newColumnDiscardWithoutChangesClosesWithoutConfirmation(t
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	// Then — form closes directly, no confirmation
-	if model.structure.columnForm.active() || model.structure.columnForm.confirming() {
+	if model.schema.component.Structure.ColumnForm.Active() || model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("unchanged new-column discard opened a confirmation")
 	}
 }
@@ -192,16 +193,16 @@ func TestStructureForm_newColumnDiscardWithoutChangesClosesWithoutConfirmation(t
 // pristine form stays unchanged.
 func TestColumnForm_clearingDefaultCountsAsChange(t *testing.T) {
 	// Given — column with a non-empty default
-	form := newColumnForm(sqlite.ColumnInfo{Name: "status", Type: "TEXT", DefaultValue: stringPointer("active")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if form.hasChanges() {
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "status", Type: "TEXT", DefaultValue: stringPointer("active")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.HasChanges() {
 		t.Fatal("pristine form reported changes")
 	}
 
 	// When — the user clears the default field
-	form.values.defaultValue = ""
+	form.Values.DefaultValue = ""
 
 	// Then — the clear is a change (a save would drop the default)
-	if !form.hasChanges() {
+	if !form.HasChanges() {
 		t.Fatal("cleared default not detected as a change")
 	}
 }
@@ -210,12 +211,12 @@ func TestColumnForm_clearingDefaultCountsAsChange(t *testing.T) {
 // baseline: a default that is only whitespace must not make an untouched
 // form look changed, while clearing it still does.
 func TestColumnForm_whitespaceDefaultStaysPristine(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "note", Type: "TEXT", DefaultValue: stringPointer(" ")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if form.hasChanges() {
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "note", Type: "TEXT", DefaultValue: stringPointer(" ")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.HasChanges() {
 		t.Fatal("pristine whitespace-default form reported changes")
 	}
-	form.values.defaultValue = ""
-	if !form.hasChanges() {
+	form.Values.DefaultValue = ""
+	if !form.HasChanges() {
 		t.Fatal("cleared whitespace default not detected as a change")
 	}
 }
@@ -224,7 +225,7 @@ func TestStructureForm_confirmationMouseReleaseUsesScreenCoordinates(t *testing.
 	// Given
 	model := resizeModel(openColumn(t, "name", "TEXT"), 100, 30)
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	dialog := model.structure.columnForm.confirmation
+	dialog := model.schema.component.Structure.ColumnForm.Confirmation
 	if dialog == nil {
 		t.Fatal("save confirmation = nil")
 	}
@@ -234,7 +235,7 @@ func TestStructureForm_confirmationMouseReleaseUsesScreenCoordinates(t *testing.
 	model = updateColumn(model, tea.MouseReleaseMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseNone})
 
 	// Then
-	if !model.structure.columnForm.saving {
+	if !model.schema.component.Structure.ColumnForm.Saving {
 		t.Fatal("mouse release did not confirm the column save")
 	}
 }
@@ -242,8 +243,8 @@ func TestStructureForm_confirmationMouseReleaseUsesScreenCoordinates(t *testing.
 func TestStructureForm_normalInputCannotMutateAndEscapeReturnsToNormal(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if model.structure.columnForm.values.name != "name" {
-		t.Fatalf("normal mode changed name to %q", model.structure.columnForm.values.name)
+	if model.schema.component.Structure.ColumnForm.Values.Name != "name" {
+		t.Fatalf("normal mode changed name to %q", model.schema.component.Structure.ColumnForm.Values.Name)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
 	if model.overlay.formMode.Mode != formModeInsert {
@@ -252,8 +253,8 @@ func TestStructureForm_normalInputCannotMutateAndEscapeReturnsToNormal(t *testin
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if model.structure.columnForm.values.name != "namex" || model.overlay.formMode.Mode != formModeNormal {
-		t.Fatalf("name/mode = %q/%d", model.structure.columnForm.values.name, model.overlay.formMode.Mode)
+	if model.schema.component.Structure.ColumnForm.Values.Name != "namex" || model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("name/mode = %q/%d", model.schema.component.Structure.ColumnForm.Values.Name, model.overlay.formMode.Mode)
 	}
 }
 
@@ -261,7 +262,7 @@ func TestStructureForm_normalModeNavigatesFields(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if got, want := model.structure.columnForm.form.GetFocusedField().GetKey(), "type"; got != want {
+	if got, want := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(), "type"; got != want {
 		t.Fatalf("focused field after j = %q, want %q", got, want)
 	}
 	if model.overlay.formMode.Mode != formModeNormal {
@@ -269,7 +270,7 @@ func TestStructureForm_normalModeNavigatesFields(t *testing.T) {
 	}
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if got, want := model.structure.columnForm.form.GetFocusedField().GetKey(), "name"; got != want {
+	if got, want := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(), "name"; got != want {
 		t.Fatalf("focused field after k = %q, want %q", got, want)
 	}
 }
@@ -280,7 +281,7 @@ func TestStructureForm_viewportTracksFocusedField(t *testing.T) {
 	for range 3 {
 		model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
-	if got, want := model.structure.columnForm.form.GetFocusedField().GetKey(), "default"; got != want {
+	if got, want := model.schema.component.Structure.ColumnForm.Form.GetFocusedField().GetKey(), "default"; got != want {
 		t.Fatalf("focused field after navigation = %q, want %q", got, want)
 	}
 	view := model.structureView()
@@ -291,7 +292,7 @@ func TestStructureForm_viewportTracksFocusedField(t *testing.T) {
 	if got := len(strings.Split(view, "\n")); got > height {
 		t.Fatalf("structure form viewport lines = %d, want at most %d", got, height)
 	}
-	if model.structure.columnForm.scrollOffset == 0 {
+	if model.schema.component.Structure.ColumnForm.ScrollOffset == 0 {
 		t.Fatal("structure form did not scroll to the focused field")
 	}
 }
@@ -305,13 +306,13 @@ func TestStructureForm_invalidValuesCannotReachConfirmation(t *testing.T) {
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyBackspace})
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if model.structure.columnForm.confirmation != nil || model.structure.columnForm.validationError == "" {
+	if model.schema.component.Structure.ColumnForm.Confirmation != nil || model.schema.component.Structure.ColumnForm.ValidationError == "" {
 		t.Fatal("invalid decimal parameters reached confirmation")
 	}
-	model.structure.columnForm.values.typeName, model.structure.columnForm.typeChanged = "", true
+	model.schema.component.Structure.ColumnForm.Values.TypeName, model.schema.component.Structure.ColumnForm.TypeChanged = "", true
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if model.structure.columnForm.confirmation != nil || !strings.Contains(model.structure.columnForm.validationError, "type") {
-		t.Fatalf("invalid type error = %q", model.structure.columnForm.validationError)
+	if model.schema.component.Structure.ColumnForm.Confirmation != nil || !strings.Contains(model.schema.component.Structure.ColumnForm.ValidationError, "type") {
+		t.Fatalf("invalid type error = %q", model.schema.component.Structure.ColumnForm.ValidationError)
 	}
 }
 
@@ -323,18 +324,18 @@ func TestStructureForm_blankNameCannotReachConfirmation(t *testing.T) {
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if model.structure.columnForm.confirmation != nil || !strings.Contains(model.structure.columnForm.validationError, "name") {
-		t.Fatalf("blank name validation = %q", model.structure.columnForm.validationError)
+	if model.schema.component.Structure.ColumnForm.Confirmation != nil || !strings.Contains(model.schema.component.Structure.ColumnForm.ValidationError, "name") {
+		t.Fatalf("blank name validation = %q", model.schema.component.Structure.ColumnForm.ValidationError)
 	}
 }
 
 func TestStructureForm_preservesParameterizedColumnChange(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true, DefaultValue: ptr("0")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if !equalStrings(form.values.parameters, []string{"10", "2"}) {
-		t.Fatalf("parameters = %#v", form.values.parameters)
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true, DefaultValue: ptr("0")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if !equalStrings(form.Values.Parameters, []string{"10", "2"}) {
+		t.Fatalf("parameters = %#v", form.Values.Parameters)
 	}
-	form.values.typeName, form.typeChanged, form.values.parameters, form.values.name = "DECIMAL", true, []string{"12", "2"}, "price"
-	change, err := form.change()
+	form.Values.TypeName, form.TypeChanged, form.Values.Parameters, form.Values.Name = "DECIMAL", true, []string{"12", "2"}, "price"
+	change, err := form.Change()
 	if err != nil || change.Type != "DECIMAL(12,2)" || change.DefaultValue == nil || *change.DefaultValue != "0" {
 		t.Fatalf("change/error = %#v/%v", change, err)
 	}
@@ -344,7 +345,7 @@ func TestStructureForm_escapeCancelsRunningQueryBeforeDiscard(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 	requestID := startQuery(t, &model)
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if !model.Running() || model.structure.columnForm.confirming() {
+	if !model.Running() || model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("running-query escape did not take precedence")
 	}
 	_, _ = model.Update(queryCanceledMsg{requestID: requestID})
@@ -369,7 +370,7 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 	// Typing must reach the focused Name field: mode alone could be set by
 	// beginHuh while the field stayed blurred.
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if got := model.structure.columnForm.values.name; got == "name" {
+	if got := model.schema.component.Structure.ColumnForm.Values.Name; got == "name" {
 		t.Fatalf("typed text did not reach the Name field, values.name = %q", got)
 	}
 
@@ -390,9 +391,9 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 // types instead of navigating.
 func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	model.overlay.formMode.BeginHuh(model.structure.columnForm.focus()) // insert mode, vim off
+	model.overlay.formMode.BeginHuh(model.schema.component.Structure.ColumnForm.Focus()) // insert mode, vim off
 	for range 4 {
-		_ = model.structure.columnForm.form.NextField() // attributes (last field)
+		_ = model.schema.component.Structure.ColumnForm.Form.NextField() // attributes (last field)
 	}
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab})
@@ -414,7 +415,7 @@ func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 
 	// j is content on the field, not field navigation.
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if got := model.structure.columnForm.values.attributes; got != "j" {
+	if got := model.schema.component.Structure.ColumnForm.Values.Attributes; got != "j" {
 		t.Fatalf("attributes = %q, want %q", got, "j")
 	}
 }
@@ -424,21 +425,21 @@ func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 // confirmation, not be eaten as an insert-mode Escape.
 func TestStructureForm_insertModeBarEnterActivatesChoice(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	model.overlay.formMode.BeginHuh(model.structure.columnForm.focus()) // insert mode, vim off
+	model.overlay.formMode.BeginHuh(model.schema.component.Structure.ColumnForm.Focus()) // insert mode, vim off
 	// Type a real edit into the name field: a direct values assignment would
 	// be overwritten by Huh's internal input buffer on the next field step.
 	for _, character := range "renamed" {
 		model = updateColumn(model, tea.KeyPressMsg{Code: character, Text: string(character)})
 	}
 	for range 4 {
-		_ = model.structure.columnForm.form.NextField() // attributes (last field)
+		_ = model.schema.component.Structure.ColumnForm.Form.NextField() // attributes (last field)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab})
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'l', Text: "l"}) // Cancel
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
 
-	if !model.structure.columnForm.confirming() || model.structure.columnForm.confirmationSave {
-		t.Fatalf("form = confirming:%t save:%t, want confirming discard", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
+	if !model.schema.component.Structure.ColumnForm.Confirming() || model.schema.component.Structure.ColumnForm.ConfirmationSave {
+		t.Fatalf("form = confirming:%t save:%t, want confirming discard", model.schema.component.Structure.ColumnForm.Confirming(), model.schema.component.Structure.ColumnForm.ConfirmationSave)
 	}
 	if model.overlay.formMode.Mode != formModeConfirm {
 		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.Mode)
@@ -454,7 +455,7 @@ func openColumn(t *testing.T, name, typeName string) Model {
 	}
 	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: name, Type: typeName, Nullable: true}}})
 	model = updateColumn(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
-	_ = model.structure.columnForm.form.Init()
+	_ = model.schema.component.Structure.ColumnForm.Form.Init()
 	return model
 }
 
@@ -495,27 +496,27 @@ func equalStrings(left, right []string) bool {
 func ptr[T any](value T) *T { return &value }
 
 func TestStructureForm_attributesFieldIsSeededFromColumnInfo(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", Attributes: "GENERATED STORED", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if form.values.attributes != "GENERATED STORED" {
-		t.Fatalf("form attributes = %q, want GENERATED STORED", form.values.attributes)
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", Attributes: "GENERATED STORED", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if form.Values.Attributes != "GENERATED STORED" {
+		t.Fatalf("form attributes = %q, want GENERATED STORED", form.Values.Attributes)
 	}
 }
 
 func TestStructureForm_fieldCountIncludesAttributes(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if want := len(form.values.parameters) + 5; form.fieldCount() != want {
-		t.Fatalf("fieldCount() = %d, want %d", form.fieldCount(), want)
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if want := len(form.Values.Parameters) + 5; form.FieldCount() != want {
+		t.Fatalf("fieldCount() = %d, want %d", form.FieldCount(), want)
 	}
 }
 
 func TestStructureForm_attributesFieldIsSelectWhenTypeDeclaresOptions(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
-	_ = form.form.Init()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	_ = form.Form.Init()
 
-	for range form.fieldCount() - 1 {
-		_ = form.nextField()
+	for range form.FieldCount() - 1 {
+		_ = form.NextField()
 	}
-	field := form.form.GetFocusedField()
+	field := form.Form.GetFocusedField()
 	if got, want := field.GetKey(), "attributes"; got != want {
 		t.Fatalf("last field key = %q, want %q", got, want)
 	}
@@ -525,37 +526,37 @@ func TestStructureForm_attributesFieldIsSelectWhenTypeDeclaresOptions(t *testing
 }
 
 func TestStructureForm_attributesFieldStaysInputWithoutOptions(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	_ = form.form.Init()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	_ = form.Form.Init()
 
-	for range form.fieldCount() - 1 {
-		_ = form.nextField()
+	for range form.FieldCount() - 1 {
+		_ = form.NextField()
 	}
-	if _, ok := form.form.GetFocusedField().(*huh.Select[string]); ok {
+	if _, ok := form.Form.GetFocusedField().(*huh.Select[string]); ok {
 		t.Fatal("attributes field = *huh.Select[string], want editable input for SQLite TEXT")
 	}
 }
 
 func TestStructureForm_attributesSelectRebuildsWhenTypeChanges(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "value", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
-	form.selectType(2, nil) // BIGINT
-	form.rebuildForm()
-	_ = form.form.Init()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "value", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	form.SelectType(2, nil) // BIGINT
+	form.RebuildForm()
+	_ = form.Form.Init()
 
-	for range form.fieldCount() - 1 {
-		_ = form.nextField()
+	for range form.FieldCount() - 1 {
+		_ = form.NextField()
 	}
-	if _, ok := form.form.GetFocusedField().(*huh.Select[string]); !ok {
-		t.Fatalf("attributes field after type change = %T, want *huh.Select[string]", form.form.GetFocusedField())
+	if _, ok := form.Form.GetFocusedField().(*huh.Select[string]); !ok {
+		t.Fatalf("attributes field after type change = %T, want *huh.Select[string]", form.Form.GetFocusedField())
 	}
 }
 
 func TestStructureForm_attributesSelectPreservesSeededValueOutsideOptions(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT", Attributes: "IDENTITY ALWAYS"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
-	if got, want := form.values.attributes, "IDENTITY ALWAYS"; got != want {
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT", Attributes: "IDENTITY ALWAYS"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	if got, want := form.Values.Attributes, "IDENTITY ALWAYS"; got != want {
 		t.Fatalf("form attributes = %q, want %q", got, want)
 	}
-	change, err := form.change()
+	change, err := form.Change()
 	if err != nil {
 		t.Fatalf("change() error = %v", err)
 	}
@@ -577,15 +578,16 @@ func typeIndexByName(t *testing.T, types []sharedsql.ColumnType, name string) in
 
 func TestStructureForm_attributesResetWhenTypeChangeDropsOption(t *testing.T) {
 	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
-	form.values.attributes = "AUTO_INCREMENT"
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
+	form.SetKeys(DefaultKeybindings())
+	form.Values.Attributes = "AUTO_INCREMENT"
 
-	form.selectType(typeIndexByName(t, types, "TEXT"), nil)
-	if got := form.values.attributes; got != "" {
+	form.SelectType(typeIndexByName(t, types, "TEXT"), nil)
+	if got := form.Values.Attributes; got != "" {
 		t.Fatalf("attributes after INT->TEXT = %q, want empty", got)
 	}
-	form.rebuildForm()
-	def, err := form.columnDef()
+	form.RebuildForm()
+	def, err := form.ColumnDef()
 	if err != nil {
 		t.Fatalf("columnDef() error = %v", err)
 	}
@@ -596,42 +598,43 @@ func TestStructureForm_attributesResetWhenTypeChangeDropsOption(t *testing.T) {
 
 func TestStructureForm_attributesKeptWhenTypeChangeKeepsOption(t *testing.T) {
 	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
-	form := newColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
-	form.values.attributes = "AUTO_INCREMENT"
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
+	form.SetKeys(DefaultKeybindings())
+	form.Values.Attributes = "AUTO_INCREMENT"
 
-	form.selectType(typeIndexByName(t, types, "BIGINT"), nil)
-	if got, want := form.values.attributes, "AUTO_INCREMENT"; got != want {
+	form.SelectType(typeIndexByName(t, types, "BIGINT"), nil)
+	if got, want := form.Values.Attributes, "AUTO_INCREMENT"; got != want {
 		t.Fatalf("attributes after INT->BIGINT = %q, want %q", got, want)
 	}
 }
 
 func TestStructureForm_attributesKeptWhenTypeChangeIsFreeText(t *testing.T) {
 	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
-	form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "VARCHAR(50)"}, types)
-	form.values.attributes = "COMMENT 'updated'"
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "VARCHAR(50)"}, types)
+	form.Values.Attributes = "COMMENT 'updated'"
 
-	form.selectType(typeIndexByName(t, types, "TEXT"), nil)
-	if got, want := form.values.attributes, "COMMENT 'updated'"; got != want {
+	form.SelectType(typeIndexByName(t, types, "TEXT"), nil)
+	if got, want := form.Values.Attributes, "COMMENT 'updated'"; got != want {
 		t.Fatalf("free-text attributes after VARCHAR->TEXT = %q, want %q", got, want)
 	}
 }
 
 func TestStructureForm_navigationReachesAttributesField(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	_ = form.form.Init()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	_ = form.Form.Init()
 
-	for range form.fieldCount() - 1 {
-		_ = form.nextField()
+	for range form.FieldCount() - 1 {
+		_ = form.NextField()
 	}
-	if got, want := form.form.GetFocusedField().GetKey(), "attributes"; got != want {
+	if got, want := form.Form.GetFocusedField().GetKey(), "attributes"; got != want {
 		t.Fatalf("last field key = %q, want %q", got, want)
 	}
 }
 
 func TestStructureForm_changeIncludesAttributesWhenEdited(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.values.attributes = "GENERATED STORED"
-	change, err := form.change()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.Values.Attributes = "GENERATED STORED"
+	change, err := form.Change()
 	if err != nil {
 		t.Fatalf("change() error = %v", err)
 	}
@@ -644,8 +647,8 @@ func TestStructureForm_changeIncludesAttributesWhenEdited(t *testing.T) {
 }
 
 func TestStructureForm_changeOmitsAttributesWhenUnchanged(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED VIRTUAL", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	change, err := form.change()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED VIRTUAL", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	change, err := form.Change()
 	if err != nil {
 		t.Fatalf("change() error = %v", err)
 	}
@@ -655,9 +658,9 @@ func TestStructureForm_changeOmitsAttributesWhenUnchanged(t *testing.T) {
 }
 
 func TestStructureForm_changeIncludesEmptyAttributesWhenCleared(t *testing.T) {
-	form := newColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED STORED", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.values.attributes = ""
-	change, err := form.change()
+	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED STORED", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.Values.Attributes = ""
+	change, err := form.Change()
 	if err != nil {
 		t.Fatalf("change() error = %v", err)
 	}
@@ -670,17 +673,17 @@ func TestStructureForm_changeIncludesEmptyAttributesWhenCleared(t *testing.T) {
 }
 
 func TestNewEmptyColumnForm_opensWithDefaults(t *testing.T) {
-	form := newEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	if !form.isNew {
-		t.Fatal("newEmptyColumnForm.isNew = false, want true")
+	form := schema.NewEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	if !form.IsNew {
+		t.Fatal("newEmptyColumnForm.IsNew = false, want true")
 	}
-	if !form.active() {
-		t.Fatal("newEmptyColumnForm.active() = false, want true")
+	if !form.Active() {
+		t.Fatal("newEmptyColumnForm.Active() = false, want true")
 	}
-	if form.values.name != "" {
-		t.Fatalf("form.values.name = %q, want empty", form.values.name)
+	if form.Values.Name != "" {
+		t.Fatalf("form.Values.Name = %q, want empty", form.Values.Name)
 	}
-	if !form.values.nullable {
+	if !form.Values.Nullable {
 		t.Fatal("new empty column defaults to NOT NULL; want nullable default")
 	}
 }
@@ -698,24 +701,24 @@ func TestStructureForm_aKeyOpensEmptyColumnForm(t *testing.T) {
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
 
-	if !model.structure.columnForm.active() {
+	if !model.schema.component.Structure.ColumnForm.Active() {
 		t.Fatal("pressing a in structure view did not open column form")
 	}
-	if !model.structure.columnForm.isNew {
+	if !model.schema.component.Structure.ColumnForm.IsNew {
 		t.Fatal("column form opened via a is not marked as new")
 	}
-	if model.structure.columnForm.values.name != "" {
-		t.Fatalf("new column form has pre-filled name = %q, want empty", model.structure.columnForm.values.name)
+	if model.schema.component.Structure.ColumnForm.Values.Name != "" {
+		t.Fatalf("new column form has pre-filled name = %q, want empty", model.schema.component.Structure.ColumnForm.Values.Name)
 	}
 }
 
 func TestNewColumnForm_columnDefReturnsValidDef(t *testing.T) {
-	form := newEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.values.name = "note"
-	form.values.typeName = "TEXT"
-	form.typeChanged = true
+	form := schema.NewEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.Values.Name = "note"
+	form.Values.TypeName = "TEXT"
+	form.TypeChanged = true
 
-	def, err := form.columnDef()
+	def, err := form.ColumnDef()
 	if err != nil {
 		t.Fatalf("columnDef() error = %v", err)
 	}
@@ -725,11 +728,11 @@ func TestNewColumnForm_columnDefReturnsValidDef(t *testing.T) {
 }
 
 func TestNewColumnForm_columnDefRejectsBlankName(t *testing.T) {
-	form := newEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
-	form.values.typeName = "TEXT"
-	form.typeChanged = true
+	form := schema.NewEmptyColumnForm(sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form.Values.TypeName = "TEXT"
+	form.TypeChanged = true
 
-	if _, err := form.columnDef(); err == nil {
+	if _, err := form.ColumnDef(); err == nil {
 		t.Fatal("columnDef() with blank name = nil, want error")
 	}
 }
@@ -750,19 +753,19 @@ func TestAddColumnFlow_fullEndToEnd(t *testing.T) {
 	// Press a to open empty column form
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
-	_ = model.structure.columnForm.form.Init()
-	if !model.structure.columnForm.active() {
+	_ = model.schema.component.Structure.ColumnForm.Form.Init()
+	if !model.schema.component.Structure.ColumnForm.Active() {
 		t.Fatal("'a' did not open column form")
 	}
 
 	// Populate form values directly (skipping Huh navigation for reliability)
-	model.structure.columnForm.values.name = "note"
-	model.structure.columnForm.values.typeName = "TEXT"
-	model.structure.columnForm.typeChanged = true
+	model.schema.component.Structure.ColumnForm.Values.Name = "note"
+	model.schema.component.Structure.ColumnForm.Values.TypeName = "TEXT"
+	model.schema.component.Structure.ColumnForm.TypeChanged = true
 
 	// F5 to trigger save confirmation
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("F5 did not open confirmation dialog")
 	}
 
@@ -770,7 +773,7 @@ func TestAddColumnFlow_fullEndToEnd(t *testing.T) {
 	model = resolveColumnCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Form must be closed after save
-	if model.structure.columnForm.active() {
+	if model.schema.component.Structure.ColumnForm.Active() {
 		t.Fatal("column form still active after save")
 	}
 

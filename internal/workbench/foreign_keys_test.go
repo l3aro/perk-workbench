@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestForeignKeysTab_loadsAndManagesForeignKeys(t *testing.T) {
@@ -22,69 +23,70 @@ func TestForeignKeysTab_loadsAndManagesForeignKeys(t *testing.T) {
 
 	// When
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	model.structure.foreignKeyForm.values.columns = "parent_id"
-	model.structure.foreignKeyForm.values.referenceTable = "parents"
-	model.structure.foreignKeyForm.values.referenceColumns = "id"
-	model.structure.foreignKeyForm.values.onDelete = "CASCADE"
+	model.schema.component.Structure.ForeignKeyForm.Values.Columns = "parent_id"
+	model.schema.component.Structure.ForeignKeyForm.Values.ReferenceTable = "parents"
+	model.schema.component.Structure.ForeignKeyForm.Values.ReferenceColumns = "id"
+	model.schema.component.Structure.ForeignKeyForm.Values.OnDelete = "CASCADE"
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() || len(model.structure.foreignKeys.Rows()) != 0 {
+	if !model.schema.component.Structure.ForeignKeyForm.Active() || model.schema.component.Structure.ForeignKeyForm.Confirming() || len(model.schema.component.Structure.ForeignKeys.Rows()) != 0 {
 		t.Fatal("negative create confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.structure.foreignKeyForm.active() {
+	if model.schema.component.Structure.ForeignKeyForm.Active() {
 		t.Fatal("saved foreign-key form remained active")
 	}
-	if got := model.structure.foreignKeys.Rows(); len(got) != 1 || got[0][1] != "parent_id" || got[0][2] != "parents" || got[0][3] != "id" || got[0][4] != "CASCADE" {
+	if got := model.schema.component.Structure.ForeignKeys.Rows(); len(got) != 1 || got[0][1] != "parent_id" || got[0][2] != "parents" || got[0][3] != "id" || got[0][4] != "CASCADE" {
 		t.Fatalf("foreign-key rows = %#v, want parent_id references parents(id) on delete cascade", got)
 	}
 
 	// When
-	model.structure.foreignKeys.SetCursor(0)
+	model.schema.component.Structure.ForeignKeys.SetCursor(0)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
-	model.structure.foreignKeyForm.values.columns = "code"
-	model.structure.foreignKeyForm.values.referenceColumns = "code"
+	model.schema.component.Structure.ForeignKeyForm.Values.Columns = "code"
+	model.schema.component.Structure.ForeignKeyForm.Values.ReferenceColumns = "code"
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() || model.structure.foreignKeys.Rows()[0][1] != "parent_id" {
+	if !model.schema.component.Structure.ForeignKeyForm.Active() || model.schema.component.Structure.ForeignKeyForm.Confirming() || model.schema.component.Structure.ForeignKeys.Rows()[0][1] != "parent_id" {
 		t.Fatal("negative edit confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if got := model.structure.foreignKeys.Rows(); len(got) != 1 || got[0][1] != "code" || got[0][3] != "code" {
+	if got := model.schema.component.Structure.ForeignKeys.Rows(); len(got) != 1 || got[0][1] != "code" || got[0][3] != "code" {
 		t.Fatalf("foreign-key rows after edit = %#v, want code references parents(code)", got)
 	}
 
 	// When
-	model.structure.foreignKeys.SetCursor(0)
+	model.schema.component.Structure.ForeignKeys.SetCursor(0)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
-	if model.overlay.deleteConfirm == nil || len(model.structure.foreignKeys.Rows()) != 1 {
+	if model.overlay.deleteConfirm == nil || len(model.schema.component.Structure.ForeignKeys.Rows()) != 1 {
 		t.Fatal("d did not open delete confirmation")
 	}
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if model.overlay.deleteConfirm != nil || len(model.structure.foreignKeys.Rows()) != 1 {
+	if model.overlay.deleteConfirm != nil || len(model.schema.component.Structure.ForeignKeys.Rows()) != 1 {
 		t.Fatal("negative delete confirmation changed foreign keys")
 	}
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = resolveForeignKeyCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if got := model.structure.foreignKeys.Rows(); len(got) != 0 {
+	if got := model.schema.component.Structure.ForeignKeys.Rows(); len(got) != 0 {
 		t.Fatalf("foreign-key rows after delete = %#v, want no foreign keys", got)
 	}
 }
 
 func TestForeignKeyForm_requiredFieldsRenderAndBlockConfirmation(t *testing.T) {
 	// Given
-	form := newForeignKeyForm(nil)
-	form.keybindings = DefaultKeybindings()
-	form.setWidth(80)
-	_ = form.form.Init()
+	form := schema.NewForeignKeyForm(nil)
+	form.SetKeys(DefaultKeybindings())
+	form.SetKeys(DefaultKeybindings())
+	form.SetWidth(80)
+	_ = form.Form.Init()
 
 	// Then
 	for _, label := range []string{"Columns*", "Reference table*", "Reference columns*"} {
@@ -102,19 +104,20 @@ func TestForeignKeyForm_requiredFieldsRenderAndBlockConfirmation(t *testing.T) {
 	} {
 		t.Run(test.field, func(t *testing.T) {
 			// Given
-			form := newForeignKeyForm(nil)
-			form.keybindings = DefaultKeybindings()
-			form.setWidth(80)
-			_ = form.form.Init()
-			form.values.columns, form.values.referenceTable, form.values.referenceColumns = test.columns, test.referenceTable, test.referenceColumns
+			form := schema.NewForeignKeyForm(nil)
+			form.SetKeys(DefaultKeybindings())
+			form.SetKeys(DefaultKeybindings())
+			form.SetWidth(80)
+			_ = form.Form.Init()
+			form.Values.Columns, form.Values.ReferenceTable, form.Values.ReferenceColumns = test.columns, test.referenceTable, test.referenceColumns
 
 			// When
 			_, _ = form.Update(tea.KeyPressMsg{Code: tea.KeyF5}, &formModeController{})
 
 			// Then
-			field := form.form.GetFocusedField()
-			if form.confirming() || field.GetKey() != test.field || field.Error() == nil {
-				t.Fatalf("confirmation/focused error = %t/%q/%v, want false/%q/error", form.confirming(), field.GetKey(), field.Error(), test.field)
+			field := form.Form.GetFocusedField()
+			if form.Confirming() || field.GetKey() != test.field || field.Error() == nil {
+				t.Fatalf("confirmation/focused error = %t/%q/%v, want false/%q/error", form.Confirming(), field.GetKey(), field.Error(), test.field)
 			}
 		})
 	}
@@ -131,17 +134,18 @@ func TestForeignKeyForm_invalidColumnListsBlockConfirmation(t *testing.T) {
 	} {
 		t.Run(test.field, func(t *testing.T) {
 			// Given
-			form := newForeignKeyForm(nil)
-			form.keybindings = DefaultKeybindings()
-			form.values.columns, form.values.referenceTable, form.values.referenceColumns = test.columns, "parents", test.referenceColumns
+			form := schema.NewForeignKeyForm(nil)
+			form.SetKeys(DefaultKeybindings())
+			form.SetKeys(DefaultKeybindings())
+			form.Values.Columns, form.Values.ReferenceTable, form.Values.ReferenceColumns = test.columns, "parents", test.referenceColumns
 
 			// When
 			_, _ = form.Update(tea.KeyPressMsg{Code: tea.KeyF5}, &formModeController{})
 
 			// Then
-			field := form.form.GetFocusedField()
-			if form.confirming() || field.GetKey() != test.field || field.Error() == nil {
-				t.Fatalf("confirmation/focused error = %t/%q/%v, want false/%q/error", form.confirming(), field.GetKey(), field.Error(), test.field)
+			field := form.Form.GetFocusedField()
+			if form.Confirming() || field.GetKey() != test.field || field.Error() == nil {
+				t.Fatalf("confirmation/focused error = %t/%q/%v, want false/%q/error", form.Confirming(), field.GetKey(), field.Error(), test.field)
 			}
 		})
 	}
@@ -149,10 +153,11 @@ func TestForeignKeyForm_invalidColumnListsBlockConfirmation(t *testing.T) {
 
 func TestForeignKeyForm_huhInputsBuildForeignKeyChange(t *testing.T) {
 	// Given
-	form := newForeignKeyForm(nil)
-	form.keybindings = DefaultKeybindings()
+	form := schema.NewForeignKeyForm(nil)
+	form.SetKeys(DefaultKeybindings())
+	form.SetKeys(DefaultKeybindings())
 	controller := &formModeController{}
-	_ = form.form.Init()
+	_ = form.Form.Init()
 
 	// When
 	for _, value := range []string{"parent_id", "parents", "id"} {
@@ -163,7 +168,7 @@ func TestForeignKeyForm_huhInputsBuildForeignKeyChange(t *testing.T) {
 		_, _ = form.Update(tea.KeyPressMsg{Code: tea.KeyEscape}, controller)
 		_, _ = form.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}, controller)
 	}
-	change, err := form.change()
+	change, err := form.Change()
 
 	// Then
 	if err != nil || !equalStrings(change.Columns, []string{"parent_id"}) || change.ReferenceTable != "parents" || !equalStrings(change.ReferenceColumns, []string{"id"}) || change.OnDelete != "NO ACTION" || change.OnUpdate != "NO ACTION" {
@@ -173,14 +178,15 @@ func TestForeignKeyForm_huhInputsBuildForeignKeyChange(t *testing.T) {
 
 func TestForeignKeyForm_normalModeDoesNotMutateHuhValues(t *testing.T) {
 	// Given
-	form := newForeignKeyForm(nil)
-	_ = form.form.Init()
+	form := schema.NewForeignKeyForm(nil)
+	form.SetKeys(DefaultKeybindings())
+	_ = form.Form.Init()
 
 	// When
 	_, _ = form.Update(tea.KeyPressMsg{Code: 'x', Text: "x"}, &formModeController{})
 
 	// Then
-	if got := form.values.columns; got != "" {
+	if got := form.Values.Columns; got != "" {
 		t.Fatalf("normal-mode input changed columns to %q", got)
 	}
 }
@@ -192,7 +198,7 @@ func TestForeignKeyForm_discardWithoutChangesClosesWithoutConfirmation(t *testin
 	updated, _ := model.Update(foreignKeysLoadedMsg{table: "children", foreignKeys: nil})
 	model = updated.(Model)
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.structure.foreignKeyForm.active() {
+	if !model.schema.component.Structure.ForeignKeyForm.Active() {
 		t.Fatal("fixture: 'n' did not open a new foreign-key form")
 	}
 
@@ -200,7 +206,7 @@ func TestForeignKeyForm_discardWithoutChangesClosesWithoutConfirmation(t *testin
 	model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	// Then — form closes directly, no confirmation, mode normalized
-	if model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() {
+	if model.schema.component.Structure.ForeignKeyForm.Active() || model.schema.component.Structure.ForeignKeyForm.Confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
 	if model.overlay.formMode.Mode != formModeNormal {

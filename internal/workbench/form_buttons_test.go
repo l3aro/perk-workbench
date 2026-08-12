@@ -90,7 +90,7 @@ func TestFormButtonsBar_rendersOnlyWhileFormActive(t *testing.T) {
 	}
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter}) // open the column form
-	_ = model.structure.columnForm.form.Init()
+	_ = model.schema.component.Structure.ColumnForm.Form.Init()
 	view := ansi.Strip(model.workspaceView())
 	lines := strings.Split(view, "\n")
 	if actions, gap, footer := strings.TrimSpace(lines[len(lines)-3]), strings.TrimSpace(lines[len(lines)-2]), strings.TrimSpace(lines[len(lines)-1]); !strings.Contains(actions, "Save") || !strings.Contains(actions, "Cancel") || gap != "" || !strings.HasPrefix(footer, "NORMAL") {
@@ -105,8 +105,8 @@ func TestColumnForm_mouseSaveStartsSaveConfirmation(t *testing.T) {
 
 	model = clickFormButton(model, x, workspaceButtonRowY(model))
 
-	if !model.structure.columnForm.confirming() || !model.structure.columnForm.confirmationSave {
-		t.Fatalf("column form = confirming:%t save:%t, want confirming save", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
+	if !model.schema.component.Structure.ColumnForm.Confirming() || !model.schema.component.Structure.ColumnForm.ConfirmationSave {
+		t.Fatalf("column form = confirming:%t save:%t, want confirming save", model.schema.component.Structure.ColumnForm.Confirming(), model.schema.component.Structure.ColumnForm.ConfirmationSave)
 	}
 	if model.overlay.formMode.Mode != formModeConfirm {
 		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.Mode)
@@ -131,10 +131,10 @@ func TestColumnForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 
 	model = clickFormButton(model, model.layout.schemaWidth+1+2, workspaceButtonRowY(model))
 
-	if !model.structure.columnForm.confirming() || !model.structure.columnForm.confirmationSave {
-		t.Fatalf("Save after mouse edit = confirming:%t save:%t, want confirming save", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
+	if !model.schema.component.Structure.ColumnForm.Confirming() || !model.schema.component.Structure.ColumnForm.ConfirmationSave {
+		t.Fatalf("Save after mouse edit = confirming:%t save:%t, want confirming save", model.schema.component.Structure.ColumnForm.Confirming(), model.schema.component.Structure.ColumnForm.ConfirmationSave)
 	}
-	if got := model.structure.columnForm.values.name; !strings.Contains(got, "renamed") {
+	if got := model.schema.component.Structure.ColumnForm.Values.Name; !strings.Contains(got, "renamed") {
 		t.Fatalf("name = %q, want typed text kept", got)
 	}
 }
@@ -142,7 +142,7 @@ func TestColumnForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 func TestIndexForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 	model := readyIndexesModel(t)
 	model = openIndexEditor(t, model, nil)
-	model.structure.indexForm.values.columns = "id"
+	model.schema.component.Structure.IndexForm.Values.Columns = "id"
 	model = resizeModel(model, 100, 24)
 
 	// Mouse-enter insert mode on the Name value line (view line 1, y=5).
@@ -159,10 +159,10 @@ func TestIndexForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 
 	model = clickFormButton(model, model.layout.schemaWidth+1+2, workspaceButtonRowY(model))
 
-	if !model.structure.indexForm.confirming() || !model.structure.indexForm.confirmationSave {
-		t.Fatalf("Save after mouse edit = confirming:%t save:%t, want confirming save", model.structure.indexForm.confirming(), model.structure.indexForm.confirmationSave)
+	if !model.schema.component.Structure.IndexForm.Confirming() || !model.schema.component.Structure.IndexForm.ConfirmationSave {
+		t.Fatalf("Save after mouse edit = confirming:%t save:%t, want confirming save", model.schema.component.Structure.IndexForm.Confirming(), model.schema.component.Structure.IndexForm.ConfirmationSave)
 	}
-	if got := model.structure.indexForm.values.name; !strings.Contains(got, "idx_name") {
+	if got := model.schema.component.Structure.IndexForm.Values.Name; !strings.Contains(got, "idx_name") {
 		t.Fatalf("name = %q, want typed text kept", got)
 	}
 }
@@ -194,14 +194,14 @@ func TestBrowseFilterForm_mouseSaveCommitsEditAndApplies(t *testing.T) {
 
 func TestColumnForm_mouseCancelStartsDiscardConfirmation(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	model.structure.columnForm.values.name = "renamed"
+	model.schema.component.Structure.ColumnForm.Values.Name = "renamed"
 	model = resizeModel(model, 100, 24)
 	x := model.layout.schemaWidth + 1 + 8 // inside " Cancel "
 
 	model = clickFormButton(model, x, workspaceButtonRowY(model))
 
-	if !model.structure.columnForm.confirming() || model.structure.columnForm.confirmationSave {
-		t.Fatalf("column form = confirming:%t save:%t, want confirming discard", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
+	if !model.schema.component.Structure.ColumnForm.Confirming() || model.schema.component.Structure.ColumnForm.ConfirmationSave {
+		t.Fatalf("column form = confirming:%t save:%t, want confirming discard", model.schema.component.Structure.ColumnForm.Confirming(), model.schema.component.Structure.ColumnForm.ConfirmationSave)
 	}
 }
 
@@ -215,7 +215,7 @@ func TestColumnForm_mouseSaveReleaseConsumedByDialog(t *testing.T) {
 	updated, _ := model.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
 	model = updated.(Model)
 
-	if !model.structure.columnForm.confirming() {
+	if !model.schema.component.Structure.ColumnForm.Confirming() {
 		t.Fatal("trailing release closed the save confirmation")
 	}
 	if model.layout.formButtonHit {
@@ -231,12 +231,12 @@ func TestIndexForm_mouseSaveShowsValidationError(t *testing.T) {
 
 	model = clickFormButton(model, x, workspaceButtonRowY(model))
 
-	if model.structure.indexForm.confirming() {
+	if model.schema.component.Structure.IndexForm.Confirming() {
 		t.Fatal("blank index name reached the save confirmation")
 	}
-	field := model.structure.indexForm.form.GetFocusedField()
-	if field.GetKey() != "name" || field.Error() == nil || !strings.Contains(model.structure.indexForm.View(), "index name is required") {
-		t.Fatalf("index form = %q, want active name field error", model.structure.indexForm.View())
+	field := model.schema.component.Structure.IndexForm.Form.GetFocusedField()
+	if field.GetKey() != "name" || field.Error() == nil || !strings.Contains(model.schema.component.Structure.IndexForm.View(), "index name is required") {
+		t.Fatalf("index form = %q, want active name field error", model.schema.component.Structure.IndexForm.View())
 	}
 }
 
@@ -309,15 +309,15 @@ func TestForeignKeyForm_mouseSaveAndCancelConfirmations(t *testing.T) {
 	model.SelectedTable, model.Tab = "children", tabForeignKeys
 	model = resizeModel(model, 100, 24)
 	_ = model.openForeignKeyForm(nil)
-	_ = model.structure.foreignKeyForm.form.Init()
-	model.structure.foreignKeyForm.values.columns = "parent_id"
-	model.structure.foreignKeyForm.values.referenceTable = "parents"
-	model.structure.foreignKeyForm.values.referenceColumns = "id"
+	_ = model.schema.component.Structure.ForeignKeyForm.Form.Init()
+	model.schema.component.Structure.ForeignKeyForm.Values.Columns = "parent_id"
+	model.schema.component.Structure.ForeignKeyForm.Values.ReferenceTable = "parents"
+	model.schema.component.Structure.ForeignKeyForm.Values.ReferenceColumns = "id"
 	y := workspaceButtonRowY(model)
 
 	model = clickFormButton(model, model.layout.schemaWidth+1+2, y)
-	if !model.structure.foreignKeyForm.confirming() || !model.structure.foreignKeyForm.confirmationSave {
-		t.Fatalf("foreign-key form = confirming:%t save:%t, want confirming save", model.structure.foreignKeyForm.confirming(), model.structure.foreignKeyForm.confirmationSave)
+	if !model.schema.component.Structure.ForeignKeyForm.Confirming() || !model.schema.component.Structure.ForeignKeyForm.ConfirmationSave {
+		t.Fatalf("foreign-key form = confirming:%t save:%t, want confirming save", model.schema.component.Structure.ForeignKeyForm.Confirming(), model.schema.component.Structure.ForeignKeyForm.ConfirmationSave)
 	}
 
 	// Cancel starts the discard confirmation without field validation.
@@ -325,11 +325,11 @@ func TestForeignKeyForm_mouseSaveAndCancelConfirmations(t *testing.T) {
 	model.SelectedTable, model.Tab = "children", tabForeignKeys
 	model = resizeModel(model, 100, 24)
 	_ = model.openForeignKeyForm(nil)
-	_ = model.structure.foreignKeyForm.form.Init()
-	model.structure.foreignKeyForm.values.columns = "parent_id"
+	_ = model.schema.component.Structure.ForeignKeyForm.Form.Init()
+	model.schema.component.Structure.ForeignKeyForm.Values.Columns = "parent_id"
 	model = clickFormButton(model, model.layout.schemaWidth+1+8, y)
-	if !model.structure.foreignKeyForm.confirming() || model.structure.foreignKeyForm.confirmationSave {
-		t.Fatalf("foreign-key form = confirming:%t save:%t, want confirming discard", model.structure.foreignKeyForm.confirming(), model.structure.foreignKeyForm.confirmationSave)
+	if !model.schema.component.Structure.ForeignKeyForm.Confirming() || model.schema.component.Structure.ForeignKeyForm.ConfirmationSave {
+		t.Fatalf("foreign-key form = confirming:%t save:%t, want confirming discard", model.schema.component.Structure.ForeignKeyForm.Confirming(), model.schema.component.Structure.ForeignKeyForm.ConfirmationSave)
 	}
 }
 
@@ -355,8 +355,8 @@ func TestIndexForm_viewportKeepsButtonsVisible(t *testing.T) {
 	// button bar off the pane.
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updateIndexForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if model.structure.indexForm.scrollOffset != 6 {
-		t.Fatalf("index form scroll offset = %d, want 6 (Kind title)", model.structure.indexForm.scrollOffset)
+	if model.schema.component.Structure.IndexForm.ScrollOffset != 6 {
+		t.Fatalf("index form scroll offset = %d, want 6 (Kind title)", model.schema.component.Structure.IndexForm.ScrollOffset)
 	}
 	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
 		t.Fatalf("scrolled index form action row = %q, want Save/Cancel visible", row)
@@ -367,7 +367,7 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "children", tabForeignKeys
 	_ = model.openForeignKeyForm(nil)
-	_ = model.structure.foreignKeyForm.form.Init()
+	_ = model.schema.component.Structure.ForeignKeyForm.Form.Init()
 	model = resizeModel(model, 100, 24)
 
 	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
@@ -378,8 +378,8 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 	for range 4 {
 		model = updateForeignKeyForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
-	if model.structure.foreignKeyForm.scrollOffset != 16 {
-		t.Fatalf("FK form scroll offset = %d, want 16 (On update title)", model.structure.foreignKeyForm.scrollOffset)
+	if model.schema.component.Structure.ForeignKeyForm.ScrollOffset != 16 {
+		t.Fatalf("FK form scroll offset = %d, want 16 (On update title)", model.schema.component.Structure.ForeignKeyForm.ScrollOffset)
 	}
 	if row := workspacePaneFormButtonsRow(model); !strings.Contains(row, "Save") || !strings.Contains(row, "Cancel") {
 		t.Fatalf("scrolled FK form action row = %q, want Save/Cancel visible", row)
@@ -472,26 +472,26 @@ func TestIndexForm_mouseWheelScrollsViewport(t *testing.T) {
 	model := readyIndexesModel(t)
 	model = openIndexEditor(t, model, nil)
 	model = resizeModel(model, 100, 24)
-	start := model.structure.indexForm.scrollOffset
+	start := model.schema.component.Structure.IndexForm.ScrollOffset
 
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	if model.structure.indexForm.scrollOffset != start+1 {
-		t.Fatalf("wheel down scroll offset = %d, want %d", model.structure.indexForm.scrollOffset, start+1)
+	if model.schema.component.Structure.IndexForm.ScrollOffset != start+1 {
+		t.Fatalf("wheel down scroll offset = %d, want %d", model.schema.component.Structure.IndexForm.ScrollOffset, start+1)
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(Model)
-	if model.structure.indexForm.scrollOffset != start {
-		t.Fatalf("wheel up scroll offset = %d, want %d", model.structure.indexForm.scrollOffset, start)
+	if model.schema.component.Structure.IndexForm.ScrollOffset != start {
+		t.Fatalf("wheel up scroll offset = %d, want %d", model.schema.component.Structure.IndexForm.ScrollOffset, start)
 	}
 
 	// Wheeling past the bottom clamps at the last full window.
-	model.structure.indexForm.scrollOffset = 1 << 20
+	model.schema.component.Structure.IndexForm.ScrollOffset = 1 << 20
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	lines := len(strings.Split(model.structure.indexForm.View(), "\n"))
-	if want := lines - model.formViewportHeight(); model.structure.indexForm.scrollOffset != want {
-		t.Fatalf("wheel at bottom scroll offset = %d, want %d", model.structure.indexForm.scrollOffset, want)
+	lines := len(strings.Split(model.schema.component.Structure.IndexForm.View(), "\n"))
+	if want := lines - model.formViewportHeight(); model.schema.component.Structure.IndexForm.ScrollOffset != want {
+		t.Fatalf("wheel at bottom scroll offset = %d, want %d", model.schema.component.Structure.IndexForm.ScrollOffset, want)
 	}
 }
 
@@ -502,7 +502,7 @@ func TestBrowseFilterForm_mouseWheelScrollsRowsNotHeader(t *testing.T) {
 	}
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabBrowse
-	model.structure.columns = columns
+	model.schema.component.Structure.Columns = columns
 	model = resizeModel(model, 100, 26)
 	_ = model.openBrowseFilterForm()
 
@@ -527,26 +527,26 @@ func TestColumnForm_mouseWheelMovesFieldFocus(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	if model.structure.columnForm.focusedField() != 1 {
-		t.Fatalf("wheel down focused field = %d, want 1", model.structure.columnForm.focusedField())
+	if model.schema.component.Structure.ColumnForm.FocusedField() != 1 {
+		t.Fatalf("wheel down focused field = %d, want 1", model.schema.component.Structure.ColumnForm.FocusedField())
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(Model)
-	if model.structure.columnForm.focusedField() != 0 {
-		t.Fatalf("wheel up focused field = %d, want 0", model.structure.columnForm.focusedField())
+	if model.schema.component.Structure.ColumnForm.FocusedField() != 0 {
+		t.Fatalf("wheel up focused field = %d, want 0", model.schema.component.Structure.ColumnForm.FocusedField())
 	}
 
 	// Wheeling down past the last field stays put instead of moving onto
 	// the button bar.
-	for range model.structure.columnForm.fieldCount() {
+	for range model.schema.component.Structure.ColumnForm.FieldCount() {
 		updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 		model = updated.(Model)
 	}
 	if model.overlay.formMode.ButtonsFocused {
 		t.Fatal("wheel down past the last field focused the button bar")
 	}
-	if got := model.structure.columnForm.focusedField(); got != model.structure.columnForm.fieldCount()-1 {
-		t.Fatalf("wheel down past the last field = %d, want %d", got, model.structure.columnForm.fieldCount()-1)
+	if got := model.schema.component.Structure.ColumnForm.FocusedField(); got != model.schema.component.Structure.ColumnForm.FieldCount()-1 {
+		t.Fatalf("wheel down past the last field = %d, want %d", got, model.schema.component.Structure.ColumnForm.FieldCount()-1)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 type completionColumnsMsg struct {
@@ -93,14 +94,14 @@ func (m *Model) qualifiedCompletion(analysis sharedsql.SQLAnalysis) tea.Cmd {
 
 // columnsForTableName checks if qualifier matches a known table and returns its cached columns.
 func (m Model) columnsForTableName(qualifier string) (bool, []CompletionItem) {
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Type == "database" {
 			continue
 		}
 		if !strings.EqualFold(object.Name, qualifier) {
 			continue
 		}
-		table := m.schemaTable(schemaItem{database: object.Database, table: object.Name})
+		table := m.schemaTable(schema.Item{Database: object.Database, Table: object.Name})
 		if columns, ok := m.queryLog.completionColumns[table]; ok {
 			items := make([]CompletionItem, len(columns))
 			for i, c := range columns {
@@ -114,12 +115,12 @@ func (m Model) columnsForTableName(qualifier string) (bool, []CompletionItem) {
 
 // schemaTableForName finds the full schema.table key for a given table name.
 func (m Model) schemaTableForName(name string) string {
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Type == "database" {
 			continue
 		}
 		if strings.EqualFold(object.Name, name) || strings.EqualFold(m.completionObjectName(object), name) {
-			return m.schemaTable(schemaItem{database: object.Database, table: object.Name})
+			return m.schemaTable(schema.Item{Database: object.Database, Table: object.Name})
 		}
 	}
 	return ""
@@ -128,7 +129,7 @@ func (m Model) schemaTableForName(name string) string {
 // objectsForSchema returns completion items for objects in a given schema.
 func (m Model) objectsForSchema(schema string) []CompletionItem {
 	var items []CompletionItem
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Type == "database" {
 			continue
 		}
@@ -146,7 +147,7 @@ func (m Model) tableContextItems(analysis sharedsql.SQLAnalysis) []CompletionIte
 
 	// Add schema names.
 	seenSchema := make(map[string]bool)
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Database != "" && !seenSchema[object.Database] {
 			seenSchema[object.Database] = true
 			items = append(items, CompletionItem{
@@ -157,7 +158,7 @@ func (m Model) tableContextItems(analysis sharedsql.SQLAnalysis) []CompletionIte
 	}
 
 	// Add tables and views.
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Type != "database" {
 			items = append(items, completionItemForObject(object))
 		}
@@ -193,11 +194,11 @@ func (m Model) expressionContextItems(analysis sharedsql.SQLAnalysis) []Completi
 
 	// 2. Columns from referenced tables.
 	for _, table := range analysis.ReferencedTables {
-		for _, object := range m.schema.objects {
+		for _, object := range m.schema.component.Objects {
 			if !strings.EqualFold(object.Name, table) && !strings.EqualFold(m.completionObjectName(object), table) {
 				continue
 			}
-			tableKey := m.schemaTable(schemaItem{database: object.Database, table: object.Name})
+			tableKey := m.schemaTable(schema.Item{Database: object.Database, Table: object.Name})
 			if columns, ok := m.queryLog.completionColumns[tableKey]; ok {
 				for _, col := range columns {
 					items = append(items, completionItemForColumn(col, "", object.Name))
@@ -217,7 +218,7 @@ func (m Model) expressionContextItems(analysis sharedsql.SQLAnalysis) []Completi
 	}
 
 	// 5. All schema objects (tables/views can appear in expressions too).
-	for _, object := range m.schema.objects {
+	for _, object := range m.schema.component.Objects {
 		if object.Type != "database" {
 			items = append(items, completionItemForObject(object))
 		}

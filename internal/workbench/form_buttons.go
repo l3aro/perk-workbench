@@ -17,13 +17,13 @@ var formButtonAt = uikit.FormButtonAt
 func (m Model) formTabActive() bool {
 	switch m.Tab {
 	case tabStructure:
-		return m.structure.columnForm.active()
+		return m.schema.component.Structure.ColumnForm.Active()
 	case tabBrowse:
 		return m.browse.component.FilterForm != nil || m.browse.component.DocumentEditor != nil || m.browse.component.Form.Active()
 	case tabIndexes:
-		return m.structure.indexForm.active()
+		return m.schema.component.Structure.IndexForm.Active()
 	case tabForeignKeys:
-		return m.structure.foreignKeyForm.active()
+		return m.schema.component.Structure.ForeignKeyForm.Active()
 	}
 	return false
 }

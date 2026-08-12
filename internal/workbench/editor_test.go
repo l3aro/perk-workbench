@@ -79,7 +79,7 @@ func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.schema.objects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
+	model.schema.component.Objects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
 	model.queryLog.editor.setValue("S")
 	// Enter insert mode first (pressing 'i' in normal mode does this).
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})

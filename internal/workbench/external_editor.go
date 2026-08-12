@@ -71,16 +71,16 @@ func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLoc
 		return nil, externalEditorLocation{}, false
 	case m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil:
 		form, location.kind = m.connection.component.Form.Huh, externalEditorTargetConnection
-	case m.structure.columnForm.active() && !m.structure.columnForm.confirming():
-		form, location.kind = m.structure.columnForm.form, externalEditorTargetColumn
+	case m.schema.component.Structure.ColumnForm.Active() && !m.schema.component.Structure.ColumnForm.Confirming():
+		form, location.kind = m.schema.component.Structure.ColumnForm.Form, externalEditorTargetColumn
 	case m.browse.component.Form.Active() && !m.browse.component.Form.Confirming():
 		form, location.kind = m.browse.component.Form.Form, externalEditorTargetBrowse
-	case m.structure.indexForm.active() && !m.structure.indexForm.confirming():
-		form, location.kind = m.structure.indexForm.form, externalEditorTargetIndex
-	case m.structure.foreignKeyForm.active() && !m.structure.foreignKeyForm.confirming():
-		form, location.kind = m.structure.foreignKeyForm.form, externalEditorTargetForeignKey
+	case m.schema.component.Structure.IndexForm.Active() && !m.schema.component.Structure.IndexForm.Confirming():
+		form, location.kind = m.schema.component.Structure.IndexForm.Form, externalEditorTargetIndex
+	case m.schema.component.Structure.ForeignKeyForm.Active() && !m.schema.component.Structure.ForeignKeyForm.Confirming():
+		form, location.kind = m.schema.component.Structure.ForeignKeyForm.Form, externalEditorTargetForeignKey
 	case m.tableFormOpen():
-		form, location.kind = m.structure.tableForm.form, externalEditorTargetTable
+		form, location.kind = m.schema.component.Structure.TableForm.Form, externalEditorTargetTable
 	default:
 		return nil, externalEditorLocation{}, false
 	}

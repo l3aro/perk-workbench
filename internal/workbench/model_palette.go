@@ -147,51 +147,44 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "schema.select_table":
 		if m.State == stateReady && m.Focus == focusSchema {
-			if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
-				if item.kind == "schema" {
-					return m, treeToggleCmd(m.toggleSchema(item.database, item.schema), m.rebuildSchemaTree())
-				}
-				if item.root {
-					if m.databaseInfo.Product == "PostgreSQL" && !m.databaseRootConnected(item.database) {
-						return m.reconnectDatabase(item.database)
-					}
-					return m, treeToggleCmd(m.toggleDatabase(item.database), m.rebuildSchemaTree())
-				}
-				return m, m.selectSchemaTable(item)
-			}
+			component, event, cmd := m.schema.component.SchemaSelect(m.schemaSnapshot())
+			m.schema.component = component
+			return m.applySchemaEvent(event, cmd)
 		}
 		return m, nil
 	case "schema.expand":
 		if m.State == stateReady && m.Focus == focusSchema {
-			return m.expandSchemaLevel()
+			component, cmd := m.schema.component.SchemaExpand(m.schemaSnapshot())
+			m.schema.component = component
+			return m, cmd
 		}
 		return m, nil
 	case "schema.collapse":
 		if m.State == stateReady && m.Focus == focusSchema {
-			return m.collapseSchemaLevel()
+			component, cmd := m.schema.component.SchemaCollapse(m.schemaSnapshot())
+			m.schema.component = component
+			return m, cmd
 		}
 		return m, nil
 	case "schema.add_table":
 		if m.State == stateReady && m.Focus == focusSchema {
-			if item, ok := m.schema.list.SelectedItem().(schemaItem); ok {
-				if target, ok := m.schemaAddTarget(item); ok {
-					return m, m.openTableForm(target, "")
-				}
-			}
+			component, event, cmd := m.schema.component.Update(tea.KeyPressMsg{Code: 'a', Text: "a"}, m.schemaLayout(), m.keybindings, m.schemaSnapshot())
+			m.schema.component = component
+			return m.applySchemaEvent(event, cmd)
 		}
 		return m, nil
 	case "schema.rename_table":
 		if m.State == stateReady && m.Focus == focusSchema {
-			if item, ok := m.schema.list.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
-				return m, m.openTableForm(item.database, item.table)
-			}
+			component, event, cmd := m.schema.component.Update(tea.KeyPressMsg{Code: 'r', Text: "r"}, m.schemaLayout(), m.keybindings, m.schemaSnapshot())
+			m.schema.component = component
+			return m.applySchemaEvent(event, cmd)
 		}
 		return m, nil
 	case "schema.delete_table":
 		if m.State == stateReady && m.Focus == focusSchema {
-			if item, ok := m.schema.list.SelectedItem().(schemaItem); ok && !item.root && item.kind == "table" {
-				m.confirmTableDelete(item.database, item.table)
-			}
+			component, event, cmd := m.schema.component.Update(tea.KeyPressMsg{Code: 'd', Text: "d"}, m.schemaLayout(), m.keybindings, m.schemaSnapshot())
+			m.schema.component = component
+			return m.applySchemaEvent(event, cmd)
 		}
 		return m, nil
 	case "picker.reload":
@@ -296,21 +289,21 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "foreign_keys.toggle_diagram":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys {
-			m.structure.relationshipDiagram = !m.structure.relationshipDiagram
+			m.schema.component.Structure.RelationshipDiagram = !m.schema.component.Structure.RelationshipDiagram
 		}
 		return m, nil
 	case "indexes.create":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.structure.indexForm.active() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.schema.component.Structure.IndexForm.Active() {
 			return m, m.openIndexForm(nil)
 		}
 		return m, nil
 	case "foreign_keys.create":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.structure.foreignKeyForm.active() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.schema.component.Structure.ForeignKeyForm.Active() {
 			return m, m.openForeignKeyForm(nil)
 		}
 		return m, nil
 	case "structure.add":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.structure.columnForm.active() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.schema.component.Structure.ColumnForm.Active() {
 			return m, m.openNewColumnForm()
 		}
 		return m, nil

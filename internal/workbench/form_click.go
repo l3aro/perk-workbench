@@ -206,11 +206,11 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		m.overlay.formMode.ButtonsFocused = false
 		switch m.Tab {
 		case tabStructure:
-			if m.structure.columnForm.active() && !m.structure.columnForm.confirming() {
-				return m.clickFormField(x, y, m.structure.columnForm.View(), m.structure.columnForm.scrollOffset, contentY-3, m.structure.columnForm.fieldTitles(), func(field int) tea.Cmd {
-					m.structure.columnForm.scrollToField(field)
-					return m.structure.columnForm.focusField(field)
-				}, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.structure.columnForm.focus()) })
+			if m.schema.component.Structure.ColumnForm.Active() && !m.schema.component.Structure.ColumnForm.Confirming() {
+				return m.clickFormField(x, y, m.schema.component.Structure.ColumnForm.View(), m.schema.component.Structure.ColumnForm.ScrollOffset, contentY-3, m.schema.component.Structure.ColumnForm.FieldTitles(), func(field int) tea.Cmd {
+					m.schema.component.Structure.ColumnForm.ScrollToField(field)
+					return m.schema.component.Structure.ColumnForm.FocusField(field)
+				}, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.schema.component.Structure.ColumnForm.Focus()) })
 			}
 		case tabBrowse:
 			if m.browse.component.DocumentEditor != nil && !m.browse.component.DocumentEditor.Confirming {
@@ -241,12 +241,14 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case tabIndexes:
-			if m.structure.indexForm.active() && !m.structure.indexForm.confirming() {
-				return m.clickFormField(x, y, m.structure.indexForm.View(), m.structure.indexForm.scrollOffset, contentY-3, m.structure.indexForm.fieldTitles(), m.structure.indexForm.focusField, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.structure.indexForm.focus()) })
+			if m.schema.component.Structure.IndexForm.Active() && !m.schema.component.Structure.IndexForm.Confirming() {
+				return m.clickFormField(x, y, m.schema.component.Structure.IndexForm.View(), m.schema.component.Structure.IndexForm.ScrollOffset, contentY-3, m.schema.component.Structure.IndexForm.FieldTitles(), m.schema.component.Structure.IndexForm.FocusField, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.schema.component.Structure.IndexForm.Focus()) })
 			}
 		case tabForeignKeys:
-			if m.structure.foreignKeyForm.active() && !m.structure.foreignKeyForm.confirming() && !m.structure.relationshipDiagram {
-				return m.clickFormField(x, y, m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset, contentY-3, m.structure.foreignKeyForm.fieldTitles(), m.structure.foreignKeyForm.focusField, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.structure.foreignKeyForm.focus()) })
+			if m.schema.component.Structure.ForeignKeyForm.Active() && !m.schema.component.Structure.ForeignKeyForm.Confirming() && !m.schema.component.Structure.RelationshipDiagram {
+				return m.clickFormField(x, y, m.schema.component.Structure.ForeignKeyForm.View(), m.schema.component.Structure.ForeignKeyForm.ScrollOffset, contentY-3, m.schema.component.Structure.ForeignKeyForm.FieldTitles(), m.schema.component.Structure.ForeignKeyForm.FocusField, func(int) tea.Cmd {
+					return m.overlay.formMode.BeginHuh(m.schema.component.Structure.ForeignKeyForm.Focus())
+				})
 			}
 		}
 	case stateConnection:

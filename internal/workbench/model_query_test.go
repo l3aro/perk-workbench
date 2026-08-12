@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func startQuery(t *testing.T, model *Model) uint64 {
@@ -101,7 +102,7 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 		t.Fatalf("creating fixture row: %v", err)
 	}
 	model.Focus = focusSchema
-	model.schema.list.SetItems([]list.Item{schemaItem{title: "project's", description: "table"}})
+	model.schema.component.List.SetItems([]list.Item{schema.Item{Name: "project's", Detail: "table"}})
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -114,7 +115,7 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	model = updateFromCommand(model, command)
 
 	// Then
-	if got := model.structure.table.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][2] != "INTEGER" {
+	if got := model.schema.component.Structure.Table.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][2] != "INTEGER" {
 		t.Fatalf("structure rows = %#v, want selected table columns", got)
 	}
 	if got := model.browse.component.Table.Rows(); len(got) != 0 {
@@ -152,7 +153,7 @@ func TestSchema_enter_lands_on_configured_target_tab(t *testing.T) {
 		t.Fatalf("creating fixture row: %v", err)
 	}
 	model.Focus = focusSchema
-	model.schema.list.SetItems([]list.Item{schemaItem{title: "project's", description: "table"}})
+	model.schema.component.List.SetItems([]list.Item{schema.Item{Name: "project's", Detail: "table"}})
 
 	// When — select the table.
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})

@@ -56,36 +56,36 @@ func TestTableFilters_filterAndResetEachWorkspaceTable(t *testing.T) {
 			var rows []table.Row
 			switch test.tab {
 			case tabStructure:
-				rows = model.structure.table.Rows()
+				rows = model.schema.component.Structure.Table.Rows()
 			case tabIndexes:
-				rows = model.structure.indexes.Rows()
+				rows = model.schema.component.Structure.Indexes.Rows()
 			case tabForeignKeys:
-				rows = model.structure.foreignKeys.Rows()
+				rows = model.schema.component.Structure.ForeignKeys.Rows()
 			}
-			if !model.structure.tableFiltering || len(rows) != 1 || !containsRowValue(rows[0], test.want) {
-				t.Fatalf("filtered state/rows = %t/%#v, want one row containing %q", model.structure.tableFiltering, rows, test.want)
+			if !model.schema.component.Structure.TableFiltering || len(rows) != 1 || !containsRowValue(rows[0], test.want) {
+				t.Fatalf("filtered state/rows = %t/%#v, want one row containing %q", model.schema.component.Structure.TableFiltering, rows, test.want)
 			}
 
 			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 			model = updated.(Model)
-			if model.structure.tableFiltering || model.tableFilterValue(test.tab) != test.query || len(rowsForTab(model, test.tab)) != 1 {
+			if model.schema.component.Structure.TableFiltering || model.schema.component.TableFilterValue(test.tab) != test.query || len(rowsForTab(model, test.tab)) != 1 {
 				t.Fatalf("filter after escape = active %t/value %q/rows %#v, want inactive/%q/one row",
-					model.structure.tableFiltering, model.tableFilterValue(test.tab), rowsForTab(model, test.tab), test.query)
+					model.schema.component.Structure.TableFiltering, model.schema.component.TableFilterValue(test.tab), rowsForTab(model, test.tab), test.query)
 			}
 
 			updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 			model = updated.(Model)
 			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			model = updated.(Model)
-			if model.structure.tableFiltering || model.tableFilterValue(test.tab) != test.query {
+			if model.schema.component.Structure.TableFiltering || model.schema.component.TableFilterValue(test.tab) != test.query {
 				t.Fatalf("filter after enter = active %t/value %q, want inactive/%q",
-					model.structure.tableFiltering, model.tableFilterValue(test.tab), test.query)
+					model.schema.component.Structure.TableFiltering, model.schema.component.TableFilterValue(test.tab), test.query)
 			}
 
 			updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
 			model = updated.(Model)
-			if model.tableFilterValue(test.tab) != "" || len(rowsForTab(model, test.tab)) != 2 {
-				t.Fatalf("filter/rows after reset = %q/%#v, want empty/two rows", model.tableFilterValue(test.tab), rowsForTab(model, test.tab))
+			if model.schema.component.TableFilterValue(test.tab) != "" || len(rowsForTab(model, test.tab)) != 2 {
+				t.Fatalf("filter/rows after reset = %q/%#v, want empty/two rows", model.schema.component.TableFilterValue(test.tab), rowsForTab(model, test.tab))
 			}
 		})
 	}
@@ -99,16 +99,16 @@ func TestTableFilters_mouseTabSwitchClosesSession(t *testing.T) {
 		{Name: "name", Type: "TEXT"},
 	}})
 	model = updated.(Model)
-	model.structure.indexRows = []table.Row{{"items_name"}, {"items_category"}}
-	model.structure.indexes.SetRows(model.structure.indexRows)
+	model.schema.component.Structure.IndexRows = []table.Row{{"items_name"}, {"items_category"}}
+	model.schema.component.Structure.Indexes.SetRows(model.schema.component.Structure.IndexRows)
 	model.applyLayout(100, 24)
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
-	if !model.structure.tableFiltering || model.tableFilterValue(tabStructure) != "i" {
-		t.Fatalf("filter session = %t/query %q, want active/i", model.structure.tableFiltering, model.tableFilterValue(tabStructure))
+	if !model.schema.component.Structure.TableFiltering || model.schema.component.TableFilterValue(tabStructure) != "i" {
+		t.Fatalf("filter session = %t/query %q, want active/i", model.schema.component.Structure.TableFiltering, model.schema.component.TableFilterValue(tabStructure))
 	}
 
 	updated, _ = model.Update(tea.MouseClickMsg{
@@ -117,23 +117,23 @@ func TestTableFilters_mouseTabSwitchClosesSession(t *testing.T) {
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
-	if model.structure.tableFiltering {
+	if model.schema.component.Structure.TableFiltering {
 		t.Fatal("table filter remained active after tab click")
 	}
 	if model.Tab != tabIndexes {
 		t.Fatalf("active tab = %v, want indexes", model.Tab)
 	}
-	if model.tableFilterValue(tabStructure) != "i" || len(model.structure.table.Rows()) != 1 {
-		t.Fatalf("columns filter = %q/rows %#v, want i/one row", model.tableFilterValue(tabStructure), model.structure.table.Rows())
+	if model.schema.component.TableFilterValue(tabStructure) != "i" || len(model.schema.component.Structure.Table.Rows()) != 1 {
+		t.Fatalf("columns filter = %q/rows %#v, want i/one row", model.schema.component.TableFilterValue(tabStructure), model.schema.component.Structure.Table.Rows())
 	}
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updated.(Model)
-	if model.structure.indexes.Cursor() != 1 {
-		t.Fatalf("indexes cursor = %d, want 1 after j", model.structure.indexes.Cursor())
+	if model.schema.component.Structure.Indexes.Cursor() != 1 {
+		t.Fatalf("indexes cursor = %d, want 1 after j", model.schema.component.Structure.Indexes.Cursor())
 	}
-	if model.tableFilterValue(tabStructure) != "i" {
-		t.Fatalf("hidden columns filter changed to %q after indexes navigation", model.tableFilterValue(tabStructure))
+	if model.schema.component.TableFilterValue(tabStructure) != "i" {
+		t.Fatalf("hidden columns filter changed to %q after indexes navigation", model.schema.component.TableFilterValue(tabStructure))
 	}
 }
 
@@ -149,11 +149,11 @@ func containsRowValue(row table.Row, want string) bool {
 func rowsForTab(model Model, tab workspaceTab) []table.Row {
 	switch tab {
 	case tabStructure:
-		return model.structure.table.Rows()
+		return model.schema.component.Structure.Table.Rows()
 	case tabIndexes:
-		return model.structure.indexes.Rows()
+		return model.schema.component.Structure.Indexes.Rows()
 	case tabForeignKeys:
-		return model.structure.foreignKeys.Rows()
+		return model.schema.component.Structure.ForeignKeys.Rows()
 	default:
 		return nil
 	}

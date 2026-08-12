@@ -49,14 +49,14 @@ func (m Model) loadReferencingForeignKeys() tea.Cmd {
 }
 
 func (m Model) saveForeignKey() tea.Cmd {
-	change, err := m.structure.foreignKeyForm.change()
+	change, err := m.schema.component.Structure.ForeignKeyForm.Change()
 	if err != nil {
 		return func() tea.Msg { return foreignKeyChangedMsg{err: err} }
 	}
 	if m.ReadOnly {
 		return func() tea.Msg { return foreignKeyChangedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	table, service, previous := m.SelectedTable, m.Database, m.structure.foreignKeyForm.previous
+	table, service, previous := m.SelectedTable, m.Database, m.schema.component.Structure.ForeignKeyForm.Previous
 	statement, startedAt := m.foreignKeyChangeStatement(table, previous, change), time.Now()
 	return func() tea.Msg {
 		if previous == "" {
@@ -72,7 +72,7 @@ func (m Model) deleteForeignKey() tea.Cmd {
 	}
 	previous := m.overlay.deletePendingName
 	if previous == "" {
-		previous = m.structure.foreignKeyForm.previous
+		previous = m.schema.component.Structure.ForeignKeyForm.Previous
 	}
 	table, service := m.SelectedTable, m.Database
 	statement, startedAt := m.dropForeignKeyStatement(table, previous), time.Now()
@@ -93,11 +93,11 @@ func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.C
 	for index, foreignKey := range message.foreignKeys {
 		rows[index] = table.Row{safeText(foreignKey.ID), safeText(strings.Join(foreignKey.Columns, ", ")), safeText(foreignKey.ReferenceTable), safeText(strings.Join(foreignKey.ReferenceColumns, ", ")), safeText(foreignKey.OnDelete), safeText(foreignKey.OnUpdate)}
 	}
-	m.structure.foreignKeys.SetColumns(tableColumns([]string{"ID", "Columns", "Reference table", "Reference columns", "On delete", "On update"}, rows))
-	resizeResultsTable(&m.structure.foreignKeys, m.layout.tableViewportWidth, m.structure.foreignKeys.Height()+1)
-	m.structure.foreignKeyRows = rows
-	m.structure.foreignKeyInfo = message.foreignKeys
-	m.applyTableFilter(tabForeignKeys)
+	m.schema.component.Structure.ForeignKeys.SetColumns(tableColumns([]string{"ID", "Columns", "Reference table", "Reference columns", "On delete", "On update"}, rows))
+	resizeResultsTable(&m.schema.component.Structure.ForeignKeys, m.layout.tableViewportWidth, m.schema.component.Structure.ForeignKeys.Height()+1)
+	m.schema.component.Structure.ForeignKeyRows = rows
+	m.schema.component.Structure.ForeignKeyInfo = message.foreignKeys
+	m.schema.component.ApplyTableFilter(tabForeignKeys)
 	m.layout.foreignKeysOffset = 0
 	return m, nil
 }
@@ -110,7 +110,7 @@ func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoaded
 		}
 		return m, nil
 	}
-	m.structure.referencingForeignKeyInfo = message.foreignKeys
+	m.schema.component.Structure.ReferencingForeignKeyInfo = message.foreignKeys
 	return m, nil
 }
 
@@ -119,11 +119,11 @@ func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model,
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "updated foreign key"))
 	}
 	if message.err != nil {
-		m.structure.foreignKeyForm.saving = false
+		m.schema.component.Structure.ForeignKeyForm.Saving = false
 		m.setStatus(safeText(fmt.Sprintf("updating foreign key: %v", message.err)))
 		return m, nil
 	}
-	m.structure.foreignKeyForm.close()
+	m.schema.component.Structure.ForeignKeyForm.Close()
 	m.setStatus("foreign key updated")
 	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
@@ -133,19 +133,18 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "dropped foreign key"))
 	}
 	if message.err != nil {
-		m.structure.foreignKeyForm.saving = false
+		m.schema.component.Structure.ForeignKeyForm.Saving = false
 		m.setStatus(safeText(fmt.Sprintf("deleting foreign key: %v", message.err)))
 		return m, nil
 	}
-	m.structure.foreignKeyForm.close()
+	m.schema.component.Structure.ForeignKeyForm.Close()
 	m.setStatus("foreign key deleted")
 	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
 }
 
 func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd {
-	m.structure.foreignKeyForm = newForeignKeyForm(foreignKey)
+	component, cmd := m.schema.component.OpenForeignKeyForm(foreignKey, m.workspaceLayout(), m.keybindings)
+	m.schema.component = component
 	m.overlay.formMode.ButtonsFocused = false
-	m.structure.foreignKeyForm.keybindings = m.keybindings
-	m.structure.foreignKeyForm.setWidth(m.layout.tableViewportWidth)
-	return m.openForm(m.structure.foreignKeyForm.form.Init(), m.structure.foreignKeyForm.focus)
+	return m.openForm(cmd, component.Structure.ForeignKeyForm.Focus)
 }

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
@@ -277,9 +278,9 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.list.SetItems([]list.Item{
-		schemaItem{title: "accounts", description: "table"},
-		schemaItem{title: "queue_1", description: "table"},
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Detail: "table"},
+		schema.Item{Name: "queue_1", Detail: "table"},
 	})
 
 	// When
@@ -293,29 +294,29 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	model = updateFromCommand(model, command)
 
 	// Then
-	if !model.schema.filter.Focused() {
+	if !model.schema.component.Filter.Focused() {
 		t.Fatal("schema filter input is not focused")
 	}
-	if got := model.schema.filter.Value(); got != "q1" {
+	if got := model.schema.component.Filter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want %q", got, "q1")
 	}
-	if !model.schema.list.IsFiltered() {
+	if !model.schema.component.List.IsFiltered() {
 		t.Fatal("schema list is not filtered")
 	}
-	if got := model.schema.list.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
+	if got := model.schema.component.List.VisibleItems(); len(got) != 1 || got[0].(schema.Item).Title() != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 
 	// Escape exits filter editing without clearing the applied filter.
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.schema.filter.Focused() {
+	if model.schema.component.Filter.Focused() {
 		t.Fatal("schema filter input remains focused after escape")
 	}
-	if got := model.schema.filter.Value(); got != "q1" {
+	if got := model.schema.component.Filter.Value(); got != "q1" {
 		t.Fatalf("filter value = %q, want preserved q1", got)
 	}
-	if got := model.schema.list.VisibleItems(); len(got) != 1 || got[0].(schemaItem).title != "queue_1" {
+	if got := model.schema.component.List.VisibleItems(); len(got) != 1 || got[0].(schema.Item).Title() != "queue_1" {
 		t.Fatalf("visible items = %#v, want queue_1", got)
 	}
 
@@ -323,13 +324,13 @@ func TestFocus_schema_filters_with_slash_and_esc(t *testing.T) {
 	selectedBeforeFilter := model.SelectedTable
 	updated, _ = model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
-	if !model.schema.filter.Focused() {
+	if !model.schema.component.Filter.Focused() {
 		t.Fatal("slash did not re-focus the schema filter input")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if model.schema.filter.Focused() || model.schema.filter.Value() != "q1" {
-		t.Fatalf("after enter: focused=%t value=%q, want inactive/q1", model.schema.filter.Focused(), model.schema.filter.Value())
+	if model.schema.component.Filter.Focused() || model.schema.component.Filter.Value() != "q1" {
+		t.Fatalf("after enter: focused=%t value=%q, want inactive/q1", model.schema.component.Filter.Focused(), model.schema.component.Filter.Value())
 	}
 	if model.SelectedTable != selectedBeforeFilter {
 		t.Fatalf("enter selected table %q, want unchanged %q", model.SelectedTable, selectedBeforeFilter)
@@ -349,9 +350,9 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
 			model.State, model.Focus = stateReady, focusSchema
-			model.schema.list.SetItems([]list.Item{
-				schemaItem{title: "accounts", description: "table"},
-				schemaItem{title: "queue_1", description: "table"},
+			model.schema.component.List.SetItems([]list.Item{
+				schema.Item{Name: "accounts", Detail: "table"},
+				schema.Item{Name: "queue_1", Detail: "table"},
 			})
 
 			updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
@@ -391,9 +392,9 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTable(t *testing.T) {
 func TestSchemaFilter_matchesObjectKind(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.list.SetItems([]list.Item{
-		schemaItem{title: "accounts", database: "main", table: "accounts", kind: "table"},
-		schemaItem{title: "audit_log", database: "main", table: "audit_log", kind: "view"},
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Database: "main", Table: "accounts", Kind: "table"},
+		schema.Item{Name: "audit_log", Database: "main", Table: "audit_log", Kind: "view"},
 	})
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
@@ -404,12 +405,12 @@ func TestSchemaFilter_matchesObjectKind(t *testing.T) {
 		model = updateFromCommand(model, command)
 	}
 
-	visible := model.schema.list.VisibleItems()
+	visible := model.schema.component.List.VisibleItems()
 	if len(visible) != 1 {
 		t.Fatalf("filtered items = %d, want 1", len(visible))
 	}
-	item, ok := visible[0].(schemaItem)
-	if !ok || item.kind != "view" || item.title != "audit_log" {
+	item, ok := visible[0].(schema.Item)
+	if !ok || item.Kind != "view" || item.Name != "audit_log" {
 		t.Fatalf("filtered item = %+v, want the view", visible[0])
 	}
 }
@@ -442,9 +443,9 @@ func TestSchemaFilter_visibleInputRendersPlaceholderAndIcon(t *testing.T) {
 func TestSchemaFilter_escapeInTreeNavigationClearsInput(t *testing.T) {
 	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.list.SetItems([]list.Item{
-		schemaItem{title: "accounts", description: "table"},
-		schemaItem{title: "queue_1", description: "table"},
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Detail: "table"},
+		schema.Item{Name: "queue_1", Detail: "table"},
 	})
 
 	// Commit a filter, then press escape in tree navigation: the list's
@@ -456,15 +457,15 @@ func TestSchemaFilter_escapeInTreeNavigationClearsInput(t *testing.T) {
 	model = updateFromCommand(model, command)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if !model.schema.list.IsFiltered() {
+	if !model.schema.component.List.IsFiltered() {
 		t.Fatal("escape should commit, not clear, the filter")
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updated.(Model)
-	if model.schema.list.IsFiltered() {
+	if model.schema.component.List.IsFiltered() {
 		t.Fatal("escape in tree navigation should clear the filter")
 	}
-	if got := model.schema.filter.Value(); got != "" {
+	if got := model.schema.component.Filter.Value(); got != "" {
 		t.Fatalf("visible filter input = %q, want cleared", got)
 	}
 }
@@ -476,7 +477,7 @@ func TestSchemaFilter_clickFocusesInput(t *testing.T) {
 	// Click the filter row (contentY 1 = terminal Y 2).
 	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 2, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.schema.filter.Focused() {
+	if !model.schema.component.Filter.Focused() {
 		t.Fatal("click on the filter row did not focus the input")
 	}
 
@@ -484,10 +485,10 @@ func TestSchemaFilter_clickFocusesInput(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updated.(Model)
 	model = updateFromCommand(model, command)
-	if got := model.schema.filter.Value(); got != "x" {
+	if got := model.schema.component.Filter.Value(); got != "x" {
 		t.Fatalf("filter value = %q, want x", got)
 	}
-	if !model.schema.list.IsFiltered() {
+	if !model.schema.component.List.IsFiltered() {
 		t.Fatal("typing in the filter did not filter the tree")
 	}
 }
@@ -501,9 +502,9 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableCompact(t *testing.T)
 		t.Fatal("30-wide model is not compact")
 	}
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.list.SetItems([]list.Item{
-		schemaItem{title: "accounts", description: "table"},
-		schemaItem{title: "queue_1", description: "table"},
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Detail: "table"},
+		schema.Item{Name: "queue_1", Detail: "table"},
 	})
 
 	// Commit the filter: the "“q1” 1 item • 1 filtered" status line wraps on
@@ -547,11 +548,11 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableVeryNarrow(t *testing
 		t.Fatal("16-wide model is not compact")
 	}
 	model.State, model.Focus = stateReady, focusSchema
-	items := []list.Item{schemaItem{title: "queue_1", description: "table"}}
+	items := []list.Item{schema.Item{Name: "queue_1", Detail: "table"}}
 	for i := range 9 {
-		items = append(items, schemaItem{title: fmt.Sprintf("other_%d", i), description: "table"})
+		items = append(items, schema.Item{Name: fmt.Sprintf("other_%d", i), Detail: "table"})
 	}
-	model.schema.list.SetItems(items)
+	model.schema.component.List.SetItems(items)
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
@@ -593,9 +594,9 @@ func TestFocus_schemaFilteredMouseClickSelectsRenderedTableExactFit(t *testing.T
 		t.Fatal("32-wide model is not compact")
 	}
 	model.State, model.Focus = stateReady, focusSchema
-	model.schema.list.SetItems([]list.Item{
-		schemaItem{title: "accounts", description: "table"},
-		schemaItem{title: "queue_1", description: "table"},
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Detail: "table"},
+		schema.Item{Name: "queue_1", Detail: "table"},
 	})
 
 	updated, command := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
@@ -716,7 +717,7 @@ func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus = focusSchema
-	model.schema.list.SetItems([]list.Item{schemaItem{title: "main", root: true}})
+	model.schema.component.List.SetItems([]list.Item{schema.Item{Name: "main", Root: true}})
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"ID"},
@@ -952,7 +953,7 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 				model.focusActiveTable()
 				updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{{Name: "id"}, {Name: "name"}}})
 				model = updated.(Model)
-				model.structure.table.SetCursor(1)
+				model.schema.component.Structure.Table.SetCursor(1)
 				return model
 			},
 		},
@@ -979,8 +980,8 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if test.name == "structure" && model.structure.table.Cursor() != 0 {
-				t.Fatalf("structure cursor = %d, want 0 after k", model.structure.table.Cursor())
+			if test.name == "structure" && model.schema.component.Structure.Table.Cursor() != 0 {
+				t.Fatalf("structure cursor = %d, want 0 after k", model.schema.component.Structure.Table.Cursor())
 			}
 			if test.name == "browse" && model.browse.component.Table.Cursor() != 0 {
 				t.Fatalf("browse cursor = %d, want 0 after k", model.browse.component.Table.Cursor())
@@ -1034,8 +1035,8 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.schema.list.SetItems([]list.Item{schemaItem{title: "main", root: true}})
-	_, listCommand := model.schema.list.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model.schema.component.List.SetItems([]list.Item{schema.Item{Name: "main", Root: true}})
+	_, listCommand := model.schema.component.List.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
 	if commandQuits(listCommand) {
 		t.Fatal("schema list returned a quit command for plain q")
 	}
