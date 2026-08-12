@@ -611,6 +611,8 @@ func (m Model) scrollForm(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		return m, m.columnForm.previousField()
 	case m.browseFilterForm != nil:
 		m.browseFilterForm.scrollOffset = clamp(m.browseFilterForm.scrollOffset+step, 0, len(m.browseFilterForm.fields)+1)
+	case m.documentEditor != nil:
+		m.documentEditor.scrollOffset = formScrollOffset(m.documentEditor.View(), m.documentEditor.scrollOffset, step, m.formViewportHeight())
 	case m.browseForm.active():
 		m.browseForm.scrollOffset = formScrollOffset(m.browseForm.View(), m.browseForm.scrollOffset, step, m.formViewportHeight())
 	case m.indexForm.active():
@@ -963,11 +965,7 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	m.refreshBrowseStatus()
 
 	m.contextMenu = &contextMenuModel{
-		options: []menuOption{
-			{label: "Edit cell", action: "edit_cell"},
-			{label: "Edit row", action: "edit_row"},
-			{label: "Delete row", action: "delete_row"},
-		},
+		options:  m.browseRowMenuOptions(),
 		selected: 0,
 		visible:  true,
 		x:        absX,

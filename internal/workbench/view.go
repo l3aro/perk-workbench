@@ -153,6 +153,7 @@ func (m Model) hasConfirming() bool {
 	return m.explainPicker != nil || m.quitDialog != nil || m.queryConfirmation != nil || m.columnForm.confirming() || m.indexForm.confirming() ||
 		m.foreignKeyForm.confirming() || m.browseForm.confirming() || m.connection.confirmation != nil || m.tableFormOpen() ||
 		(m.cellEditor != nil && m.cellEditor.confirming) ||
+		(m.documentEditor != nil && m.documentEditor.confirming) ||
 		(m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil)
 }
 
@@ -178,6 +179,8 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.deleteConfirm
 	case m.cellEditor != nil && m.cellEditor.confirming:
 		return m.cellEditor.confirm
+	case m.documentEditor != nil && m.documentEditor.confirming:
+		return m.documentEditor.confirmation
 	case m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil:
 		return m.chat.activeRun().pendingWrite.dialog
 	default:
@@ -186,7 +189,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.commandPalette.visible || m.themePicker != nil || m.tableTargetPicker != nil || m.queryLogDetail != nil || m.notificationHistory != nil || m.notificationDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
+	return m.commandPalette.visible || m.themePicker != nil || m.tableTargetPicker != nil || m.queryLogDetail != nil || m.notificationHistory != nil || m.notificationDetail != nil || m.explainPicker != nil || m.chatHistoryPicker != nil || m.quitDialog != nil || m.cellEditor != nil || m.documentEditor != nil || m.cellViewer != nil || m.contextMenu != nil || m.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -698,6 +701,9 @@ func (m Model) browseView() string {
 		// renders at most one screenful per frame), so the viewport slice
 		// must not re-apply the offset.
 		return m.formViewport(m.browseFilterForm.View(), 0)
+	}
+	if m.documentEditor != nil {
+		return m.formViewport(m.documentEditor.View(), m.documentEditor.scrollOffset)
 	}
 	if m.browseForm.active() {
 		return m.formViewport(m.browseForm.View(), m.browseForm.scrollOffset)

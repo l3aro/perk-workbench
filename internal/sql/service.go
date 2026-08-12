@@ -89,6 +89,10 @@ type Result struct {
 	HasMore         bool
 	Duration        time.Duration
 	Truncated       bool
+	// DocumentIDs carries one stable document identity per row, parallel to
+	// Rows, for document-capable browse results. Empty when the backend is
+	// not document-capable or a row has no identity.
+	DocumentIDs []DocumentPayload
 }
 
 type SchemaObject struct {

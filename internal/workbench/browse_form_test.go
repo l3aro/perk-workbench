@@ -3,6 +3,7 @@ package workbench
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -110,12 +111,16 @@ func TestBrowseForm_nKeySetsFocusedColumnToNull(t *testing.T) {
 	if !model.browseForm.values.nulls[1] {
 		t.Fatal("name field nulls[1] should be true after pressing n")
 	}
-	statement, err := model.browseForm.updateStatement("items")
-	if err != nil {
-		t.Fatalf("update statement: %v", err)
+	wantValues := []sharedsql.RowValue{{Name: "name", Value: sharedsql.Value{Kind: sharedsql.ValueNull}}}
+	if values := model.browseForm.rowValues(); !reflect.DeepEqual(values, wantValues) {
+		t.Fatalf("rowValues = %#v, want %#v", values, wantValues)
 	}
-	if want := "UPDATE `items` SET `name` = NULL WHERE `id` = '2'"; statement != want {
-		t.Fatalf("statement = %q, want %q", statement, want)
+	wantKey := []sharedsql.RowValue{{Name: "id", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "2"}}}
+	if key, err := model.browseForm.keyValues(); err != nil || !reflect.DeepEqual(key, wantKey) {
+		t.Fatalf("keyValues = %#v, %v; want %#v", key, err, wantKey)
+	}
+	if got, want := model.browseForm.preview(), "Table: items\nKey:\n  id = \"2\"\nChanges:\n  name = NULL"; got != want {
+		t.Fatalf("preview = %q, want %q", got, want)
 	}
 }
 
@@ -292,9 +297,9 @@ func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
 		t.Run("affected="+strconv.FormatInt(affected, 10), func(t *testing.T) {
 			// Given
 			model := openBrowseRow(t, 1)
-			model.browseForm.values.fields[1] = "changed" // dirty a field so a real UPDATE reaches the mock DB
+			model.browseForm.values.fields[1] = "changed" // dirty a field so a real update reaches the fake
 			model.browseForm.saving = true
-			model.Database = browseExecuteService{result: sharedsql.Result{RowsAffected: affected}}
+			model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: affected}}
 
 			// When
 			updated, _ := model.Update(model.updateBrowseRow()())
@@ -308,6 +313,32 @@ func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
 	}
 }
 
+// browseWriteService is a RowWriter-capable fake that reports a fixed
+// RowsAffected, used to prove the workbench's RowsAffected == 1 contract.
+type browseWriteService struct {
+	sharedsql.Service
+	result sharedsql.Result
+}
+
+func (s browseWriteService) WriteCapabilities() sharedsql.WriteCapabilities {
+	return sharedsql.WriteCapabilities{RowWriter: true}
+}
+
+func (s browseWriteService) UpdateRow(context.Context, string, []sharedsql.RowValue, []sharedsql.RowValue) (sharedsql.Result, error) {
+	return s.result, nil
+}
+
+func (s browseWriteService) InsertRow(context.Context, string, []sharedsql.RowValue) (sharedsql.Result, error) {
+	return s.result, nil
+}
+
+func (s browseWriteService) DeleteRow(context.Context, string, []sharedsql.RowValue) (sharedsql.Result, error) {
+	return s.result, nil
+}
+
+// browseExecuteService is a capability-less fake: Execute works, but no
+// row/document write interface exists, so any browse write must be
+// rejected with the capability error.
 type browseExecuteService struct {
 	sharedsql.Service
 	result sharedsql.Result
@@ -315,6 +346,26 @@ type browseExecuteService struct {
 
 func (s browseExecuteService) Execute(context.Context, string) (sharedsql.Result, error) {
 	return s.result, nil
+}
+
+// TestBrowseForm_staleRowActionReportsCapabilityError proves a forced
+// write on a service without row capability fails with the capability
+// error instead of a broken statement.
+func TestBrowseForm_staleRowActionReportsCapabilityError(t *testing.T) {
+	model := openBrowseRow(t, 1)
+	model.browseForm.values.fields[1] = "changed"
+	model.browseForm.saving = true
+	model.Database = browseExecuteService{result: sharedsql.Result{RowsAffected: 1}}
+
+	updated, _ := model.Update(model.updateBrowseRow()())
+	model = updated.(Model)
+
+	if !strings.Contains(model.Status, "row editing is not supported by") {
+		t.Fatalf("status = %q, want capability error", model.Status)
+	}
+	if !model.browseForm.active() || model.browseForm.saving {
+		t.Fatalf("form = %#v, want retained form after capability error", model.browseForm)
+	}
 }
 
 // TestBrowseForm_tabReachesButtonsFromInsertMode guards the vim-off flow
@@ -447,13 +498,16 @@ func TestBrowse_commaOpensContextMenu(t *testing.T) {
 	if model.contextMenu == nil || !model.contextMenu.visible {
 		t.Fatal("comma did not open the context menu")
 	}
-	if got, want := len(model.contextMenu.options), 4; got != want {
+	if got, want := len(model.contextMenu.options), 5; got != want {
 		t.Fatalf("context menu options = %d, want %d", got, want)
 	}
-	if got, want := model.contextMenu.options[0].keys, "y"; got != want {
-		t.Errorf("copy-cell shortcut = %q, want %q", got, want)
+	if got, want := model.contextMenu.options[0].action, "insert_row"; got != want {
+		t.Errorf("first option action = %q, want %q", got, want)
 	}
-	if got, want := model.contextMenu.options[3].keys, "d"; got != want {
+	if got, want := model.contextMenu.options[0].keys, "a"; got != want {
+		t.Errorf("insert-row shortcut = %q, want %q", got, want)
+	}
+	if got, want := model.contextMenu.options[4].keys, "d"; got != want {
 		t.Errorf("delete-row shortcut = %q, want %q", got, want)
 	}
 }

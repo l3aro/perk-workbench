@@ -84,6 +84,15 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Route document-editor completions before the modal branch, which
+	// otherwise swallows them while the editor is loading/saving.
+	if loaded, ok := message.(documentEditorLoadedMsg); ok {
+		return m.updateDocumentEditorLoaded(loaded)
+	}
+	if saved, ok := message.(documentEditorSavedMsg); ok {
+		return m.updateDocumentEditorSaved(saved)
+	}
+
 	// Route streaming and persistence messages early to prevent modal branches
 	// from consuming them and stalling the stream.
 	if _, ok := message.(chatStreamMsg); ok {
@@ -361,6 +370,61 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				content: content, err: errStr,
 			}
 		}
+	}
+	if m.documentEditor != nil {
+		editor := m.documentEditor
+		if editor.saving || editor.loading {
+			// The payload arrives via documentEditorLoadedMsg, routed
+			// before this branch; ignore user input meanwhile.
+			return m, nil
+		}
+		keyPress, isKeyPress := message.(tea.KeyPressMsg)
+		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
+			if editor.confirming {
+				editor.confirming = false
+				editor.confirmation = nil
+				m.formMode.mode = formModeNormal
+				return m, editor.form.Init()
+			}
+			m.documentEditor = nil
+			return m, nil
+		}
+		if editor.confirming {
+			completed, action := editor.confirmation.Update(message, m.width, m.height)
+			if !completed {
+				return m, nil
+			}
+			if action != "confirm" {
+				m.documentEditor = nil
+				return m, nil
+			}
+			editor.confirming = false
+			editor.saving = true
+			cmd := m.executeDocumentSave()
+			return m, cmd
+		}
+		if isKeyPress && keyPress.Key().Code == tea.KeyEnter {
+			return m, nil
+		}
+		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
+			cmd, err := editor.beginConfirmation()
+			if err != nil {
+				m.setStatus(safeText(err.Error()))
+				return m, nil
+			}
+			return m, cmd
+		}
+		model, command := editor.form.Update(message)
+		editor.form = model.(*huh.Form)
+		if editor.form.State != huh.StateCompleted {
+			return m, command
+		}
+		cmd, err := editor.beginConfirmation()
+		if err != nil {
+			m.setStatus(safeText(err.Error()))
+			return m, nil
+		}
+		return m, cmd
 	}
 	if m.cellEditor != nil {
 		keyPress, isKeyPress := message.(tea.KeyPressMsg)
@@ -840,6 +904,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateBrowseRowUpdated(message)
 	case deleteRowMsg:
 		return m.updateDeleteRowMsg(message)
+	case insertRowMsg:
+		return m.updateInsertRowMsg(message)
 	case cellEditorUpdatedMsg:
 		return m.updateCellEditorUpdated(message)
 	case sqlEditorFinishedMsg:

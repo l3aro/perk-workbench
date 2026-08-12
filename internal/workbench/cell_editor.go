@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 type cellEditor struct {
@@ -21,7 +23,6 @@ type cellEditor struct {
 	primaryKeys []int
 	columns     []string
 	original    []*string // whole row values
-	identifier  func(string) string
 	originalVal *string
 	editedVal   string
 	width       int
@@ -47,27 +48,45 @@ func (e *cellEditor) active() bool {
 	return e.input != nil
 }
 
-func (e *cellEditor) updateStatement() string {
-	if !e.active() || len(e.primaryKeys) == 0 {
-		return ""
+// keyValues converts the whole-row primary-key values to the RowValue key
+// list used by the driver's UpdateRow; NULL keys stay NULL.
+func (e *cellEditor) keyValues() ([]sharedsql.RowValue, error) {
+	if len(e.primaryKeys) == 0 {
+		return nil, fmt.Errorf("cannot edit: no primary key")
 	}
-	id := e.identifier
-	if id == nil {
-		id = quoteBrowseIdentifier
-	}
-	set := id(e.columnName) + " = " + quoteBrowseValue(e.editedVal)
-	where := make([]string, len(e.primaryKeys))
-	for i, pk := range e.primaryKeys {
+	key := make([]sharedsql.RowValue, 0, len(e.primaryKeys))
+	for _, pk := range e.primaryKeys {
+		value := sharedsql.Value{Kind: sharedsql.ValueString}
 		if e.original[pk] == nil {
-			where[i] = id(e.columns[pk]) + " IS NULL"
+			value.Kind = sharedsql.ValueNull
 		} else {
-			where[i] = id(e.columns[pk]) + " = " + quoteBrowseValue(*e.original[pk])
+			value.String = *e.original[pk]
+		}
+		key = append(key, sharedsql.RowValue{Name: e.columns[pk], Value: value})
+	}
+	return key, nil
+}
+
+// preview renders the structured cell-write preview for the confirmation
+// and query-log entry: Table, Key, and the single Change.
+func (e *cellEditor) preview() string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "Table: %s", e.table)
+	builder.WriteString("\nKey:")
+	if key, err := e.keyValues(); err == nil {
+		for _, row := range key {
+			fmt.Fprintf(&builder, "\n  %s = %s", row.Name, rowValuePreview(row.Value))
 		}
 	}
-	return "UPDATE " + id(e.table) + " SET " + set + " WHERE " + strings.Join(where, " AND ")
+	fmt.Fprintf(&builder, "\nChanges:\n  %s = %s", e.columnName, strconv.Quote(e.editedVal))
+	return builder.String()
 }
 
 func (m *Model) openCellEditor() tea.Cmd {
+	if !m.writeCapabilities().RowWriter {
+		// Document stores edit the whole document instead of one cell.
+		return m.openEditDocument()
+	}
 	row := m.browse.Cursor()
 	if row < 0 || row >= len(m.browseResult.Rows) {
 		m.setStatus("select a row")
@@ -103,11 +122,6 @@ func (m *Model) openCellEditor() tea.Cmd {
 		editedVal = *originalVal
 	}
 
-	id := m.actionIdentifier
-	if id == nil {
-		id = quoteBrowseIdentifier
-	}
-
 	// Detect column type for choosing input vs text field
 	colType := ""
 	for _, info := range m.structureColumns {
@@ -126,7 +140,6 @@ func (m *Model) openCellEditor() tea.Cmd {
 		primaryKeys: primaryKeys,
 		columns:     columns,
 		original:    browseRow,
-		identifier:  id,
 		originalVal: originalVal,
 		editedVal:   editedVal,
 		width:       width,
@@ -168,17 +181,23 @@ func (m Model) executeCellUpdate() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return cellEditorUpdatedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	statement := m.cellEditor.updateStatement()
-	if statement == "" {
-		return func() tea.Msg { return cellEditorUpdatedMsg{} }
+	writer := m.rowWriter()
+	if writer == nil {
+		return func() tea.Msg { return cellEditorUpdatedMsg{err: m.rowWriteUnsupportedError()} }
 	}
-	service, startedAt := m.Database, time.Now()
+	key, err := m.cellEditor.keyValues()
+	if err != nil {
+		return func() tea.Msg { return cellEditorUpdatedMsg{err: err} }
+	}
+	values := []sharedsql.RowValue{{Name: m.cellEditor.columnName, Value: sharedsql.Value{Kind: sharedsql.ValueString, String: m.cellEditor.editedVal}}}
+	preview := m.cellEditor.preview()
+	table, startedAt := m.SelectedTable, time.Now()
 	return func() tea.Msg {
-		result, err := service.Execute(m.appContext, statement)
+		result, err := writer.UpdateRow(m.appContext, table, key, values)
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return cellEditorUpdatedMsg{statement: statement, startedAt: startedAt, err: err}
+		return cellEditorUpdatedMsg{statement: preview, startedAt: startedAt, err: err}
 	}
 }
 
@@ -196,9 +215,8 @@ func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea
 }
 
 func (e *cellEditor) beginConfirmation() tea.Cmd {
-	statement := e.updateStatement()
 	e.confirming = true
-	e.confirm = yesNoConfirmation("Save cell change?", statement, "save")
+	e.confirm = yesNoConfirmation("Save cell change?", e.preview(), "save")
 	return nil
 }
 

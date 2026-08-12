@@ -212,6 +212,12 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 				}, func(int) tea.Cmd { return m.formMode.beginHuh(m.columnForm.focus()) })
 			}
 		case tabBrowse:
+			if m.documentEditor != nil && !m.documentEditor.confirming {
+				return m.clickFormField(x, y, m.documentEditor.View(), m.documentEditor.scrollOffset, contentY-3, []string{m.documentEditor.title}, func(field int) tea.Cmd {
+					m.documentEditor.scrollOffset = 0
+					return m.documentEditor.focus()
+				}, func(int) tea.Cmd { return m.formMode.beginHuh(m.documentEditor.focus()) })
+			}
 			if m.browseFilterForm != nil {
 				return m.handleFilterFormClick(x, y, contentY-3, workspaceLeft)
 			}

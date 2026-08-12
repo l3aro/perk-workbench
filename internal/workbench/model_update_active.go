@@ -213,6 +213,9 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					switch action {
 					case browseFormSave:
 						m.browseForm.saving = true
+						if m.browseForm.inserting {
+							return m, m.insertBrowseRow()
+						}
 						return m, m.updateBrowseRow()
 					case browseFormDiscard:
 						m.browseForm = browseForm{}
@@ -229,10 +232,19 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.cycleBrowseSort()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
-					return m, m.openCellEditor()
+					if m.writeCapabilities().RowWriter {
+						return m, m.openCellEditor()
+					}
+					return m, m.openEditDocument()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
-					return m, m.openBrowseForm()
+					if m.writeCapabilities().RowWriter {
+						return m, m.openBrowseForm()
+					}
+					return m, m.openEditDocument()
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.insert_row", []scope{scopeView, scopeGlobal}) {
+					return m, m.openInsertRowForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.browse.Cursor()
@@ -261,12 +273,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							menuX += column.Width + 2*spaceCompact
 						}
 						m.contextMenu = &contextMenuModel{
-							options: []menuOption{
-								{label: "Copy cell", action: "copy_cell", keys: "y"},
-								{label: "Edit cell", action: "edit_cell", keys: "i"},
-								{label: "Edit row", action: "edit_row", keys: "enter"},
-								{label: "Delete row", action: "delete_row", keys: "d"},
-							},
+							options: m.browseRowMenuOptions(),
 							visible: true,
 							x:       menuX,
 							y:       row - start + 6,
@@ -528,5 +535,5 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) formActive() bool {
-	return m.tableFiltering || m.columnForm.active() || m.tableFormOpen() || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
+	return m.tableFiltering || m.columnForm.active() || m.tableFormOpen() || m.documentEditor != nil || m.browseForm.active() || m.browseFilterForm != nil || m.indexForm.active() || m.foreignKeyForm.active()
 }

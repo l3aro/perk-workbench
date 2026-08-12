@@ -275,6 +275,7 @@ func documentsResult(docs []bson.D, hasMore bool, duration time.Duration) shared
 		ColumnTypes:     make([]string, len(columns)),
 		Rows:            make([][]*string, len(docs)),
 		UntruncatedRows: make([][]*string, len(docs)),
+		DocumentIDs:     make([]sharedsql.DocumentPayload, len(docs)),
 		HasMore:         hasMore,
 		Duration:        duration,
 	}
@@ -298,6 +299,17 @@ func documentsResult(docs []bson.D, hasMore bool, duration time.Duration) shared
 			result.Rows[rowIndex][columnIndex] = &display
 			full := formatViewValue(value)
 			result.UntruncatedRows[rowIndex][columnIndex] = &full
+		}
+		// Stable document identity: the _id scalar as relaxed extended
+		// JSON, independent of the display cell (ObjectIds render as
+		// ObjectId("..."), which is not the declared payload format).
+		if id, ok := docValue(doc, "_id"); ok {
+			if json, ok := wrappedExtJSON(id); ok {
+				result.DocumentIDs[rowIndex] = sharedsql.DocumentPayload{
+					Format: sharedsql.DocumentFormatMongoExtendedJSON,
+					Data:   []byte(json),
+				}
+			}
 		}
 	}
 	return result

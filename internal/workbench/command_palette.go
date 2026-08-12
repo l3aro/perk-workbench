@@ -54,7 +54,7 @@ func newCommandPalette(m Model) *commandPalette {
 		if len(def.keys) > 0 {
 			shortcut = displayKey(def.keys[0])
 		}
-		label := commandLabel(id, def.label)
+		label := commandLabel(m, id, def.label)
 		items = append(items, commandPaletteItem{
 			id:       id,
 			label:    label,
@@ -129,8 +129,20 @@ func contextLabel(m Model) string {
 }
 
 // commandLabel returns a disambiguated display label for the palette.
-// Commands sharing the same raw label get a pane prefix.
-func commandLabel(id CommandID, raw string) string {
+// Commands sharing the same raw label get a pane prefix. On document
+// stores the row actions relabel: edit and insert act on the whole
+// document.
+func commandLabel(m Model, id CommandID, raw string) string {
+	// On document stores the row actions relabel: edit and insert act on
+	// the whole document.
+	if capabilities := m.writeCapabilities(); !capabilities.RowWriter && capabilities.Document != nil {
+		switch id {
+		case "browse.edit":
+			return "edit document"
+		case "browse.insert_row":
+			return "insert document"
+		}
+	}
 	// These labels are unique across scopes — pass through unchanged.
 	switch raw {
 	case "next tab", "prev tab", "fullscreen", "palette",
@@ -178,6 +190,8 @@ func commandLabel(id CommandID, raw string) string {
 		return "delete column"
 	case "browse.edit":
 		return "edit row"
+	case "browse.insert_row":
+		return "insert row"
 	case "browse.refine":
 		return "filter and row limit"
 	case "browse.reset":
@@ -276,8 +290,16 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusSchema
 	case "structure.filter", "structure.reset", "structure.edit", "structure.add", "structure.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
-	case "browse.edit", "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
+	case "browse.edit":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil && m.browseWriteAvailable()
+	case "browse.edit_cell":
+		// On document stores the cell binding edits the whole document, so
+		// it merges into "edit document" and is not offered separately.
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil && m.writeCapabilities().RowWriter
+	case "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil
+	case "browse.insert_row":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil && m.browseWriteAvailable()
 	case "cell.view":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browseForm.active() && m.browseFilterForm == nil) ||
 			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.formMode.editing() && m.results.Focused())

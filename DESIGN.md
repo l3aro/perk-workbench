@@ -98,8 +98,94 @@ Project entries override user entries by name. Strict JSON decoding rejects unkn
 - Keep execution asynchronous and cancelable; never apply stale completions.
 - Failed queries must retain prior results.
 - Preserve the SQLite no-create-file rule.
-- New driver capabilities belong in `internal/sql.Service` only when every backend can implement them coherently; otherwise keep the behavior local.
+- New driver capabilities belong in `internal/sql.Service` only when every backend can implement them coherently; otherwise keep the behavior local. Capability-gated optional interfaces (below) extend the contract without forcing every backend: the workbench discovers them by type assertion and degrades gracefully when a backend does not implement them.
 - AI remains optional and must not block opening or using a database.
+
+## Row-level writes (browse-tab CRUD)
+
+The browse tab's row operations — cell edit, row edit, insert, delete — are today implemented in `internal/workbench` as raw SQL statement strings (`browse_form_statement.go`, `cell_editor.go`, `query.go`), gated by ad-hoc `Product == "MongoDB"` string checks. That puts the dialect in the wrong layer: `internal/sql.Service` and DESIGN's own rule keep driver SQL inside driver packages, and the workbench's manual `''` quoting is the kind of thing parameter binding exists for. The current SQL insert form is the last of the four operations built this way.
+
+The target is a **serializable capability descriptor plus narrow optional interfaces** in `internal/sql`, implemented by drivers that can coherently support them. `Service` itself does not change; Redis/Neo4j-style stores simply do not implement the interfaces and keep whatever views they get later.
+
+```go
+// RowWriter addresses a store as rows with a primary key (SQL tables;
+// future CQL-style stores). Key values identify the row for update/delete.
+type RowWriter interface {
+	InsertRow(ctx context.Context, table string, values []RowValue) (Result, error)
+	UpdateRow(ctx context.Context, table string, key []RowValue, values []RowValue) (Result, error)
+	DeleteRow(ctx context.Context, table string, key []RowValue) (Result, error)
+}
+
+// DocumentFormat tags a document payload's serialization so a store's
+// dialect can evolve without breaking the contract.
+type DocumentFormat string
+
+const (
+	// DocumentFormatMongoExtendedJSON is MongoDB relaxed extended JSON,
+	// mongoexport-compatible — what the mongodb driver already renders.
+	DocumentFormatMongoExtendedJSON DocumentFormat =
+		"application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed"
+)
+
+// DocumentPayload is a tagged payload: the store's declared format plus
+// bytes. It carries both document bodies and row identities.
+type DocumentPayload struct {
+	Format DocumentFormat `json:"format"`
+	Data   []byte         `json:"data"`
+}
+
+// DocumentWriteCapability declares a document store's editor contract:
+// Format is the only payload format the driver accepts, and Text reports
+// whether whole-document text editing is safe. A store that cannot replace
+// a document safely must not advertise Text; it may still expose delete
+// when browse results supply document identities.
+type DocumentWriteCapability struct {
+	Format DocumentFormat `json:"format"`
+	Text   bool           `json:"text"`
+}
+
+// WriteCapabilities is the serializable capability descriptor, the durable
+// plugin boundary. Compiled-in drivers are discovered in-process; plugins
+// advertise the same descriptor and are wrapped by a shim.
+type WriteCapabilities struct {
+	RowWriter bool                     `json:"row_writer"`
+	Document  *DocumentWriteCapability `json:"document,omitempty"`
+}
+
+// WriteCapabilitiesProvider is implemented by drivers that can describe
+// their write capabilities without the workbench type-asserting internals.
+type WriteCapabilitiesProvider interface {
+	WriteCapabilities() WriteCapabilities
+}
+
+// DocumentReader loads one complete document by identity.
+type DocumentReader interface {
+	ReadDocument(ctx context.Context, collection string, id DocumentPayload) (DocumentPayload, error)
+}
+
+// DocumentWriter addresses a document store (MongoDB; future DynamoDB).
+// Documents travel as tagged payloads; a second document store brings its
+// own format constant rather than a contract change. ReplaceDocument is
+// whole-document replacement: the driver translates the payload into its
+// native replace, so mutation dialect stays driver-side.
+type DocumentWriter interface {
+	InsertDocument(ctx context.Context, collection string, doc DocumentPayload) (Result, error)
+	ReplaceDocument(ctx context.Context, collection string, id DocumentPayload, doc DocumentPayload) (Result, error)
+	DeleteDocument(ctx context.Context, collection string, id DocumentPayload) (Result, error)
+}
+```
+
+**Value representation.** `RowValue` is an explicit tagged tree, not `any`: a `Kind` plus per-kind payloads (String, Bool, Integer, Float, Bytes, Decimal, Timestamp, Array, Object). Every kind is JSON-encodable, so the same tree survives a future out-of-process plugin boundary without leaking driver-native types (ObjectID, decimals, instants) into the contract. The workbench's existing tri-state form maps directly onto `Default` (omit the column), `Null`, and `String`; typed input (a per-field type picker) is a later enhancement. Document stores skip the tree entirely and exchange `DocumentPayload` — a format tag plus bytes — because a document's serialization *is* its value: extended JSON expresses nested documents and native types exactly, which is the Compass-style JSON document editor. The tag is what keeps the contract honest: the first non-BSON document store (DynamoDB JSON, Elasticsearch's dialect) adds a format constant and its own editor-to-driver pairing instead of forcing a breaking redesign of this interface.
+
+**Capability discovery** replaces the product-string checks. The workbench derives a `WriteCapabilities` descriptor from `WriteCapabilitiesProvider` when the service implements it, otherwise from the same in-process type assertions (`RowWriter`, `DocumentReader`, `DocumentWriter`). Product names remain display-only. Palette/menu availability and the row-action handlers dispatch on the descriptor; missing capability means the action is hidden or rejected with a clear status, never a broken statement. In-process assertions are the adapter seam, not the durable plugin boundary: a plugin advertises the same serializable descriptor and exchanges the tagged request/response DTOs declared in `internal/sql/row_write.go` (`RowWriteRequest`/`RowWriteResponse`, `DocumentWriteRequest`/`DocumentWriteResponse`), which serialize the `RowValue` tree and extended-JSON documents losslessly. Compiled-in drivers implement the Go interfaces directly; an out-of-process plugin is wrapped by a thin shim implementing the same interfaces by marshaling those DTOs across the boundary, so the workbench cannot tell the two cases apart.
+
+**Document editor policy.** A non-nil `Document` capability with `Text == true` is editable. `DocumentFormatMongoExtendedJSON` uses the JSON-aware editor: an insert starts at `{}`, the workbench requires `encoding/json.Valid` before confirmation, and the driver enforces BSON Extended JSON semantics. Every other non-empty textual format uses a labeled raw-text editor with no parsing/formatting/schema behavior; exact UTF-8 bytes travel unchanged to the driver. Empty format, `Text == false`, or a loaded document with invalid UTF-8 disables insert/edit and reports `document editing is unsupported for format <format>`. Delete remains available whenever the selected browse row carries a valid document identity (`Result.DocumentIDs`).
+
+**Migration phases.**
+
+1. *SQL family* — move the three statement builders into the `sqlite`, `mysql`, and `postgres` drivers as `RowWriter` implementations, binding values as parameters instead of quoting them by hand (all three drivers already own their `quoteIdentifier`). The workbench keeps the tri-state form and confirmation dialog; the confirmation and query-log entries show a structured preview of the same `RowValue` DTOs instead of dialect SQL, so no driver statement is duplicated in the UI. Read-only stays a workbench policy. Behavior parity: same `RowsAffected == 1` checks.
+2. *MongoDB* — implement `WriteCapabilitiesProvider`, `DocumentReader`, and `DocumentWriter` (format `application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed`) with the driver's existing BSON extended-JSON parsing and collection layer; browse results carry per-row `DocumentIDs`; the workbench adds a JSON document editor for insert and whole-document replace, removing the current "not supported" rejection.
+3. *Future* — plugins advertise the same capability descriptor and exchange the tagged DTOs; the workbench reaches them through `RowWriter`/`DocumentWriter` adapter shims, making a plugin and a compiled-in driver indistinguishable. Each new store picks the family it fits. No uniformity of *semantics* is promised: ClickHouse and Cassandra mutate through UPSERT/INSERT-style statements and their own key models, not row-by-PK UPDATE, so their `RowWriter` implementations carry their own mutation and key semantics behind the interface. The interface decides where the dialect lives, not that all stores behave alike.
 
 ## Verification
 

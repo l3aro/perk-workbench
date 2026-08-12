@@ -93,6 +93,7 @@ type Model struct {
 	indexForm                                                  indexForm
 	foreignKeyForm                                             foreignKeyForm
 	cellEditor                                                 *cellEditor
+	documentEditor                                             *documentEditor
 	cellViewer                                                 *cellViewer
 	connection                                                 connectionForm
 	connectionID                                               string

@@ -45,7 +45,7 @@ func (m Model) formTabActive() bool {
 	case tabStructure:
 		return m.columnForm.active()
 	case tabBrowse:
-		return m.browseFilterForm != nil || m.browseForm.active()
+		return m.browseFilterForm != nil || m.documentEditor != nil || m.browseForm.active()
 	case tabIndexes:
 		return m.indexForm.active()
 	case tabForeignKeys:

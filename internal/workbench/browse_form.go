@@ -2,6 +2,7 @@ package workbench
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -25,7 +26,7 @@ type browseForm struct {
 	original         []*string
 	primary          []int
 	table            string
-	identifier       func(string) string
+	inserting        bool
 	width, height    int
 	pendingG, saving bool
 	confirmationSave bool
@@ -36,9 +37,17 @@ type browseForm struct {
 type browseFormValues struct {
 	fields []string
 	nulls  []bool
+	// defaults marks insert-form fields left on DEFAULT: the column is
+	// omitted from the INSERT so engine defaults or auto-increment apply.
+	// Only meaningful while inserting; nil otherwise.
+	defaults []bool
 }
 
 func (m *Model) openBrowseForm() tea.Cmd {
+	if !m.writeCapabilities().RowWriter {
+		// Document stores edit the whole document instead of a row.
+		return m.openEditDocument()
+	}
 	row := m.browse.Cursor()
 	if row < 0 || row >= len(m.browseResult.Rows) {
 		m.setStatus("select a row")
@@ -53,11 +62,65 @@ func (m *Model) openBrowseForm() tea.Cmd {
 	m.formMode.buttonsFocused = false
 	m.browseForm.keybindings = m.keybindings
 	m.browseForm.table = m.SelectedTable
-	if m.databaseInfo.Product == "MySQL" || m.databaseInfo.Product == "PostgreSQL" {
-		m.browseForm.identifier = m.actionIdentifier
-	}
 	m.browseForm.setWidth(m.tableViewportWidth)
 	return m.openForm(m.browseForm.form.Init(), m.browseForm.focus)
+}
+
+// openInsertRowForm opens the insert-row form for the selected table. The
+// form is built from the structure columns because an empty table has no
+// browse rows to derive columns from. Document stores with an editable
+// document capability get the document insert editor instead.
+func (m *Model) openInsertRowForm() tea.Cmd {
+	if !m.writeCapabilities().RowWriter {
+		if m.documentCapability() != nil {
+			return m.openInsertDocument()
+		}
+		m.setStatus(safeText(m.rowWriteUnsupportedError().Error()))
+		return nil
+	}
+	columns := make([]string, 0, len(m.structureColumns))
+	for _, info := range m.structureColumns {
+		columns = append(columns, info.Name)
+	}
+	form, err := newInsertBrowseForm(columns)
+	if err != nil {
+		m.setStatus(safeText(err.Error()))
+		return nil
+	}
+	m.browseForm = form
+	m.formMode.buttonsFocused = false
+	m.browseForm.keybindings = m.keybindings
+	m.browseForm.table = m.SelectedTable
+	m.browseForm.setWidth(m.tableViewportWidth)
+	return m.openForm(m.browseForm.form.Init(), m.browseForm.focus)
+}
+
+// newInsertBrowseForm builds an insert-row form over the given columns.
+// Every field starts in the DEFAULT state (column omitted from the INSERT,
+// so engine defaults or auto-increment apply). Typing moves a field to
+// VALUE (the empty string included); the browse_form.set_null and
+// browse_form.set_default bindings move it to NULL or back to DEFAULT.
+// Unlike the edit form, no primary key is required.
+func newInsertBrowseForm(columns []string) (browseForm, error) {
+	if len(columns) == 0 {
+		return browseForm{}, fmt.Errorf("table has no columns")
+	}
+	values := &browseFormValues{
+		fields:   make([]string, len(columns)),
+		nulls:    make([]bool, len(columns)),
+		defaults: make([]bool, len(columns)),
+	}
+	for index := range values.defaults {
+		values.defaults[index] = true
+	}
+	form := browseForm{
+		inserting:   true,
+		columns:     append([]string(nil), columns...),
+		values:      values,
+		keybindings: DefaultKeybindings(),
+	}
+	form.rebuildForm()
+	return form, nil
 }
 
 func newBrowseForm(columns []string, original []*string, info []sharedsql.ColumnInfo) (browseForm, error) {
@@ -146,12 +209,29 @@ func (f *browseForm) Update(message tea.Msg, controller *formModeController) (te
 		col := f.focusedColumn()
 		if col >= 0 {
 			f.values.nulls[col] = false
+			if f.inserting {
+				// Entering edit mode means typing a value: leave DEFAULT.
+				f.values.defaults[col] = false
+			}
 		}
 		return controller.beginHuh(f.focus()), browseFormNoAction
 	case f.keybindings.Match(keyPress, "browse_form.set_null", []scope{scopeView, scopeGlobal}):
 		col := f.focusedColumn()
 		if col >= 0 {
 			f.values.nulls[col] = true
+			f.values.fields[col] = ""
+			if f.inserting {
+				f.values.defaults[col] = false
+			}
+		}
+		f.pendingG = false
+		f.rebuildForm()
+		return f.form.Init(), browseFormNoAction
+	case f.inserting && f.keybindings.Match(keyPress, "browse_form.set_default", []scope{scopeView, scopeGlobal}):
+		col := f.focusedColumn()
+		if col >= 0 {
+			f.values.defaults[col] = true
+			f.values.nulls[col] = false
 			f.values.fields[col] = ""
 		}
 		f.pendingG = false
@@ -203,6 +283,16 @@ func (f *browseForm) updateHuh(message tea.Msg, controller *formModeController) 
 	}
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
+	if f.inserting {
+		// Typing selects VALUE: content in the focused field leaves the
+		// DEFAULT and NULL states so the typed text reaches the INSERT.
+		// (vim-off forms open directly in insert mode, so keys never pass
+		// through the state-switch branch above.)
+		if col := f.focusedColumn(); col >= 0 && f.values.fields[col] != "" {
+			f.values.defaults[col] = false
+			f.values.nulls[col] = false
+		}
+	}
 	if f.form.State == huh.StateCompleted {
 		f.rebuildForm()
 		return f.focus(), browseFormNoAction
@@ -214,14 +304,130 @@ func (f *browseForm) updateHuh(message tea.Msg, controller *formModeController) 
 func (f *browseForm) beginConfirmation(save bool) {
 	f.confirmationSave = save
 	title := "Discard row changes?"
+	if f.inserting && !save {
+		title = "Discard row?"
+	}
 	if save {
-		title = "Save row changes?"
-		if statement, err := f.updateStatement(f.table); err == nil && statement != "" {
-			f.confirmation = yesNoConfirmation(title, statement, "confirm")
+		if f.inserting {
+			title = "Insert row?"
+		} else {
+			title = "Save row changes?"
+		}
+		if preview := f.preview(); preview != "" {
+			f.confirmation = yesNoConfirmation(title, preview, "confirm")
 			return
 		}
 	}
 	f.confirmation = yesNoConfirmation(title, "", "confirm")
+}
+
+// preview renders the structured write preview shown in confirmations and
+// query-log entries: Table, optional Key, and Values (insert) or Changes
+// (update). DEFAULT, NULL, and Go-quoted scalars keep the tri-state
+// distinct without duplicating any driver SQL in the UI.
+func (f browseForm) preview() string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "Table: %s", f.table)
+	if !f.inserting {
+		if key, err := f.keyValues(); err == nil {
+			builder.WriteString("\nKey:")
+			for _, row := range key {
+				fmt.Fprintf(&builder, "\n  %s = %s", row.Name, rowValuePreview(row.Value))
+			}
+		}
+	}
+	values := f.rowValues()
+	label := "Values:"
+	if !f.inserting {
+		label = "Changes:"
+	}
+	if len(values) > 0 {
+		builder.WriteString("\n" + label)
+		for _, row := range values {
+			fmt.Fprintf(&builder, "\n  %s = %s", row.Name, rowValuePreview(row.Value))
+		}
+	}
+	return builder.String()
+}
+
+// rowValues converts the form state to the insert/update RowValue list:
+// insert includes every non-DEFAULT field, update every dirty field.
+// Caller ordering is preserved for the driver's parameter list.
+func (f browseForm) rowValues() []sharedsql.RowValue {
+	values := make([]sharedsql.RowValue, 0, len(f.columns))
+	for index, column := range f.columns {
+		if !f.isDirty(index) {
+			continue
+		}
+		values = append(values, sharedsql.RowValue{Name: column, Value: f.rowValue(index)})
+	}
+	return values
+}
+
+// keyValues converts the primary-key columns to the RowValue key list using
+// the original values, matching the old WHERE clause.
+func (f browseForm) keyValues() ([]sharedsql.RowValue, error) {
+	if len(f.primary) == 0 {
+		return nil, fmt.Errorf("selected row cannot be updated")
+	}
+	key := make([]sharedsql.RowValue, 0, len(f.primary))
+	for _, index := range f.primary {
+		value := sharedsql.Value{Kind: sharedsql.ValueString}
+		if f.original[index] == nil {
+			value.Kind = sharedsql.ValueNull
+		} else {
+			value.String = *f.original[index]
+		}
+		key = append(key, sharedsql.RowValue{Name: f.columns[index], Value: value})
+	}
+	return key, nil
+}
+
+// rowValue converts one column's tri-state to its tagged value: DEFAULT
+// (insert only), NULL, or the typed String.
+func (f browseForm) rowValue(index int) sharedsql.Value {
+	if f.values.nulls[index] {
+		return sharedsql.Value{Kind: sharedsql.ValueNull}
+	}
+	if f.inserting && f.values.defaults[index] {
+		return sharedsql.Value{Kind: sharedsql.ValueDefault}
+	}
+	return sharedsql.Value{Kind: sharedsql.ValueString, String: f.values.fields[index]}
+}
+
+// rowValuePreview renders one tagged value for confirmation and query-log
+// text: DEFAULT, NULL, or a Go-quoted scalar.
+func rowValuePreview(value sharedsql.Value) string {
+	switch value.Kind {
+	case sharedsql.ValueDefault:
+		return "DEFAULT"
+	case sharedsql.ValueNull:
+		return "NULL"
+	default:
+		return strconv.Quote(value.String)
+	}
+}
+
+func (f browseForm) hasChanges() bool {
+	for index := range f.columns {
+		if f.isDirty(index) {
+			return true
+		}
+	}
+	return false
+}
+
+func (f browseForm) isDirty(index int) bool {
+	if f.inserting {
+		return !f.values.defaults[index]
+	}
+	if f.original[index] == nil {
+		return !f.values.nulls[index] // was NULL, now has a value → dirty
+	}
+	if f.values.nulls[index] {
+		return true // had a value, now NULL → dirty
+	}
+	return f.values.fields[index] != *f.original[index] // value changed
 }
 
 func (f *browseForm) rebuildForm() {
@@ -327,6 +533,9 @@ func (f *browseForm) setWidth(width int) {
 
 func (f browseForm) View() string {
 	if f.saving {
+		if f.inserting {
+			return statusStyle.Render("inserting row")
+		}
 		return statusStyle.Render("saving row changes")
 	}
 	if f.form == nil {

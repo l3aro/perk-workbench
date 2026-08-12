@@ -9,6 +9,8 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 	selectAction := func(action string) (tea.Model, tea.Cmd) {
 		m.contextMenu = nil
 		switch action {
+		case "insert_row":
+			return m, m.openInsertRowForm()
 		case "copy_cell":
 			return m, m.copyBrowseCell()
 		case "edit_cell":

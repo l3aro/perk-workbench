@@ -48,6 +48,7 @@ var defaultDefs = []commandDef{
 
 	// ── Browse tab (view) ───────────────────────────────────────
 	{id: "browse.edit", scope: scopeView, keys: []string{"enter"}, label: "edit row"},
+	{id: "browse.insert_row", scope: scopeView, keys: []string{"a"}, label: "insert row"},
 	{id: "browse.edit_cell", scope: scopeView, keys: []string{"i"}, label: "edit cell"},
 	{id: "cell.view", scope: scopeView, keys: []string{"v"}, label: "view cell"},
 	{id: "browse.refine", scope: scopeView, keys: []string{"/"}, label: "filter and row limit"},
@@ -75,6 +76,7 @@ var defaultDefs = []commandDef{
 
 	// ── Browse form (view, conditional) ─────────────────────────
 	{id: "browse_form.set_null", scope: scopeView, keys: []string{"n"}, label: "null"},
+	{id: "browse_form.set_default", scope: scopeView, keys: []string{"N"}, label: "default"},
 	{id: "browse_form.field_top", scope: scopeView, keys: []string{"g"}, label: "top"},
 	{id: "browse_form.field_bottom", scope: scopeView, keys: []string{"G"}, label: "bottom"},
 

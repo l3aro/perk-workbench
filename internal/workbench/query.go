@@ -55,6 +55,12 @@ type deleteRowMsg struct {
 	err       error
 }
 
+type insertRowMsg struct {
+	statement string
+	startedAt time.Time
+	err       error
+}
+
 func (m *Model) setResults(result sharedsql.Result) {
 	m.resultsNumericColumns = numericColumns(result.ColumnTypes)
 	titles := make([]string, len(result.Columns))
@@ -177,20 +183,26 @@ func (m Model) updateBrowseRow() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: fmt.Errorf("connection is read-only")} }
 	}
-	statement, err := m.browseForm.updateStatement(m.SelectedTable)
+	writer := m.rowWriter()
+	if writer == nil {
+		return func() tea.Msg { return browseRowUpdatedMsg{err: m.rowWriteUnsupportedError()} }
+	}
+	key, err := m.browseForm.keyValues()
 	if err != nil {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: err} }
 	}
-	if statement == "" {
+	values := m.browseForm.rowValues()
+	if len(values) == 0 {
 		return func() tea.Msg { return browseRowUpdatedMsg{} }
 	}
-	service, startedAt := m.Database, time.Now()
+	preview := m.browseForm.preview()
+	table, startedAt := m.SelectedTable, time.Now()
 	return func() tea.Msg {
-		result, err := service.Execute(m.appContext, statement)
+		result, err := writer.UpdateRow(m.appContext, table, key, values)
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return browseRowUpdatedMsg{statement: statement, startedAt: startedAt, err: err}
+		return browseRowUpdatedMsg{statement: preview, startedAt: startedAt, err: err}
 	}
 }
 
@@ -286,6 +298,44 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 	return m, m.loadBrowse()
 }
 
+// insertBrowseRow executes the insert form's RowWriter insert. The form
+// stays open on failure so the input survives a rejected insert
+// (constraint, type mismatch); success closes it and reloads the browse
+// page.
+func (m Model) insertBrowseRow() tea.Cmd {
+	if m.ReadOnly {
+		return func() tea.Msg { return insertRowMsg{err: fmt.Errorf("connection is read-only")} }
+	}
+	writer := m.rowWriter()
+	if writer == nil {
+		return func() tea.Msg { return insertRowMsg{err: m.rowWriteUnsupportedError()} }
+	}
+	values := m.browseForm.rowValues()
+	preview := m.browseForm.preview()
+	table, startedAt := m.SelectedTable, time.Now()
+	return func() tea.Msg {
+		result, err := writer.InsertRow(m.appContext, table, values)
+		if err == nil && result.RowsAffected != 1 {
+			err = fmt.Errorf("inserted %d rows, want 1", result.RowsAffected)
+		}
+		return insertRowMsg{statement: preview, startedAt: startedAt, err: err}
+	}
+}
+
+func (m Model) updateInsertRowMsg(message insertRowMsg) (tea.Model, tea.Cmd) {
+	if message.statement != "" {
+		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, "inserted 1 row"))
+	}
+	if message.err != nil {
+		m.browseForm.saving = false
+		m.setStatus(safeText(fmt.Sprintf("inserting row: %v", message.err)))
+		return m, nil
+	}
+	m.browseForm = browseForm{}
+	m.setStatus("row inserted")
+	return m, m.loadBrowse()
+}
+
 func (m Model) deleteRow() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("connection is read-only")} }
@@ -295,9 +345,45 @@ func (m Model) deleteRow() tea.Cmd {
 	}
 	columns := m.browseResult.Columns
 	row := m.browseResult.Rows[m.browse.Cursor()]
+	table, startedAt := m.SelectedTable, time.Now()
+	capabilities := m.writeCapabilities()
+	if capabilities.RowWriter {
+		key, err := rowKeyValues(columns, row, browsePrimaryKeys(m.structureColumns, columns))
+		if err != nil {
+			return func() tea.Msg { return deleteRowMsg{err: err} }
+		}
+		preview := browseDeletePreview(table, columns, row, browsePrimaryKeys(m.structureColumns, columns))
+		writer := m.rowWriter()
+		return func() tea.Msg {
+			result, err := writer.DeleteRow(m.appContext, table, key)
+			if err == nil && result.RowsAffected != 1 {
+				err = fmt.Errorf("deleted %d rows, want 1", result.RowsAffected)
+			}
+			return deleteRowMsg{statement: preview, startedAt: startedAt, err: err}
+		}
+	}
+	if identity := m.browseDocumentIdentity(); identity != nil {
+		writer := m.documentWriter()
+		if writer == nil {
+			return func() tea.Msg { return deleteRowMsg{err: m.rowWriteUnsupportedError()} }
+		}
+		preview := fmt.Sprintf("Table: %s\nKey:\n  _id = %s", table, string(identity.Data))
+		return func() tea.Msg {
+			result, err := writer.DeleteDocument(m.appContext, table, *identity)
+			if err == nil && result.RowsAffected != 1 {
+				err = fmt.Errorf("deleted %d rows, want 1", result.RowsAffected)
+			}
+			return deleteRowMsg{statement: preview, startedAt: startedAt, err: err}
+		}
+	}
+	return func() tea.Msg { return deleteRowMsg{err: m.rowWriteUnsupportedError()} }
+}
 
+// browsePrimaryKeys maps primary-key structure columns to their browse
+// column indices.
+func browsePrimaryKeys(structure []sharedsql.ColumnInfo, columns []string) []int {
 	var primaryKeys []int
-	for _, info := range m.structureColumns {
+	for _, info := range structure {
 		if info.PrimaryKey > 0 {
 			for ci, name := range columns {
 				if strings.EqualFold(name, info.Name) {
@@ -307,20 +393,44 @@ func (m Model) deleteRow() tea.Cmd {
 			}
 		}
 	}
-	if len(primaryKeys) == 0 {
-		return func() tea.Msg { return deleteRowMsg{err: fmt.Errorf("cannot delete: no primary key")} }
-	}
+	return primaryKeys
+}
 
-	id := m.actionIdentifier
-	statement := deleteRowStatement(m.SelectedTable, columns, row, primaryKeys, id)
-	service, startedAt := m.Database, time.Now()
-	return func() tea.Msg {
-		result, err := service.Execute(m.appContext, statement)
-		if err == nil && result.RowsAffected != 1 {
-			err = fmt.Errorf("deleted %d rows, want 1", result.RowsAffected)
-		}
-		return deleteRowMsg{statement: statement, startedAt: startedAt, err: err}
+// rowKeyValues converts browse row values at the primary-key indices to
+// the RowValue key list; NULL cells stay NULL.
+func rowKeyValues(columns []string, row []*string, primaryKeys []int) ([]sharedsql.RowValue, error) {
+	if len(primaryKeys) == 0 {
+		return nil, fmt.Errorf("cannot delete: no primary key")
 	}
+	key := make([]sharedsql.RowValue, 0, len(primaryKeys))
+	for _, pk := range primaryKeys {
+		value := sharedsql.Value{Kind: sharedsql.ValueString}
+		if row[pk] == nil {
+			value.Kind = sharedsql.ValueNull
+		} else {
+			value.String = *row[pk]
+		}
+		key = append(key, sharedsql.RowValue{Name: columns[pk], Value: value})
+	}
+	return key, nil
+}
+
+// browseDeletePreview renders the structured delete preview for the
+// query-log entry: Table and the primary-key Key.
+func browseDeletePreview(table string, columns []string, row []*string, primaryKeys []int) string {
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "Table: %s", table)
+	builder.WriteString("\nKey:")
+	for _, pk := range primaryKeys {
+		value := sharedsql.Value{Kind: sharedsql.ValueString}
+		if row[pk] == nil {
+			value.Kind = sharedsql.ValueNull
+		} else {
+			value.String = *row[pk]
+		}
+		fmt.Fprintf(&builder, "\n  %s = %s", columns[pk], rowValuePreview(value))
+	}
+	return builder.String()
 }
 
 func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
@@ -341,9 +451,14 @@ func (m Model) browseFilterStatement(filter sharedsql.BrowseFilter) string {
 	case sharedsql.BrowseFilterIsNull, sharedsql.BrowseFilterIsNotNull:
 		return column + " " + string(filter.Operator)
 	default:
-		return column + " " + string(filter.Operator) + " " + quoteBrowseValue(filter.Value)
+		return column + " " + string(filter.Operator) + " " + quoteLogString(filter.Value)
 	}
 }
+
+// quoteLogString quotes a value for the display-only browse log statement.
+// The browse query itself runs through BrowseTable with structured
+// filters, so this text never executes.
+func quoteLogString(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
 
 func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.page != m.BrowsePage || message.tag != m.browsePageTag {

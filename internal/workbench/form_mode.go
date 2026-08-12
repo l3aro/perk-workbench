@@ -127,6 +127,8 @@ func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
 		return m.formMode.beginInsert(m.editor)
 	case m.columnForm.active():
 		return m.formMode.beginHuh(m.columnForm.focus())
+	case m.documentEditor != nil:
+		return m.formMode.beginHuh(m.documentEditor.focus())
 	case m.browseForm.active():
 		return m.formMode.beginHuh(m.browseForm.focus())
 	case m.browseFilterForm != nil:
