@@ -189,6 +189,58 @@ func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyM
 	return m, nil, command
 }
 
+// UpdateColumnForm drives the open column form: key routing through the
+// form, the saving flag, and close-on-discard. The returned action tells
+// the root which DDL flow to execute (add/alter/delete column).
+func (m Model) UpdateColumnForm(msg tea.Msg, layout uikit.Layout, formMode *uikit.FormModeController) (Model, ColumnFormAction, tea.Cmd) {
+	m.Structure.ColumnForm.Height = layout.Height
+	command, action := m.Structure.ColumnForm.Update(msg, formMode)
+	switch action {
+	case ColumnFormSave:
+		m.Structure.ColumnForm.Saving = true
+	case ColumnFormDiscard:
+		m.Structure.ColumnForm = ColumnForm{}
+	case ColumnFormDelete:
+		m.Structure.ColumnForm.Saving = true
+	}
+	return m, action, command
+}
+
+// UpdateIndexForm drives the open index form: key routing through the
+// form, the saving flag, and close-on-discard. The returned action tells
+// the root which DDL flow to execute (save or delete index).
+func (m Model) UpdateIndexForm(msg tea.Msg, layout uikit.Layout, formMode *uikit.FormModeController) (Model, IndexFormAction, tea.Cmd) {
+	m.Structure.IndexForm.Height = layout.Height
+	command, action := m.Structure.IndexForm.Update(msg, formMode)
+	switch action {
+	case IndexFormSave:
+		m.Structure.IndexForm.Saving = true
+	case IndexFormDelete:
+		m.Structure.IndexForm.Saving = true
+	case IndexFormDiscard:
+		m.Structure.IndexForm.Close()
+	}
+	return m, action, command
+}
+
+// UpdateForeignKeyForm drives the open foreign-key form: key routing
+// through the form, the saving flag, and close-on-discard. The returned
+// action tells the root which DDL flow to execute (save or delete foreign
+// key).
+func (m Model) UpdateForeignKeyForm(msg tea.Msg, layout uikit.Layout, formMode *uikit.FormModeController) (Model, ForeignKeyFormAction, tea.Cmd) {
+	m.Structure.ForeignKeyForm.Height = layout.Height
+	command, action := m.Structure.ForeignKeyForm.Update(msg, formMode)
+	switch action {
+	case ForeignKeyFormSave:
+		m.Structure.ForeignKeyForm.Saving = true
+	case ForeignKeyFormDelete:
+		m.Structure.ForeignKeyForm.Saving = true
+	case ForeignKeyFormDiscard:
+		m.Structure.ForeignKeyForm.Close()
+	}
+	return m, action, command
+}
+
 // contextMenuKey opens the schema context menu at the sidebar's center for
 // the selected item, or the blank-sidebar menu on server products.
 func (m Model) contextMenuKey(layout uikit.Layout, snapshot Snapshot) (Model, Event, tea.Cmd) {

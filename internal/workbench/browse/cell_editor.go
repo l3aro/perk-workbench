@@ -208,3 +208,21 @@ func (e *CellEditor) ConfirmContent() string {
 	}
 	return ""
 }
+
+// ButtonAt maps a click on the editor dialog to its bottom button
+// ("save"/"cancel"), replicating the confirmation dialog's centered
+// layout. The buttons row is the last content line.
+func (e *CellEditor) ButtonAt(x, y int, layout uikit.Layout) string {
+	if e == nil || e.Confirming {
+		return ""
+	}
+	contentLines := len(strings.Split(e.Input.View(), "\n")) + 1 // + buttons row
+	dialogW := min(e.Width, max(layout.Width-6, 1))
+	dialogH := min(contentLines, max(layout.Height-6, 1))
+	boxX := max(0, (layout.Width-dialogW-2)/2)
+	boxY := max(0, (layout.Height-dialogH-2)/2)
+	if y != boxY+dialogH {
+		return ""
+	}
+	return uikit.FormButtonAt(x - boxX - 1)
+}

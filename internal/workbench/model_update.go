@@ -7,7 +7,6 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
@@ -73,9 +72,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, ok := message.(tea.WindowSizeMsg); ok {
 		m.applyLayout(window.Width, window.Height)
-		if m.browse.component.CellViewer != nil {
-			m.browse.component.CellViewer.Resize(max(m.layout.width-8, 1), max(m.layout.height-10, 1))
-		}
+		m.browse.component.Resize(window.Width, window.Height)
 		m.notifications.component.ResizeHistory(window.Width, window.Height)
 		return m, nil
 	}
@@ -200,11 +197,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.browse.component.CellViewer != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.browse.component.CellViewer = nil
-			return m, nil
-		}
-		cmd := m.browse.component.CellViewer.Update(message)
+		component, cmd := m.browse.component.UpdateCellViewer(message)
+		m.browse.component = component
 		return m, cmd
 	}
 	if m.overlay.contextMenu != nil && m.overlay.contextMenu.visible {
@@ -305,115 +299,40 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if m.browse.component.DocumentEditor != nil {
-		editor := m.browse.component.DocumentEditor
-		if editor.Saving || editor.Loading {
-			// The payload arrives via documentEditorLoadedMsg, routed
-			// before this branch; ignore user input meanwhile.
-			return m, nil
-		}
-		keyPress, isKeyPress := message.(tea.KeyPressMsg)
-		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
-			if editor.Confirming {
-				editor.Confirming = false
-				editor.Confirmation = nil
-				m.overlay.formMode.Mode = formModeNormal
-				return m, editor.Form.Init()
-			}
-			m.browse.component.DocumentEditor = nil
-			return m, nil
-		}
-		if editor.Confirming {
-			completed, action := editor.Confirmation.Update(message, m.layout.width, m.layout.height)
-			if !completed {
-				return m, nil
-			}
-			if action != "confirm" {
-				m.browse.component.DocumentEditor = nil
-				return m, nil
-			}
-			editor.Confirming = false
-			editor.Saving = true
-			cmd := m.executeDocumentSave()
-			return m, cmd
-		}
-		if isKeyPress && keyPress.Key().Code == tea.KeyEnter {
-			return m, nil
-		}
-		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-			cmd, err := editor.BeginConfirmation()
-			if err != nil {
-				m.setStatus(safeText(err.Error()))
-				return m, nil
-			}
-			return m, cmd
-		}
-		model, command := editor.Form.Update(message)
-		editor.Form = model.(*huh.Form)
-		if editor.Form.State != huh.StateCompleted {
-			return m, command
-		}
-		cmd, err := editor.BeginConfirmation()
-		if err != nil {
-			m.setStatus(safeText(err.Error()))
+		component, result, cmd := m.browse.component.UpdateDocumentEditor(message, browseLayout(m), m.keybindings)
+		m.browse.component = component
+		switch {
+		case result.Save:
+			return m, m.executeDocumentSave()
+		case result.CancelConfirmation:
+			m.overlay.formMode.Mode = formModeNormal
+		case result.Status != "":
+			m.setStatus(result.Status)
 			return m, nil
 		}
 		return m, cmd
 	}
 	if m.browse.component.CellEditor != nil {
-		keyPress, isKeyPress := message.(tea.KeyPressMsg)
-		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
-			if m.browse.component.CellEditor.Confirming {
-				m.browse.component.CellEditor.Confirming = false
-				m.browse.component.CellEditor.Confirm = nil
-				m.overlay.formMode.Mode = formModeNormal
-				return m, m.browse.component.CellEditor.Input.Init()
-			}
-			m.browse.component.CellEditor = nil
-			return m, nil
-		}
-		if m.browse.component.CellEditor.Confirming {
-			completed, action := m.browse.component.CellEditor.Confirm.Update(message, m.layout.width, m.layout.height)
-			if !completed {
-				return m, nil
-			}
-			if action != "save" {
-				m.browse.component.CellEditor = nil
-				return m, nil
-			}
+		component, result, cmd := m.browse.component.UpdateCellEditor(message, browseLayout(m), m.keybindings)
+		m.browse.component = component
+		switch {
+		case result.Save:
+			// executeCellUpdate captures the editor state synchronously;
+			// the editor closes immediately, before the async result
+			// lands, matching the pre-refactor behavior.
 			cmd := m.executeCellUpdate()
-			m.browse.component.CellEditor = nil
+			m.browse.component.CloseCellEditor()
 			return m, cmd
+		case result.CancelConfirmation:
+			m.overlay.formMode.Mode = formModeNormal
 		}
-
-		// Save/Cancel buttons on the dialog's bottom row. The release that
-		// trails the press is swallowed via formButtonHit.
-		if mouse, ok := message.(tea.MouseClickMsg); ok && mouse.Button == tea.MouseLeft {
-			switch m.cellEditorButtonAt(mouse.X, mouse.Y) {
-			case "save":
-				m.layout.formButtonHit = true
-				return m, m.browse.component.CellEditor.BeginConfirmation()
-			case "cancel":
-				m.layout.formButtonHit = true
-				m.browse.component.CellEditor = nil
-				return m, nil
-			}
+		if result.ButtonHit {
+			// The release trailing a form-button press must not also act
+			// on the pane underneath (field focus, table selection).
+			// One-shot: a later real release clicks normally.
+			m.layout.formButtonHit = true
 		}
-
-		// Only Ctrl+S (form.save) submits the cell editor; Enter neither
-		// submits nor advances. Without this guard, a single-field form
-		// transitions to StateCompleted on Enter.
-		if isKeyPress && keyPress.Key().Code == tea.KeyEnter {
-			return m, nil
-		}
-		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-			return m, m.browse.component.CellEditor.BeginConfirmation()
-		}
-		model, command := m.browse.component.CellEditor.Input.Update(message)
-		m.browse.component.CellEditor.Input = model.(*huh.Form)
-		if m.browse.component.CellEditor.Input.State != huh.StateCompleted {
-			return m, command
-		}
-		return m, m.browse.component.CellEditor.BeginConfirmation()
+		return m, cmd
 	}
 	if m.overlay.explainPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
@@ -432,18 +351,12 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(beginInsert(m.overlay.formMode, m.queryLog.editor), m.scheduleSQLValidation())
 	}
 	if m.chat.component.HistoryPicker != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.chat.component.HistoryPicker = nil
-			return m, nil
+		component, outcome, cmd := m.chat.component.UpdateHistoryPicker(message)
+		m.chat.component = component
+		if outcome.Picked != "" {
+			return m, m.chat.component.LoadMessages(m.chatLayout(), outcome.Picked)
 		}
-		form, command := m.chat.component.HistoryPicker.Update(message)
-		m.chat.component.HistoryPicker = form.(*huh.Form)
-		if m.chat.component.HistoryPicker.State != huh.StateCompleted {
-			return m, command
-		}
-		conversationID := m.chat.component.HistoryChoice
-		m.chat.component.HistoryPicker = nil
-		return m, m.chat.component.LoadMessages(m.chatLayout(), conversationID)
+		return m, cmd
 	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
@@ -459,7 +372,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.ChangeBrowsePage(message.delta) {
 			return m, nil
 		}
-		m.browse.component.Page = m.BrowsePage
+		m.browse.component.SetPage(m.BrowsePage)
 		m.browse.component.Loading = true
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
@@ -532,10 +445,9 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				if !m.vimMode {
-					m.chat.component.ChatMode = chat.ModeInsert
-					return m, m.chat.component.Input.Focus()
+					return m, m.chat.component.EnterInsertMode()
 				}
-				m.chat.component.ChatMode = chat.ModeNormal
+				m.chat.component.EnterNormalMode()
 				return m, nil
 			case m.keybindings.Match(message, "ai.toggle", []scope{scopeGlobal}):
 				m.toggleAI()

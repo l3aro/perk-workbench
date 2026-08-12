@@ -3,7 +3,6 @@ package workbench
 import (
 	"image"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -204,7 +203,7 @@ func (m Model) confirmContent() string {
 	case m.tableFormOpen():
 		raw = m.schema.component.Structure.TableForm.View()
 	case m.chat.component.HistoryPicker != nil:
-		raw = m.chat.component.HistoryPicker.View()
+		raw = m.chat.component.HistoryPickerContent()
 	case m.overlay.quitDialog != nil:
 		raw = m.overlay.quitDialog.Content(m.layout.width)
 	case m.schema.component.Structure.ColumnForm.Confirming():
@@ -373,67 +372,6 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 	}
 }
 
-func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
-	d := m.queryLog.component.Detail
-	if d == nil {
-		return
-	}
-	var statusStr, iconStr string
-	switch d.Status {
-	case "failed":
-		statusStr = "Failed"
-		iconStr = statusFailedStyle.Render(iconFailed)
-	case "canceled":
-		statusStr = "Canceled"
-		iconStr = statusCanceledStyle.Render(iconCanceled)
-	default:
-		statusStr = "Success"
-		iconStr = statusSuccessStyle.Render(iconSuccess)
-	}
-
-	innerW := m.layout.width - 4
-
-	var b strings.Builder
-	b.WriteString(headerStyle.Render("  \uf0ca Query Log Detail  "))
-	b.WriteString("\n\n")
-	b.WriteString("  Time:     ")
-	b.WriteString(d.StartedAt.Format("2006-01-02 15:04:05"))
-	b.WriteString("\n")
-	b.WriteString("  Status:   ")
-	b.WriteString(iconStr)
-	b.WriteString(" ")
-	b.WriteString(statusStr)
-	b.WriteString("\n")
-	b.WriteString("  Duration: ")
-	b.WriteString(d.Duration.Round(time.Microsecond).String())
-	b.WriteString("\n")
-	b.WriteString("  Statement:\n    ")
-	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.Statement)), innerW-4, "\n    "))
-	b.WriteString("\n")
-	b.WriteString("  Message:  ")
-	b.WriteString(ansi.Wordwrap(safeText(chrome.DetailValue(d.Message)), innerW-14, " "))
-	b.WriteString("\n\n  y copy | e explain | enter/esc close")
-
-	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(colorPanel)}}
-	canvas.FillArea(&dialogBg, image.Rect(1, 1, m.layout.width-1, m.layout.height-1))
-
-	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
-	for x := 1; x < m.layout.width-1; x++ {
-		canvas.SetCell(x, 0, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
-		canvas.SetCell(x, m.layout.height-1, &uv.Cell{Content: "─", Width: 1, Style: borderStyle})
-	}
-	for y := 1; y < m.layout.height-1; y++ {
-		canvas.SetCell(0, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
-		canvas.SetCell(m.layout.width-1, y, &uv.Cell{Content: "│", Width: 1, Style: borderStyle})
-	}
-	canvas.SetCell(0, 0, &uv.Cell{Content: "╭", Width: 1, Style: borderStyle})
-	canvas.SetCell(m.layout.width-1, 0, &uv.Cell{Content: "╮", Width: 1, Style: borderStyle})
-	canvas.SetCell(0, m.layout.height-1, &uv.Cell{Content: "╰", Width: 1, Style: borderStyle})
-	canvas.SetCell(m.layout.width-1, m.layout.height-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
-
-	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, m.layout.width-1, m.layout.height-1))
-}
-
 func (m Model) contentView() string {
 	switch m.State {
 	case stateConnection:
@@ -584,7 +522,7 @@ func (m Model) structureView() string {
 }
 
 func (m Model) browseView() string {
-	m.browse.component.Page = m.BrowsePage
+	m.browse.component.SetPage(m.BrowsePage)
 	return m.browse.component.View(browseLayout(m))
 }
 
@@ -613,7 +551,7 @@ func (m Model) browseStatusLine() string {
 type browsePager = uikit.Pager
 
 func (m Model) browsePager() browsePager {
-	m.browse.component.Page = m.BrowsePage
+	m.browse.component.SetPage(m.BrowsePage)
 	return m.browse.component.Pager(browseLayout(m))
 }
 

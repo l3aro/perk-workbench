@@ -4,7 +4,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // handlePaletteCommand dispatches a command selected from the palette.
@@ -93,10 +92,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
 			if !m.vimMode {
-				m.chat.component.ChatMode = chat.ModeInsert
-				return m, m.chat.component.Input.Focus()
+				return m, m.chat.component.EnterInsertMode()
 			}
-			m.chat.component.ChatMode = chat.ModeNormal
+			m.chat.component.EnterNormalMode()
 			return m, nil
 		}
 		return m, nil

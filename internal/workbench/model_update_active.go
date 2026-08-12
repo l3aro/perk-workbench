@@ -58,22 +58,18 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.Tab {
 			case tabStructure:
 				if m.schema.component.Structure.ColumnForm.Active() {
-					m.schema.component.Structure.ColumnForm.Height = m.layout.height
-					command, action := m.schema.component.Structure.ColumnForm.Update(message, m.overlay.formMode)
+					component, action, cmd := m.schema.component.UpdateColumnForm(message, m.schemaLayout(), m.overlay.formMode)
+					m.schema.component = component
 					switch action {
 					case schema.ColumnFormSave:
-						m.schema.component.Structure.ColumnForm.Saving = true
 						if m.schema.component.Structure.ColumnForm.IsNew {
 							return m, m.addColumn()
 						}
 						return m, m.alterColumn()
-					case schema.ColumnFormDiscard:
-						m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 					case schema.ColumnFormDelete:
-						m.schema.component.Structure.ColumnForm.Saving = true
 						return m, m.deleteColumn()
 					}
-					return m, command
+					return m, cmd
 				}
 				// Pane keys and the table passthrough route into the
 				// component; the root applies the events (filter/edit/
@@ -83,44 +79,30 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applySchemaEvent(event, cmd)
 			case tabBrowse:
 				if m.browse.component.FilterForm != nil {
-					command, action := m.browse.component.FilterForm.Update(message, m.keybindings)
-					if m.browse.component.FilterForm.Editing {
-						m.overlay.formMode.Mode = formModeInsert
-					} else {
-						m.overlay.formMode.Mode = formModeNormal
-					}
-					switch action {
-					case browse.FilterDiscard:
-						m.browse.component.FilterForm = nil
+					component, result, cmd := m.browse.component.UpdateFilterForm(message, m.keybindings, m.overlay.formMode)
+					m.browse.component = component
+					switch result.Action {
 					case browse.FilterApply:
-						settings, err := m.browse.component.FilterForm.Apply()
-						if err != nil {
-							m.setStatus(safeText(err.Error()))
+						if result.Err != nil {
+							m.setStatus(uikit.SafeText(result.Err.Error()))
 							return m, nil
 						}
-						m.browse.component.Settings = settings
-						m.browse.component.FilterForm = nil
 						m.BrowsePage, m.browse.component.Loading = 0, true
-						m.browse.component.PageTag++
-						m.browse.component.Page = 0
 						return m, m.loadBrowse()
 					}
-					return m, command
+					return m, cmd
 				}
 				if m.browse.component.Form.Active() {
-					m.browse.component.Form.Height = m.layout.height
-					command, action := m.browse.component.Form.Update(message, m.overlay.formMode)
+					component, action, cmd := m.browse.component.UpdateForm(message, browseLayout(m), m.overlay.formMode)
+					m.browse.component = component
 					switch action {
 					case browse.FormSave:
-						m.browse.component.Form.Saving = true
 						if m.browse.component.Form.Inserting {
 							return m, m.insertBrowseRow()
 						}
 						return m, m.updateBrowseRow()
-					case browse.FormDiscard:
-						m.browse.component.Form = browse.Form{}
 					}
-					return m, command
+					return m, cmd
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseFilterForm()
@@ -202,19 +184,15 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case tabIndexes:
 				if m.schema.component.Structure.IndexForm.Active() {
-					m.schema.component.Structure.IndexForm.Height = m.layout.height
-					command, action := m.schema.component.Structure.IndexForm.Update(message, m.overlay.formMode)
+					component, action, cmd := m.schema.component.UpdateIndexForm(message, m.schemaLayout(), m.overlay.formMode)
+					m.schema.component = component
 					switch action {
 					case schema.IndexFormSave:
-						m.schema.component.Structure.IndexForm.Saving = true
 						return m, m.saveIndex()
 					case schema.IndexFormDelete:
-						m.schema.component.Structure.IndexForm.Saving = true
 						return m, m.deleteIndex()
-					case schema.IndexFormDiscard:
-						m.schema.component.Structure.IndexForm.Close()
 					}
-					return m, command
+					return m, cmd
 				}
 				// Pane keys and the table passthrough route into the
 				// component; the root applies the events (filter/edit/
@@ -224,19 +202,15 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m.applySchemaEvent(event, cmd)
 			case tabForeignKeys:
 				if m.schema.component.Structure.ForeignKeyForm.Active() {
-					m.schema.component.Structure.ForeignKeyForm.Height = m.layout.height
-					command, action := m.schema.component.Structure.ForeignKeyForm.Update(message, m.overlay.formMode)
+					component, action, cmd := m.schema.component.UpdateForeignKeyForm(message, m.schemaLayout(), m.overlay.formMode)
+					m.schema.component = component
 					switch action {
 					case schema.ForeignKeyFormSave:
-						m.schema.component.Structure.ForeignKeyForm.Saving = true
 						return m, m.saveForeignKey()
 					case schema.ForeignKeyFormDelete:
-						m.schema.component.Structure.ForeignKeyForm.Saving = true
 						return m, m.deleteForeignKey()
-					case schema.ForeignKeyFormDiscard:
-						m.schema.component.Structure.ForeignKeyForm.Close()
 					}
-					return m, command
+					return m, cmd
 				}
 				// Pane keys and the table passthrough route into the
 				// component; the root applies the events (filter/edit/

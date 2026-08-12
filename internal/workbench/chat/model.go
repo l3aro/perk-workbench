@@ -15,6 +15,7 @@ import (
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/glamour/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
@@ -286,6 +287,17 @@ func (cm *Model) IsActive(run *Run) bool {
 // InsertMode reports whether the chat input is in insert mode (the root
 // needs it for the write-confirmation escape precedence).
 func (cm Model) InsertMode() bool { return cm.ChatMode == ModeInsert }
+
+// EnterInsertMode switches the chat input into insert mode and focuses it.
+func (cm *Model) EnterInsertMode() tea.Cmd {
+	cm.ChatMode = ModeInsert
+	return cm.Input.Focus()
+}
+
+// EnterNormalMode switches the chat input into normal mode.
+func (cm *Model) EnterNormalMode() {
+	cm.ChatMode = ModeNormal
+}
 
 // ExitInsertMode leaves insert mode and blurs the input.
 func (cm *Model) ExitInsertMode() {

@@ -403,3 +403,40 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 	}
 	return *cm, nil, nil
 }
+
+// HistoryPickerOutcome is one root-applied outcome of a history-picker
+// update: the picker closed without a selection, or a conversation was
+// picked and the root loads it through the component.
+type HistoryPickerOutcome struct {
+	Picked string // selected conversation id; empty when the picker closed
+	Closed bool
+}
+
+// UpdateHistoryPicker drives the open /history conversation picker: Escape
+// closes it, every other message passes through to the form, and a
+// completed selection emits the picked conversation. The root loads the
+// conversation through LoadMessages.
+func (cm Model) UpdateHistoryPicker(msg tea.Msg) (Model, HistoryPickerOutcome, tea.Cmd) {
+	if keyPress, ok := msg.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
+		cm.HistoryPicker = nil
+		return cm, HistoryPickerOutcome{Closed: true}, nil
+	}
+	form, command := cm.HistoryPicker.Update(msg)
+	cm.HistoryPicker = form.(*huh.Form)
+	if cm.HistoryPicker.State != huh.StateCompleted {
+		return cm, HistoryPickerOutcome{}, command
+	}
+	conversationID := cm.HistoryChoice
+	cm.HistoryPicker = nil
+	return cm, HistoryPickerOutcome{Picked: conversationID}, command
+}
+
+// HistoryPickerContent renders the open /history conversation picker, or
+// "" when none is open. The root draws the picker overlay; the component
+// renders its body.
+func (cm Model) HistoryPickerContent() string {
+	if cm.HistoryPicker == nil {
+		return ""
+	}
+	return cm.HistoryPicker.View()
+}

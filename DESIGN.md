@@ -20,6 +20,11 @@ cmd/perk-workbench
 internal/workbench  <-- Bubble Tea state, input, layout, async commands
         |                         |
         |                         +--> internal/ai (optional chat)
+        |                         |
+        |   feature packages      |
+        |   querylog notification |
+        |   connection chat       |
+        |   browse schema         |
         v
 internal/database -- target routing --> sqlite | mysql | postgres | mongodb
         |                                      \       |       /        |
@@ -33,7 +38,7 @@ internal/log       event log with debug/info/warn/error levels
 
 `cmd/perk-workbench` owns process setup: command-line parsing, signal context, optional clipboard and AI initialization, Bubble Tea startup, and closing the database service and AI history.
 
-`internal/workbench` owns all Bubble Tea state and presentation decisions. It starts database work and query execution as commands, then applies result messages only when they match the active request.
+`internal/workbench` owns all Bubble Tea state and presentation decisions. It starts database work and query execution as commands, then applies result messages only when they match the active request. The root `workbench.Model` is a shell that coordinates; each UI feature lives in its own package under `internal/workbench/` (`querylog`, `notification`, `connection`, `chat`, `browse`, `schema`) and owns its state, interactions, and rendering behind typed events.
 
 `internal/core` owns the small workflow state machine: opening, ready, failure, and picking states; focused pane and tab; selected table; and the active cancelable query.
 
@@ -65,6 +70,14 @@ The MongoDB driver replaces SQL with a small mongosh-style DSL (`db.<collection>
 ## UI model
 
 The primary view has a schema pane and a workspace. Workspace tabs cover query editing/results, structure, and table browsing. Compact layout decisions, focus navigation, keybindings, palettes, dialogs, and forms all remain in `internal/workbench`; `internal/chrome` only renders stateless terminal fragments.
+
+### Root shell and feature packages
+
+The root `workbench.Model` is a shell, not the home of feature state. Each UI feature is a package under `internal/workbench/` — `querylog` (query-log pane, paging, detail), `notification` (popup, detail, history), `connection` (profile form, recent list/filter), `chat` (assistant pane, runs, tools), `browse` (result table, pager, row/document/cell editors, filter form, cell viewer), and `schema` (sidebar tree, structure/index/foreign-key tabs and their forms). Every component exposes the same contract: an `Update` (or feature-specific routing methods) that returns the updated model plus typed events, and `View`/`Draw` methods for rendering. Components never reach into root state; the root hands each one an immutable snapshot (`uikit.Layout`, keybindings, and feature-specific context) per update.
+
+The root owns what is shared across features: `core.Workflow` and the query lifecycle, window layout and focus/tab navigation, global keybindings and the command palette, the status/log drain, the form-mode controller, and the modal overlays (context menus, quit/delete dialogs, confirmations, the explain picker, the table popup, the cell viewer). It applies the typed events components emit — status changes, clipboard copies, query/schema/browse requests, and CRUD executions — and keeps the asynchronous invariants: one active query, stale completions rejected by request ID, Escape cancellation, failed or canceled queries preserving the prior result table, and pending quit completing only after the active query finishes or cancels.
+
+**Feature-event rule.** Feature logic lives in the feature package; the root only routes and applies. A message that belongs to a feature (chat via `chat.OwnsMessage`, notification via `Consumes`, browse/schema/connection/querylog by focus and tab) is dispatched into that component's update path, and the component's returned event is applied by the root (which may read exported component state for layout and overlay decisions but never mutates feature internals directly). Overlay precedence is pinned: palette/theme/table-target → notification history → notification detail → query-log detail → confirm overlays → popup, with the popup drawn last. Root-owned dialogs and menus draw over the composed panes; components draw their own overlays (notification history/detail/popup, query-log detail) through `Draw`.
 
 Frame borders use rounded corners throughout: `lipgloss.RoundedBorder()` for lipgloss frames (panes, SQL editor) and the matching `╭╮╰╯` glyphs for canvas-drawn frames (dialogs, context menu, palette, confirmation card, cell viewer, ER diagram cards). Canvas frames hardcode those glyphs, so a future square-corner theme must update both the lipgloss styles and the canvas glyphs. Schema-tree connectors (`└`) and the confirmation accent bar (`┃`) intentionally keep their square glyphs.
 

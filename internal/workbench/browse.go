@@ -2,9 +2,7 @@ package workbench
 
 import (
 	"fmt"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -274,25 +272,6 @@ func (m *Model) openEditDocument() tea.Cmd {
 	}
 }
 
-// cellEditorButtonAt maps a click on the cell-editor dialog to its bottom
-// button ("save"/"cancel"), replicating drawConfirmDialog's centered
-// layout. The buttons row is the last content line.
-func (m Model) cellEditorButtonAt(x, y int) string {
-	e := m.browse.component.CellEditor
-	if e == nil || e.Confirming {
-		return ""
-	}
-	contentLines := len(strings.Split(e.Input.View(), "\n")) + 1 // + buttons row
-	dialogW := min(e.Width, max(m.layout.width-6, 1))
-	dialogH := min(contentLines, max(m.layout.height-6, 1))
-	boxX := max(0, (m.layout.width-dialogW-2)/2)
-	boxY := max(0, (m.layout.height-dialogH-2)/2)
-	if y != boxY+dialogH {
-		return ""
-	}
-	return formButtonAt(x - boxX - 1)
-}
-
 type cellEditorUpdatedMsg struct {
 	statement string
 	startedAt time.Time
@@ -332,7 +311,7 @@ func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea
 		m.setStatus(safeText(fmt.Sprintf("updating cell: %v", msg.err)))
 		return m, nil
 	}
-	m.browse.component.CellEditor = nil
+	m.browse.component.CloseCellEditor()
 	m.setStatus("cell updated")
 	return m, m.loadBrowse()
 }
@@ -382,26 +361,22 @@ func (m Model) executeDocumentSave() tea.Cmd {
 }
 
 // updateDocumentEditorLoaded completes an edit-open: the full document
-// arrives, the editor form opens with it. Invalid UTF-8 disables editing.
+// arrives and the editor opens with it. Invalid UTF-8 disables editing.
 func (m Model) updateDocumentEditorLoaded(message documentEditorLoadedMsg) (tea.Model, tea.Cmd) {
-	editor := m.browse.component.DocumentEditor
-	if editor == nil {
+	component, outcome, cmd := m.browse.component.ApplyDocumentLoaded(message.payload, message.err)
+	m.browse.component = component
+	switch {
+	case outcome.Err != nil:
+		m.setStatus(safeText(fmt.Sprintf("loading document: %v", outcome.Err)))
+		return m, nil
+	case outcome.Format != "":
+		m.setStatus(fmt.Sprintf("document editing is unsupported for format %s", outcome.Format))
 		return m, nil
 	}
-	if message.err != nil {
-		m.browse.component.DocumentEditor = nil
-		m.setStatus(safeText(fmt.Sprintf("loading document: %v", message.err)))
+	if !outcome.Opened || cmd == nil {
 		return m, nil
 	}
-	if !utf8.Valid(message.payload.Data) {
-		m.browse.component.DocumentEditor = nil
-		m.setStatus(fmt.Sprintf("document editing is unsupported for format %s", editor.Capability.Format))
-		return m, nil
-	}
-	editor.Edited = string(message.payload.Data)
-	editor.Loading = false
-	editor.BuildForm()
-	return m, m.openForm(editor.Form.Init(), editor.Focus)
+	return m, m.openForm(cmd, m.browse.component.DocumentEditor.Focus)
 }
 
 // updateDocumentEditorSaved completes a save. Success closes the editor
@@ -416,15 +391,11 @@ func (m Model) updateDocumentEditorSaved(message documentEditorSavedMsg) (tea.Mo
 		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, text))
 	}
 	if message.err != nil {
-		if m.browse.component.DocumentEditor != nil {
-			m.browse.component.DocumentEditor.Saving = false
-			m.browse.component.DocumentEditor.Confirming = false
-			m.browse.component.DocumentEditor.Confirmation = nil
-		}
+		m.browse.component.DocumentSaveFailed()
 		m.setStatus(safeText(fmt.Sprintf("saving document: %v", message.err)))
 		return m, nil
 	}
-	m.browse.component.DocumentEditor = nil
+	m.browse.component.CloseDocumentEditor()
 	m.setStatus("document saved")
 	return m, m.loadBrowse()
 }
