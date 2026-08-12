@@ -2,8 +2,7 @@ package connection
 
 import (
 	"errors"
-	"net"
-	"net/url"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/go-sql-driver/mysql"
+	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
@@ -47,14 +46,6 @@ func (ProfilesChanged) isEvent() {}
 // StatusChanged is the shared status-line event (uikit.StatusChanged).
 type StatusChanged = uikit.StatusChanged
 
-// selectOptions lists the option labels of the Driver and TLS selects in
-// render order. The TLS labels are shared; the bound values differ per
-// driver (see ApplySelectOption).
-var selectOptions = map[string][]string{
-	"driver": {"SQLite", "MySQL", "PostgreSQL"},
-	"tls":    {"Verify certificate", "Encrypt, don't verify certificate", "Don't encrypt"},
-}
-
 // Form is the connection profile form: the huh form, its bound values,
 // the optional confirmation dialog, and the pane geometry.
 type Form struct {
@@ -65,10 +56,14 @@ type Form struct {
 	// Height is the pane body height the form viewport is clipped to; huh
 	// scrolls its group viewport to the focused field (see SetHeight).
 	Height int
+	// extras holds the value slots for spec fields outside the fixed key
+	// set; flushExtras copies them back into Values.
+	extras map[string]*string
 }
 
 // FormValues holds the editable form fields. ID is the opaque profile
-// scope: never displayed or user-edited.
+// scope: never displayed or user-edited. Extras carries driver-specific
+// fields beyond the fixed set, persisted in the profile.
 type FormValues struct {
 	ID            string
 	Driver        Driver
@@ -79,6 +74,7 @@ type FormValues struct {
 	PostgreSQLTLS PostgreSQLTLS
 	ReadOnly      bool
 	Action        string
+	Extras        map[string]string
 }
 
 // NewForm builds a fresh connection form with the disabled TLS defaults.
@@ -97,20 +93,32 @@ func (f *Form) SetFocus(index int) tea.Cmd {
 	return nil
 }
 
-// fieldTitles lists the rendered titles of every connection form field in
-// render order; the layout depends on the selected driver.
+// FieldTitles lists the rendered titles of every connection form field in
+// render order; the layout follows the selected driver's spec.
 func (f Form) FieldTitles() []string {
-	if f.Values.Driver == DriverSQLite {
-		return []string{"Driver", "Name", "Target*", "Read-Only", "Action"}
+	titles := []string{"Driver", "Name"}
+	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+		for _, field := range spec.Form.Fields {
+			titles = append(titles, field.Title)
+		}
+		if hasPasswordField(spec.Form.Fields) {
+			titles = append(titles, "Privacy")
+		}
 	}
-	return []string{"Driver", "Name", "Host", "Port", "Username*", "Password", "Database", "TLS", "Privacy", "Read-Only", "Action"}
+	return append(titles, "Read-Only", "Action")
 }
 
 func (f Form) fieldKeys() []string {
-	if f.Values.Driver == DriverSQLite {
-		return []string{"driver", "name", "target", "readOnly", "action"}
+	keys := []string{"driver", "name"}
+	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+		for _, field := range spec.Form.Fields {
+			keys = append(keys, field.Key)
+		}
+		if hasPasswordField(spec.Form.Fields) {
+			keys = append(keys, "privacy")
+		}
 	}
-	return []string{"driver", "name", "host", "port", "username", "password", "database", "tls", "privacy", "readOnly", "action"}
+	return append(keys, "readOnly", "action")
 }
 
 // focusField moves the field cursor to the field at index. The Privacy
@@ -137,47 +145,20 @@ func (f *Form) FocusField(field int) tea.Cmd {
 	return nil
 }
 
-// Rebuild rebuilds the huh form for the current driver's layout.
+// Rebuild rebuilds the huh form for the current driver's spec layout.
 func (f *Form) Rebuild() tea.Cmd {
+	f.extras = map[string]*string{}
 	fields := []huh.Field{
-		huh.NewSelect[Driver]().Key("driver").Title("Driver").Options(
-			huh.NewOption("SQLite", DriverSQLite),
-			huh.NewOption("MySQL", DriverMySQL),
-			huh.NewOption("PostgreSQL", DriverPostgreSQL),
-		).Value(&f.Values.Driver),
+		f.driverSelect(),
 		uikit.NewEditableInput(huh.NewInput().Key("name").Title("Name").Placeholder("Local database").Value(&f.Values.Name), &f.Values.Name),
 	}
-	if f.Values.Driver != DriverSQLite {
-		fields = append(fields,
-			uikit.NewEditableInput(huh.NewInput().Key("host").Title("Host").Placeholder("localhost").Value(&f.Values.Host), &f.Values.Host),
-			uikit.NewEditableInput(huh.NewInput().Key("port").Title("Port").Placeholder(f.defaultPort()).Value(&f.Values.Port), &f.Values.Port),
-			uikit.NewEditableInput(huh.NewInput().Key("username").Title("Username*").Value(&f.Values.User).Validate(requiredUser), &f.Values.User),
-			uikit.NewEditableInput(huh.NewInput().Key("password").Title("Password").Value(&f.Values.Pass).EchoMode(huh.EchoModePassword), &f.Values.Pass),
-			uikit.NewEditableInput(huh.NewInput().Key("database").Title("Database").Placeholder("Optional").Value(&f.Values.Target), &f.Values.Target),
-		)
-		switch f.Values.Driver {
-		case DriverMySQL:
-			fields = append(fields,
-				huh.NewSelect[MySQLTLS]().Key("tls").Title("TLS").Options(
-					huh.NewOption("Verify certificate", MySQLTLSVerify),
-					huh.NewOption("Encrypt, don't verify certificate", MySQLTLSSkipVerify),
-					huh.NewOption("Don't encrypt", MySQLTLSDisabled),
-				).Value(&f.Values.MySQLTLS),
-			)
-		case DriverPostgreSQL:
-			fields = append(fields,
-				huh.NewSelect[PostgreSQLTLS]().Key("tls").Title("TLS").Options(
-					huh.NewOption("Verify certificate", PostgreSQLTLSVerifyFull),
-					huh.NewOption("Encrypt, don't verify certificate", PostgreSQLTLSEncrypt),
-					huh.NewOption("Don't encrypt", PostgreSQLTLSDisabled),
-				).Value(&f.Values.PostgreSQLTLS),
-			)
+	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+		for _, field := range spec.Form.Fields {
+			fields = append(fields, f.buildField(field))
 		}
-		fields = append(fields,
-			huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are stored encrypted at rest. Use ${ENV_VAR} or file:///path to reference secrets without persistence."),
-		)
-	} else {
-		fields = append(fields, uikit.NewEditableInput(huh.NewInput().Key("target").Title("Target*").Placeholder("path/to/database.db or :memory:").Value(&f.Values.Target).Validate(requiredTarget), &f.Values.Target))
+		if hasPasswordField(spec.Form.Fields) {
+			fields = append(fields, huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are stored encrypted at rest. Use ${ENV_VAR} or file:///path to reference secrets without persistence."))
+		}
 	}
 	fields = append(fields,
 		huh.NewConfirm().Key("readOnly").Title("Read-Only").Description("Block mutations (INSERT, UPDATE, DELETE, DDL)").Value(&f.Values.ReadOnly),
@@ -190,6 +171,97 @@ func (f *Form) Rebuild() tea.Cmd {
 	return f.Huh.Init()
 }
 
+// driverSelect builds the Driver select from the registered form drivers.
+func (f *Form) driverSelect() huh.Field {
+	drivers := database.FormDrivers()
+	options := make([]huh.Option[Driver], len(drivers))
+	for i, spec := range drivers {
+		options[i] = huh.NewOption(spec.Display, Driver(spec.Name))
+	}
+	return huh.NewSelect[Driver]().Key("driver").Title("Driver").Options(options...).Value(&f.Values.Driver)
+}
+
+// buildField maps one spec field to its huh widget. Fields outside the
+// fixed key set bind to the profile's generic extras.
+func (f *Form) buildField(field database.FormField) huh.Field {
+	if field.Kind == database.FormSelect {
+		return f.buildSelectField(field)
+	}
+	bound := f.bindValue(field)
+	input := huh.NewInput().Key(field.Key).Title(field.Title).Value(bound)
+	if field.Placeholder != "" {
+		input = input.Placeholder(field.Placeholder)
+	}
+	if field.Kind == database.FormPassword {
+		input = input.EchoMode(huh.EchoModePassword)
+	}
+	if validate := f.fieldValidate(field); validate != nil {
+		input = input.Validate(validate)
+	}
+	return uikit.NewEditableInput(input, bound)
+}
+
+// buildSelectField maps a select field to its widget. The TLS select
+// binds to the driver's typed TLS mode; any other select binds to the
+// extras.
+func (f *Form) buildSelectField(field database.FormField) huh.Field {
+	if field.Key == "tls" {
+		if f.Values.Driver == DriverMySQL {
+			options := make([]huh.Option[MySQLTLS], len(field.Options))
+			for i, option := range field.Options {
+				options[i] = huh.NewOption(option.Label, MySQLTLS(option.Value))
+			}
+			return huh.NewSelect[MySQLTLS]().Key(field.Key).Title(field.Title).Options(options...).Value(&f.Values.MySQLTLS)
+		}
+		options := make([]huh.Option[PostgreSQLTLS], len(field.Options))
+		for i, option := range field.Options {
+			options[i] = huh.NewOption(option.Label, PostgreSQLTLS(option.Value))
+		}
+		return huh.NewSelect[PostgreSQLTLS]().Key(field.Key).Title(field.Title).Options(options...).Value(&f.Values.PostgreSQLTLS)
+	}
+	options := make([]huh.Option[string], len(field.Options))
+	for i, option := range field.Options {
+		options[i] = huh.NewOption(option.Label, option.Value)
+	}
+	return huh.NewSelect[string]().Key(field.Key).Title(field.Title).Options(options...).Value(f.bindValue(field))
+}
+
+// bindValue returns the value slot for a spec field: the typed form
+// fields for the fixed key set, a stable extras slot otherwise.
+func (f *Form) bindValue(field database.FormField) *string {
+	switch field.Key {
+	case "host":
+		return &f.Values.Host
+	case "port":
+		return &f.Values.Port
+	case "username":
+		return &f.Values.User
+	case "password":
+		return &f.Values.Pass
+	case "database", "target":
+		return &f.Values.Target
+	default:
+		value := new(string)
+		*value = f.Values.Extras[field.Key]
+		f.extras[field.Key] = value
+		return value
+	}
+}
+
+// flushExtras copies the extras-bound field values back into Values so
+// target building and profile recording see the edited fields.
+func (f *Form) flushExtras() {
+	if len(f.extras) == 0 {
+		return
+	}
+	if f.Values.Extras == nil {
+		f.Values.Extras = make(map[string]string, len(f.extras))
+	}
+	for key, value := range f.extras {
+		f.Values.Extras[key] = *value
+	}
+}
+
 // UpdateHuh routes one message through the form while it is the insert
 // target. It returns the form command and, when the form completes, the
 // action request for the root to perform (test or open).
@@ -200,6 +272,7 @@ func (f *Form) UpdateHuh(message tea.Msg) (tea.Cmd, Event) {
 	driver := f.Values.Driver
 	model, command := f.Huh.Update(message)
 	f.Huh = model.(*huh.Form)
+	f.flushExtras()
 	if f.Values.Driver != driver {
 		return f.SelectDriver(f.Values.Driver), nil
 	}
@@ -217,17 +290,65 @@ func (f *Form) UpdateHuh(message tea.Msg) (tea.Cmd, Event) {
 	return rebuild, nil
 }
 
-// SelectDriver applies a driver change: the port keeps its well-known
-// default when switching between MySQL and PostgreSQL, then the form
+// SelectDriver applies a driver change: a port holding another driver's
+// well-known default follows the new driver's default, then the form
 // rebuilds for the new driver's layout.
 func (f *Form) SelectDriver(driver Driver) tea.Cmd {
 	f.Values.Driver = driver
-	if driver == DriverPostgreSQL && f.Values.Port == "3306" {
-		f.Values.Port = "5432"
-	} else if driver == DriverMySQL && f.Values.Port == "5432" {
-		f.Values.Port = "3306"
+	newDefault := f.defaultPort()
+	if newDefault != "" {
+		for _, spec := range database.FormDrivers() {
+			if spec.Name == string(driver) {
+				continue
+			}
+			if other := portDefault(spec); other != "" && f.Values.Port == other {
+				f.Values.Port = newDefault
+				break
+			}
+		}
 	}
 	return f.Rebuild()
+}
+
+// portDefault returns the well-known port of a driver spec, or "" when
+// the driver has no port field.
+func portDefault(spec database.Spec) string {
+	if spec.Form == nil {
+		return ""
+	}
+	for _, field := range spec.Form.Fields {
+		if field.Key == "port" {
+			return field.Default
+		}
+	}
+	return ""
+}
+
+// selectLabels lists the option labels of the Driver or TLS select in
+// render order, from the driver specs.
+func (f Form) selectLabels(key string) []string {
+	switch key {
+	case "driver":
+		drivers := database.FormDrivers()
+		labels := make([]string, len(drivers))
+		for i, spec := range drivers {
+			labels[i] = spec.Display
+		}
+		return labels
+	case "tls":
+		if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+			for _, field := range spec.Form.Fields {
+				if field.Key == "tls" {
+					labels := make([]string, len(field.Options))
+					for i, option := range field.Options {
+						labels[i] = option.Label
+					}
+					return labels
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // SelectOptionAt maps a click on the rendered form view to an option row
@@ -262,7 +383,7 @@ func (f Form) SelectOptionAt(view string, viewLine int) (string, int) {
 		if key != "driver" && key != "tls" {
 			break // a different field owns this line
 		}
-		for option, label := range selectOptions[key] {
+		for option, label := range f.selectLabels(key) {
 			if selectLineIsOption(lines[viewLine], label, f.Width) {
 				return key, option
 			}
@@ -297,12 +418,30 @@ func selectLineIsOption(line, label string, width int) bool {
 func (f *Form) ApplySelectOption(field string, option int) tea.Cmd {
 	switch field {
 	case "driver":
-		return f.SelectDriver([]Driver{DriverSQLite, DriverMySQL, DriverPostgreSQL}[option])
+		drivers := database.FormDrivers()
+		if option < 0 || option >= len(drivers) {
+			return nil
+		}
+		return f.SelectDriver(Driver(drivers[option].Name))
 	case "tls":
-		if f.Values.Driver == DriverMySQL {
-			f.Values.MySQLTLS = []MySQLTLS{MySQLTLSVerify, MySQLTLSSkipVerify, MySQLTLSDisabled}[option]
-		} else {
-			f.Values.PostgreSQLTLS = []PostgreSQLTLS{PostgreSQLTLSVerifyFull, PostgreSQLTLSEncrypt, PostgreSQLTLSDisabled}[option]
+		spec, ok := database.ByName(string(f.Values.Driver))
+		if !ok || spec.Form == nil {
+			return nil
+		}
+		for _, specField := range spec.Form.Fields {
+			if specField.Key != "tls" {
+				continue
+			}
+			if option < 0 || option >= len(specField.Options) {
+				return nil
+			}
+			value := specField.Options[option].Value
+			if f.Values.Driver == DriverMySQL {
+				f.Values.MySQLTLS = MySQLTLS(value)
+			} else {
+				f.Values.PostgreSQLTLS = PostgreSQLTLS(value)
+			}
+			break
 		}
 		tls := slices.Index(f.fieldKeys(), "tls")
 		if tls < 0 {
@@ -374,14 +513,10 @@ func (f *Form) SetHeight(height int) {
 
 // DriverName returns the display label of the selected driver.
 func (f Form) DriverName() string {
-	switch f.Values.Driver {
-	case DriverMySQL:
-		return "MySQL"
-	case DriverPostgreSQL:
-		return "PostgreSQL"
-	default:
-		return "SQLite"
+	if spec, ok := database.ByName(string(f.Values.Driver)); ok {
+		return spec.Display
 	}
+	return "SQLite"
 }
 
 // HostValue returns the effective connection host: an empty Host field
@@ -395,10 +530,10 @@ func (f Form) HostValue() string {
 
 // defaultPort returns the well-known port for the selected driver.
 func (f Form) defaultPort() string {
-	if f.Values.Driver == DriverPostgreSQL {
-		return "5432"
+	if spec, ok := database.ByName(string(f.Values.Driver)); ok {
+		return portDefault(spec)
 	}
-	return "3306"
+	return ""
 }
 
 // PortValue returns the effective connection port: an empty Port field
@@ -411,73 +546,125 @@ func (f Form) PortValue() string {
 	return f.defaultPort()
 }
 
+// tlsValue returns the selected TLS mode as the wire string.
+func (f Form) tlsValue() string {
+	switch f.Values.Driver {
+	case DriverMySQL:
+		return string(f.Values.MySQLTLS)
+	case DriverPostgreSQL:
+		return string(f.Values.PostgreSQLTLS)
+	}
+	return ""
+}
+
+// fieldValue returns the raw form value for a spec field key.
+func (f Form) fieldValue(key string) string {
+	switch key {
+	case "host":
+		return f.Values.Host
+	case "port":
+		return f.Values.Port
+	case "username":
+		return f.Values.User
+	case "password":
+		return f.Values.Pass
+	case "database", "target":
+		return f.Values.Target
+	case "tls":
+		return f.tlsValue()
+	default:
+		return f.Values.Extras[key]
+	}
+}
+
 // TargetValue builds the driver-specific opener target from the form
-// values, resolving secret references.
+// values, resolving secret references. The driver's registered target
+// builder serializes the values; unknown drivers fall back to the raw
+// target field.
 func (f Form) TargetValue() string {
-	pass := profile.ResolveSecretRef(f.Values.Pass)
-	if f.Values.Driver == DriverMySQL {
-		config := mysql.NewConfig()
-		config.User = strings.TrimSpace(f.Values.User)
-		config.Passwd = pass
-		config.Net = "tcp"
-		config.Addr = net.JoinHostPort(f.HostValue(), f.PortValue())
-		config.DBName = strings.TrimSpace(f.Values.Target)
-		tls := f.Values.MySQLTLS
-		if tls == "" {
-			tls = MySQLTLSDisabled
-		}
-		config.TLSConfig = string(tls)
-		return config.FormatDSN()
+	spec, ok := database.ByName(string(f.Values.Driver))
+	if !ok || spec.Form == nil {
+		return strings.TrimSpace(f.Values.Target)
 	}
-	if f.Values.Driver == DriverPostgreSQL {
-		target := &url.URL{
-			Scheme: "postgres",
-			User:   url.UserPassword(strings.TrimSpace(f.Values.User), pass),
-			Host:   net.JoinHostPort(f.HostValue(), f.PortValue()),
-			Path:   strings.TrimSpace(f.Values.Target),
-		}
-		tls := f.Values.PostgreSQLTLS
-		if tls == "" {
-			tls = PostgreSQLTLSDisabled
-		}
-		target.RawQuery = url.Values{"sslmode": {string(tls)}}.Encode()
-		return target.String()
+	target, ok := database.BuildTarget(spec, database.FormValues{
+		Host:     f.HostValue(),
+		Port:     f.PortValue(),
+		User:     f.Values.User,
+		Pass:     profile.ResolveSecretRef(f.Values.Pass),
+		Database: f.Values.Target,
+		TLS:      f.tlsValue(),
+		Extras:   resolveExtras(f.Values.Extras),
+	})
+	if !ok {
+		return strings.TrimSpace(f.Values.Target)
 	}
-	return strings.TrimSpace(f.Values.Target)
+	return target
 }
 
-// Validate checks the required fields for the selected driver.
+// resolveExtras expands secret references in extras values.
+func resolveExtras(extras map[string]string) map[string]string {
+	if len(extras) == 0 {
+		return extras
+	}
+	resolved := make(map[string]string, len(extras))
+	for key, value := range extras {
+		resolved[key] = profile.ResolveSecretRef(value)
+	}
+	return resolved
+}
+
+// fieldValidate interprets the spec's validation rule for huh and
+// form-level validation.
+func (f Form) fieldValidate(field database.FormField) func(string) error {
+	switch field.Validate {
+	case database.FormRequired:
+		return func(value string) error {
+			if strings.TrimSpace(value) == "" {
+				return errors.New(field.Error)
+			}
+			return nil
+		}
+	case database.FormPort:
+		return func(value string) error {
+			value = strings.TrimSpace(value)
+			if value == "" {
+				return nil
+			}
+			port, err := strconv.Atoi(value)
+			if err != nil || port < 1 || port > 65535 {
+				return errors.New(field.Error)
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// hasPasswordField reports whether the spec carries a password field; the
+// privacy note is shown for drivers that persist credentials.
+func hasPasswordField(fields []database.FormField) bool {
+	for _, field := range fields {
+		if field.Kind == database.FormPassword {
+			return true
+		}
+	}
+	return false
+}
+
+// Validate checks the required fields for the selected driver, per its
+// spec's validation rules.
 func (f Form) Validate() error {
-	if f.Values.Driver == DriverSQLite {
-		return requiredTarget(f.Values.Target)
+	spec, ok := database.ByName(string(f.Values.Driver))
+	if !ok || spec.Form == nil {
+		return nil
 	}
-	if err := requiredPort(f.PortValue()); err != nil {
-		return err
-	}
-	if err := requiredUser(f.Values.User); err != nil {
-		return err
-	}
-	return nil
-}
-
-func requiredTarget(value string) error {
-	if strings.TrimSpace(value) == "" {
-		return errors.New("target is required")
-	}
-	return nil
-}
-
-func requiredPort(value string) error {
-	port, err := strconv.Atoi(strings.TrimSpace(value))
-	if err != nil || port < 1 || port > 65535 {
-		return errors.New("port must be between 1 and 65535")
-	}
-	return nil
-}
-
-func requiredUser(value string) error {
-	if strings.TrimSpace(value) == "" {
-		return errors.New("username is required")
+	for _, field := range spec.Form.Fields {
+		if field.Validate == database.FormNone {
+			continue
+		}
+		if err := f.fieldValidate(field)(f.fieldValue(field.Key)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -494,14 +681,10 @@ func (f Form) ConnectionName() string {
 // server drivers gain their URL scheme prefix.
 func (f Form) ConnectionTarget() string {
 	target := f.TargetValue()
-	switch f.Values.Driver {
-	case DriverMySQL:
-		return "mysql:" + target
-	case DriverPostgreSQL:
-		return "postgres:" + target
-	default:
-		return target
+	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+		return spec.Form.Prefix + target
 	}
+	return target
 }
 
 // Profile builds the persisted profile for the current form values,
@@ -524,6 +707,9 @@ func (f Form) Profile() profile.Profile {
 		case DriverPostgreSQL:
 			p.PostgreSQLTLS = f.Values.PostgreSQLTLS
 		}
+	}
+	if len(f.Values.Extras) > 0 {
+		p.Extras = maps.Clone(f.Values.Extras)
 	}
 	return p
 }

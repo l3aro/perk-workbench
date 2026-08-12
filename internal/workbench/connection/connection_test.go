@@ -140,3 +140,83 @@ func TestDelete_removesMatchingProfile(t *testing.T) {
 		t.Fatalf("profiles after delete = %#v, want only B", m.Profiles)
 	}
 }
+
+func TestFieldTitles_followDriverSpec(t *testing.T) {
+	form := NewForm()
+	// A fresh form materializes the first registered driver (SQLite).
+	if form.Values.Driver != DriverSQLite {
+		t.Fatalf("fresh form driver = %q, want sqlite", form.Values.Driver)
+	}
+	wantSQLite := []string{"Driver", "Name", "Target*", "Read-Only", "Action"}
+	if got := form.FieldTitles(); !slicesEqual(got, wantSQLite) {
+		t.Fatalf("sqlite titles = %v, want %v", got, wantSQLite)
+	}
+	form.Values.Driver = DriverMySQL
+	wantServer := []string{"Driver", "Name", "Host", "Port", "Username*", "Password", "Database", "TLS", "Privacy", "Read-Only", "Action"}
+	if got := form.FieldTitles(); !slicesEqual(got, wantServer) {
+		t.Fatalf("mysql titles = %v, want %v", got, wantServer)
+	}
+	form.Values.Driver = DriverPostgreSQL
+	if got := form.FieldTitles(); !slicesEqual(got, wantServer) {
+		t.Fatalf("postgres titles = %v, want %v", got, wantServer)
+	}
+}
+
+func slicesEqual(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestDriverSelect_offersRegisteredFormDrivers(t *testing.T) {
+	form := NewForm()
+	if got := form.selectLabels("driver"); !slicesEqual(got, []string{"SQLite", "MySQL", "PostgreSQL"}) {
+		t.Fatalf("driver labels = %v, want SQLite/MySQL/PostgreSQL", got)
+	}
+	form.Values.Driver = DriverMySQL
+	if got := form.selectLabels("tls"); !slicesEqual(got, []string{"Verify certificate", "Encrypt, don't verify certificate", "Don't encrypt"}) {
+		t.Fatalf("mysql TLS labels = %v, want the three modes", got)
+	}
+	form.Values.Driver = DriverPostgreSQL
+	if got := form.selectLabels("tls"); !slicesEqual(got, []string{"Verify certificate", "Encrypt, don't verify certificate", "Don't encrypt"}) {
+		t.Fatalf("postgres TLS labels = %v, want the three modes", got)
+	}
+}
+
+func TestExtras_roundTripThroughProfile(t *testing.T) {
+	m := New()
+	m.Path = filepath.Join(t.TempDir(), "profiles.json")
+	m.Form.Values.Driver, m.Form.Values.Name, m.Form.Values.Target = DriverMySQL, "Remote", "app"
+	m.Form.Values.Host, m.Form.Values.Port, m.Form.Values.User = "db.example.test", "3306", "alice"
+	m.Form.Values.Extras = map[string]string{"schema": "public"}
+
+	p := m.Form.Profile()
+	if p.Extras["schema"] != "public" {
+		t.Fatalf("profile extras = %v, want the driver field carried", p.Extras)
+	}
+
+	m.LoadValues(p)
+	if m.Form.Values.Extras["schema"] != "public" {
+		t.Fatalf("form extras after load = %v, want the profile field carried", m.Form.Values.Extras)
+	}
+
+	recorded, err := m.Record("/unused", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorded.Extras["schema"] != "public" {
+		t.Fatalf("recorded extras = %v, want the driver field carried", recorded.Extras)
+	}
+	// Recording must not alias the form's map: mutating one side never
+	// leaks into the other.
+	recorded.Extras["schema"] = "mutated"
+	if m.Form.Values.Extras["schema"] != "public" {
+		t.Fatal("recorded profile aliases the form extras map")
+	}
+}

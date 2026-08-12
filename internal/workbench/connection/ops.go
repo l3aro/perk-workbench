@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"maps"
 	"path/filepath"
 	"strings"
 
@@ -64,6 +65,7 @@ func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, err
 			connection.PostgreSQLTLS = m.Form.Values.PostgreSQLTLS
 		}
 	}
+	connection.Extras = maps.Clone(m.Form.Values.Extras)
 	// Reuse or generate the opaque profile identity. Editing a profile
 	// keeps its ID; a new profile that matches an existing one reuses that
 	// ID so its scoped chat/query history survives; otherwise mint a
@@ -117,6 +119,7 @@ func (m *Model) LoadValues(connection profile.Profile) {
 	}
 	m.Form.Values.ReadOnly = connection.ReadOnly
 	m.Form.Values.Pass = connection.Pass
+	m.Form.Values.Extras = maps.Clone(connection.Extras)
 }
 
 // Delete removes the given profile from the recent list.

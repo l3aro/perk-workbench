@@ -31,13 +31,13 @@ const (
 	DriverMySQL      = profile.DriverMySQL
 	DriverPostgreSQL = profile.DriverPostgreSQL
 
-	MySQLTLSVerify     MySQLTLS = "true"
-	MySQLTLSSkipVerify MySQLTLS = "skip-verify"
-	MySQLTLSDisabled   MySQLTLS = "false"
+	MySQLTLSVerify     = profile.MySQLTLSVerify
+	MySQLTLSSkipVerify = profile.MySQLTLSSkipVerify
+	MySQLTLSDisabled   = profile.MySQLTLSDisabled
 
-	PostgreSQLTLSVerifyFull PostgreSQLTLS = "verify-full"
-	PostgreSQLTLSEncrypt    PostgreSQLTLS = "require"
-	PostgreSQLTLSDisabled   PostgreSQLTLS = "disable"
+	PostgreSQLTLSVerifyFull = profile.PostgreSQLTLSVerifyFull
+	PostgreSQLTLSEncrypt    = profile.PostgreSQLTLSEncrypt
+	PostgreSQLTLSDisabled   = profile.PostgreSQLTLSDisabled
 )
 
 // Pane focus values: the profiles list pane or the form pane.
@@ -144,15 +144,7 @@ func (m *Model) BlurFilter() { m.RecentFilter.Blur() }
 // ConnectionTarget returns the full opener target for the form's current
 // values: server drivers gain their URL scheme prefix.
 func (m Model) ConnectionTarget() string {
-	target := m.Form.TargetValue()
-	switch m.Form.Values.Driver {
-	case DriverMySQL:
-		return "mysql:" + target
-	case DriverPostgreSQL:
-		return "postgres:" + target
-	default:
-		return target
-	}
+	return m.Form.ConnectionTarget()
 }
 
 // FormPaneView renders the form pane body: the form view plus the mode

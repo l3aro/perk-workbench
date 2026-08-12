@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,8 +39,22 @@ const (
 // MySQLTLS is the persisted MySQL TLS mode.
 type MySQLTLS string
 
+// MySQL TLS modes, as stored in profiles and the connection form.
+const (
+	MySQLTLSVerify     MySQLTLS = "true"
+	MySQLTLSSkipVerify MySQLTLS = "skip-verify"
+	MySQLTLSDisabled   MySQLTLS = "false"
+)
+
 // PostgreSQLTLS is the persisted PostgreSQL TLS mode.
 type PostgreSQLTLS string
+
+// PostgreSQL TLS modes, as stored in profiles and the connection form.
+const (
+	PostgreSQLTLSVerifyFull PostgreSQLTLS = "verify-full"
+	PostgreSQLTLSEncrypt    PostgreSQLTLS = "require"
+	PostgreSQLTLSDisabled   PostgreSQLTLS = "disable"
+)
 
 // Profile is one persisted connection record. The JSON keys are stable
 // wire format; do not rename them.
@@ -55,6 +70,9 @@ type Profile struct {
 	MySQLTLS      MySQLTLS      `json:"mysqlTLS,omitempty"`
 	PostgreSQLTLS PostgreSQLTLS `json:"postgresTLS,omitempty"`
 	ReadOnly      bool          `json:"readOnly,omitempty"`
+	// Extras carries driver-specific form values beyond the fixed fields
+	// (empty for the built-in drivers).
+	Extras map[string]string `json:"extras,omitempty"`
 }
 
 // Path returns the XDG config location of the profiles file.
@@ -89,13 +107,13 @@ func Load(path string) (profiles []Profile, migrated bool) {
 			continue
 		}
 		if connection.Pass != "" && key != nil {
-			if strings.HasPrefix(connection.Pass, encPrefix) {
-				raw, err := base64.StdEncoding.DecodeString(connection.Pass[len(encPrefix):])
-				if err == nil {
-					if decrypted, err := decrypt(raw, key); err == nil {
-						connection.Pass = string(decrypted)
-					}
-				}
+			if decrypted, ok := decryptSecret(connection.Pass, key); ok {
+				connection.Pass = decrypted
+			}
+		}
+		for extraKey, value := range connection.Extras {
+			if decrypted, ok := decryptSecret(value, key); ok {
+				connection.Extras[extraKey] = decrypted
 			}
 		}
 		if !ValidID(connection.ID) || seen[connection.ID] {
@@ -131,16 +149,25 @@ func Save(path string, profiles []Profile) error {
 			continue
 		}
 		conn := connection
+		conn.Extras = maps.Clone(connection.Extras)
 		if conn.Pass != "" && !IsSecretRef(conn.Pass) {
-			key, err := loadOrGenerateKey()
+			encrypted, err := encryptSecret(conn.Pass)
 			if err != nil {
 				return err
 			}
-			encrypted, err := encrypt([]byte(conn.Pass), key)
+			conn.Pass = encrypted
+		}
+		// Extras are treated as sensitive like Pass: literal values are
+		// encrypted at rest, secret references stay verbatim.
+		for extraKey, value := range conn.Extras {
+			if value == "" || IsSecretRef(value) {
+				continue
+			}
+			encrypted, err := encryptSecret(value)
 			if err != nil {
 				return err
 			}
-			conn.Pass = encPrefix + base64.StdEncoding.EncodeToString(encrypted)
+			conn.Extras[extraKey] = encrypted
 		}
 		persisted = append(persisted, conn)
 	}
@@ -189,6 +216,10 @@ func ValidID(id string) bool {
 }
 
 // valid reports whether the record carries the fields its driver needs.
+// Known drivers have strict per-driver requirements; any other driver
+// (a future registered or plugin driver) survives with the generic
+// target floor, and its form-level requirements are enforced by the
+// connection layer.
 func (p Profile) valid() bool {
 	if p.Name == "" {
 		return false
@@ -199,7 +230,7 @@ func (p Profile) valid() bool {
 	case DriverMySQL, DriverPostgreSQL:
 		return p.Host != "" && p.Port != "" && p.User != ""
 	default:
-		return false
+		return p.Target != ""
 	}
 }
 
@@ -248,6 +279,36 @@ func loadOrGenerateKey() (*[32]byte, error) {
 		return nil, err
 	}
 	return k32, nil
+}
+
+// encryptSecret returns the at-rest form of a literal secret value.
+func encryptSecret(value string) (string, error) {
+	key, err := loadOrGenerateKey()
+	if err != nil {
+		return "", err
+	}
+	encrypted, err := encrypt([]byte(value), key)
+	if err != nil {
+		return "", err
+	}
+	return encPrefix + base64.StdEncoding.EncodeToString(encrypted), nil
+}
+
+// decryptSecret reverses encryptSecret for an at-rest value; ok=false
+// when the value is not encrypted or cannot be decrypted.
+func decryptSecret(value string, key *[32]byte) (string, bool) {
+	if key == nil || !strings.HasPrefix(value, encPrefix) {
+		return "", false
+	}
+	raw, err := base64.StdEncoding.DecodeString(value[len(encPrefix):])
+	if err != nil {
+		return "", false
+	}
+	decrypted, err := decrypt(raw, key)
+	if err != nil {
+		return "", false
+	}
+	return string(decrypted), true
 }
 
 func encrypt(plaintext []byte, key *[32]byte) ([]byte, error) {

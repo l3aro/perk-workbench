@@ -145,3 +145,74 @@ func TestValidID_acceptsOnlyUUIDv7(t *testing.T) {
 		}
 	}
 }
+
+func TestSave_encryptsExtrasAndLoadDecrypts(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
+	connections := []Profile{{
+		Driver: DriverMySQL, Name: "Test",
+		Target: "db", Host: "localhost", Port: "3306", User: "admin", Pass: "pw",
+		Extras: map[string]string{"auth_token": "tok-secret"},
+	}}
+	if err := Save(path, connections); err != nil {
+		t.Fatalf("saving: %v", err)
+	}
+
+	var stored []struct {
+		Pass   string
+		Extras map[string]string
+	}
+	contents, _ := os.ReadFile(path)
+	if err := json.Unmarshal(contents, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("stored profiles = %d, want 1", len(stored))
+	}
+	if got := stored[0].Extras["auth_token"]; got == "tok-secret" || !strings.HasPrefix(got, "enc:") {
+		t.Fatalf("extras stored in plaintext, got %q", got)
+	}
+
+	loaded, _ := Load(path)
+	if len(loaded) != 1 || loaded[0].Extras["auth_token"] != "tok-secret" {
+		t.Fatalf("loaded extras = %v, want the decrypted token", loaded[0].Extras)
+	}
+}
+
+func TestSave_keepsExtrasSecretReferencesVerbatim(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
+	connections := []Profile{{
+		Driver: DriverMySQL, Name: "Ref", Target: "db",
+		Host: "localhost", Port: "3306", User: "admin", Pass: "${DB_PASS}",
+		Extras: map[string]string{"auth_token": "${AUTH_TOKEN}"},
+	}}
+	if err := Save(path, connections); err != nil {
+		t.Fatalf("saving: %v", err)
+	}
+	loaded, _ := Load(path)
+	if len(loaded) != 1 || loaded[0].Extras["auth_token"] != "${AUTH_TOKEN}" {
+		t.Fatalf("loaded extras = %v, want the reference verbatim", loaded[0].Extras)
+	}
+}
+
+func TestSave_keepsUnknownDriverProfiles(t *testing.T) {
+	// A future registered driver's profile must survive persistence; its
+	// form-level requirements are the connection layer's job.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path := filepath.Join(t.TempDir(), "perk-workbench", "connections.json")
+	connections := []Profile{{
+		Driver: "redis", Name: "Cache", Target: "localhost",
+		Extras: map[string]string{"db": "0"},
+	}}
+	if err := Save(path, connections); err != nil {
+		t.Fatalf("saving: %v", err)
+	}
+	contents, _ := os.ReadFile(path)
+	if strings.Contains(string(contents), `"db": "0"`) {
+		t.Fatal("extras stored in plaintext")
+	}
+	loaded, _ := Load(path)
+	if len(loaded) != 1 || loaded[0].Driver != "redis" || loaded[0].Target != "localhost" || loaded[0].Extras["db"] != "0" {
+		t.Fatalf("loaded unknown-driver profile = %#v, want it preserved", loaded)
+	}
+}

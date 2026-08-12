@@ -2,6 +2,7 @@ package connection
 
 import (
 	"charm.land/bubbles/v2/list"
+	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
@@ -30,14 +31,10 @@ func (c RecentProfile) Description() string {
 }
 
 func (c RecentProfile) driverName() string {
-	switch c.Driver {
-	case profile.DriverMySQL:
-		return "MySQL"
-	case profile.DriverPostgreSQL:
-		return "PostgreSQL"
-	default:
-		return "SQLite"
+	if spec, ok := database.ByName(string(c.Driver)); ok {
+		return spec.Display
 	}
+	return string(c.Driver)
 }
 
 // RecentListItems converts profiles into list items for the profiles pane.
