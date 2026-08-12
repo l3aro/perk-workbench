@@ -1,3 +1,0 @@
-	return s.rebuildTableWithSQL(ctx, table, func(*stdsql.Tx) error { return nil }, func(createSQL string) (string, error) {
-		return rewritePrimaryKey(createSQL, "__perk_workbench_column_edit", columns)
-	})
