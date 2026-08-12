@@ -21,6 +21,7 @@ func TestMatch_routesTargetForms(t *testing.T) {
 		{name: "mongo uri", target: "mongodb://h/app", wantName: "mongodb", wantDSN: "mongodb://h/app", wantOK: true},
 		{name: "mongo srv uri", target: "mongodb+srv://h/app", wantName: "mongodb", wantDSN: "mongodb+srv://h/app", wantOK: true},
 		{name: "mysql prefix", target: "mysql:user@tcp(h:3306)/app", wantName: "mysql", wantDSN: "user@tcp(h:3306)/app", wantOK: true},
+		{name: "mysql scheme via label", target: "mysql://user@h/app", wantName: "mysql", wantDSN: "//user@h/app", wantOK: true},
 		{name: "postgres uri", target: "postgres://u@h/app", wantName: "postgres", wantDSN: "postgres://u@h/app", wantOK: true},
 		{name: "postgresql uri", target: "postgresql://u@h/app", wantName: "postgres", wantDSN: "postgresql://u@h/app", wantOK: true},
 		{name: "postgres prefix", target: "postgres:host=h", wantName: "postgres", wantDSN: "host=h", wantOK: true},

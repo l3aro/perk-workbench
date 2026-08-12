@@ -2,6 +2,8 @@ package database
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -13,11 +15,12 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
-// Spec describes one driver in the group: how a target addresses it, how
-// to open a service for a matched target, and (optionally) how the
+// Spec describes one driver in the group: which target forms address it,
+// how to open a service for a matched target, and (optionally) how the
 // connection form presents it. The group is the single place that maps
 // target forms to backends; the workbench never switches on target
-// prefixes itself.
+// prefixes itself. Everything but Open is plain data, so a spec crosses
+// the plugin DTO boundary unchanged.
 type Spec struct {
 	// Name identifies the driver. It is the profile driver name
 	// ("sqlite", "mysql", "postgres").
@@ -26,20 +29,32 @@ type Spec struct {
 	// Display is the human-readable driver label ("SQLite").
 	Display string
 
-	// Match reports the connection target for Open when target addresses
-	// this driver, and ok=false otherwise. A nil Match means the driver is
-	// reached only through the default fallback (SQLite).
-	Match func(target string) (dsn string, ok bool)
+	// Targets lists the target forms this driver addresses, in check
+	// order. Empty means the driver is reached only through the default
+	// fallback (SQLite).
+	Targets []TargetPattern
 
 	// Open opens a service for a matched target.
 	Open func(ctx context.Context, target string) (sharedsql.Service, error)
 
 	// Form describes the connection form for this driver, or nil when the
 	// driver has no form entry (MongoDB is opened by target URL only).
-	// The spec is plain data — no code — so plugin-supplied specs survive
-	// the DTO boundary; target serialization is a registered in-process
-	// builder (see RegisterTargetBuilder), not part of the spec.
+	// Target serialization is a registered in-process builder (see
+	// BuildTarget), not part of the spec.
 	Form *FormSpec
+}
+
+// TargetPattern declaratively addresses one target form of a driver. A
+// pattern matches targets beginning with Prefix. Label prefixes end with
+// ":" ("mysql:") and are stripped from the target passed to Open; scheme
+// prefixes are full URL schemes ("postgres://") whose target is passed to
+// Open unchanged. A scheme pattern must be declared before a label
+// pattern that would otherwise shadow it ("redis://" before "redis:").
+type TargetPattern struct {
+	Prefix string `json:"prefix"`
+	// KeepTarget keeps the whole target for Open when true (URL scheme
+	// forms); when false the prefix is stripped.
+	KeepTarget bool `json:"keep_target,omitempty"`
 }
 
 // FormFieldKind selects the widget for a connection-form field.
@@ -68,8 +83,8 @@ const (
 
 // FormOption is one option of a select field.
 type FormOption struct {
-	Label string
-	Value string
+	Label string `json:"label"`
+	Value string `json:"value"`
 }
 
 // FormField describes one driver-specific connection-form field. Keys
@@ -77,41 +92,44 @@ type FormOption struct {
 // username, password, database, target, tls. Any other key binds to the
 // profile's generic extras.
 type FormField struct {
-	Key         string
-	Title       string
-	Kind        FormFieldKind
-	Placeholder string
+	Key         string        `json:"key"`
+	Title       string        `json:"title"`
+	Kind        FormFieldKind `json:"kind"`
+	Placeholder string        `json:"placeholder,omitempty"`
 	// Default is the well-known value shown when the field is blank
 	// (e.g. the default port).
-	Default string
-	Options []FormOption
+	Default string       `json:"default,omitempty"`
+	Options []FormOption `json:"options,omitempty"`
 	// Validate is the rule applied to the field value; Error is the
-	// message shown when the rule fails.
-	Validate FormValidation
-	Error    string
+	// message shown when the rule fails. Kind and Validate are the Go
+	// iota constants — a transport must not reorder them.
+	Validate FormValidation `json:"validate"`
+	Error    string         `json:"error,omitempty"`
 }
 
 // FormSpec declaratively describes the connection form for one driver:
 // which fields to show, in order, and the opener-target prefix. It
 // carries no code, so it can cross the plugin DTO boundary unchanged.
 type FormSpec struct {
-	Fields []FormField
+	Fields []FormField `json:"fields"`
 	// Prefix is prepended to the serialized target so Match can route it
 	// back to this driver ("" for SQLite).
-	Prefix string
+	Prefix string `json:"prefix,omitempty"`
 }
 
 // FormValues is the driver-facing view of the connection form: effective
 // host/port, credentials, the database field, the selected TLS mode, and
-// driver-specific extras (secret references resolved).
+// driver-specific extras (secret references resolved). It is the
+// field-value DTO a transport sends to a plugin for target
+// serialization.
 type FormValues struct {
-	Host     string
-	Port     string
-	User     string
-	Pass     string
-	Database string
-	TLS      string
-	Extras   map[string]string
+	Host     string            `json:"host,omitempty"`
+	Port     string            `json:"port,omitempty"`
+	User     string            `json:"user,omitempty"`
+	Pass     string            `json:"pass,omitempty"`
+	Database string            `json:"database,omitempty"`
+	TLS      string            `json:"tls,omitempty"`
+	Extras   map[string]string `json:"extras,omitempty"`
 }
 
 var (
@@ -125,8 +143,8 @@ var (
 // fully populated before any Open call — but the lock keeps late in-process
 // registration (tests, future shims) safe.
 func Register(spec Spec) {
-	if spec.Name == "" || spec.Open == nil {
-		panic("database: driver spec needs a name and an open function")
+	if err := validateSpec(spec); err != nil {
+		panic(err.Error())
 	}
 	driversMu.Lock()
 	defer driversMu.Unlock()
@@ -135,6 +153,40 @@ func Register(spec Spec) {
 	}
 	byName[spec.Name] = spec
 	order = append(order, spec.Name)
+}
+
+// validateSpec checks the invariants every registered driver must hold:
+// a name, an open function, at least one target form (only the default
+// fallback driver may have none), and — when the driver has a
+// connection form — a form prefix routed by one of its stripped target
+// forms, so serialized targets always reach the driver back.
+func validateSpec(spec Spec) error {
+	switch {
+	case spec.Name == "":
+		return errors.New("database: driver spec needs a name")
+	case spec.Open == nil:
+		return fmt.Errorf("database: driver spec %q needs an open function", spec.Name)
+	case len(spec.Targets) == 0 && spec.Name != string(profile.DriverSQLite):
+		return fmt.Errorf("database: driver %q has no target forms; only the fallback driver %q may", spec.Name, profile.DriverSQLite)
+	}
+	for _, pattern := range spec.Targets {
+		if pattern.Prefix == "" {
+			return fmt.Errorf("database: driver %q has an empty target prefix", spec.Name)
+		}
+	}
+	if spec.Form != nil && spec.Form.Prefix != "" {
+		routed := false
+		for _, pattern := range spec.Targets {
+			if pattern.Prefix == spec.Form.Prefix && !pattern.KeepTarget {
+				routed = true
+				break
+			}
+		}
+		if !routed {
+			return fmt.Errorf("database: driver %q form prefix %q must be one of its stripped target forms", spec.Name, spec.Form.Prefix)
+		}
+	}
+	return nil
 }
 
 // ByName returns the registered driver with the given name.
@@ -146,17 +198,20 @@ func ByName(name string) (Spec, bool) {
 }
 
 // Match selects the driver whose target form addresses target, returning
-// the connection target to open. Registration order is precedence order.
+// the connection target to open. Registration order is precedence order;
+// within a driver, patterns are checked in declared order.
 func Match(target string) (Spec, string, bool) {
 	driversMu.RLock()
 	defer driversMu.RUnlock()
 	for _, name := range order {
-		spec := byName[name]
-		if spec.Match == nil {
-			continue
-		}
-		if dsn, ok := spec.Match(target); ok {
-			return spec, dsn, true
+		for _, pattern := range byName[name].Targets {
+			if !strings.HasPrefix(target, pattern.Prefix) {
+				continue
+			}
+			if pattern.KeepTarget {
+				return byName[name], target, true
+			}
+			return byName[name], strings.TrimPrefix(target, pattern.Prefix), true
 		}
 	}
 	return Spec{}, "", false
@@ -183,14 +238,13 @@ var (
 
 // TargetBuilder serializes connection-form values into the opener target
 // body for one driver (no prefix). Built-in builders implement their
-// dialect in the adapter packages; a future plugin shim registers one for
-// its driver, receiving the same field-value DTO.
+// dialect in the adapter packages; RegisterShim installs the builder of a
+// plugin transport, receiving the same field-value DTO.
 type TargetBuilder func(values FormValues) (string, bool)
 
 // registerTargetBuilder registers the target serializer for a driver.
-// Built-ins register theirs here; a future plugin shim's transport gets
-// its own registration path when it exists. Names are unique: registering
-// a duplicate name panics.
+// Built-ins register theirs here; plugin shims register theirs through
+// RegisterShim. Names are unique: registering a duplicate name panics.
 func registerTargetBuilder(name string, build TargetBuilder) {
 	if name == "" || build == nil {
 		panic("database: target builder needs a driver name and a function")
@@ -219,6 +273,70 @@ func BuildTarget(spec Spec, values FormValues) (string, bool) {
 	return build(values)
 }
 
+// Capabilities is the serializable advertisement an external driver
+// serves over its transport: identity, the target forms it addresses,
+// and the connection form description — the DTO twin of Spec's data
+// fields. Compiled-in drivers never travel as capabilities.
+type Capabilities struct {
+	Name    string          `json:"name"`
+	Display string          `json:"display"`
+	Targets []TargetPattern `json:"targets,omitempty"`
+	Form    *FormSpec       `json:"form,omitempty"`
+}
+
+// Shim is the in-process face of one plugin-backed driver: the
+// declarative capabilities the plugin advertised, plus the dialect the
+// transport owns — target serialization and service opening, both
+// bridged over its wire protocol. A shim-registered driver is
+// indistinguishable from a compiled-in one.
+type Shim interface {
+	Capabilities() Capabilities
+	BuildTarget(values FormValues) (string, bool)
+	Open(ctx context.Context, target string) (sharedsql.Service, error)
+}
+
+// RegisterShim installs a plugin-backed driver into the group, deriving
+// the spec from the shim's declarative capabilities. Unlike Register, a
+// misconfigured shim returns an error: a broken plugin must not take the
+// app down. Formless drivers never register a target builder; the
+// connection form then falls back to the raw target field, like a
+// target-only driver.
+func RegisterShim(shim Shim) error {
+	if shim == nil {
+		return errors.New("database: nil shim")
+	}
+	caps := shim.Capabilities()
+	if err := validateSpec(Spec{
+		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+	}); err != nil {
+		return err
+	}
+	driversMu.Lock()
+	defer driversMu.Unlock()
+	if _, exists := byName[caps.Name]; exists {
+		return fmt.Errorf("database: driver %q registered twice", caps.Name)
+	}
+	// Install the target builder before the driver becomes visible, so a
+	// concurrent BuildTarget can never observe a partially registered
+	// shim. Formless drivers (MongoDB-style, target URL only) never
+	// register one.
+	if caps.Form != nil {
+		buildersMu.Lock()
+		defer buildersMu.Unlock()
+		targetBuilders[caps.Name] = shim.BuildTarget
+	}
+	spec := Spec{
+		Name:    caps.Name,
+		Display: caps.Display,
+		Targets: caps.Targets,
+		Open:    shim.Open,
+		Form:    caps.Form,
+	}
+	byName[caps.Name] = spec
+	order = append(order, caps.Name)
+	return nil
+}
+
 func init() {
 	// Registration order is both the match precedence and the connection
 	// form's driver order; target forms are disjoint, so order is safe
@@ -241,7 +359,7 @@ func init() {
 	Register(Spec{
 		Name:    string(profile.DriverMySQL),
 		Display: "MySQL",
-		Match:   mysqlMatch,
+		Targets: []TargetPattern{{Prefix: "mysql:"}},
 		Open: func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return mysql.Open(ctx, target)
 		},
@@ -264,7 +382,11 @@ func init() {
 	Register(Spec{
 		Name:    string(profile.DriverPostgreSQL),
 		Display: "PostgreSQL",
-		Match:   postgresMatch,
+		Targets: []TargetPattern{
+			{Prefix: "postgres://", KeepTarget: true},
+			{Prefix: "postgresql://", KeepTarget: true},
+			{Prefix: "postgres:"},
+		},
 		Open: func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return postgres.Open(ctx, target)
 		},
@@ -289,7 +411,11 @@ func init() {
 	Register(Spec{
 		Name:    "mongodb",
 		Display: "MongoDB",
-		Match:   mongoMatch,
+		Targets: []TargetPattern{
+			{Prefix: "mongo:"},
+			{Prefix: "mongodb://", KeepTarget: true},
+			{Prefix: "mongodb+srv://", KeepTarget: true},
+		},
 		Open: func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return mongodb.Open(ctx, target)
 		},
@@ -304,31 +430,4 @@ func init() {
 	registerTargetBuilder(string(profile.DriverPostgreSQL), func(values FormValues) (string, bool) {
 		return postgres.Target(values.User, values.Pass, values.Host, values.Port, values.Database, values.TLS), true
 	})
-}
-
-func mongoMatch(target string) (string, bool) {
-	if dsn, ok := strings.CutPrefix(target, "mongo:"); ok {
-		return dsn, true
-	}
-	if strings.HasPrefix(target, "mongodb://") || strings.HasPrefix(target, "mongodb+srv://") {
-		return target, true
-	}
-	return "", false
-}
-
-func mysqlMatch(target string) (string, bool) {
-	if dsn, ok := strings.CutPrefix(target, "mysql:"); ok {
-		return dsn, true
-	}
-	return "", false
-}
-
-func postgresMatch(target string) (string, bool) {
-	if strings.HasPrefix(target, "postgres://") || strings.HasPrefix(target, "postgresql://") {
-		return target, true
-	}
-	if dsn, ok := strings.CutPrefix(target, "postgres:"); ok {
-		return dsn, true
-	}
-	return "", false
 }
