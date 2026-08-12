@@ -97,15 +97,8 @@ func resetStyles() {
 		Background(lipgloss.Color(colorFocused)).
 		Bold(true).
 		Padding(0, spaceCompact)
-	formSaveButtonStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorCanvas)).
-		Background(lipgloss.Color(colorPrimary)).
-		Bold(true).
-		Padding(0, spaceCompact)
-	formCancelButtonStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorInk)).
-		Background(lipgloss.Color(colorStripe)).
-		Padding(0, spaceCompact)
+	formSaveButtonStyle = uikit.ButtonSaveStyle
+	formCancelButtonStyle = uikit.ButtonCancelStyle
 	formButtonFocusedStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorFocused)).

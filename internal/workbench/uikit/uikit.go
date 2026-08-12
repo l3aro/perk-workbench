@@ -121,6 +121,7 @@ var (
 	StatusSuccessStyle, StatusFailedStyle lipgloss.Style
 	StatusCanceledStyle                   lipgloss.Style
 	SelectedCellStyle                     lipgloss.Style
+	ButtonSaveStyle, ButtonCancelStyle    lipgloss.Style
 )
 
 // SetTheme applies the named theme palette and rebuilds the derived
@@ -191,6 +192,15 @@ func resetStyles() {
 		Foreground(lipgloss.Color(ColorCanvas)).
 		Background(lipgloss.Color(ColorPrimary)).
 		Bold(true)
+	ButtonSaveStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorCanvas)).
+		Background(lipgloss.Color(ColorPrimary)).
+		Bold(true).
+		Padding(0, SpaceCompact)
+	ButtonCancelStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorInk)).
+		Background(lipgloss.Color(ColorStripe)).
+		Padding(0, SpaceCompact)
 }
 
 // SafeText strips ANSI escape codes and unsafe control characters from

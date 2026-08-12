@@ -29,27 +29,27 @@ func TestBrowsePager_buttonsAlwaysRenderedAndStyledByAvailability(t *testing.T) 
 			model.browse.result.HasMore = test.hasMore
 
 			pager := model.browsePager()
-			if pager.line == "" {
+			if pager.Line == "" {
 				t.Fatal("pager row must always render")
 			}
-			if pager.prevEnabled != test.wantPrevEnabled || pager.nextEnabled != test.wantNextEnabled {
-				t.Fatalf("enabled = %t/%t, want %t/%t", pager.prevEnabled, pager.nextEnabled, test.wantPrevEnabled, test.wantNextEnabled)
+			if pager.PrevEnabled != test.wantPrevEnabled || pager.NextEnabled != test.wantNextEnabled {
+				t.Fatalf("enabled = %t/%t, want %t/%t", pager.PrevEnabled, pager.NextEnabled, test.wantPrevEnabled, test.wantNextEnabled)
 			}
 			wantPrev := formCancelButtonStyle.Render(browsePrevLabel)
 			if test.wantPrevEnabled {
 				wantPrev = formSaveButtonStyle.Render(browsePrevLabel)
 			}
-			if pager.prev != wantPrev {
-				t.Fatalf("Prev = %q, want %q (disabled keeps the secondary color, enabled switches to primary)", pager.prev, wantPrev)
+			if pager.Prev != wantPrev {
+				t.Fatalf("Prev = %q, want %q (disabled keeps the secondary color, enabled switches to primary)", pager.Prev, wantPrev)
 			}
 			wantNext := formCancelButtonStyle.Render(browseNextLabel)
 			if test.wantNextEnabled {
 				wantNext = formSaveButtonStyle.Render(browseNextLabel)
 			}
-			if pager.next != wantNext {
-				t.Fatalf("Next = %q, want %q (disabled keeps the secondary color, enabled switches to primary)", pager.next, wantNext)
+			if pager.Next != wantNext {
+				t.Fatalf("Next = %q, want %q (disabled keeps the secondary color, enabled switches to primary)", pager.Next, wantNext)
 			}
-			row := ansi.Strip(pager.line)
+			row := ansi.Strip(pager.Line)
 			if !strings.Contains(row, "Prev") || !strings.Contains(row, "Next") {
 				t.Fatalf("row = %q, want both buttons always visible", row)
 			}
@@ -175,14 +175,14 @@ func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 	model.focusActiveTable()
 
 	pager := model.browsePager()
-	if pager.prevEnabled || !pager.nextEnabled {
-		t.Fatalf("enabled = %t/%t, want only Next at page 0 with HasMore", pager.prevEnabled, pager.nextEnabled)
+	if pager.PrevEnabled || !pager.NextEnabled {
+		t.Fatalf("enabled = %t/%t, want only Next at page 0 with HasMore", pager.PrevEnabled, pager.NextEnabled)
 	}
 
 	// When — click the Next button on the button row (screen row
 	// Height()+7: contentY = Height()+6 plus the header row).
 	updated, command := model.Update(tea.MouseClickMsg{
-		X:      model.layout.schemaWidth + 1 + pager.nextStart,
+		X:      model.layout.schemaWidth + 1 + pager.NextStart,
 		Y:      model.browse.table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
@@ -209,13 +209,13 @@ func TestBrowsePager_clickPrevLoadsPreviousPage(t *testing.T) {
 	model.focusActiveTable()
 
 	pager := model.browsePager()
-	if !pager.prevEnabled || pager.nextEnabled {
-		t.Fatalf("enabled = %t/%t, want only Prev at page 1 without HasMore", pager.prevEnabled, pager.nextEnabled)
+	if !pager.PrevEnabled || pager.NextEnabled {
+		t.Fatalf("enabled = %t/%t, want only Prev at page 1 without HasMore", pager.PrevEnabled, pager.NextEnabled)
 	}
 
 	// When — click the Prev button on the button row.
 	updated, command := model.Update(tea.MouseClickMsg{
-		X:      model.layout.schemaWidth + 1 + pager.prevStart,
+		X:      model.layout.schemaWidth + 1 + pager.PrevStart,
 		Y:      model.browse.table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
@@ -253,9 +253,9 @@ func TestBrowsePager_clickDisabledButtonDoesNothing(t *testing.T) {
 			model.focusActiveTable()
 
 			pager := model.browsePager()
-			start := pager.prevStart
+			start := pager.PrevStart
 			if test.click == 1 {
-				start = pager.nextStart
+				start = pager.NextStart
 			}
 			updated, command := model.Update(tea.MouseClickMsg{
 				X:      model.layout.schemaWidth + 1 + start,
@@ -289,13 +289,13 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	}
 
 	pager := model.browsePager()
-	if !pager.prevEnabled || pager.nextEnabled {
-		t.Fatalf("enabled = %t/%t, want only Prev on an empty last page", pager.prevEnabled, pager.nextEnabled)
+	if !pager.PrevEnabled || pager.NextEnabled {
+		t.Fatalf("enabled = %t/%t, want only Prev on an empty last page", pager.PrevEnabled, pager.NextEnabled)
 	}
 
 	// When — click Prev.
 	updated, command := model.Update(tea.MouseClickMsg{
-		X:      model.layout.schemaWidth + 1 + pager.prevStart,
+		X:      model.layout.schemaWidth + 1 + pager.PrevStart,
 		Y:      model.browse.table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
@@ -323,11 +323,11 @@ func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 
 	// When — click the gap between the pinned buttons.
 	pager := model.browsePager()
-	if !pager.nextEnabled {
+	if !pager.NextEnabled {
 		t.Fatal("Next should be enabled at page 0 with HasMore")
 	}
 	updated, command := model.Update(tea.MouseClickMsg{
-		X:      model.layout.schemaWidth + 1 + pager.nextStart - 1,
+		X:      model.layout.schemaWidth + 1 + pager.NextStart - 1,
 		Y:      model.browse.table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
@@ -355,14 +355,14 @@ func TestBrowsePager_clickNextWorksWithSplitStatus(t *testing.T) {
 		t.Fatal("fixture: status line should be split at width 100")
 	}
 	pager := model.browsePager()
-	if !pager.nextEnabled {
+	if !pager.NextEnabled {
 		t.Fatal("Next should be enabled at page 0 with HasMore")
 	}
 
 	// Two status rows push the button row down one: screen row
 	// Height()+8 (contentY = Height()+7).
 	updated, command := model.Update(tea.MouseClickMsg{
-		X:      model.layout.schemaWidth + 1 + pager.nextStart,
+		X:      model.layout.schemaWidth + 1 + pager.NextStart,
 		Y:      model.browse.table.Height() + 8,
 		Button: tea.MouseLeft,
 	})

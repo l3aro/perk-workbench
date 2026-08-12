@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
 
@@ -25,8 +26,11 @@ func TestMain(m *testing.M) {
 	// immediate in tests so status-changing commands (which batch the
 	// dismiss tick) never block command-driving helpers on the real
 	// 10-second timer.
-	notificationDismissTick = func(generation uint64) tea.Cmd {
-		return func() tea.Msg { return notificationDismissMsg{generation: generation} }
+	// Notification popup dismissals are immediate in tests so
+	// status-changing commands (which batch the dismiss tick) never block
+	// command-driving helpers on the real 10-second timer.
+	notification.DismissTick = func(generation uint64, _ time.Duration) tea.Cmd {
+		return func() tea.Msg { return notification.DismissMsg{Generation: generation} }
 	}
 	SetAppConfig(Config{NerdFont: boolPtr(false)})
 	code := m.Run()

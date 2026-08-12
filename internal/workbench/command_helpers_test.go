@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
 // collectMessages executes a command tree to completion and appends every
@@ -65,7 +66,7 @@ func driveCommand(model Model, command tea.Cmd) Model {
 func assertOnlyNotificationTick(t *testing.T, command tea.Cmd) {
 	t.Helper()
 	for _, message := range executeCommandAll(command) {
-		if _, tick := message.(notificationDismissMsg); !tick {
+		if _, tick := message.(notification.DismissMsg); !tick {
 			t.Fatalf("command sent an unexpected message %T", message)
 		}
 	}

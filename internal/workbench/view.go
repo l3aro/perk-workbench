@@ -1,7 +1,6 @@
 package workbench
 
 import (
-	"fmt"
 	"image"
 	"strings"
 	"time"
@@ -37,25 +36,23 @@ func (m Model) View() tea.View {
 		} else {
 			m.overlay.commandPalette.paletteDraw(canvas, m.layout.width, m.layout.height)
 		}
-		m.drawNotificationPopup(canvas)
+		m.notifications.component.Draw(canvas, notificationLayout(m))
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.notifications.history != nil {
+	if m.notifications.component.HistoryOpen() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		m.drawNotificationHistory(canvas)
-		m.drawNotificationPopup(canvas)
+		m.notifications.component.Draw(canvas, notificationLayout(m))
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.notifications.detail != nil {
+	if m.notifications.component.DetailOpen() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		m.drawNotificationDetail(canvas)
-		m.drawNotificationPopup(canvas)
+		m.notifications.component.Draw(canvas, notificationLayout(m))
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -63,7 +60,7 @@ func (m Model) View() tea.View {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		m.queryLog.component.Draw(canvas, uikit.Layout{Width: m.layout.width, Height: m.layout.height})
-		m.drawNotificationPopup(canvas)
+		m.notifications.component.Draw(canvas, notificationLayout(m))
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -82,15 +79,15 @@ func (m Model) View() tea.View {
 		} else if m.browse.cellViewer != nil {
 			m.drawCellViewer(canvas)
 		}
-		m.drawNotificationPopup(canvas)
+		m.notifications.component.Draw(canvas, notificationLayout(m))
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.notifications.popup != nil {
+	if m.notifications.component.PopupOpen() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
-		m.drawNotificationPopup(canvas)
+		m.notifications.component.Draw(canvas, notificationLayout(m))
 		view.SetContent(canvas.Render())
 		return view
 	}
@@ -192,7 +189,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.history != nil || m.notifications.detail != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
+	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -240,97 +237,8 @@ func (m Model) confirmContent() string {
 
 func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
 	if m.browse.cellViewer != nil {
-		drawCellViewerBox(canvas, m.browse.cellViewer)
+		uikit.DrawCellViewerBox(canvas, m.browse.cellViewer)
 	}
-}
-
-// drawCellViewerBox draws one cell viewer card on the canvas. Shared by
-// the workspace overlay and the notification history modal.
-func drawCellViewerBox(canvas uv.ScreenBuffer, cv *cellViewer) {
-	if cv == nil {
-		return
-	}
-	bounds := canvas.Bounds()
-
-	padX := 2
-	title := "View " + cv.column
-	titleWidth := ansi.StringWidth(title)
-
-	// Body height = actual rendered lines, capped at scroll window.
-	// Short content makes a compact dialog.
-	vpContent := cv.viewport.View()
-	vpLines := strings.Split(vpContent, "\n")
-	bodyRows := max(min(len(vpLines), cv.viewport.Height()), 1)
-
-	viewW := cv.viewport.Width()
-	contentW := max(viewW, titleWidth)
-	innerW := contentW + padX*2
-	innerH := 1 + 1 + bodyRows + 1 + 1 // title + top pad + body + bottom pad + footer
-
-	borderW := innerW + 2
-	borderH := innerH + 2
-	if borderW > bounds.Dx() || borderH > bounds.Dy() {
-		return
-	}
-
-	x := max(0, (bounds.Dx()-borderW)/2)
-	y := max(0, (bounds.Dy()-borderH)/2)
-
-	// Fill panel background
-	panelStyle := uv.Style{Bg: chrome.ParseHex(colorPanel)}
-	bgCell := uv.Cell{Content: " ", Width: 1, Style: panelStyle}
-	canvas.FillArea(&bgCell, image.Rect(x, y, x+borderW, y+borderH))
-
-	// Border
-	borderStyle := uv.Style{Fg: chrome.ParseHex(colorBorder)}
-	canvas.SetCell(x, y, &uv.Cell{Content: "\u256d", Width: 1, Style: borderStyle})
-	canvas.SetCell(x+borderW-1, y, &uv.Cell{Content: "\u256e", Width: 1, Style: borderStyle})
-	canvas.SetCell(x, y+borderH-1, &uv.Cell{Content: "\u2570", Width: 1, Style: borderStyle})
-	canvas.SetCell(x+borderW-1, y+borderH-1, &uv.Cell{Content: "\u256f", Width: 1, Style: borderStyle})
-	for cx := x + 1; cx < x+borderW-1; cx++ {
-		canvas.SetCell(cx, y, &uv.Cell{Content: "\u2500", Width: 1, Style: borderStyle})
-		canvas.SetCell(cx, y+borderH-1, &uv.Cell{Content: "\u2500", Width: 1, Style: borderStyle})
-	}
-	for cy := y + 1; cy < y+borderH-1; cy++ {
-		canvas.SetCell(x, cy, &uv.Cell{Content: "\u2502", Width: 1, Style: borderStyle})
-		canvas.SetCell(x+borderW-1, cy, &uv.Cell{Content: "\u2502", Width: 1, Style: borderStyle})
-	}
-
-	// Styles matching confirmation dialog
-	titleStyle := uv.Style{Fg: chrome.ParseHex(colorSecondary), Bg: chrome.ParseHex(colorPanel), Attrs: uv.AttrBold}
-	ink := uv.Style{Fg: chrome.ParseHex(colorInk), Bg: chrome.ParseHex(colorPanel)}
-	muted := uv.Style{Fg: chrome.ParseHex(colorMuted), Bg: chrome.ParseHex(colorPanel)}
-
-	// Content area starts at (x+1, y+1)
-	cx0 := x + 1
-	cy0 := y + 1
-
-	// Row 0: title (title color/bold, matching confirmation dialog style)
-	drawConfirmationText(canvas, title, cx0+padX, cy0, titleStyle)
-
-	// Row 1: blank padding
-
-	// Rows 2..2+bodyRows-1: viewport content
-	vpStartY := cy0 + 2
-	for i := 0; i < bodyRows; i++ {
-		drawConfirmationText(canvas, vpLines[i], cx0+padX, vpStartY+i, ink)
-	}
-
-	// Last row: footer with bindings left, V%/H% right
-	footerY := cy0 + innerH - 1
-
-	bindings := "w wrap | Esc close"
-	drawConfirmationText(canvas, bindings, cx0+padX, footerY, muted)
-
-	vPct := int(cv.viewport.ScrollPercent() * 100)
-	hPct := int(cv.viewport.HorizontalScrollPercent() * 100)
-	pctStr := fmt.Sprintf("V:%d%% H:%d%%", vPct, hPct)
-	pctWidth := ansi.StringWidth(pctStr)
-	pctX := cx0 + innerW - padX - pctWidth
-	if pctX < cx0+padX {
-		pctX = cx0 + padX
-	}
-	drawConfirmationText(canvas, pctStr, pctX, footerY, muted)
 }
 
 func (m Model) drawConfirmDialog(canvas uv.ScreenBuffer, dialog string) {
@@ -771,51 +679,31 @@ func (m Model) browseStatusLine() string {
 }
 
 // browsePrevLabel and browseNextLabel are the pager button labels on the
-// browse button row.
+// browse button row, shared with the notification history modal through
+// the UI contract layer.
 const (
-	browsePrevLabel = "◀ Prev"
-	browseNextLabel = "Next ▶"
+	browsePrevLabel = uikit.PrevLabel
+	browseNextLabel = uikit.NextLabel
 )
 
-// browsePager describes the pager button row under the browse status line:
-// the rendered row, each button's content-x span (pane content coordinates,
-// including the row's single-cell left padding), and whether each button is
-// enabled. Prev is pinned to the left edge and Next to the right edge of
-// the row, so enabling or disabling a button never moves the other. A
-// disabled button renders in the secondary color and ignores clicks; an
-// enabled one renders in the primary color and pages on click. The view
-// and the click hit-test share this one source of truth.
-type browsePager struct {
-	line                 string
-	prev, next           string
-	prevStart, nextStart int
-	prevEnabled          bool
-	nextEnabled          bool
-}
+// browsePager is the shared pager button row type from the UI contract
+// layer: the rendered line, each button's content-x span, and whether each
+// button is enabled. The browse pane and the notification history modal
+// both lay their rows out from it.
+type browsePager = uikit.Pager
 
 func (m Model) browsePager() browsePager {
-	pager := browsePager{
-		prev:        formCancelButtonStyle.Render(browsePrevLabel),
-		next:        formCancelButtonStyle.Render(browseNextLabel),
-		prevEnabled: m.BrowsePage > 0,
-		nextEnabled: m.browse.result.HasMore,
-	}
-	if pager.prevEnabled {
-		pager.prev = formSaveButtonStyle.Render(browsePrevLabel)
-	}
-	if pager.nextEnabled {
-		pager.next = formSaveButtonStyle.Render(browseNextLabel)
-	}
-	gap := max(m.layout.tableViewportWidth-2-ansi.StringWidth(pager.prev)-ansi.StringWidth(pager.next), 0)
-	pager.prevStart = 1 // statusStyle pads the row by one cell on each side
-	pager.nextStart = 1 + ansi.StringWidth(pager.prev) + gap
-	pager.line = statusStyle.Render(pager.prev + strings.Repeat(" ", gap) + pager.next)
+	pager := uikit.NewPager(m.BrowsePage > 0, m.browse.result.HasMore)
+	gap := max(m.layout.tableViewportWidth-2-ansi.StringWidth(pager.Prev)-ansi.StringWidth(pager.Next), 0)
+	pager.PrevStart = 1 // statusStyle pads the row by one cell on each side
+	pager.NextStart = 1 + ansi.StringWidth(pager.Prev) + gap
+	pager.Line = statusStyle.Render(pager.Prev + strings.Repeat(" ", gap) + pager.Next)
 	return pager
 }
 
 // browsePagerLine returns the pager button row.
 func (m Model) browsePagerLine() string {
-	return m.browsePager().line
+	return m.browsePager().Line
 }
 
 func (m Model) formViewport(view string, offset int) string {

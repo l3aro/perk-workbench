@@ -63,7 +63,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	m.queryLog.component.SetPage(0)
 	if store := m.notificationStore(); store != nil {
 		if entries, err := store.Load(m.connectionID, 0); err == nil {
-			m.notifications.entries = notificationEntriesOf(entries)
+			m.notifications.component.SetEntries(entries)
 		}
 	}
 	name := filepath.Base(message.target)

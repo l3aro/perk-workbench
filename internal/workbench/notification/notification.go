@@ -1,7 +1,9 @@
-// Package notification owns notification history persistence: the scoped
-// SQLite store, level migration, and retention pruning. It has no Bubble
-// Tea dependency; popup, history, and rendering belong to the workbench
-// notification UI.
+// Package notification owns the notification feature: the scoped SQLite
+// history store (with level migration and retention pruning) and the UI
+// component — the popup, the history/detail overlays, the log-notification
+// queue, and rendering. The UI half has no dependency on the root workbench
+// package; the root shell supplies screen geometry, the store, and the
+// connection scope through the component's methods and events.
 package notification
 
 import (

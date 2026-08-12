@@ -9,6 +9,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
 func isIdentStart(text string) bool {
@@ -50,7 +51,7 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	// never bind history to the wrong connection.
 	transient := model.notifications.skipNotificationPersist
 	model.notifications.skipNotificationPersist = false
-	for _, entry := range drainLogNotifications() {
+	for _, entry := range notification.DrainLogEntries() {
 		if transient {
 			cmds = append(cmds, model.notifyLogTransient(entry))
 		} else {
@@ -70,17 +71,15 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, ok := message.(tea.WindowSizeMsg); ok {
 		m.applyLayout(window.Width, window.Height)
 		if m.browse.cellViewer != nil {
-			m.browse.cellViewer.resize(max(m.layout.width-8, 1), max(m.layout.height-10, 1))
+			m.browse.cellViewer.Resize(max(m.layout.width-8, 1), max(m.layout.height-10, 1))
 		}
-		if m.notifications.history != nil {
-			m.notifications.history.resize(window.Width, window.Height)
-		}
+		m.notifications.component.ResizeHistory(window.Width, window.Height)
 		return m, nil
 	}
 
 	// A log entry arrived from outside an update handler (an async
 	// command): the outer Update wrapper drains the queue into a popup.
-	if _, ok := message.(logWakeupMsg); ok {
+	if _, ok := message.(notification.LogWakeupMsg); ok {
 		return m, nil
 	}
 
@@ -117,61 +116,15 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if _, ok := message.(assistantToolResultMsg); ok {
 		return m.updateChat(message)
 	}
-	if dismiss, ok := message.(notificationDismissMsg); ok {
-		if dismiss.generation == m.notifications.generation {
-			m.notifications.popup = nil
-		}
-		return m, nil
-	}
-	// Consume the release trailing a popup click before the modal branches
-	// swallow it; otherwise the flag stays armed and eats a later release.
-	if _, ok := message.(tea.MouseReleaseMsg); ok && m.notifications.popupSwallowRelease {
-		m.notifications.popupSwallowRelease = false
-		return m, nil
-	}
-	// A click on the popup opens the notification history (or, without a
-	// connection scope, a single-entry detail view) and swallows the
-	// trailing release so it cannot click the pane underneath.
-	if click, ok := message.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-		if bounds, hit := m.notificationPopupBounds(); hit && click.X >= bounds.Min.X && click.X < bounds.Max.X && click.Y >= bounds.Min.Y && click.Y < bounds.Max.Y {
-			m.notifications.popupSwallowRelease = true
-			if m.connectionID != "" && m.notifications.popup.id != 0 {
-				m.notifications.history = newNotificationHistory(m.notifications.entries, m.notifications.popup.id, m.layout.width, m.layout.height)
-			} else {
-				m.notifications.detail = m.notifications.popup
-			}
-			return m, nil
-		}
-	}
-	if m.notifications.history != nil {
-		if click, ok := message.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-			m.notifications.history.handleClick(click.X, click.Y)
-			return m, nil
-		}
-		if wheel, ok := message.(tea.MouseWheelMsg); ok {
-			m.notifications.history.handleWheel(wheel)
-			return m, nil
-		}
-		if keyPress, ok := message.(tea.KeyPressMsg); ok {
-			// The filter's first Escape only blurs the filter and the
-			// viewer's Escape closes the viewer; a further Escape closes
-			// the modal.
-			if keyPress.Key().Code == tea.KeyEscape && !m.notifications.history.filterFocused && m.notifications.history.viewer == nil {
-				m.notifications.history = nil
-				return m, nil
-			}
-			if handled, cmd := m.notifications.history.handleKey(keyPress); handled {
-				return m, cmd
-			}
-		}
-		return m, nil
-	}
-	if m.notifications.detail != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.notifications.detail = nil
-			return m, nil
-		}
-		return m, nil
+	// The notification component owns its messages: the popup dismiss
+	// timer, the popup click and its trailing release, and the open
+	// history/detail overlays (which swallow every input while visible).
+	// It consumes only what it owns; everything else passes through to the
+	// modal and pane routing below.
+	if m.notifications.component.Consumes(message, notificationLayout(m)) {
+		model, event, cmd := m.notifications.component.Update(message, notificationLayout(m), m.keybindings)
+		m.notifications.component = model
+		return m.applyNotificationEvent(event, cmd)
 	}
 
 	if m.overlay.themePicker != nil {
@@ -267,7 +220,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.browse.cellViewer = nil
 			return m, nil
 		}
-		cmd := m.browse.cellViewer.update(message)
+		cmd := m.browse.cellViewer.Update(message)
 		return m, cmd
 	}
 	if m.overlay.contextMenu != nil && m.overlay.contextMenu.visible {
@@ -755,10 +708,6 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleMouseWheel(message)
 		}
 	case tea.MouseReleaseMsg:
-		if m.notifications.popupSwallowRelease {
-			m.notifications.popupSwallowRelease = false
-			return m, nil
-		}
 		if m.overlay.commandPalette != nil && m.overlay.commandPalette.swallowRelease {
 			m.overlay.commandPalette.swallowRelease = false
 			return m, nil

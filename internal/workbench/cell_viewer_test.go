@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 func TestCellViewer_opens_for_SQL_results(t *testing.T) {
@@ -42,7 +43,7 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	}
 	// GetContent returns the entire stored string, not just the visible viewport.
 	// ANSI codes and BEL should be sanitized.
-	full := model.browse.cellViewer.viewport.GetContent()
+	full := model.browse.cellViewer.Viewport.GetContent()
 	if !strings.Contains(full, "red ") || !strings.Contains(full, strings.Repeat("x", 200)) {
 		t.Fatalf("cell viewer GetContent missing full value (got %d chars, want 200+):\n%s", len(full), full)
 	}
@@ -55,7 +56,7 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	if strings.Contains(full, "\x07") || strings.Contains(full, "\x1b") {
 		t.Fatal("control characters not sanitized from cell viewer")
 	}
-	if !strings.Contains(model.browse.cellViewer.content(), "note") {
+	if !strings.Contains(model.browse.cellViewer.Content(), "note") {
 		t.Fatalf("cell viewer content missing column title")
 	}
 	if cmd != nil {
@@ -63,16 +64,16 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	}
 
 	// When — press w to toggle soft wrap off (changing wrap resets horizontal scroll)
-	cmd = model.browse.cellViewer.update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	cmd = model.browse.cellViewer.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
 	if cmd != nil {
 		t.Fatal("cell viewer w returned non-nil command")
 	}
-	if model.browse.cellViewer.viewport.SoftWrap {
+	if model.browse.cellViewer.Viewport.SoftWrap {
 		t.Fatal("soft wrap not disabled after w (default is on)")
 	}
 	// Press w again to toggle back on
-	cmd = model.browse.cellViewer.update(tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if !model.browse.cellViewer.viewport.SoftWrap {
+	cmd = model.browse.cellViewer.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if !model.browse.cellViewer.Viewport.SoftWrap {
 		t.Fatal("soft wrap should be enabled after second w")
 	}
 
@@ -116,7 +117,7 @@ func TestCellViewer_opens_for_Browse_selected_column(t *testing.T) {
 	if model.browse.cellViewer == nil {
 		t.Fatal("cell.view did not open a cell viewer for Browse")
 	}
-	content := model.browse.cellViewer.content()
+	content := model.browse.cellViewer.Content()
 	if !strings.Contains(content, "target-value") {
 		t.Fatalf("cell viewer content = %q, want 'target-value'", content)
 	}
@@ -180,10 +181,10 @@ func TestCellViewer_resizes_on_window_size(t *testing.T) {
 	if model.browse.cellViewer == nil {
 		t.Fatal("cell viewer cleared after resize")
 	}
-	if got, want := model.browse.cellViewer.viewport.Width(), wantW; got != want {
+	if got, want := model.browse.cellViewer.Viewport.Width(), wantW; got != want {
 		t.Fatalf("cell viewer width = %d, want %d", got, want)
 	}
-	if got, want := model.browse.cellViewer.viewport.Height(), wantH; got != want {
+	if got, want := model.browse.cellViewer.Viewport.Height(), wantH; got != want {
 		t.Fatalf("cell viewer height = %d, want %d", got, want)
 	}
 }
@@ -225,7 +226,7 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	if model.browse.cellViewer == nil {
 		t.Fatal("handlePaletteCommand('cell.view') did not open viewer for SQL")
 	}
-	content := model.browse.cellViewer.content()
+	content := model.browse.cellViewer.Content()
 	if !strings.Contains(content, "palette-value") {
 		t.Fatalf("palette-opened viewer content = %q, want 'palette-value'", content)
 	}
@@ -265,7 +266,7 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	if model.browse.cellViewer == nil {
 		t.Fatal("handlePaletteCommand('cell.view') did not open viewer for Browse")
 	}
-	content = model.browse.cellViewer.content()
+	content = model.browse.cellViewer.Content()
 	if !strings.Contains(content, "browse-palette") {
 		t.Fatalf("palette-opened viewer content = %q, want 'browse-palette'", content)
 	}
@@ -367,10 +368,10 @@ func TestCellViewer_formats_json_content(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			cv := newCellViewer("col", test.value, 80, 20)
-			got := cv.viewport.GetContent()
+			cv := uikit.NewCellViewer("col", test.value, 80, 20)
+			got := cv.Viewport.GetContent()
 			if got != test.want {
-				t.Fatalf("newCellViewer GetContent =\n%s\nwant:\n%s", got, test.want)
+				t.Fatalf("NewCellViewer GetContent =\n%s\nwant:\n%s", got, test.want)
 			}
 		})
 	}
@@ -378,7 +379,7 @@ func TestCellViewer_formats_json_content(t *testing.T) {
 
 func TestCellViewer_draw_has_title_padding_footer(t *testing.T) {
 	// Given — a cell viewer with short content (2 lines, compact dialog)
-	cv := newCellViewer("testcol", "hello\nworld", 40, 10)
+	cv := uikit.NewCellViewer("testcol", "hello\nworld", 40, 10)
 
 	// Set up model with viewer
 	model := resizeModel(readyModel(t), 60, 20)
@@ -477,32 +478,5 @@ func TestCellViewer_draw_has_title_padding_footer(t *testing.T) {
 	}
 	if footerRow-firstContentRow < 2 {
 		t.Fatalf("no padding row between content (row %d) and footer (row %d)", firstContentRow, footerRow)
-	}
-}
-
-func TestSanitizeCellViewer_strips_ansi_preserves_newlines(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "preserves plain text", input: "hello world", want: "hello world"},
-		{name: "strips ANSI escape", input: "\x1b[31mred\x1b[0m", want: "red"},
-		{name: "strips OSC sequence", input: "a\x1b]0;title\x07b", want: "ab"},
-		{name: "preserves newlines", input: "line1\nline2", want: "line1\nline2"},
-		{name: "strips carriage return", input: "a\rb", want: "ab"},
-		{name: "preserves tabs", input: "a\tb", want: "a\tb"},
-		{name: "strips BEL", input: "a\x07b", want: "ab"},
-		{name: "preserves full length", input: "abc " + strings.Repeat("x", 500), want: "abc " + strings.Repeat("x", 500)},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := sanitizeCellViewer(test.input)
-			if got != test.want {
-				t.Fatalf("sanitizeCellViewer(%q) = %q (len %d), want %q (len %d)",
-					test.input, got, len(got), test.want, len(test.want))
-			}
-		})
 	}
 }

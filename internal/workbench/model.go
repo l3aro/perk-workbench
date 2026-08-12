@@ -18,6 +18,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 const compactWidth = 90
@@ -163,17 +164,14 @@ type structureState struct {
 	tableFilterTab            workspaceTab
 }
 
-// notificationState owns the notification pipeline: history persistence,
-// popup/detail state, filter/sort/page behavior, and status-popup
-// suppression.
+// notificationState owns the notification pipeline's root half: history
+// persistence through the lazy store, the resolved data path, and the
+// status-popup suppression flags. The popup/detail/history state, queue,
+// and rendering live in the notification component; root routes messages
+// and applies its events.
 type notificationState struct {
 	store                   *notification.Store
-	entries                 []notificationEntry
-	popup                   *notificationEntry
-	detail                  *notificationEntry
-	history                 *notificationHistory
-	generation              uint64
-	popupSwallowRelease     bool
+	component               notification.Model
 	path                    string
 	skipStatusPopup         bool
 	skipNotificationPersist bool
@@ -298,11 +296,11 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 			form:         newConnectionForm(),
 			picker:       newList("Choose database", true),
 			recent:       newList("", true),
-			recentFilter: newFilterInput(),
+			recentFilter: uikit.NewFilterInput(),
 		},
 		schema: schemaState{
 			list:              newSchemaList(),
-			filter:            newFilterInput(),
+			filter:            uikit.NewFilterInput(),
 			expandedDatabases: map[string]bool{},
 			expandedSchemas:   map[string]bool{},
 		},
@@ -354,7 +352,8 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		_ = profile.Save(model.connection.recentPath, model.connection.recentConnections)
 	}
 	// Route every logged event into the notification popup pipeline.
-	log.SetNotifier(enqueueLogNotification)
+	log.SetNotifier(notification.EnqueueLogEntry)
+	notification.SetNerdFont(appConfig.NerdFont == nil || *appConfig.NerdFont)
 	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
 	return model
 }
@@ -553,17 +552,14 @@ func (s *connectionState) reset() {
 	s.recentFilter.Blur()
 }
 
-// reset closes the notification history store and clears popup, detail,
-// and history state.
+// reset closes the notification history store and clears the component's
+// captured entries, popup, detail, and history state.
 func (s *notificationState) reset() {
 	if s.store != nil {
 		_ = s.store.Close()
 		s.store = nil
 	}
-	s.entries = nil
-	s.popup = nil
-	s.detail = nil
-	s.history = nil
+	s.component.Reset()
 }
 
 // reset clears connection-scoped overlays. The current disconnect

@@ -13,7 +13,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 
 	switch id {
 	case "notifications.show":
-		m.notifications.history = newNotificationHistory(m.notifications.entries, 0, m.layout.width, m.layout.height)
+		m.notifications.component.OpenHistory(0, m.layout.width, m.layout.height)
 		return m, nil
 	case "theme.select":
 		m.overlay.themePicker = newThemePicker()

@@ -20,6 +20,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/ai"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
 // TestChat_spinnerWhileLoading guards the assistant progress spinner: it must
@@ -1852,7 +1853,7 @@ func TestChat_promptHistoryArrowRecallAndEditExit(t *testing.T) {
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 	for _, message := range executeCommandAll(command) {
-		if _, tick := message.(notificationDismissMsg); !tick {
+		if _, tick := message.(notification.DismissMsg); !tick {
 			t.Fatalf("/new sent an unexpected message %T", message)
 		}
 	}

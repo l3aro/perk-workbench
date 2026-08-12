@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
 func TestBrowseForm_enterOpensSelectedRow(t *testing.T) {
@@ -479,7 +480,7 @@ func TestBrowse_y_yanks_full_value_not_display_trimmed(t *testing.T) {
 // copiedText runs a copy command and returns the clipboard text it carries.
 func copiedText(command tea.Cmd) string {
 	for _, message := range executeCommandAll(command) {
-		if _, tick := message.(notificationDismissMsg); tick {
+		if _, tick := message.(notification.DismissMsg); tick {
 			continue
 		}
 		if text := fmt.Sprint(message); text != "<nil>" {

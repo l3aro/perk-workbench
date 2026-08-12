@@ -766,10 +766,10 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		if !m.layout.compact {
 			browseX = max(absX-m.layout.schemaWidth, 0) - 1
 		}
-		if pager.prevEnabled && browseX >= pager.prevStart && browseX < pager.prevStart+ansi.StringWidth(pager.prev) {
+		if pager.PrevEnabled && browseX >= pager.PrevStart && browseX < pager.PrevStart+ansi.StringWidth(pager.Prev) {
 			return m.pagerBrowseCommand(-1)
 		}
-		if pager.nextEnabled && browseX >= pager.nextStart && browseX < pager.nextStart+ansi.StringWidth(pager.next) {
+		if pager.NextEnabled && browseX >= pager.NextStart && browseX < pager.NextStart+ansi.StringWidth(pager.Next) {
 			return m.pagerBrowseCommand(1)
 		}
 	}

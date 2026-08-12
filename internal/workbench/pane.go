@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 func titledPane(title, content string, style lipgloss.Style) string {
@@ -165,21 +166,6 @@ func newSchemaList() list.Model {
 	model.Filter = schemaListFilter
 	model.SetDelegate(schemaItemDelegate{})
 	return model
-}
-
-// newFilterInput returns a persistent pane filter input. The list's built-in
-// filter is driven externally via SetFilterText so the input can stay visible
-// with its own placeholder and icon.
-func newFilterInput() textinput.Model {
-	input := textinput.New()
-	input.Prompt = ""
-	input.Placeholder = "filter"
-	styles := textinput.DefaultDarkStyles()
-	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	input.SetStyles(styles)
-	input.CharLimit = 64
-	return input
 }
 
 // schemaFilterShown reports whether the pane is wide enough for the filter
@@ -394,7 +380,7 @@ func tableLineSegment(line string, offset, width int) string {
 	for len(line) > 0 {
 		cluster, _ := ansi.FirstGraphemeCluster(line, ansi.WcWidth)
 		if strings.HasPrefix(cluster, "\x1b") {
-			n := ansiSequenceLen(line)
+			n := uikit.AnsiSequenceLen(line)
 			if lineWidth >= offset && lineWidth < total {
 				visible.WriteString(line[:n])
 			}
