@@ -49,6 +49,8 @@ internal/log       event log with debug/info/warn/error levels
 
 It opens the service, lists the initial schema, and returns both atomically. On schema-list failure it closes the service. SQLite accepts `:memory:`; every other target must resolve to an existing regular file.
 
+Routing goes through a driver group in `internal/database`: each compiled-in driver registers a `Spec` (name, target-form matcher, open function) via `Register`, and `Open` dispatches through `Match` with SQLite as the fallback. New compiled-in drivers register a spec there; the workbench and `internal/sql` never switch on target prefixes. The registry is in-process only — the durable plugin boundary is the serializable DTO/capability protocol below, reached through a transport shim, not through this table.
+
 `internal/sql.Service` is the boundary between the workbench and all drivers. It defines execution, schema inspection, table browsing, index/foreign-key management, and column changes. Driver-specific SQL stays inside its matching driver package.
 
 ## Query lifecycle
