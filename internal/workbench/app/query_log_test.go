@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"strings"
+
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
-	"github.com/l3aro/perk-workbench/internal/sqlite"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
-	"strings"
 )
 
 func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing.T) {

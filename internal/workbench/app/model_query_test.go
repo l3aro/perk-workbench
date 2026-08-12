@@ -10,7 +10,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 

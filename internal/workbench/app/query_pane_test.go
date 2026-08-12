@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 )
 
 func TestWideLayout_renders_query_log_in_its_own_pane(t *testing.T) {

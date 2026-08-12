@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 )
 
 func TestFormMode_normalSQLTextDoesNotMutateHuhValue(t *testing.T) {

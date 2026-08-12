@@ -3,7 +3,7 @@
 ## Scope
 
 - Go 1.25 module; the executable is `cmd/perk-workbench`. `internal/workbench/app` owns Bubble Tea state, layout decisions, and async commands; sibling feature packages (`browse`, `chat`, `connection`, `notification`, `querylog`, `schema`, `uikit`, `profile`) are extracted from the shell. `internal/chrome` owns stateless terminal rendering helpers and must not import `workbench` packages or hold Bubble Tea state.
-- `internal/database` selects SQLite, MySQL, PostgreSQL, or MongoDB; `internal/sql` defines their shared service and display contracts. Keep driver-specific SQL in `internal/sqlite`, `internal/mysql`, or `internal/postgres`, and mongosh-style statement handling in `internal/mongodb`.
+- `internal/database` selects SQLite, MySQL, PostgreSQL, or MongoDB; `internal/sql` defines their shared service and display contracts. Driver adapters live in `internal/drivers/` (`sqlite`, `mysql`, `postgres`, `mongodb`); keep driver-specific SQL in `internal/drivers/sqlite`, `internal/drivers/mysql`, or `internal/drivers/postgres`, and mongosh-style statement handling in `internal/drivers/mongodb`. Only `internal/database` may import concrete drivers in production code; the workbench and contract packages must not.
 - Preserve the SQLite contract: only existing files open (`:memory:` is the exception); non-memory targets use read-write mode and must not create files. The shared statement validator accepts one statement and rejects trigger creation.
 - Preserve query behavior in `workbench` and driver services: execution is asynchronous and cancelable, failed queries retain the prior result table, and display results cap at 500 rows and 300 runes per cell.
 
@@ -17,7 +17,7 @@ go build ./cmd/perk-workbench
 gofmt -l cmd internal
 
 # Focused checks
-go test -race ./internal/sqlite -run 'TestServiceExecute|TestServiceRejects|TestOpenMissingFileDoesNotCreate'
+go test -race ./internal/drivers/sqlite -run 'TestServiceExecute|TestServiceRejects|TestOpenMissingFileDoesNotCreate'
 go test -race ./internal/workbench/app -run 'TestExecute|TestPicker|TestResize'
 go test -race ./cmd/perk-workbench -run TestParseTarget
 ```

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/l3aro/perk-workbench/internal/mongodb"
-	"github.com/l3aro/perk-workbench/internal/mysql"
-	"github.com/l3aro/perk-workbench/internal/postgres"
+	"github.com/l3aro/perk-workbench/internal/drivers/mongodb"
+	"github.com/l3aro/perk-workbench/internal/drivers/mysql"
+	"github.com/l3aro/perk-workbench/internal/drivers/postgres"
+	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
-	"github.com/l3aro/perk-workbench/internal/sqlite"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
