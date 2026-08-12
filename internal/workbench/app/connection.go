@@ -311,7 +311,9 @@ func (m Model) connectionPaneView(height int) string {
 	return m.connection.component.FormPaneView(height, m.modeBadge())
 }
 
-// recentPaneView renders the profiles pane through the component.
+// recentPaneView renders the profiles pane through the component. The
+// pane is fixed content: it always shows the profile list, never the
+// form, regardless of which pane currently holds focus.
 func (m Model) recentPaneView() string {
-	return m.connection.component.View(uikit.Layout{Width: m.layout.schemaWidth})
+	return m.connection.component.RecentPaneView(m.recentFilterRow(), m.layout.schemaWidth)
 }

@@ -611,3 +611,40 @@ func TestConnectionProfiles_legacyJSONProfileReceivesPersistedID(t *testing.T) {
 		t.Fatalf("persisted profiles = %#v, want the migrated ID %q on disk", persisted, model.connection.component.Profiles[0].ID)
 	}
 }
+
+// TestConnectionScreen_profilesPaneStaysListAfterEdit guards the wide
+// layout's Profiles pane: it always renders the profile list. Editing a
+// profile (Enter) moves focus to the form; the pane must not mirror the
+// connection form content into the Profiles sidebar.
+func TestConnectionScreen_profilesPaneStaysListAfterEdit(t *testing.T) {
+	// Given — a connection screen with one profile, focused on the list.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	model := New("", context.Background(), testOpen, false)
+	model.connection.component.Profiles = []profile.Profile{{
+		Driver: driverSQLite,
+		Name:   "Scratch",
+		Target: "/tmp/scratch.db",
+	}}
+	if err := model.connection.component.Recent.SetItems(connection.RecentListItems(model.connection.component.Profiles)); err != nil {
+		t.Fatal(err)
+	}
+	model.connection.component.Form.SetFocus(connectionFocusRecent)
+	model = resizeModel(model, 100, 24)
+
+	// When — Enter edits the selected profile: focus moves to the form.
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Text: "\r"})
+	model = resolveConnectionCommand(updated.(Model), command)
+	if model.connection.component.Form.Focus != connectionFocusForm {
+		t.Fatalf("focus = %d, want the connection form", model.connection.component.Form.Focus)
+	}
+
+	// Then — the Profiles pane still renders the profile list, and the
+	// form content appears exactly once, in its own pane.
+	if pane := ansi.Strip(model.recentPaneView()); !strings.Contains(pane, "Scratch") || strings.Contains(pane, "Target*") {
+		t.Fatalf("profiles pane = %q, want the profile list, not the form", pane)
+	}
+	view := ansi.Strip(model.View().Content)
+	if got := strings.Count(view, "Target*"); got != 1 {
+		t.Fatalf("form content occurrences = %d, want 1 (mirrored into the Profiles pane): %q", got, view)
+	}
+}

@@ -3,7 +3,6 @@ package connection
 import (
 	tea "charm.land/bubbletea/v2"
 	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/l3aro/perk-workbench/internal/chrome"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
@@ -39,29 +38,6 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher) (
 	// keep the visible input in sync.
 	m.SyncFilter()
 	return m, nil, command
-}
-
-// View renders the connection screen's active pane body: the profiles
-// pane (filter row, list, action hints) or the form pane. The root frames
-// the pane and supplies the vim-mode badge.
-func (m Model) View(layout uikit.Layout) string {
-	if m.Form.Focus == FocusRecent {
-		return m.recentPaneView(layout)
-	}
-	return m.Form.View()
-}
-
-// recentPaneView renders the profiles list with its pane-local action
-// hints; the layout reserves rows for the filter box (3) and the hint
-// line (1).
-func (m Model) recentPaneView(layout uikit.Layout) string {
-	body := m.Recent.View()
-	if layout.Width >= 7 {
-		row := uikit.FilterInputRow(m.RecentFilter, max(layout.Width-4, 0))
-		body = row + "\n" + body
-	}
-	width := max(layout.Width-6, 0)
-	return body + "\n" + chrome.PaneStatus("a add | e edit | d delete | / filter", "", width)
 }
 
 // Draw renders nothing: the connection screen has no canvas overlays.
