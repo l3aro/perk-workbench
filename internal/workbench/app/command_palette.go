@@ -206,12 +206,18 @@ func commandLabel(m Model, id CommandID, raw string) string {
 		return "filter indexes"
 	case "indexes.reset":
 		return "reset index filter"
+	case "indexes.toggle_diagram":
+		return "diagram"
 	case "indexes.create":
 		return "new index"
 	case "indexes.edit":
 		return "edit index"
 	case "indexes.delete":
 		return "delete index"
+	case "diagram.depth_up":
+		return "focus depth +"
+	case "diagram.depth_down":
+		return "focus depth -"
 	case "foreign_keys.filter":
 		return "filter foreign keys"
 	case "foreign_keys.reset":
@@ -306,8 +312,10 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "cell.yank":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
 			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
-	case "indexes.filter", "indexes.reset", "indexes.create", "indexes.edit", "indexes.delete":
+	case "indexes.filter", "indexes.reset", "indexes.toggle_diagram", "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.schema.component.Structure.IndexForm.Active()
+	case "diagram.depth_up", "diagram.depth_down":
+		return m.State == stateReady && m.Focus == focusWorkspace && ((m.Tab == tabForeignKeys && m.schema.component.Structure.RelationshipDiagram) || (m.Tab == tabIndexes && m.schema.component.Structure.IndexDiagram))
 	case "foreign_keys.filter", "foreign_keys.reset", "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys && !m.schema.component.Structure.ForeignKeyForm.Active()
 	case "query_log.yank", "query_log.explain", "query_log.detail", "query_log.context_menu",

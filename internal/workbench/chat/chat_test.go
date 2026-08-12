@@ -209,6 +209,12 @@ func (f *fakeService) ListForeignKeys(ctx context.Context, table string) ([]shar
 func (f *fakeService) ListReferencingForeignKeys(ctx context.Context, table string) ([]sharedsql.ReferencingForeignKeyInfo, error) {
 	return nil, nil
 }
+func (f *fakeService) ListForeignKeysAll(ctx context.Context) (map[string][]sharedsql.ForeignKeyInfo, error) {
+	return map[string][]sharedsql.ForeignKeyInfo{}, nil
+}
+func (f *fakeService) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	return map[string][]sharedsql.IndexInfo{}, nil
+}
 func (f *fakeService) CreateForeignKey(ctx context.Context, table string, change sharedsql.ForeignKeyChange) error {
 	return nil
 }

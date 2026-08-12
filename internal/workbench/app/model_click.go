@@ -259,6 +259,17 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 			cx += w
 		}
 	}
+	// Diagram body: the tab row ends at contentY=1, so the diagram's first
+	// line is contentY=2. Clicking a neighbor card refocuses the diagram
+	// on that table (focus follows click).
+	if m.Tab == tabForeignKeys && m.schema.component.Structure.RelationshipDiagram ||
+		m.Tab == tabIndexes && m.schema.component.Structure.IndexDiagram {
+		if table := m.schema.component.DiagramCardAt(x, y-2, m.workspaceLayout(), m.schemaSnapshot()); table != "" {
+			if !strings.EqualFold(table, m.SelectedTable) {
+				return m, m.selectSchemaTableFromDiagram(table)
+			}
+		}
+	}
 	return m, nil
 }
 

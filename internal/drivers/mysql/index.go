@@ -40,6 +40,48 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 	return indexes, nil
 }
 
+// ListIndexesAll returns every index in the connected database, keyed by
+// the table's bare name.
+func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT table_name, index_name, non_unique, column_name
+		FROM information_schema.statistics
+		WHERE BINARY table_schema = BINARY DATABASE()
+		ORDER BY table_name, index_name, seq_in_index`)
+	if err != nil {
+		return nil, fmt.Errorf("reading indexes: %w", err)
+	}
+	indexes := map[string][]sharedsql.IndexInfo{}
+	var lastTable, lastName string
+	var info *sharedsql.IndexInfo
+	finish := func() {
+		if info != nil {
+			indexes[lastTable] = append(indexes[lastTable], *info)
+		}
+	}
+	for rows.Next() {
+		var table, name, column string
+		var nonUnique int
+		if err := rows.Scan(&table, &name, &nonUnique, &column); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
+		}
+		if info == nil || table != lastTable || name != lastName {
+			finish()
+			lastTable, lastName = table, name
+			info = &sharedsql.IndexInfo{Name: sharedsql.SanitizeDisplay(name), Unique: nonUnique == 0 && name != "PRIMARY", PrimaryKey: name == "PRIMARY"}
+		}
+		info.Columns = append(info.Columns, sharedsql.SanitizeDisplay(column))
+	}
+	finish()
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating indexes", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing indexes: %w", err)
+	}
+	return indexes, nil
+}
+
 func (s *Service) CreateIndex(ctx context.Context, table string, change sharedsql.IndexChange) error {
 	if err := sharedsql.ValidateIndexChange(change); err != nil {
 		return err

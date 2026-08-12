@@ -102,7 +102,7 @@ func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) 
 	}
 	m.schema.component.Structure.IndexForm.Close()
 	m.setStatus("index updated")
-	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
+	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo(), m.loadSchemaIndexesAll())
 }
 func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) {
 	if message.statement != "" {
@@ -115,7 +115,7 @@ func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) 
 	}
 	m.schema.component.Structure.IndexForm.Close()
 	m.setStatus("index deleted")
-	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo())
+	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo(), m.loadSchemaIndexesAll())
 }
 func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {
 	component, cmd := m.schema.component.OpenIndexForm(index, m.workspaceLayout(), m.keybindings)

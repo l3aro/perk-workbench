@@ -465,6 +465,14 @@ func (s *createDatabaseStub) ListSchema(_ context.Context) ([]sharedsql.SchemaOb
 	return s.objects, nil
 }
 
+func (s *createDatabaseStub) ListForeignKeysAll(context.Context) (map[string][]sharedsql.ForeignKeyInfo, error) {
+	return map[string][]sharedsql.ForeignKeyInfo{}, nil
+}
+
+func (s *createDatabaseStub) ListIndexesAll(context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	return map[string][]sharedsql.IndexInfo{}, nil
+}
+
 // serverProductModel builds a ready model backed by a stub reporting the
 // given server product (MySQL or PostgreSQL).
 func serverProductModel(t *testing.T, product string, stub *createDatabaseStub) Model {

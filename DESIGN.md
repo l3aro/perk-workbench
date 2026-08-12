@@ -97,6 +97,12 @@ App defaults load from `$XDG_CONFIG_HOME/perk-workbench/config.json` (also writt
 
 The `PERK_WORKBENCH_QUERY_LOG_*` env vars still override their config values.
 
+### Focus diagrams
+
+The foreign-keys tab toggles a relationship diagram (`g`) and the indexes tab an index diagram: the selected table is the hub card, tables referencing it render above, tables it references below, connectors labeled with the column mappings (relationship diagram) or carrying index rows (index diagram). `}`/`{` widen/narrow the focus ring one foreign-key hop at a time, and clicking a neighbor card refocuses the diagram on it without leaving the tab. The two diagram modes are mutually exclusive.
+
+The rings come from connection-level caches the root loads on connect and refreshes after any DDL mutation: `Service.ListForeignKeysAll` and `Service.ListIndexesAll` return the whole schema keyed by declaring table (MySQL keys are bare table names, PostgreSQL qualified, SQLite bare, MongoDB collection names; MongoDB returns no foreign keys). The diagrams read them through the schema `Snapshot`. Each refresh is stamped with the connection generation (`openTag`) and a per-cache revision, so a stale result — whether from a superseded connection or an overlapping same-connection refresh — is dropped on arrival. Without the cache the diagrams degrade to the selected table's own data at depth 1. Diagrams too wide or tall for the workspace fall back to a flat list.
+
 ## AI integration
 
 AI is optional. Startup loads and merges:

@@ -138,7 +138,18 @@ type Snapshot struct {
 	Database      sharedsql.DatabaseInfo
 	Target        string
 	ReadOnly      bool
+	// ForeignKeysAll and IndexesAll are the connection-level schema caches:
+	// every foreign key and index keyed by table, loaded by the root on
+	// connect and refreshed on DDL. Nil when not loaded yet; the diagrams
+	// then degrade to the selected table's own data.
+	ForeignKeysAll map[string][]sharedsql.ForeignKeyInfo
+	IndexesAll     map[string][]sharedsql.IndexInfo
 }
+
+// MaxDiagramDepth caps the focus-ring depth of the relationship and index
+// diagrams: each extra ring widens the layout, and the fit fallback covers
+// the rest.
+const MaxDiagramDepth = 5
 
 // Structure owns the structure/index/foreign-key tabs: their tables, row
 // metadata, filters, forms, the relationship-diagram flag, and the table
@@ -163,9 +174,15 @@ type Structure struct {
 	TableForm                 TableForm
 	TableFormRunning          bool
 	RelationshipDiagram       bool
-	TableFiltering            bool
-	TableFilterInput          textinput.Model
-	TableFilterTab            core.Tab
+	// IndexDiagram switches the indexes tab into its diagram mode.
+	IndexDiagram bool
+	// DiagramDepth is the focus-ring depth of both diagrams: 1 shows only
+	// the selected table's foreign-key neighbors, each extra level widens
+	// the ring one hop.
+	DiagramDepth     int
+	TableFiltering   bool
+	TableFilterInput textinput.Model
+	TableFilterTab   core.Tab
 }
 
 // Model is the schema feature component: the sidebar list and filter, the
@@ -192,9 +209,10 @@ func New() Model {
 		ExpandedDatabases: map[string]bool{},
 		ExpandedSchemas:   map[string]bool{},
 		Structure: Structure{
-			Table:       uikit.NewResultsTable(),
-			Indexes:     uikit.NewResultsTable(),
-			ForeignKeys: uikit.NewResultsTable(),
+			Table:        uikit.NewResultsTable(),
+			Indexes:      uikit.NewResultsTable(),
+			ForeignKeys:  uikit.NewResultsTable(),
+			DiagramDepth: 1,
 		},
 	}
 }
@@ -214,6 +232,9 @@ func (m *Model) Reset() {
 	m.Structure.Table.SetRows(nil)
 	m.Structure.Indexes.SetRows(nil)
 	m.Structure.ForeignKeys.SetRows(nil)
+	m.Structure.RelationshipDiagram = false
+	m.Structure.IndexDiagram = false
+	m.Structure.DiagramDepth = 1
 }
 
 // Item is one row of the schema sidebar tree: a database root, a PostgreSQL

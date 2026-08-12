@@ -102,6 +102,18 @@ type connectionState struct {
 // query lifecycle, the confirmations, and the dispatch.
 type schemaState struct {
 	component schema.Model
+	// foreignKeysAll and indexesAll cache the whole-schema foreign-key and
+	// index listings for the current connection. The relationship and index
+	// diagrams read them through the schema snapshot for focus rings beyond
+	// the selected table. Loaded on connect, refreshed whenever DDL mutates
+	// the schema.
+	foreignKeysAll map[string][]sharedsql.ForeignKeyInfo
+	indexesAll     map[string][]sharedsql.IndexInfo
+	// foreignKeysRev and indexesRev order same-connection refreshes: each
+	// load stamps its revision and a stale result (an older snapshot whose
+	// message arrives late) is dropped.
+	foreignKeysRev uint64
+	indexesRev     uint64
 }
 
 // queryState owns the SQL workspace: the editor, result table and raw
@@ -411,6 +423,10 @@ func (m *Model) disconnect() {
 	m.refreshBrowseBackend()
 	m.queryLog.reset()
 	m.schema.component.Reset()
+	m.schema.foreignKeysAll = nil
+	m.schema.indexesAll = nil
+	m.schema.foreignKeysRev = 0
+	m.schema.indexesRev = 0
 	m.databaseInfo = sharedsql.DatabaseInfo{}
 	m.connectionID = ""
 	m.browse.reset()
@@ -509,10 +525,12 @@ func (m Model) schemaTable(item schema.Item) string {
 // component for one update or render.
 func (m Model) schemaSnapshot() schema.Snapshot {
 	return schema.Snapshot{
-		SelectedTable: m.SelectedTable,
-		Database:      m.databaseInfo,
-		Target:        m.Target,
-		ReadOnly:      m.ReadOnly,
+		SelectedTable:  m.SelectedTable,
+		Database:       m.databaseInfo,
+		Target:         m.Target,
+		ReadOnly:       m.ReadOnly,
+		ForeignKeysAll: m.schema.foreignKeysAll,
+		IndexesAll:     m.schema.indexesAll,
 	}
 }
 
@@ -670,6 +688,32 @@ func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
 	m.schema.component.Structure.ForeignKeyInfo = nil
 	m.schema.component.Structure.ReferencingForeignKeyInfo = nil
 	m.schema.component.Structure.RelationshipDiagram = false
+	m.browse.component.Pending = true
+	m.focusActiveTable()
+	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
+}
+
+// selectSchemaTableFromDiagram switches the focused table from a diagram
+// card click: the current tab and the diagram mode stay active, so the
+// focus follows the click (Truss-style) instead of bouncing to the landing
+// tab.
+func (m *Model) selectSchemaTableFromDiagram(table string) tea.Cmd {
+	if strings.EqualFold(table, m.SelectedTable) {
+		return nil
+	}
+	tab := m.Tab
+	diagramFK := m.schema.component.Structure.RelationshipDiagram
+	diagramIndexes := m.schema.component.Structure.IndexDiagram
+	m.SelectTable(table)
+	m.Tab = tab
+	m.browse.component.Settings = browse.Settings{}
+	m.schema.component.Structure.Columns = nil
+	m.browse.component.Structure = nil
+	m.browse.component.Page = 0
+	m.schema.component.Structure.ForeignKeyInfo = nil
+	m.schema.component.Structure.ReferencingForeignKeyInfo = nil
+	m.schema.component.Structure.RelationshipDiagram = diagramFK
+	m.schema.component.Structure.IndexDiagram = diagramIndexes
 	m.browse.component.Pending = true
 	m.focusActiveTable()
 	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())

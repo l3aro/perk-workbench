@@ -44,6 +44,54 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 	return indexes, nil
 }
 
+// ListIndexesAll returns every index in the connected database, keyed by
+// the indexed table's qualified name (schema.table).
+func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT namespace.nspname, relation.relname, index_relation.relname, indexes.indisunique, indexes.indisprimary, attributes.attname
+		FROM pg_index AS indexes
+		JOIN pg_class AS relation ON relation.oid = indexes.indrelid
+		JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+		JOIN pg_class AS index_relation ON index_relation.oid = indexes.indexrelid
+		CROSS JOIN LATERAL unnest(indexes.indkey) WITH ORDINALITY AS keys(attribute_number, ordinality)
+		JOIN pg_attribute AS attributes ON attributes.attrelid = relation.oid AND attributes.attnum = keys.attribute_number
+		WHERE namespace.nspname NOT IN ('pg_catalog', 'pg_toast')
+		ORDER BY namespace.nspname, relation.relname, index_relation.relname, keys.ordinality`)
+	if err != nil {
+		return nil, fmt.Errorf("reading indexes: %w", err)
+	}
+	indexes := map[string][]sharedsql.IndexInfo{}
+	var lastTable, lastName string
+	var info *sharedsql.IndexInfo
+	finish := func() {
+		if info != nil {
+			indexes[lastTable] = append(indexes[lastTable], *info)
+		}
+	}
+	for rows.Next() {
+		var schema, table, name, column string
+		var unique, primaryKey bool
+		if err := rows.Scan(&schema, &table, &name, &unique, &primaryKey, &column); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
+		}
+		table = schema + "." + table
+		if info == nil || table != lastTable || name != lastName {
+			finish()
+			lastTable, lastName = table, name
+			info = &sharedsql.IndexInfo{Name: sharedsql.SanitizeDisplay(name), Unique: unique, PrimaryKey: primaryKey}
+		}
+		info.Columns = append(info.Columns, sharedsql.SanitizeDisplay(column))
+	}
+	finish()
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating indexes", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing indexes: %w", err)
+	}
+	return indexes, nil
+}
+
 func (s *Service) CreateIndex(ctx context.Context, table string, change sharedsql.IndexChange) error {
 	if err := sharedsql.ValidateIndexChange(change); err != nil {
 		return err

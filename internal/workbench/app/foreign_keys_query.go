@@ -125,7 +125,7 @@ func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model,
 	}
 	m.schema.component.Structure.ForeignKeyForm.Close()
 	m.setStatus("foreign key updated")
-	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
+	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo(), m.loadSchemaForeignKeysAll())
 }
 
 func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model, tea.Cmd) {
@@ -139,7 +139,7 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 	}
 	m.schema.component.Structure.ForeignKeyForm.Close()
 	m.setStatus("foreign key deleted")
-	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo())
+	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo(), m.loadSchemaForeignKeysAll())
 }
 
 func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd {

@@ -292,7 +292,7 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 	}
 	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 	m.setStatus(status)
-	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
+	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }
 
 func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd) {
@@ -306,7 +306,7 @@ func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd
 	}
 	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 	m.setStatus("column deleted")
-	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse())
+	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }
 
 func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, tea.Cmd) {

@@ -190,7 +190,7 @@ func (m Model) updateSchemaLoaded(message schemaLoadedMsg) (tea.Model, tea.Cmd) 
 		m.setStatus(safeText("refreshing schema: " + message.err.Error()))
 		return m, nil
 	}
-	return m, m.setSchemaObjects(message.objects)
+	return m, tea.Batch(m.setSchemaObjects(message.objects), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }
 
 const sqlValidationDebounce = 250 * time.Millisecond

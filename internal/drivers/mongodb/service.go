@@ -624,6 +624,29 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 	return nil, nil
 }
 
+func (s *Service) ListForeignKeysAll(ctx context.Context) (map[string][]sharedsql.ForeignKeyInfo, error) {
+	return map[string][]sharedsql.ForeignKeyInfo{}, nil
+}
+
+// ListIndexesAll returns every collection's indexes, keyed by collection
+// name. The driver API has no bulk index listing, so each collection is
+// queried once.
+func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	names, err := s.db.ListCollectionNames(ctx, bson.D{})
+	if err != nil {
+		return nil, err
+	}
+	indexes := make(map[string][]sharedsql.IndexInfo, len(names))
+	for _, name := range names {
+		collectionIndexes, err := s.ListIndexes(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		indexes[name] = collectionIndexes
+	}
+	return indexes, nil
+}
+
 func (s *Service) CreateForeignKey(ctx context.Context, table string, change sharedsql.ForeignKeyChange) error {
 	return errors.New("MongoDB does not support foreign keys")
 }

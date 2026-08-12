@@ -127,6 +127,18 @@ func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyM
 		targetTable = &m.Structure.Indexes
 		if keyPress, ok := msg.(tea.KeyPressMsg); ok {
 			switch {
+			case keys.Match(keyPress, "indexes.toggle_diagram", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+				m.Structure.IndexDiagram = !m.Structure.IndexDiagram
+				if m.Structure.IndexDiagram {
+					m.Structure.RelationshipDiagram = false
+				}
+				return m, nil, nil
+			case m.Structure.IndexDiagram && keys.Match(keyPress, "diagram.depth_up", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+				m.Structure.DiagramDepth = min(m.Structure.DiagramDepth+1, MaxDiagramDepth)
+				return m, nil, nil
+			case m.Structure.IndexDiagram && keys.Match(keyPress, "diagram.depth_down", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+				m.Structure.DiagramDepth = max(m.Structure.DiagramDepth-1, 1)
+				return m, nil, nil
 			case keys.Match(keyPress, "indexes.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, nil, m.OpenTableFilter(tab)
 			case keys.Match(keyPress, "indexes.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
@@ -160,6 +172,15 @@ func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyM
 				return m, nil, nil
 			case keys.Match(keyPress, "foreign_keys.toggle_diagram", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.RelationshipDiagram = !m.Structure.RelationshipDiagram
+				if m.Structure.RelationshipDiagram {
+					m.Structure.IndexDiagram = false
+				}
+				return m, nil, nil
+			case m.Structure.RelationshipDiagram && keys.Match(keyPress, "diagram.depth_up", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+				m.Structure.DiagramDepth = min(m.Structure.DiagramDepth+1, MaxDiagramDepth)
+				return m, nil, nil
+			case m.Structure.RelationshipDiagram && keys.Match(keyPress, "diagram.depth_down", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+				m.Structure.DiagramDepth = max(m.Structure.DiagramDepth-1, 1)
 				return m, nil, nil
 			case keys.Match(keyPress, "foreign_keys.create", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, ForeignKeyFormRequested{}, nil

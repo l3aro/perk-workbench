@@ -79,5 +79,5 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	// only when log_level allows it), not as a plain status popup.
 	m.notifications.skipStatusPopup = true
 	log.Debug("ready: " + name)
-	return m, m.setSchemaObjects(message.objects)
+	return m, tea.Batch(m.setSchemaObjects(message.objects), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }

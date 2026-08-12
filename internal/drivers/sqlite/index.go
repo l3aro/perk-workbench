@@ -149,6 +149,97 @@ func sqliteIndexColumns(ctx context.Context, queryer interface {
 	return columns, nil
 }
 
+// ListIndexesAll returns every index in the database, keyed by the
+// indexed table's name. Every table gets an entry (empty when it has no
+// indexes); rowid tables without a declared primary key get no PRIMARY
+// entry, matching ListIndexes per table.
+func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	tableRows, err := s.db.QueryContext(ctx, `SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+	if err != nil {
+		return nil, fmt.Errorf("reading tables: %w", err)
+	}
+	indexes := map[string][]sharedsql.IndexInfo{}
+	for tableRows.Next() {
+		var table string
+		if err := tableRows.Scan(&table); err != nil {
+			return nil, sharedsql.CloseRows(tableRows, "scanning tables", err)
+		}
+		indexes[table] = []sharedsql.IndexInfo{}
+	}
+	if err := tableRows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(tableRows, "iterating tables", err)
+	}
+	if err := tableRows.Close(); err != nil {
+		return nil, fmt.Errorf("closing table rows: %w", err)
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.name, il.name, il."unique", il.origin, ii.name
+		FROM sqlite_schema AS m
+		JOIN pragma_index_list(m.name) AS il
+		JOIN pragma_index_info(il.name) AS ii
+		WHERE m.type = 'table'
+		ORDER BY m.name, il.seq, ii.seqno`)
+	if err != nil {
+		return nil, fmt.Errorf("reading indexes: %w", err)
+	}
+	var lastTable, lastName string
+	var info *sharedsql.IndexInfo
+	finish := func() {
+		if info != nil {
+			indexes[lastTable] = append(indexes[lastTable], *info)
+		}
+	}
+	for rows.Next() {
+		var unique int
+		var table, name, origin string
+		var column stdsql.NullString
+		if err := rows.Scan(&table, &name, &unique, &origin, &column); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
+		}
+		if origin != "c" && origin != "pk" {
+			continue
+		}
+		if info == nil || table != lastTable || name != lastName {
+			finish()
+			lastTable, lastName = table, name
+			info = &sharedsql.IndexInfo{Name: sharedsql.SanitizeDisplay(name), Unique: unique != 0, PrimaryKey: origin == "pk"}
+			if info.PrimaryKey {
+				info.Name = "PRIMARY"
+			}
+		}
+		if column.Valid {
+			info.Columns = append(info.Columns, sharedsql.SanitizeDisplay(column.String))
+		}
+	}
+	finish()
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating indexes", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing indexes: %w", err)
+	}
+	for table, tableIndexes := range indexes {
+		hasPrimary := false
+		for _, index := range tableIndexes {
+			if index.PrimaryKey {
+				hasPrimary = true
+				break
+			}
+		}
+		if hasPrimary {
+			continue
+		}
+		pk, err := tablePKColumns(ctx, s.db, table)
+		if err != nil {
+			return nil, err
+		}
+		if len(pk) > 0 {
+			indexes[table] = append([]sharedsql.IndexInfo{{Name: "PRIMARY", PrimaryKey: true, Columns: pk}}, tableIndexes...)
+		}
+	}
+	return indexes, nil
+}
+
 func (s *Service) CreateIndex(ctx context.Context, table string, change sharedsql.IndexChange) error {
 	if err := sharedsql.ValidateIndexChange(change); err != nil {
 		return err

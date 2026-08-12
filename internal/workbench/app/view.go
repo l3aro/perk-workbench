@@ -571,7 +571,7 @@ func (m Model) formViewport(view string, offset int) string {
 }
 
 func (m Model) indexesView() string {
-	return m.schema.component.IndexesView(m.workspaceLayout(), m.layout.indexesOffset)
+	return m.schema.component.IndexesView(m.workspaceLayout(), m.layout.indexesOffset, m.schemaSnapshot())
 }
 
 func (m Model) foreignKeysView() string {

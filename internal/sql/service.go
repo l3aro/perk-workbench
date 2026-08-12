@@ -24,6 +24,14 @@ type Service interface {
 	DropIndex(context.Context, string, string) error
 	ListForeignKeys(context.Context, string) ([]ForeignKeyInfo, error)
 	ListReferencingForeignKeys(context.Context, string) ([]ReferencingForeignKeyInfo, error)
+	// ListForeignKeysAll returns every foreign key in the connected schema,
+	// keyed by the table that declares it. Products without foreign keys
+	// (MongoDB) return an empty map. The app derives inbound edges by
+	// scanning for ReferenceTable.
+	ListForeignKeysAll(context.Context) (map[string][]ForeignKeyInfo, error)
+	// ListIndexesAll returns every index in the connected schema, keyed by
+	// table name (collection name for MongoDB).
+	ListIndexesAll(context.Context) (map[string][]IndexInfo, error)
 	CreateForeignKey(context.Context, string, ForeignKeyChange) error
 	ReplaceForeignKey(context.Context, string, string, ForeignKeyChange) error
 	DropForeignKey(context.Context, string, string) error

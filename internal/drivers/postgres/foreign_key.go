@@ -99,6 +99,64 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 	return references, nil
 }
 
+// ListForeignKeysAll returns every foreign key in the connected database,
+// keyed by the declaring table's qualified name (schema.table).
+func (s *Service) ListForeignKeysAll(ctx context.Context) (map[string][]sharedsql.ForeignKeyInfo, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT constraints.table_schema, constraints.table_name, constraints.constraint_name, key_columns.column_name,
+			referenced_columns.table_schema, referenced_columns.table_name, referenced_columns.column_name,
+			refs.delete_rule, refs.update_rule
+		FROM information_schema.table_constraints AS constraints
+		JOIN information_schema.key_column_usage AS key_columns
+			ON key_columns.constraint_catalog = constraints.constraint_catalog
+			AND key_columns.constraint_schema = constraints.constraint_schema
+			AND key_columns.constraint_name = constraints.constraint_name
+		JOIN information_schema.referential_constraints AS refs
+			ON refs.constraint_catalog = constraints.constraint_catalog
+			AND refs.constraint_schema = constraints.constraint_schema
+			AND refs.constraint_name = constraints.constraint_name
+		JOIN information_schema.key_column_usage AS referenced_columns
+			ON referenced_columns.constraint_catalog = refs.unique_constraint_catalog
+			AND referenced_columns.constraint_schema = refs.unique_constraint_schema
+			AND referenced_columns.constraint_name = refs.unique_constraint_name
+			AND referenced_columns.ordinal_position = key_columns.position_in_unique_constraint
+		WHERE constraints.constraint_type = 'FOREIGN KEY'
+		ORDER BY constraints.table_schema, constraints.table_name, constraints.constraint_name, key_columns.ordinal_position`)
+	if err != nil {
+		return nil, fmt.Errorf("reading foreign keys: %w", err)
+	}
+	foreignKeys := map[string][]sharedsql.ForeignKeyInfo{}
+	var lastTable, lastID string
+	var info *sharedsql.ForeignKeyInfo
+	finish := func() {
+		if info != nil {
+			foreignKeys[lastTable] = append(foreignKeys[lastTable], *info)
+		}
+	}
+	for rows.Next() {
+		var tableSchema, tableName, id, column, referenceSchema, referenceTable, referenceColumn, onDelete, onUpdate string
+		if err := rows.Scan(&tableSchema, &tableName, &id, &column, &referenceSchema, &referenceTable, &referenceColumn, &onDelete, &onUpdate); err != nil {
+			return nil, sharedsql.CloseRows(rows, "scanning foreign keys", err)
+		}
+		table := tableSchema + "." + tableName
+		if info == nil || table != lastTable || id != lastID {
+			finish()
+			lastTable, lastID = table, id
+			info = &sharedsql.ForeignKeyInfo{ID: sharedsql.SanitizeDisplay(id), ReferenceTable: sharedsql.SanitizeDisplay(referenceSchema + "." + referenceTable), OnDelete: onDelete, OnUpdate: onUpdate}
+		}
+		info.Columns = append(info.Columns, sharedsql.SanitizeDisplay(column))
+		info.ReferenceColumns = append(info.ReferenceColumns, sharedsql.SanitizeDisplay(referenceColumn))
+	}
+	finish()
+	if err := rows.Err(); err != nil {
+		return nil, sharedsql.CloseRows(rows, "iterating foreign keys", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing foreign-key rows: %w", err)
+	}
+	return foreignKeys, nil
+}
+
 func (s *Service) CreateForeignKey(ctx context.Context, table string, change sharedsql.ForeignKeyChange) error {
 	if err := sharedsql.ValidateForeignKeyChange(change); err != nil {
 		return err

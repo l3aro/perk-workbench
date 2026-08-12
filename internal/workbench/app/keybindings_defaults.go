@@ -62,9 +62,14 @@ var defaultDefs = []commandDef{
 	// ── Indexes tab (view) ──────────────────────────────────────
 	{id: "indexes.filter", scope: scopeView, keys: []string{"/"}, label: "filter indexes"},
 	{id: "indexes.reset", scope: scopeView, keys: []string{"r"}, label: "reset index filter"},
+	{id: "indexes.toggle_diagram", scope: scopeView, keys: []string{"g"}, label: "diagram"},
 	{id: "indexes.create", scope: scopeView, keys: []string{"n"}, label: "new index"},
 	{id: "indexes.edit", scope: scopeView, keys: []string{"enter", "i"}, label: "edit index"},
 	{id: "indexes.delete", scope: scopeView, keys: []string{"d"}, label: "delete index"},
+
+	// ── Focus diagrams (view, diagram active) ──────────────────
+	{id: "diagram.depth_up", scope: scopeView, keys: []string{"}"}, label: "focus depth +"},
+	{id: "diagram.depth_down", scope: scopeView, keys: []string{"{"}, label: "focus depth -"},
 
 	// ── Foreign Keys tab (view) ─────────────────────────────────
 	{id: "foreign_keys.filter", scope: scopeView, keys: []string{"/"}, label: "filter foreign keys"},

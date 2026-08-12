@@ -630,3 +630,11 @@ type stubService struct {
 }
 
 func (s *stubService) Close() error { return nil }
+
+func (s *stubService) ListForeignKeysAll(context.Context) (map[string][]sharedsql.ForeignKeyInfo, error) {
+	return map[string][]sharedsql.ForeignKeyInfo{}, nil
+}
+
+func (s *stubService) ListIndexesAll(context.Context) (map[string][]sharedsql.IndexInfo, error) {
+	return map[string][]sharedsql.IndexInfo{}, nil
+}

@@ -727,6 +727,10 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateForeignKeys(message)
 	case referencingForeignKeysLoadedMsg:
 		return m.updateReferencingForeignKeys(message)
+	case schemaForeignKeysAllLoadedMsg:
+		return m.updateSchemaForeignKeysAll(message)
+	case schemaIndexesAllLoadedMsg:
+		return m.updateSchemaIndexesAll(message)
 	case indexChangedMsg:
 		return m.updateIndexChanged(message)
 	case indexDeletedMsg:

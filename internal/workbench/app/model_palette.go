@@ -4,6 +4,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
 // handlePaletteCommand dispatches a command selected from the palette.
@@ -288,6 +289,29 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "foreign_keys.toggle_diagram":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabForeignKeys {
 			m.schema.component.Structure.RelationshipDiagram = !m.schema.component.Structure.RelationshipDiagram
+			if m.schema.component.Structure.RelationshipDiagram {
+				m.schema.component.Structure.IndexDiagram = false
+			}
+		}
+		return m, nil
+	case "indexes.toggle_diagram":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.schema.component.Structure.IndexForm.Active() {
+			m.schema.component.Structure.IndexDiagram = !m.schema.component.Structure.IndexDiagram
+			if m.schema.component.Structure.IndexDiagram {
+				m.schema.component.Structure.RelationshipDiagram = false
+			}
+		}
+		return m, nil
+	case "diagram.depth_up", "diagram.depth_down":
+		if m.State == stateReady && m.Focus == focusWorkspace {
+			diagram := (m.Tab == tabForeignKeys && m.schema.component.Structure.RelationshipDiagram) || (m.Tab == tabIndexes && m.schema.component.Structure.IndexDiagram)
+			if diagram {
+				if id == "diagram.depth_up" {
+					m.schema.component.Structure.DiagramDepth = min(m.schema.component.Structure.DiagramDepth+1, schema.MaxDiagramDepth)
+				} else {
+					m.schema.component.Structure.DiagramDepth = max(m.schema.component.Structure.DiagramDepth-1, 1)
+				}
+			}
 		}
 		return m, nil
 	case "indexes.create":
