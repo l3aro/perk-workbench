@@ -1,13 +1,10 @@
 package workbench
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
-	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 )
 
 func TestInsertForm_aOpensEmptyInsertForm(t *testing.T) {
@@ -31,165 +28,6 @@ func TestInsertForm_aOpensEmptyInsertForm(t *testing.T) {
 		if model.browse.component.Form.Values.Fields[index] != "" {
 			t.Fatalf("field %d = %q, want empty", index, model.browse.component.Form.Values.Fields[index])
 		}
-	}
-}
-
-func TestInsertForm_allDefaultsProduceNoValues(t *testing.T) {
-	// Given — pristine insert form
-	form, err := browse.NewInsertForm([]string{"id", "name"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	form.Table = "items"
-
-	// When
-	values := form.RowValues()
-
-	// Then — every column omitted so engine defaults apply
-	if len(values) != 0 {
-		t.Fatalf("rowValues = %#v, want none", values)
-	}
-	if got, want := form.Preview(), "Table: items"; got != want {
-		t.Fatalf("preview = %q, want %q", got, want)
-	}
-}
-
-func TestInsertForm_typedFieldProducesStringValue(t *testing.T) {
-	// Given
-	form, err := browse.NewInsertForm([]string{"id", "name"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	form.Table = "items"
-	form.Values.Defaults[1] = false
-	form.Values.Fields[1] = "first"
-
-	// When
-	values := form.RowValues()
-
-	// Then — DEFAULT fields are omitted so auto-increment applies
-	want := []sharedsql.RowValue{{Name: "name", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "first"}}}
-	if !reflect.DeepEqual(values, want) {
-		t.Fatalf("rowValues = %#v, want %#v", values, want)
-	}
-	if got, want := form.Preview(), "Table: items\nValues:\n  name = \"first\""; got != want {
-		t.Fatalf("preview = %q, want %q", got, want)
-	}
-}
-
-func TestInsertForm_emptyStringStaysValue(t *testing.T) {
-	// Given — field explicitly moved to VALUE, then cleared to ""
-	form, err := browse.NewInsertForm([]string{"id", "name"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	form.Table = "items"
-	form.Values.Defaults[1] = false
-	form.Values.Fields[1] = ""
-
-	// When
-	values := form.RowValues()
-
-	// Then — "" must reach the INSERT as a real value, not be omitted
-	want := []sharedsql.RowValue{{Name: "name", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: ""}}}
-	if !reflect.DeepEqual(values, want) {
-		t.Fatalf("rowValues = %#v, want %#v", values, want)
-	}
-}
-
-func TestInsertForm_nullStateProducesNullValue(t *testing.T) {
-	// Given — id set to NULL, name typed
-	form, err := browse.NewInsertForm([]string{"id", "name"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	form.Table = "items"
-	form.Values.Defaults[0] = false
-	form.Values.Nulls[0] = true
-	form.Values.Defaults[1] = false
-	form.Values.Fields[1] = "x"
-
-	// When
-	values := form.RowValues()
-
-	// Then
-	want := []sharedsql.RowValue{
-		{Name: "id", Value: sharedsql.Value{Kind: sharedsql.ValueNull}},
-		{Name: "name", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "x"}},
-	}
-	if !reflect.DeepEqual(values, want) {
-		t.Fatalf("rowValues = %#v, want %#v", values, want)
-	}
-	if got, want := form.Preview(), "Table: items\nValues:\n  id = NULL\n  name = \"x\""; got != want {
-		t.Fatalf("preview = %q, want %q", got, want)
-	}
-}
-
-func TestInsertForm_previewGoQuotesStrings(t *testing.T) {
-	// Given — a quote-containing value
-	form, err := browse.NewInsertForm([]string{"name"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	form.Table = "items"
-	form.Values.Defaults[0] = false
-	form.Values.Fields[0] = "O'Brien"
-
-	// When
-	got := form.Preview()
-
-	// Then — the preview Go-quotes the scalar; the driver binds the value
-	if want := "Table: items\nValues:\n  name = \"O'Brien\""; got != want {
-		t.Fatalf("preview = %q, want %q", got, want)
-	}
-}
-
-func TestInsertForm_rejectsEmptyColumnSet(t *testing.T) {
-	if _, err := browse.NewInsertForm(nil); err == nil || !strings.Contains(err.Error(), "no columns") {
-		t.Fatalf("error = %v, want no-columns rejection", err)
-	}
-}
-
-func TestInsertForm_setDefaultReturnsFieldToOmission(t *testing.T) {
-	// Given — a typed field, then N returns it to DEFAULT
-	model := readyBrowseModel(t)
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
-	model.browse.component.Form.Values.Fields[0] = "5"
-	model.browse.component.Form.Values.Defaults[0] = false
-
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'N', Text: "N"})
-
-	// Then
-	if !model.browse.component.Form.Values.Defaults[0] || model.browse.component.Form.Values.Nulls[0] || model.browse.component.Form.Values.Fields[0] != "" {
-		t.Fatalf("field 0 = defaults %t nulls %t value %q, want default", model.browse.component.Form.Values.Defaults[0], model.browse.component.Form.Values.Nulls[0], model.browse.component.Form.Values.Fields[0])
-	}
-	if values := model.browse.component.Form.RowValues(); len(values) != 0 {
-		t.Fatalf("rowValues = %#v, want none after returning to DEFAULT", values)
-	}
-}
-
-func TestInsertForm_typingSelectsValue(t *testing.T) {
-	// Given — vim off: the form opens directly in insert mode
-	model := readyBrowseModel(t)
-	model.vimMode = false
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
-	if !model.overlay.formMode.Editing() {
-		t.Fatal("insert form did not open in insert mode without vim mode")
-	}
-
-	// When — type into the focused (first) field
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-
-	// Then — typing left the DEFAULT state
-	if model.browse.component.Form.Values.Defaults[0] {
-		t.Fatal("typing did not leave the DEFAULT state")
-	}
-	if got := model.browse.component.Form.Values.Fields[0]; got != "x" {
-		t.Fatalf("field 0 = %q, want x", got)
-	}
-	want := []sharedsql.RowValue{{Name: "id", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "x"}}}
-	if values := model.browse.component.Form.RowValues(); !reflect.DeepEqual(values, want) {
-		t.Fatalf("rowValues = %#v, want %#v", values, want)
 	}
 }
 

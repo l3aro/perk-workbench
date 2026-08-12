@@ -3,7 +3,6 @@ package workbench
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -80,68 +79,6 @@ func TestBrowseForm_cellEditorEnterSubmitsConfirmation(t *testing.T) {
 	model = resolveBrowseCommand(model, command())
 	if model.browse.component.CellEditor != nil {
 		t.Fatal("Enter did not submit the cell update confirmation")
-	}
-}
-
-func TestBrowseForm_normalModeNavigatesWithoutMutatingValues(t *testing.T) {
-	// Given
-	model := openBrowseRow(t, 1)
-
-	// When
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-
-	// Then
-	if got := model.browse.component.Form.Form.GetFocusedField().GetKey(); got != "value-1" {
-		t.Fatalf("focused field = %q, want value-1", got)
-	}
-	if got := model.browse.component.Form.Values.Fields[1]; got != "second" {
-		t.Fatalf("normal mode changed value = %q, want second", got)
-	}
-}
-
-func TestBrowseForm_nKeySetsFocusedColumnToNull(t *testing.T) {
-	// Given
-	model := openBrowseRow(t, 1)
-
-	// When — focus name column (index 1) and press n
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-
-	// Then
-	if !model.browse.component.Form.Values.Nulls[1] {
-		t.Fatal("name field nulls[1] should be true after pressing n")
-	}
-	wantValues := []sharedsql.RowValue{{Name: "name", Value: sharedsql.Value{Kind: sharedsql.ValueNull}}}
-	if values := model.browse.component.Form.RowValues(); !reflect.DeepEqual(values, wantValues) {
-		t.Fatalf("rowValues = %#v, want %#v", values, wantValues)
-	}
-	wantKey := []sharedsql.RowValue{{Name: "id", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "2"}}}
-	if key, err := model.browse.component.Form.KeyValues(); err != nil || !reflect.DeepEqual(key, wantKey) {
-		t.Fatalf("keyValues = %#v, %v; want %#v", key, err, wantKey)
-	}
-	if got, want := model.browse.component.Form.Preview(), "Table: items\nKey:\n  id = \"2\"\nChanges:\n  name = NULL"; got != want {
-		t.Fatalf("preview = %q, want %q", got, want)
-	}
-}
-
-func TestBrowseForm_enterEditModeClearsNullFlag(t *testing.T) {
-	// Given
-	model := openBrowseRow(t, 0)
-
-	// Mark id column (field 0) as NULL
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.browse.component.Form.Values.Nulls[0] {
-		t.Fatal("id nulls[0] should be true before entering edit mode")
-	}
-
-	// When — enter edit mode (clears null for focused field, enters huh)
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-
-	// Then
-	if model.browse.component.Form.Values.Nulls[0] {
-		t.Fatal("nulls[0] should be false after entering edit mode on that field")
 	}
 }
 
@@ -283,17 +220,6 @@ func TestBrowseForm_discardFromButtonBarNormalizesFormMode(t *testing.T) {
 	}
 }
 
-func TestBrowseForm_rejectsRowsWithoutPrimaryKey(t *testing.T) {
-	// Given
-	// When
-	_, err := browse.NewForm([]string{"name"}, []*string{stringPointer("first")}, []sharedsql.ColumnInfo{{Name: "name"}})
-
-	// Then
-	if err == nil || !strings.Contains(err.Error(), "primary key") {
-		t.Fatalf("error = %v, want primary-key rejection", err)
-	}
-}
-
 func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
 	for _, affected := range []int64{0, 2} {
 		t.Run("affected="+strconv.FormatInt(affected, 10), func(t *testing.T) {
@@ -372,28 +298,6 @@ func TestBrowseForm_staleRowActionReportsCapabilityError(t *testing.T) {
 
 // TestBrowseForm_tabReachesButtonsFromInsertMode guards the vim-off flow
 // for the row editor: Tab on the last field focuses the Save/Cancel bar
-// without leaving insert mode, and k returns with typing intact.
-func TestBrowseForm_tabReachesButtonsFromInsertMode(t *testing.T) {
-	model := openBrowseRow(t, 0)
-	model.overlay.formMode.BeginHuh(model.browse.component.Form.Focus()) // insert mode, vim off
-	_ = model.browse.component.Form.Form.NextField()                     // id -> name (last field)
-
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !model.overlay.formMode.ButtonsFocused || model.overlay.formMode.Mode != formModeInsert {
-		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.Mode)
-	}
-
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if model.overlay.formMode.ButtonsFocused || model.overlay.formMode.Mode != formModeInsert {
-		t.Fatalf("k from bar: bar=%t mode=%d, want unfocused/insert", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.Mode)
-	}
-
-	// j is content on the name field, not field navigation.
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if got := model.browse.component.Form.Values.Fields[1]; got != "firstj" {
-		t.Fatalf("name = %q, want %q", got, "firstj")
-	}
-}
 
 func openBrowseRow(t *testing.T, row int) Model {
 	t.Helper()

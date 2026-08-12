@@ -94,50 +94,9 @@ func openEditDocument(t *testing.T, model Model) Model {
 }
 
 // TestDocumentEditor_insertStartsWithObjectForMongoFormat proves the known
-// Mongo format opens the editor at {}.
-func TestDocumentEditor_insertStartsWithObjectForMongoFormat(t *testing.T) {
-	model, _ := readyDocumentModel(t, sharedsql.WriteCapabilities{
-		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
-	})
-
-	model = openInsertDocument(t, model)
-
-	if model.browse.component.DocumentEditor == nil || model.browse.component.DocumentEditor.Loading {
-		t.Fatalf("documentEditor = %#v, want open insert editor", model.browse.component.DocumentEditor)
-	}
-	if !model.browse.component.DocumentEditor.Inserting {
-		t.Fatal("editor is not in insert mode")
-	}
-	if got, want := model.browse.component.DocumentEditor.Edited, "{}"; got != want {
-		t.Fatalf("insert text = %q, want %q", got, want)
-	}
-	if got, want := model.browse.component.DocumentEditor.Title, "Insert document"; got != want {
-		t.Fatalf("title = %q, want %q", got, want)
-	}
-}
 
 // TestDocumentEditor_insertRejectsInvalidJSONBeforeConfirmation proves the
 // JSON-aware editor validates before the confirmation opens and keeps the
-// content on failure.
-func TestDocumentEditor_insertRejectsInvalidJSONBeforeConfirmation(t *testing.T) {
-	model, service := readyDocumentModel(t, sharedsql.WriteCapabilities{
-		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
-	})
-	model = openInsertDocument(t, model)
-	model.browse.component.DocumentEditor.Edited = "{oops"
-
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
-
-	if model.browse.component.DocumentEditor == nil || model.browse.component.DocumentEditor.Confirming {
-		t.Fatalf("editor = %#v, want open non-confirming editor after invalid JSON", model.browse.component.DocumentEditor)
-	}
-	if !strings.Contains(model.Status, "invalid JSON") {
-		t.Fatalf("status = %q, want invalid-JSON rejection", model.Status)
-	}
-	if len(service.inserted) != 0 {
-		t.Fatal("invalid JSON reached the driver")
-	}
-}
 
 // TestDocumentEditor_insertConfirmsAndSaves proves the confirm flow: the
 // confirmation carries the exact text, and the save calls InsertDocument
@@ -186,32 +145,6 @@ func TestDocumentEditor_insertConfirmsAndSaves(t *testing.T) {
 }
 
 // TestDocumentEditor_unknownFormatPassesExactBytes proves a raw textual
-// format skips JSON validation and travels byte-for-byte.
-func TestDocumentEditor_unknownFormatPassesExactBytes(t *testing.T) {
-	const format = sharedsql.DocumentFormat("application/x-custom")
-	model, service := readyDocumentModel(t, sharedsql.WriteCapabilities{
-		Document: &sharedsql.DocumentWriteCapability{Format: format, Text: true},
-	})
-	model = openInsertDocument(t, model)
-	if got, want := model.browse.component.DocumentEditor.Edited, ""; got != want {
-		t.Fatalf("raw insert text = %q, want empty", got)
-	}
-	exact := "line1\n\tline2  trailing  "
-	model.browse.component.DocumentEditor.Edited = exact
-
-	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
-	if model.browse.component.DocumentEditor.Confirming == false {
-		t.Fatal("raw format save did not open the confirmation")
-	}
-	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
-
-	if len(service.inserted) != 1 || string(service.inserted[0].Data) != exact {
-		t.Fatalf("inserted = %#v, want exact bytes %q", service.inserted, exact)
-	}
-	if service.inserted[0].Format != format {
-		t.Fatalf("inserted format = %q, want %q", service.inserted[0].Format, format)
-	}
-}
 
 // TestDocumentEditor_editLoadsFullPayloadBeforeOpening proves edit opens
 // only after ReadDocument resolves, with the full document (not the

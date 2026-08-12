@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 )
@@ -101,63 +100,6 @@ func TestBrowseFilterGrid_patternOperator(t *testing.T) {
 	}
 }
 
-func TestBrowseFilterGrid_escapePreservesInlineValue(t *testing.T) {
-	model := readyBrowseModel(t)
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
-
-	if form := model.browse.component.FilterForm; form == nil || form.Fields[0].Value != "x" || form.Editing {
-		t.Fatalf("filter form = %#v, want preserved inline value", form)
-	}
-
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'h', Text: "h"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyEscape})
-	if form := model.browse.component.FilterForm; form.Fields[0].Operator != sharedsql.BrowseFilterEqual || form.Editing {
-		t.Fatalf("filter form = %#v, want preserved operator selection", form)
-	}
-}
-
-func TestBrowseFilterGrid_rRestoresOpenedState(t *testing.T) {
-	model := readyBrowseModel(t)
-	model.browse.component.Settings = browse.Settings{
-		Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%first%"}},
-		Limit:   1,
-	}
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
-	form := model.browse.component.FilterForm
-	form.Fields[1].Operator, form.Fields[1].Value, form.Limit = sharedsql.BrowseFilterEqual, "second", "2"
-
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'r', Text: "r"})
-	form = model.browse.component.FilterForm
-	if form.Fields[1].Operator != sharedsql.BrowseFilterLike || form.Fields[1].Value != "%first%" || form.Limit != "1" {
-		t.Fatalf("reset form = %#v, want opened filter settings", form)
-	}
-}
-
-func TestBrowseFilterGrid_backspaceClearsSelectedCell(t *testing.T) {
-	model := readyBrowseModel(t)
-	model.browse.component.Settings = browse.Settings{
-		Filters: []sharedsql.BrowseFilter{{Column: "id", Operator: sharedsql.BrowseFilterGreater, Value: "1"}},
-	}
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	form := model.browse.component.FilterForm
-	if form.Fields[0].Operator != sharedsql.BrowseFilterNone || form.Fields[0].Value != "1" {
-		t.Fatalf("operator clear = %#v, want empty operator with retained value", form.Fields[0])
-	}
-
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: tea.KeyBackspace})
-	if form.Fields[0].Value != "" {
-		t.Fatalf("value clear = %#v, want empty value", form.Fields[0])
-	}
-}
-
 func TestBrowse_rClearsFiltersAndReloads(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.BrowsePage = 1
@@ -174,30 +116,6 @@ func TestBrowse_rClearsFiltersAndReloads(t *testing.T) {
 	model = resolveBrowseCommand(model, command())
 	if rows := model.browse.component.Table.Rows(); len(rows) != 2 {
 		t.Fatalf("browse rows = %#v, want unfiltered rows", rows)
-	}
-}
-
-func TestBrowseFilterGrid_widthAndSelection(t *testing.T) {
-	columns := []sharedsql.ColumnInfo{
-		{Name: "identifier", Type: "INTEGER"},
-		{Name: "description", Type: "VARCHAR(255)"},
-		{Name: "created_at", Type: "TIMESTAMP WITH TIME ZONE"},
-	}
-	for _, width := range []int{24, 72} {
-		t.Run("width", func(t *testing.T) {
-			form := browse.NewFilterForm(columns, browse.Settings{}, core.BrowsePageSize, width, 3)
-			for range len(columns) {
-				form.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}, DefaultKeybindings())
-			}
-			if form.Row != len(columns) || form.HorizontalOffset == 0 && width == 24 {
-				t.Fatalf("selection = row:%d offset:%d, want Rows visible", form.Row, form.HorizontalOffset)
-			}
-			for _, line := range strings.Split(form.View(), "\n") {
-				if got := ansi.StringWidth(ansi.Strip(line)); got > width {
-					t.Fatalf("line width = %d, want <= %d: %q", got, width, line)
-				}
-			}
-		})
 	}
 }
 

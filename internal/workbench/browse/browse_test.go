@@ -590,3 +590,21 @@ func TestUpdate_tableNavigation(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestDocumentEditor_unknownFormatPassesExactBytes(t *testing.T) {
+	// Raw/non-Mongo formats skip JSON validation and keep the exact text
+	// through the preview and the save payload.
+	raw := NewDocumentEditor("things", false, sharedsql.DocumentWriteCapability{Text: true, Format: ""}, &sharedsql.DocumentPayload{Data: []byte(`{"_id": 1}`)}, "line1\n\tline2  trailing  ", 60)
+	raw.Collection = "things"
+	raw.Edited = "line1\n\tline2  trailing  "
+	if _, err := raw.BeginConfirmation(); err != nil {
+		t.Fatalf("raw format rejected valid text: %v", err)
+	}
+	if !raw.Confirming || raw.Confirmation == nil {
+		t.Fatal("raw save did not open the confirmation")
+	}
+	got := raw.Preview()
+	if !strings.Contains(got, "line1\n\tline2  trailing  ") {
+		t.Fatalf("preview = %q, want the exact untrimmed document text", got)
+	}
+}
