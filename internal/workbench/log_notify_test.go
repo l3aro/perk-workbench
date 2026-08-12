@@ -11,6 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/log"
+	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
@@ -71,7 +72,7 @@ func TestLogNotification_logCallsInsideUpdateDrainToPopup(t *testing.T) {
 // returns the resulting model.
 func openWithScratch(t *testing.T, model Model) Model {
 	t.Helper()
-	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Scratch", ":memory:"
 	updated, command := model.openConnection()
 	model = updated.(Model)
 	if command == nil {
@@ -150,9 +151,9 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	// entry is dropped, so nothing pops up.
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []profile.Profile{{Name: "Scratch", Target: ":memory:"}}
-	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
-	model.connection.form.setFocus(connectionFocusRecent)
+	model.connection.component.Profiles = []profile.Profile{{Name: "Scratch", Target: ":memory:"}}
+	_ = model.connection.component.Recent.SetItems(connection.RecentListItems(model.connection.component.Profiles))
+	model.connection.component.Form.SetFocus(connectionFocusRecent)
 	notification.DrainLogEntries()
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
@@ -167,9 +168,9 @@ func TestLogNotification_editingStatusIsDebugLog(t *testing.T) {
 	// the DEBUG line.
 	SetAppConfig(Config{LogLevel: "debug"})
 	model = New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = []profile.Profile{{Name: "Scratch", Target: ":memory:"}}
-	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
-	model.connection.form.setFocus(connectionFocusRecent)
+	model.connection.component.Profiles = []profile.Profile{{Name: "Scratch", Target: ":memory:"}}
+	_ = model.connection.component.Recent.SetItems(connection.RecentListItems(model.connection.component.Profiles))
+	model.connection.component.Form.SetFocus(connectionFocusRecent)
 	notification.DrainLogEntries()
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
@@ -211,7 +212,7 @@ func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
 	// event.log.
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Scratch", ":memory:"
 	updated, _ := model.Update(connectionActionMsg{action: connectionActionConnect})
 	model = updated.(Model)
 	if model.Status != "opening Scratch" {
@@ -230,7 +231,7 @@ func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
 	// opening one.
 	SetAppConfig(Config{LogLevel: "debug"})
 	model = New("", context.Background(), testOpen, false)
-	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Scratch", ":memory:"
 	updated, _ = model.Update(connectionActionMsg{action: connectionActionConnect})
 	model = updated.(Model)
 	popup := model.notifications.component.Popup
@@ -353,7 +354,7 @@ func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
 	// A live connection's scope is still assigned while the next open is
 	// in flight.
 	model.connectionID = "live-scope"
-	model.connection.form.values.name, model.connection.form.values.target = "Second", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Second", ":memory:"
 
 	// The Debug opening popup shows while the scope is still the live
 	// connection's.

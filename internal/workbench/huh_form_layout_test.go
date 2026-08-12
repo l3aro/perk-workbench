@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 )
 
 func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T) {
@@ -38,8 +39,8 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 			return form.View()
 		}},
 		{name: "connection", view: func(width int) string {
-			form := newConnectionForm()
-			form.setWidth(width)
+			form := connection.NewForm()
+			form.SetWidth(width)
 			return form.View()
 		}},
 	}
@@ -69,7 +70,7 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 
 func TestConnectionForm_rendersActionsAsButtonGroup(t *testing.T) {
 	// Given
-	form := newConnectionForm()
+	form := connection.NewForm()
 	view := ansi.Strip(form.View())
 
 	// When
@@ -107,10 +108,10 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 			foreignKeyWidth := model.structure.foreignKeyForm.width
 			foreignKeyView := model.structure.foreignKeyForm.View()
 			model.State = stateConnection
-			connectionLayoutWidth := model.connection.form.width
+			connectionLayoutWidth := model.connection.component.Form.Width
 			_ = model.newConnection()
-			connectionWidth := model.connection.form.width
-			connectionView := model.connection.form.View()
+			connectionWidth := model.connection.component.Form.Width
+			connectionView := model.connection.component.Form.View()
 
 			// Then
 			for _, form := range []struct {

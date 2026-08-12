@@ -314,62 +314,63 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "connection.switch_to_form":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusRecent {
-			m.connection.form.focus = connectionFocusForm
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusRecent {
+			m.connection.component.Form.Focus = connectionFocusForm
 		}
 		return m, nil
 	case "connection.switch_to_list":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusForm {
-			m.connection.form.setFocus(connectionFocusRecent)
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm {
+			m.connection.component.Form.SetFocus(connectionFocusRecent)
 		}
 		return m, nil
 	case "connection.execute":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil {
-			if err := m.connection.form.validate(); err != nil {
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil {
+			if err := m.connection.component.Form.Validate(); err != nil {
 				m.setStatus(safeText(err.Error()))
-				return m, m.connection.form.showValidationError()
+				return m, m.connection.component.Form.ShowValidationError()
 			}
 			m.overlay.formMode.beginConfirm()
-			return m, m.connection.form.beginConfirmation()
+			m.connection.component.Form.BeginConfirmation()
+			return m, nil
 		}
 		return m, nil
 	case "connection.action_enter":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil && m.connectionActionFocused() {
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil && m.connectionActionFocused() {
 			m.overlay.formMode.mode = formModeNormal
-			m.connection.form.blur()
-			if m.connection.form.values.action == connectionActionTest {
+			m.connection.component.Form.Blur()
+			if m.connection.component.Form.Values.Action == connectionActionTest {
 				return m, m.testConnection()
 			}
 			return m.openConnection()
 		}
 		return m, nil
 	case "connection.edit_field":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil && !m.connectionActionFocused() {
-			return m, m.overlay.formMode.beginHuh(m.connection.form.focusForm())
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil && !m.connectionActionFocused() {
+			return m, m.overlay.formMode.beginHuh(m.connection.component.Form.FocusForm())
 		}
 		return m, nil
 	case "connection.field_next":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil {
-			return m, m.connection.form.form.NextField()
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil {
+			return m, m.connection.component.Form.Huh.NextField()
 		}
 		return m, nil
 	case "connection.field_prev":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil {
-			return m, m.connection.form.form.PrevField()
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil {
+			return m, m.connection.component.Form.Huh.PrevField()
 		}
 		return m, nil
 	case "connection.add":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusRecent {
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusRecent {
 			return m, m.newConnection()
 		}
 		return m, nil
 	case "connection.edit":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusRecent {
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusRecent {
 			return m, m.editSelectedRecentConnection()
 		}
 		return m, nil
 	case "connection.delete":
-		if m.State == stateConnection && m.connection.form.focus == connectionFocusRecent {
+		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusRecent {
 			m.confirmDeleteRecentConnection()
 			return m, nil
 		}

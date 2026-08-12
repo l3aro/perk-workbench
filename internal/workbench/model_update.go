@@ -497,7 +497,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schema.filter.Focused() &&
-			!(m.State == stateConnection && (m.connection.recentFilter.Focused() || (m.connection.form.focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
+			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
 			!(m.sqlEditorActive() && m.overlay.formMode.editing()) &&
 			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.queryLog.editor.value == "") {
 			if m.Running() {
@@ -877,7 +877,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		case tableFormClose:
 			m.structure.tableForm = tableForm{}
 		case tableFormSave:
-			m.structure.tableForm.confirmation.description = m.structure.tableForm.statement(m)
+			m.structure.tableForm.confirmation.Description = m.structure.tableForm.statement(m)
 		case tableFormExecute:
 			statement := m.structure.tableForm.statement(m)
 			m.structure.tableFormRunning = true

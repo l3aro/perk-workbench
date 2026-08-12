@@ -392,12 +392,12 @@ func TestForeignKeyForm_viewportKeepsButtonsVisible(t *testing.T) {
 // stay reachable instead of being clipped away.
 func TestConnectionForm_viewportKeepsActionsReachable(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.driver = driverMySQL
-	model.connection.form.values.host, model.connection.form.values.port = "localhost", "5432"
-	model.connection.form.values.user = "postgres"
-	_ = model.connection.form.rebuildForm()
-	_ = model.connection.form.form.Init()
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port = "localhost", "5432"
+	model.connection.component.Form.Values.User = "postgres"
+	_ = model.connection.component.Form.Rebuild()
+	_ = model.connection.component.Form.Huh.Init()
 	model = resizeModel(model, 100, 24)
 
 	// A MySQL form is taller than the pane body: the action buttons start
@@ -411,7 +411,7 @@ func TestConnectionForm_viewportKeepsActionsReachable(t *testing.T) {
 		model = updateConnectionForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
 
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "action" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "action" {
 		t.Fatalf("focused field = %q, want action", got)
 	}
 	view := ansi.Strip(model.connectionPaneView(model.layout.height - 6))
@@ -430,7 +430,7 @@ func updateConnectionForm(model Model, message tea.Msg) Model {
 
 func TestConnectionForm_paneFooterHasNoButtons(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
+	model.connection.component.Form.Focus = connectionFocusForm
 	model = resizeModel(model, 100, 24)
 
 	view := ansi.Strip(model.connectionPaneView(model.layout.height - 6))
@@ -446,7 +446,7 @@ func TestConnectionForm_paneFooterHasNoButtons(t *testing.T) {
 // button row on the connection screen.
 func TestConnectionScreen_titledPanesKeepModeBadgeVisible(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
+	model.connection.component.Form.Focus = connectionFocusForm
 	model = resizeModel(model, 100, 24)
 
 	view := ansi.Strip(model.contentView())
@@ -557,12 +557,12 @@ func TestConnectionForm_mouseWheelMovesFieldFocus(t *testing.T) {
 	_ = model.newConnection()
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "name" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("wheel down focused field = %q, want name", got)
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(Model)
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "driver" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "driver" {
 		t.Fatalf("wheel up focused field = %q, want driver", got)
 	}
 }

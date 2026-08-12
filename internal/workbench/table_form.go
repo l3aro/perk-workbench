@@ -185,7 +185,7 @@ func (f *tableForm) updateHuh(message tea.Msg, controller *formModeController) (
 	model, command := f.form.Update(message)
 	f.form = model.(*huh.Form)
 	if input, ok := f.form.GetFocusedField().(*editableInput); ok {
-		f.name = *input.value
+		f.name = input.ExternalEditorValue()
 	}
 	if f.form.State == huh.StateCompleted {
 		f.rebuildForm()

@@ -262,10 +262,10 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "app.quit":
 		return !m.formActive() && !m.schema.filter.Focused() &&
-			!(m.State == stateConnection && (m.connection.recentFilter.Focused() || (m.connection.form.focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
+			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
 			!(m.sqlEditorActive() && m.overlay.formMode.editing())
 	case "editor.external":
-		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil
+		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil
 	case "query.cancel":
 		return m.Running()
 	case "ai.toggle":
@@ -322,13 +322,13 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "failure.return_to_picker":
 		return m.State == stateFailure
 	case "connection.switch_to_form", "connection.add", "connection.edit", "connection.delete":
-		return m.State == stateConnection && m.connection.form.focus == connectionFocusRecent
+		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusRecent
 	case "connection.switch_to_list", "connection.execute", "connection.field_next", "connection.field_prev":
-		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil
+		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil
 	case "connection.action_enter":
-		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil && m.connectionActionFocused()
+		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil && m.connectionActionFocused()
 	case "connection.edit_field":
-		return m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil && !m.connectionActionFocused()
+		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil && !m.connectionActionFocused()
 	case "form.edit":
 		return m.formActive()
 	case "form.save", "form.discard", "form.field_next", "form.field_prev":

@@ -49,14 +49,14 @@ func (m *Model) applyLayout(width, height int) {
 	// row onto a second line inside the bordered pane.
 	m.schema.list.SetSize(max(m.layout.schemaWidth-6, 0), schemaListHeight)
 	m.schema.filter.SetWidth(max(m.layout.schemaWidth-6, 0))
-	m.connection.recentFilter.SetWidth(max(m.layout.schemaWidth-6, 0))
+	m.connection.component.RecentFilter.SetWidth(max(m.layout.schemaWidth-6, 0))
 	m.connection.picker.SetSize(max(m.layout.width-2, 0), max(contentHeight-2, 0))
 	connectionWidth := m.layout.width
 	if !m.layout.compact {
 		connectionWidth = max(m.layout.width-m.layout.schemaWidth, 1)
 	}
-	m.connection.form.setWidth(max(connectionWidth-4, 1))
-	m.connection.form.setHeight(max(m.layout.height-8, 1))
+	m.connection.component.Form.SetWidth(max(connectionWidth-4, 1))
+	m.connection.component.Form.SetHeight(max(m.layout.height-8, 1))
 	// The profiles list spans the pane body exactly; the filter box (3
 	// rows, when the pane is wide enough) and the bottom hint line are
 	// reserved above and below it (see recentPaneView).
@@ -64,7 +64,7 @@ func (m *Model) applyLayout(width, height int) {
 	if m.schemaFilterShown() {
 		recentListHeight = max(recentListHeight-3, 0)
 	}
-	m.connection.recent.SetSize(max(m.layout.schemaWidth-6, 0), recentListHeight)
+	m.connection.component.Recent.SetSize(max(m.layout.schemaWidth-6, 0), recentListHeight)
 	m.queryLog.editor.setSize(max(m.layout.editorWidth-8, 1), max(m.layout.editorHeight-4, 1))
 	m.resizeChat()
 	m.layout.tableViewportWidth = max(m.layout.editorWidth-4, 1)

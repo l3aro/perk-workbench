@@ -15,16 +15,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/go-sql-driver/mysql"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 )
 
 func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 	// Given
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverMySQL, "2001:db8::1", "3307"
-	form.values.user, form.values.pass, form.values.target = "alice", "secret", "app"
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "2001:db8::1", "3307"
+	form.Values.User, form.Values.Pass, form.Values.Target = "alice", "secret", "app"
 
 	// When
-	dsn, err := mysql.ParseDSN(form.targetValue())
+	dsn, err := mysql.ParseDSN(form.TargetValue())
 
 	// Then
 	if err != nil {
@@ -40,12 +41,12 @@ func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 
 func TestConnectionForm_buildsMySQLDSNWithSelectedTLSMode(t *testing.T) {
 	// Given
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
-	form.values.user, form.values.mysqlTLS = "root", mysqlTLSSkipVerify
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.User, form.Values.MySQLTLS = "root", mysqlTLSSkipVerify
 
 	// When
-	dsn, err := mysql.ParseDSN(form.targetValue())
+	dsn, err := mysql.ParseDSN(form.TargetValue())
 
 	// Then
 	if err != nil {
@@ -57,11 +58,11 @@ func TestConnectionForm_buildsMySQLDSNWithSelectedTLSMode(t *testing.T) {
 }
 
 func TestConnectionForm_buildsPostgreSQLDSNWithSelectedTLSMode(t *testing.T) {
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "127.0.0.1", "5432"
-	form.values.user, form.values.target, form.values.postgresTLS = "alice", "app", postgresTLSEncrypt
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "127.0.0.1", "5432"
+	form.Values.User, form.Values.Target, form.Values.PostgreSQLTLS = "alice", "app", postgresTLSEncrypt
 
-	target, err := url.Parse(form.targetValue())
+	target, err := url.Parse(form.TargetValue())
 	if err != nil {
 		t.Fatalf("parsing PostgreSQL DSN: %v", err)
 	}
@@ -79,17 +80,17 @@ func TestConnectionForm_blankHostAndPortUseDefaults(t *testing.T) {
 		{name: "PostgreSQL", driver: driverPostgreSQL, defaultPort: "5432"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			form := newConnectionForm()
-			form.values.driver = test.driver
-			form.values.user = "alice"
+			form := connection.NewForm()
+			form.Values.Driver = test.driver
+			form.Values.User = "alice"
 
-			if err := form.validate(); err != nil {
+			if err := form.Validate(); err != nil {
 				t.Fatalf("blank host and port rejected: %v", err)
 			}
 
 			want := net.JoinHostPort("localhost", test.defaultPort)
 			if test.driver == driverMySQL {
-				dsn, err := mysql.ParseDSN(form.targetValue())
+				dsn, err := mysql.ParseDSN(form.TargetValue())
 				if err != nil {
 					t.Fatalf("parsing MySQL DSN: %v", err)
 				}
@@ -98,7 +99,7 @@ func TestConnectionForm_blankHostAndPortUseDefaults(t *testing.T) {
 				}
 				return
 			}
-			target, err := url.Parse(form.targetValue())
+			target, err := url.Parse(form.TargetValue())
 			if err != nil {
 				t.Fatalf("parsing PostgreSQL target: %v", err)
 			}
@@ -118,10 +119,10 @@ func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			form := newConnectionForm()
-			form.values.driver = test.driver
-			form.rebuildForm()
-			_ = form.form.Init()
+			form := connection.NewForm()
+			form.Values.Driver = test.driver
+			form.Rebuild()
+			_ = form.Huh.Init()
 
 			// When
 			view := form.View()
@@ -142,22 +143,22 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 	}{
 		{name: "SQLite target", driver: driverSQLite},
 		{name: "MySQL port", driver: driverMySQL, set: func(values *connectionFormValues) {
-			values.host, values.port, values.user = "localhost", "not-a-port", "alice"
+			values.Host, values.Port, values.User = "localhost", "not-a-port", "alice"
 		}},
 		{name: "MySQL username", driver: driverMySQL, set: func(values *connectionFormValues) {
-			values.host, values.port = "localhost", "3306"
+			values.Host, values.Port = "localhost", "3306"
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
-			form := newConnectionForm()
-			form.values.driver = test.driver
+			form := connection.NewForm()
+			form.Values.Driver = test.driver
 			if test.set != nil {
-				test.set(form.values)
+				test.set(form.Values)
 			}
 
 			// When
-			err := form.validate()
+			err := form.Validate()
 
 			// Then
 			if err == nil {
@@ -170,16 +171,16 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	_ = model.connection.form.form.NextField()
+	model.connection.component.Form.Focus = connectionFocusForm
+	_ = model.connection.component.Form.Huh.NextField()
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
 
 	// Then
-	if model.connection.form.values.name != "" {
-		t.Fatalf("name in normal mode = %q, want empty", model.connection.form.values.name)
+	if model.connection.component.Form.Values.Name != "" {
+		t.Fatalf("name in normal mode = %q, want empty", model.connection.component.Form.Values.Name)
 	}
 
 	// When
@@ -193,8 +194,8 @@ func TestConnectionForm_editsFieldsOnlyInInsertMode(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.connection.form.values.name != "a" {
-		t.Fatalf("name after insert and escape = %q, want a", model.connection.form.values.name)
+	if model.connection.component.Form.Values.Name != "a" {
+		t.Fatalf("name after insert and escape = %q, want a", model.connection.component.Form.Values.Name)
 	}
 }
 
@@ -210,15 +211,15 @@ func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
-			model.connection.form.focus = connectionFocusForm
-			model.connection.form.values.target = ":memory:"
+			model.connection.component.Form.Focus = connectionFocusForm
+			model.connection.component.Form.Values.Target = ":memory:"
 
 			// When
 			updated, _ := model.Update(test.key)
 			model = updated.(Model)
 
 			// Then
-			if model.connection.form.confirmation == nil {
+			if model.connection.component.Form.Confirmation == nil {
 				t.Fatal("valid connection did not enter confirmation")
 			}
 			if model.overlay.formMode.mode != formModeConfirm {
@@ -240,8 +241,8 @@ func TestConnectionForm_executeKeysWorkWhileEditing(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
-			model.connection.form.focus = connectionFocusForm
-			model.connection.form.values.target = ":memory:"
+			model.connection.component.Form.Focus = connectionFocusForm
+			model.connection.component.Form.Values.Target = ":memory:"
 			updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 			model = updated.(Model)
 
@@ -250,8 +251,8 @@ func TestConnectionForm_executeKeysWorkWhileEditing(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if model.connection.form.confirmation == nil || model.overlay.formMode.mode != formModeConfirm {
-				t.Fatalf("execute key did not enter confirmation: confirmation=%t mode=%v", model.connection.form.confirmation != nil, model.overlay.formMode.mode)
+			if model.connection.component.Form.Confirmation == nil || model.overlay.formMode.mode != formModeConfirm {
+				t.Fatalf("execute key did not enter confirmation: confirmation=%t mode=%v", model.connection.component.Form.Confirmation != nil, model.overlay.formMode.mode)
 			}
 		})
 	}
@@ -271,21 +272,21 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
-			model.connection.form.focus = connectionFocusForm
-			model.connection.form.values.target = ":memory:"
+			model.connection.component.Form.Focus = connectionFocusForm
+			model.connection.component.Form.Values.Target = ":memory:"
 			for range 4 {
-				_ = model.connection.form.form.NextField()
+				_ = model.connection.component.Form.Huh.NextField()
 			}
-			if got := model.connection.form.form.GetFocusedField().GetKey(); got != "action" {
+			if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "action" {
 				t.Fatalf("focused field = %q, want action", got)
 			}
 			if test.action == connectionActionConnect {
 				updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 				model = updated.(Model)
 			}
-			model.connection.form.values.target = ":memory:"
+			model.connection.component.Form.Values.Target = ":memory:"
 			if test.editing {
-				model.overlay.formMode.beginHuh(model.connection.form.focusForm())
+				model.overlay.formMode.beginHuh(model.connection.component.Form.FocusForm())
 			}
 
 			// When
@@ -307,8 +308,8 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 			if model.overlay.formMode.mode != formModeNormal {
 				t.Fatalf("form mode = %v, want normal", model.overlay.formMode.mode)
 			}
-			if model.connection.form.values.action != test.action {
-				t.Fatalf("selected action = %q, want %q", model.connection.form.values.action, test.action)
+			if model.connection.component.Form.Values.Action != test.action {
+				t.Fatalf("selected action = %q, want %q", model.connection.component.Form.Values.Action, test.action)
 			}
 		})
 	}
@@ -323,10 +324,10 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 // shorter "Connect" label centered into the wider "Test connection" button.
 func TestConnectionForm_actionButtonsSameWidth(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.target = ":memory:"
-	model = resolveConnectionCommand(model, model.connection.form.form.Init())
-	view := ansi.Strip(model.connection.form.form.View())
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Target = ":memory:"
+	model = resolveConnectionCommand(model, model.connection.component.Form.Huh.Init())
+	view := ansi.Strip(model.connection.component.Form.Huh.View())
 
 	width := connectionActionWidth()
 	connectPad := (width - lipgloss.Width(connectionActionStyle.Render(connectionActionConnect))) / 2
@@ -355,9 +356,9 @@ func TestConnectionForm_actionButtonsSameWidth(t *testing.T) {
 
 func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.target = ":memory:"
-	model = resolveConnectionCommand(model, model.connection.form.form.Init())
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Target = ":memory:"
+	model = resolveConnectionCommand(model, model.connection.component.Form.Huh.Init())
 
 	highlighted := func(view string, style lipgloss.Style) []string {
 		var got []string
@@ -372,7 +373,7 @@ func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 
 	// Action field starts blurred (focus is on Driver): the selected button
 	// shows the teal selection style, not the focus style.
-	view := model.connection.form.form.View()
+	view := model.connection.component.Form.Huh.View()
 	if got := highlighted(view, connectionActionSelectedStyle); !reflect.DeepEqual(got, []string{connectionActionTest}) {
 		t.Fatalf("blurred action field highlighted %v, want %q", got, connectionActionTest)
 	}
@@ -382,9 +383,9 @@ func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 
 	// Navigate onto the action field: the selection shifts to the focus color.
 	for range 4 {
-		_ = model.connection.form.form.NextField()
+		_ = model.connection.component.Form.Huh.NextField()
 	}
-	view = model.connection.form.form.View()
+	view = model.connection.component.Form.Huh.View()
 	if got := highlighted(view, connectionActionFocusedStyle); !reflect.DeepEqual(got, []string{connectionActionTest}) {
 		t.Fatalf("focused action field highlighted %v, want %q", got, connectionActionTest)
 	}
@@ -395,15 +396,15 @@ func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 	// Switch the selection: the focus highlight moves to Connect.
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	model = updated.(Model)
-	view = model.connection.form.form.View()
+	view = model.connection.component.Form.Huh.View()
 	if got := highlighted(view, connectionActionFocusedStyle); !reflect.DeepEqual(got, []string{connectionActionConnect}) {
 		t.Fatalf("after h/l highlighted %v, want %q", got, connectionActionConnect)
 	}
 
 	// Leave the field: the highlight returns to the selection color, keeping
 	// the chosen action.
-	_ = model.connection.form.form.PrevField()
-	view = model.connection.form.form.View()
+	_ = model.connection.component.Form.Huh.PrevField()
+	view = model.connection.component.Form.Huh.View()
 	if got := highlighted(view, connectionActionSelectedStyle); !reflect.DeepEqual(got, []string{connectionActionConnect}) {
 		t.Fatalf("blurred action field highlighted %v, want %q", got, connectionActionConnect)
 	}
@@ -416,16 +417,16 @@ func TestConnectionForm_actionButtonsHighlightOnFocus(t *testing.T) {
 func TestConnectionForm_successfulTestPersistsProfile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.target = ":memory:"
-	_ = model.connection.form.rebuildForm()
-	_ = model.connection.form.form.Init()
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Target = ":memory:"
+	_ = model.connection.component.Form.Rebuild()
+	_ = model.connection.component.Form.Huh.Init()
 	model.Target = "/stale/old.db" // a previous connect must not leak in
 
 	for range 4 {
-		_ = model.connection.form.form.NextField()
+		_ = model.connection.component.Form.Huh.NextField()
 	}
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "action" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "action" {
 		t.Fatalf("focused field = %q, want action", got)
 	}
 
@@ -441,10 +442,10 @@ func TestConnectionForm_successfulTestPersistsProfile(t *testing.T) {
 	updated, _ = model.Update(test)
 	model = updated.(Model)
 
-	if len(model.connection.recentConnections) != 1 {
-		t.Fatalf("recent profiles = %#v, want the tested credentials recorded", model.connection.recentConnections)
+	if len(model.connection.component.Profiles) != 1 {
+		t.Fatalf("recent profiles = %#v, want the tested credentials recorded", model.connection.component.Profiles)
 	}
-	if got := model.connection.recentConnections[0].Target; got != ":memory:" {
+	if got := model.connection.component.Profiles[0].Target; got != ":memory:" {
 		t.Fatalf("recorded target = %q, want the tested target, not stale m.Target", got)
 	}
 }
@@ -452,9 +453,9 @@ func TestConnectionForm_successfulTestPersistsProfile(t *testing.T) {
 func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.driver, model.connection.form.values.host = driverMySQL, ""
-	model.connection.form.values.port, model.connection.form.values.user, model.connection.form.values.target = "not-a-port", "alice", "app"
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Host = driverMySQL, ""
+	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User, model.connection.component.Form.Values.Target = "not-a-port", "alice", "app"
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
@@ -462,10 +463,10 @@ func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing
 	model = resolveConnectionCommand(model, command)
 
 	// Then
-	if model.connection.form.confirmation != nil || model.State != stateConnection {
+	if model.connection.component.Form.Confirmation != nil || model.State != stateConnection {
 		t.Fatal("invalid connection advanced to an action")
 	}
-	if model.connection.form.values.target != "app" || model.connection.form.values.user != "alice" {
+	if model.connection.component.Form.Values.Target != "app" || model.connection.component.Form.Values.User != "alice" {
 		t.Fatal("invalid connection cleared populated fields")
 	}
 }
@@ -473,7 +474,7 @@ func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing
 func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Scratch", ":memory:"
 
 	// When
 	message := model.testConnection()()
@@ -489,7 +490,7 @@ func TestConnectionForm_testsSQLiteConnection(t *testing.T) {
 func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Scratch", ":memory:"
 
 	// When
 	updated, command := model.openConnection()
@@ -518,9 +519,9 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 		openedTarget = target
 		return sharedsql.Opened{}, nil
 	}, false)
-	model.connection.form.values.driver, model.connection.form.values.host = driverMySQL, "localhost"
-	model.connection.form.values.port, model.connection.form.values.target = "3306", "app"
-	model.connection.form.values.user = "alice"
+	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Host = driverMySQL, "localhost"
+	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.Target = "3306", "app"
+	model.connection.component.Form.Values.User = "alice"
 
 	// When
 	updated, command := model.openConnection()
@@ -536,11 +537,11 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 }
 
 func TestConnectionForm_buildsPostgreSQLURLFromSeparateFields(t *testing.T) {
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "2001:db8::1", "5433"
-	form.values.user, form.values.pass, form.values.target = "alice", "secret", "app data"
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "2001:db8::1", "5433"
+	form.Values.User, form.Values.Pass, form.Values.Target = "alice", "secret", "app data"
 
-	target, err := url.Parse(form.targetValue())
+	target, err := url.Parse(form.TargetValue())
 	if err != nil {
 		t.Fatalf("parsing PostgreSQL URL: %v", err)
 	}
@@ -556,9 +557,9 @@ func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
 		openedTarget = target
 		return sharedsql.Opened{}, nil
 	}, false)
-	model.connection.form.values.driver, model.connection.form.values.host = driverPostgreSQL, "localhost"
-	model.connection.form.values.port, model.connection.form.values.target = "5432", "app"
-	model.connection.form.values.user = "alice"
+	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Host = driverPostgreSQL, "localhost"
+	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.Target = "5432", "app"
+	model.connection.component.Form.Values.User = "alice"
 
 	updated, command := model.openConnection()
 	model = updated.(Model)
@@ -575,20 +576,20 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	// Given
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
-	model.connection.recentConnections = nil
-	model.connection.form.values.driver, model.connection.form.values.target = driverMySQL, "app"
-	model.connection.form.values.host, model.connection.form.values.port, model.connection.form.values.user = "db.example.test", "3307", "alice"
-	model.connection.form.values.pass = "secret"
-	model.connection.form.values.mysqlTLS = mysqlTLSSkipVerify
+	model.connection.component.Profiles = nil
+	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Target = driverMySQL, "app"
+	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User = "db.example.test", "3307", "alice"
+	model.connection.component.Form.Values.Pass = "secret"
+	model.connection.component.Form.Values.MySQLTLS = mysqlTLSSkipVerify
 
 	// When
 	model.recordConnection("")
 
 	// Then
-	if len(model.connection.recentConnections) != 1 {
-		t.Fatalf("recent MySQL profiles = %#v, want one", model.connection.recentConnections)
+	if len(model.connection.component.Profiles) != 1 {
+		t.Fatalf("recent MySQL profiles = %#v, want one", model.connection.component.Profiles)
 	}
-	profile := model.connection.recentConnections[0]
+	profile := model.connection.component.Profiles[0]
 	if profile.Driver != driverMySQL || profile.Host != "db.example.test" || profile.Port != "3307" || profile.User != "alice" || profile.Target != "app" || profile.MySQLTLS != mysqlTLSSkipVerify {
 		t.Fatalf("remote profile = %#v, want non-secret connection fields", profile)
 	}
@@ -600,13 +601,13 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 func TestConnectionForm_recordsSQLiteProfileWithoutRemoteFields(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.values.name, model.connection.form.values.target = "Scratch", ":memory:"
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Scratch", ":memory:"
 
 	// When
 	model.recordConnection("")
 
 	// Then
-	profile := model.connection.recentConnections[0]
+	profile := model.connection.component.Profiles[0]
 	if profile.Host != "" || profile.Port != "" || profile.User != "" {
 		t.Fatalf("SQLite profile = %#v, want no remote connection fields", profile)
 	}
@@ -615,8 +616,8 @@ func TestConnectionForm_recordsSQLiteProfileWithoutRemoteFields(t *testing.T) {
 func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model = resolveConnectionCommand(model, model.connection.form.form.Init())
+	model.connection.component.Form.Focus = connectionFocusForm
+	model = resolveConnectionCommand(model, model.connection.component.Form.Huh.Init())
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 	model = resolveConnectionCommand(model, command)
@@ -632,25 +633,25 @@ func TestConnectionForm_driverSwitchInitializesRebuiltHuhForm(t *testing.T) {
 	model = resolveConnectionMessage(model, message, 16)
 
 	// Then
-	if model.connection.form.values.driver != driverMySQL || !strings.Contains(model.connection.form.View(), "Host") {
-		t.Fatalf("driver switch form = driver %v, view %q", model.connection.form.values.driver, model.connection.form.View())
+	if model.connection.component.Form.Values.Driver != driverMySQL || !strings.Contains(model.connection.component.Form.View(), "Host") {
+		t.Fatalf("driver switch form = driver %v, view %q", model.connection.component.Form.Values.Driver, model.connection.component.Form.View())
 	}
 }
 
 func TestConnectionForm_f5AllowsBlankMySQLDatabase(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.driver = driverMySQL
-	model.connection.form.values.host, model.connection.form.values.port, model.connection.form.values.user = "localhost", "3306", "alice"
-	_ = model.connection.form.rebuildForm()
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User = "localhost", "3306", "alice"
+	_ = model.connection.component.Form.Rebuild()
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
 
 	// Then
-	if model.connection.form.confirmation == nil {
+	if model.connection.component.Form.Confirmation == nil {
 		t.Fatal("blank MySQL database did not reach connection confirmation")
 	}
 }
@@ -658,26 +659,26 @@ func TestConnectionForm_f5AllowsBlankMySQLDatabase(t *testing.T) {
 func TestConnectionForm_f5AllowsBlankPostgreSQLDatabase(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.driver = driverPostgreSQL
-	model.connection.form.values.host, model.connection.form.values.port, model.connection.form.values.user = "localhost", "5432", "alice"
-	_ = model.connection.form.rebuildForm()
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Driver = driverPostgreSQL
+	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User = "localhost", "5432", "alice"
+	_ = model.connection.component.Form.Rebuild()
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
 
 	// Then
-	if model.connection.form.confirmation == nil {
+	if model.connection.component.Form.Confirmation == nil {
 		t.Fatal("blank PostgreSQL database did not reach connection confirmation")
 	}
 }
 
 func TestConnectionForm_completionSequencesInitBeforeConnectionAction(t *testing.T) {
 	// Given
-	form := newConnectionForm()
-	form.values.target = ":memory:"
-	init := form.rebuildForm()
+	form := connection.NewForm()
+	form.Values.Target = ":memory:"
+	init := form.Rebuild()
 
 	// When
 	command := sequenceConnectionAction(init, connectionActionTest)
@@ -693,9 +694,9 @@ func TestConnectionForm_completionSequencesInitBeforeConnectionAction(t *testing
 func TestConnectionForm_retainsRejectedSQLiteConnection(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.focus = connectionFocusForm
-	model.connection.form.values.name = "Missing"
-	model.connection.form.values.target = t.TempDir() + "/missing.db"
+	model.connection.component.Form.Focus = connectionFocusForm
+	model.connection.component.Form.Values.Name = "Missing"
+	model.connection.component.Form.Values.Target = t.TempDir() + "/missing.db"
 
 	// When
 	updated, command := model.openConnection()
@@ -704,17 +705,17 @@ func TestConnectionForm_retainsRejectedSQLiteConnection(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.State != stateConnection || model.connection.form.values.name != "Missing" || model.connection.form.values.target == "" {
-		t.Fatalf("rejected connection = state %v, name %q, target %q", model.State, model.connection.form.values.name, model.connection.form.values.target)
+	if model.State != stateConnection || model.connection.component.Form.Values.Name != "Missing" || model.connection.component.Form.Values.Target == "" {
+		t.Fatalf("rejected connection = state %v, name %q, target %q", model.State, model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target)
 	}
 }
 
 func TestConnectionForm_resolvesEnvVarPassword(t *testing.T) {
 	t.Setenv("PERK_TEST_DB_PASS", "resolved-secret")
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
-	form.values.user, form.values.pass, form.values.target = "admin", "${PERK_TEST_DB_PASS}", "app"
-	dsn, err := mysql.ParseDSN(form.targetValue())
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "${PERK_TEST_DB_PASS}", "app"
+	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
 		t.Fatalf("parsing MySQL DSN: %v", err)
 	}
@@ -729,10 +730,10 @@ func TestConnectionForm_resolvesFilePassword(t *testing.T) {
 	if err := os.WriteFile(passFile, []byte("file-secret\n"), 0o600); err != nil {
 		t.Fatalf("writing password file: %v", err)
 	}
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
-	form.values.user, form.values.pass, form.values.target = "admin", "file://"+passFile, "app"
-	dsn, err := mysql.ParseDSN(form.targetValue())
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "file://"+passFile, "app"
+	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
 		t.Fatalf("parsing MySQL DSN: %v", err)
 	}
@@ -743,10 +744,10 @@ func TestConnectionForm_resolvesFilePassword(t *testing.T) {
 
 func TestConnectionForm_resolvesPostgresEnvVarPassword(t *testing.T) {
 	t.Setenv("PG_PASS", "pg-resolved")
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverPostgreSQL, "db.example.test", "5432"
-	form.values.user, form.values.pass, form.values.target = "analyst", "${PG_PASS}", "analytics"
-	target := form.targetValue()
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "db.example.test", "5432"
+	form.Values.User, form.Values.Pass, form.Values.Target = "analyst", "${PG_PASS}", "analytics"
+	target := form.TargetValue()
 	if !strings.Contains(target, "pg-resolved") {
 		t.Fatalf("PostgreSQL target = %q, want resolved password", target)
 	}
@@ -756,10 +757,10 @@ func TestConnectionForm_resolvesPostgresEnvVarPassword(t *testing.T) {
 }
 
 func TestConnectionForm_doesNotResolveLiteralPassword(t *testing.T) {
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
-	form.values.user, form.values.pass, form.values.target = "admin", "literal-secret", "app"
-	dsn, err := mysql.ParseDSN(form.targetValue())
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "literal-secret", "app"
+	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
 		t.Fatalf("parsing MySQL DSN: %v", err)
 	}
@@ -769,10 +770,10 @@ func TestConnectionForm_doesNotResolveLiteralPassword(t *testing.T) {
 }
 
 func TestConnectionForm_resolvesMissingEnvVarToEmpty(t *testing.T) {
-	form := newConnectionForm()
-	form.values.driver, form.values.host, form.values.port = driverMySQL, "127.0.0.1", "3306"
-	form.values.user, form.values.pass, form.values.target = "admin", "${MISSING_VAR}", "app"
-	dsn, err := mysql.ParseDSN(form.targetValue())
+	form := connection.NewForm()
+	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "${MISSING_VAR}", "app"
+	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
 		t.Fatalf("parsing MySQL DSN: %v", err)
 	}

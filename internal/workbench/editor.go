@@ -31,9 +31,9 @@ func (e *editor) setValue(value string) {
 	e.resetText()
 }
 
-func (e *editor) externalEditorValue() string { return e.value }
+func (e *editor) ExternalEditorValue() string { return e.value }
 
-func (e *editor) setExternalEditorValue(value string) { e.setValue(value) }
+func (e *editor) SetExternalEditorValue(value string) { e.setValue(value) }
 
 func (e *editor) Focus() tea.Cmd { return e.text.Focus() }
 

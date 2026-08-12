@@ -228,10 +228,10 @@ func TestStructureForm_confirmationMouseReleaseUsesScreenCoordinates(t *testing.
 	if dialog == nil {
 		t.Fatal("save confirmation = nil")
 	}
-	layout := dialog.layout(model.layout.width, model.layout.height)
+	layout := dialog.Layout(model.layout.width, model.layout.height)
 
 	// When
-	model = updateColumn(model, tea.MouseReleaseMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseNone})
+	model = updateColumn(model, tea.MouseReleaseMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseNone})
 
 	// Then
 	if !model.structure.columnForm.saving {

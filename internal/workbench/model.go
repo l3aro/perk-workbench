@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	"charm.land/bubbles/v2/textinput"
@@ -15,6 +14,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/core"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
@@ -73,17 +73,14 @@ type Model struct {
 	chat             chatModel
 }
 
-// connectionState owns the connection screen: the profile form, recent
-// profile list and filter, the database file picker, and persisted
-// profile storage.
+// connectionState owns the connection screen's root half: the database
+// file picker. The profile form, recent list/filter, and persisted
+// profiles live in the connection component; root dispatches its messages
+// and performs the database flows.
 type connectionState struct {
-	form              connectionForm
-	picker            list.Model
-	pickerDir         string
-	recent            list.Model
-	recentFilter      textinput.Model
-	recentConnections []profile.Profile
-	recentPath        string
+	component connection.Model
+	picker    list.Model
+	pickerDir string
 }
 
 // schemaState owns the schema sidebar: its list and filter, the loaded
@@ -293,10 +290,8 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		appContext:   ctx,
 		openDatabase: openDatabase,
 		connection: connectionState{
-			form:         newConnectionForm(),
-			picker:       newList("Choose database", true),
-			recent:       newList("", true),
-			recentFilter: uikit.NewFilterInput(),
+			component: connection.New(),
+			picker:    newList("Choose database", true),
 		},
 		schema: schemaState{
 			list:              newSchemaList(),
@@ -331,30 +326,24 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	if appConfig.ReadOnly {
 		// Pre-check the per-connection toggle so fresh forms keep the
 		// configured default; the user can still opt a connection back.
-		model.connection.form.values.readOnly = true
+		model.connection.component.Form.Values.ReadOnly = true
 	}
 	model.overlay.commandPalette = newCommandPalette(model)
-	model.connection.recent.SetShowTitle(false)
-	// The profiles pane renders its own persistent filter input (like the
-	// schema sidebar); the list's built-in filter bar and keybinding are
-	// unused.
-	model.connection.recent.SetShowFilter(false)
-	model.connection.recent.KeyMap.Filter = key.NewBinding(key.WithDisabled())
 	model.focusActiveTable()
 	model.queryLog.path, _ = queryLogPath()
 	model.notifications.path, _ = notificationPath()
-	model.connection.recentPath, _ = profile.Path()
+	model.connection.component.Path, _ = profile.Path()
 	model.configPath = ConfigPath()
 	var migrated bool
-	model.connection.recentConnections, migrated = profile.Load(model.connection.recentPath)
+	profiles, migrated := profile.Load(model.connection.component.Path)
+	model.connection.component.SetProfiles(profiles)
 	if migrated {
 		// Best-effort: persist the assigned legacy profile IDs immediately.
-		_ = profile.Save(model.connection.recentPath, model.connection.recentConnections)
+		model.connection.component.Save()
 	}
 	// Route every logged event into the notification popup pipeline.
 	log.SetNotifier(notification.EnqueueLogEntry)
 	notification.SetNerdFont(appConfig.NerdFont == nil || *appConfig.NerdFont)
-	_ = model.connection.recent.SetItems(recentListItems(model.connection.recentConnections))
 	return model
 }
 
@@ -544,12 +533,12 @@ func (s *browseState) reset() {
 // reset reloads the persisted profile list and clears the profile list
 // and filter inputs.
 func (s *connectionState) reset() {
-	s.recentPath, _ = profile.Path()
-	s.recentConnections, _ = profile.Load(s.recentPath)
-	_ = s.recent.SetItems(recentListItems(s.recentConnections))
-	s.recent.ResetFilter()
-	s.recentFilter.SetValue("")
-	s.recentFilter.Blur()
+	s.component.Path, _ = profile.Path()
+	profiles, _ := profile.Load(s.component.Path)
+	s.component.SetProfiles(profiles)
+	s.component.Recent.ResetFilter()
+	s.component.RecentFilter.SetValue("")
+	s.component.RecentFilter.Blur()
 }
 
 // reset closes the notification history store and clears the component's
@@ -572,7 +561,7 @@ func (m Model) Init() tea.Cmd {
 		return m.openTarget(m.Target)
 	}
 	if m.State == core.StateConnection {
-		return m.connection.form.form.Init()
+		return m.connection.component.Form.Huh.Init()
 	}
 	return nil
 }

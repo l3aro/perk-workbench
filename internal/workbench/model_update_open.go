@@ -29,7 +29,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 			m.setStatus(safeText(fmt.Sprintf("database switch failed: %v", message.err)))
 			return m, nil
 		}
-		if m.connection.form.focus == connectionFocusForm {
+		if m.connection.component.Form.Focus == connectionFocusForm {
 			m.State = stateConnection
 			m.setStatus(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
 			m.overlay.formMode.mode = formModeNormal
@@ -67,7 +67,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	name := filepath.Base(message.target)
-	if configured := strings.TrimSpace(m.connection.form.values.name); configured != "" {
+	if configured := strings.TrimSpace(m.connection.component.Form.Values.Name); configured != "" {
 		name = configured
 	}
 	m.setStatus(safeText("ready: " + name))

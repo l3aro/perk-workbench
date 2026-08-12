@@ -19,8 +19,8 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.openBrowseForm()
 		case "delete_row":
 			m.overlay.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
-				{label: "Yes, delete", action: "delete"},
-				{label: "Cancel", action: "cancel"},
+				{Label: "Yes, delete", Action: "delete"},
+				{Label: "Cancel", Action: "cancel"},
 			})
 		case "rename_table":
 			return m, m.openTableForm(menu.database, menu.table)

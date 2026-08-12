@@ -122,6 +122,8 @@ var (
 	StatusCanceledStyle                   lipgloss.Style
 	SelectedCellStyle                     lipgloss.Style
 	ButtonSaveStyle, ButtonCancelStyle    lipgloss.Style
+	ActionStyle, ActionSelectedStyle      lipgloss.Style
+	ActionFocusedStyle                    lipgloss.Style
 )
 
 // SetTheme applies the named theme palette and rebuilds the derived
@@ -200,6 +202,20 @@ func resetStyles() {
 	ButtonCancelStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(ColorInk)).
 		Background(lipgloss.Color(ColorStripe)).
+		Padding(0, SpaceCompact)
+	ActionStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorInk)).
+		Background(lipgloss.Color(ColorStripe)).
+		Padding(0, SpaceCompact)
+	ActionSelectedStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorCanvas)).
+		Background(lipgloss.Color(ColorPrimary)).
+		Bold(true).
+		Padding(0, SpaceCompact)
+	ActionFocusedStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorCanvas)).
+		Background(lipgloss.Color(ColorFocused)).
+		Bold(true).
 		Padding(0, SpaceCompact)
 }
 

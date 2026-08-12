@@ -247,7 +247,7 @@ func TestCommandPalette_connectionShowsExecutableCommands(t *testing.T) {
 
 	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.add", "connection.delete", "connection.edit", "connection.switch_to_form", "notifications.show", "table.open_target", "theme.select", "vim.toggle")
 
-	model.connection.form.focus = connectionFocusForm
+	model.connection.component.Form.Focus = connectionFocusForm
 	assertCommandIDs(t, newCommandPalette(model), "app.quit", "connection.edit_field", "connection.execute", "connection.field_next", "connection.field_prev", "connection.switch_to_list", "editor.external", "notifications.show", "table.open_target", "theme.select", "vim.toggle")
 }
 

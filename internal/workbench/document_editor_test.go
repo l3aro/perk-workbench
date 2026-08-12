@@ -153,7 +153,7 @@ func TestDocumentEditor_insertConfirmsAndSaves(t *testing.T) {
 	if !model.browse.documentEditor.confirming || model.browse.documentEditor.confirmation == nil {
 		t.Fatal("save did not open the confirmation")
 	}
-	if got := model.browse.documentEditor.confirmation.content(80); !strings.Contains(got, `{"name": "widget"}`) {
+	if got := model.browse.documentEditor.confirmation.Content(80); !strings.Contains(got, `{"name": "widget"}`) {
 		t.Fatalf("confirmation content = %q, want exact document text", got)
 	}
 

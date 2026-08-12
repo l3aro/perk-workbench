@@ -99,13 +99,13 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		if m.layout.compact {
 			return m, nil
 		}
-		if x < m.layout.schemaWidth && m.connection.form.focus != connectionFocusRecent {
-			m.connection.form.focus = connectionFocusRecent
+		if x < m.layout.schemaWidth && m.connection.component.Form.Focus != connectionFocusRecent {
+			m.connection.component.Form.Focus = connectionFocusRecent
 			return m, nil
 		}
-		if x >= m.layout.schemaWidth && m.connection.form.focus != connectionFocusForm {
-			m.connection.form.focus = connectionFocusForm
-			m.connection.recentFilter.Blur()
+		if x >= m.layout.schemaWidth && m.connection.component.Form.Focus != connectionFocusForm {
+			m.connection.component.Form.Focus = connectionFocusForm
+			m.connection.component.RecentFilter.Blur()
 		}
 		return m, nil
 	case statePicking:
@@ -145,8 +145,8 @@ func (m Model) recentItemOnPage(contentY int) (int, bool) {
 		return 0, false
 	}
 	itemOnPage := itemLine / 3
-	items := m.connection.recent.VisibleItems()
-	start, end := m.connection.recent.Paginator.GetSliceBounds(len(items))
+	items := m.connection.component.Recent.VisibleItems()
+	start, end := m.connection.component.Recent.Paginator.GetSliceBounds(len(items))
 	if start+itemOnPage >= end {
 		return 0, false
 	}
@@ -160,8 +160,8 @@ func (m Model) recentRowY(index int) int {
 	if m.schemaFilterShown() {
 		itemOffset = 6
 	}
-	items := m.connection.recent.VisibleItems()
-	start, _ := m.connection.recent.Paginator.GetSliceBounds(len(items))
+	items := m.connection.component.Recent.VisibleItems()
+	start, _ := m.connection.component.Recent.Paginator.GetSliceBounds(len(items))
 	return max(itemOffset+(index-start)*3, itemOffset)
 }
 
@@ -193,15 +193,15 @@ func (m Model) handleRecentClick(x, y int) (tea.Model, tea.Cmd) {
 	// Clicking the box focuses the input; any other click leaves filter
 	// editing so navigation keys work again.
 	if m.schemaFilterShown() && contentY >= 1 && contentY <= 3 {
-		m.connection.recentFilter.Focus()
+		m.connection.component.RecentFilter.Focus()
 		return m, nil
 	}
-	m.connection.recentFilter.Blur()
+	m.connection.component.RecentFilter.Blur()
 	index, ok := m.recentItemOnPage(contentY)
 	if !ok {
 		return m, nil
 	}
-	m.connection.recent.Select(index)
+	m.connection.component.Recent.Select(index)
 	if !m.recordFormClick(x, y) {
 		return m, nil
 	}
@@ -225,9 +225,9 @@ func (m Model) handleRecentRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	m.connection.recent.Select(index)
-	m.connection.recentFilter.Blur()
-	m.connection.form.focus = connectionFocusRecent
+	m.connection.component.Recent.Select(index)
+	m.connection.component.RecentFilter.Blur()
+	m.connection.component.Form.Focus = connectionFocusRecent
 	m.openRecentConnectionMenu(absX, absY+1)
 	return m, nil
 }
@@ -595,11 +595,11 @@ func (m Model) scrollForm(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.State == stateConnection {
-		if m.connection.form.focus == connectionFocusForm && m.connection.form.form != nil {
+		if m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Huh != nil {
 			if step > 0 {
-				return m, m.connection.form.form.NextField()
+				return m, m.connection.component.Form.Huh.NextField()
 			}
-			return m, m.connection.form.form.PrevField()
+			return m, m.connection.component.Form.Huh.PrevField()
 		}
 		return m, nil
 	}
@@ -896,7 +896,7 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		if !m.layout.compact && absX >= m.layout.schemaWidth {
 			return m, nil
 		}
-		if m.layout.compact && m.connection.form.focus != connectionFocusRecent {
+		if m.layout.compact && m.connection.component.Form.Focus != connectionFocusRecent {
 			return m, nil
 		}
 		return m.handleRecentRightClick(absX, absY)

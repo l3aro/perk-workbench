@@ -28,8 +28,8 @@ type externalEditorLocation struct {
 }
 
 type externalEditorTarget interface {
-	externalEditorValue() string
-	setExternalEditorValue(string)
+	ExternalEditorValue() string
+	SetExternalEditorValue(string)
 	Focus() tea.Cmd
 }
 
@@ -46,7 +46,7 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 		return nil, false
 	}
 	m.queryLog.editorEditTag++
-	command, err := externalEditorCommand(target.externalEditorValue(), m.queryLog.editorEditTag, location)
+	command, err := externalEditorCommand(target.ExternalEditorValue(), m.queryLog.editorEditTag, location)
 	if err != nil {
 		m.setStatus(safeText(fmt.Sprintf("opening editor: %v", err)))
 		return nil, true
@@ -69,8 +69,8 @@ func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLoc
 	switch {
 	case m.browse.cellEditor != nil:
 		return nil, externalEditorLocation{}, false
-	case m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.confirmation == nil:
-		form, location.kind = m.connection.form.form, externalEditorTargetConnection
+	case m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil:
+		form, location.kind = m.connection.component.Form.Huh, externalEditorTargetConnection
 	case m.structure.columnForm.active() && !m.structure.columnForm.confirming():
 		form, location.kind = m.structure.columnForm.form, externalEditorTargetColumn
 	case m.browse.form.active() && !m.browse.form.confirming():
@@ -156,7 +156,7 @@ func (m Model) updateExternalEditor(message sqlEditorFinishedMsg) (tea.Model, te
 		m.setStatus(safeText(fmt.Sprintf("editor failed: %v", message.err)))
 		return m, nil
 	}
-	target.setExternalEditorValue(message.value)
+	target.SetExternalEditorValue(message.value)
 	if target == m.queryLog.editor && m.queryLog.editor.value != message.value {
 		m.queryLog.editorValidity = sqlValidityPending
 		return m, tea.Batch(target.Focus(), m.scheduleSQLValidation())

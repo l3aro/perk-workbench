@@ -328,15 +328,15 @@ func TestConnectionForm_clickSelectsDriverOption(t *testing.T) {
 	// the MySQL option row is at y=4.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.driver != driverMySQL {
-		t.Fatalf("driver = %q, want mysql", model.connection.form.values.driver)
+	if model.connection.component.Form.Values.Driver != driverMySQL {
+		t.Fatalf("driver = %q, want mysql", model.connection.component.Form.Values.Driver)
 	}
 	// The rebuild resets focus to the first field, matching the keyboard
 	// path, and the form now carries the MySQL TLS select.
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "driver" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "driver" {
 		t.Fatalf("focused field = %q, want driver", got)
 	}
-	if !strings.Contains(model.connection.form.View(), "TLS") {
+	if !strings.Contains(model.connection.component.Form.View(), "TLS") {
 		t.Fatal("MySQL form has no TLS field after driver click")
 	}
 }
@@ -346,13 +346,13 @@ func TestConnectionForm_clickSwapsPortOnDriverOption(t *testing.T) {
 	model.State = stateConnection
 	model = resizeModel(model, 100, 44)
 	_ = model.newConnection()
-	model.connection.form.values.port = "5432"
+	model.connection.component.Form.Values.Port = "5432"
 	// Click the MySQL option (view line 2, screen y=4): the port follows
 	// the MySQL default, matching the keyboard driver change.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.driver != driverMySQL || model.connection.form.values.port != "3306" {
-		t.Fatalf("driver/port = %q/%q, want mysql/3306", model.connection.form.values.driver, model.connection.form.values.port)
+	if model.connection.component.Form.Values.Driver != driverMySQL || model.connection.component.Form.Values.Port != "3306" {
+		t.Fatalf("driver/port = %q/%q, want mysql/3306", model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Port)
 	}
 }
 
@@ -361,17 +361,17 @@ func TestConnectionForm_clickSelectsTLSOption(t *testing.T) {
 	model.State = stateConnection
 	model = resizeModel(model, 100, 44)
 	_ = model.newConnection()
-	model.connection.form.values.driver = driverMySQL
-	_ = model.connection.form.rebuildForm()
+	model.connection.component.Form.Values.Driver = driverMySQL
+	_ = model.connection.component.Form.Rebuild()
 	// MySQL layout: TLS title at view line 23, options at 24-26. Pane
 	// content starts at screen y=2, so "Verify certificate" is at y=26.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 26, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.mysqlTLS != mysqlTLSVerify {
-		t.Fatalf("mysqlTLS = %q, want %q", model.connection.form.values.mysqlTLS, mysqlTLSVerify)
+	if model.connection.component.Form.Values.MySQLTLS != mysqlTLSVerify {
+		t.Fatalf("mysqlTLS = %q, want %q", model.connection.component.Form.Values.MySQLTLS, mysqlTLSVerify)
 	}
 	// Focus returns to the TLS field so the pane stays scrolled to it.
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "tls" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "tls" {
 		t.Fatalf("focused field = %q, want tls", got)
 	}
 }
@@ -385,18 +385,18 @@ func TestConnectionForm_clickOnSelectTitleOnlyFocuses(t *testing.T) {
 	// click focuses the field without changing the value.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 2, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.driver != driverSQLite {
-		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.form.values.driver)
+	if model.connection.component.Form.Values.Driver != driverSQLite {
+		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.component.Form.Values.Driver)
 	}
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "driver" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "driver" {
 		t.Fatalf("focused field = %q, want driver", got)
 	}
 	// A click on the blank line under the options (view line 4, screen y=6)
 	// also leaves the value alone.
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.driver != driverSQLite {
-		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.form.values.driver)
+	if model.connection.component.Form.Values.Driver != driverSQLite {
+		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.component.Form.Values.Driver)
 	}
 }
 
@@ -407,8 +407,8 @@ func TestConnectionForm_clickSelectsWrappedTLSOption(t *testing.T) {
 	// "Encrypt, don't verify certificate" across two option rows.
 	model = resizeModel(model, 40, 44)
 	_ = model.newConnection()
-	model.connection.form.values.driver = driverMySQL
-	_ = model.connection.form.rebuildForm()
+	model.connection.component.Form.Values.Driver = driverMySQL
+	_ = model.connection.component.Form.Rebuild()
 	// Click the wrapped continuation row, then the option after the wrapped
 	// one; each click re-locates its row in the freshly rendered view (the
 	// rebuild scrolls the form viewport to the refocused TLS field).
@@ -419,7 +419,7 @@ func TestConnectionForm_clickSelectsWrappedTLSOption(t *testing.T) {
 		{label: "certificate", want: mysqlTLSSkipVerify},
 		{label: "Don't encrypt", want: mysqlTLSDisabled},
 	} {
-		view := model.connection.form.View()
+		view := model.connection.component.Form.View()
 		viewLine := -1
 		for index, line := range strings.Split(ansi.Strip(view), "\n") {
 			clean := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "┃"))
@@ -434,8 +434,8 @@ func TestConnectionForm_clickSelectsWrappedTLSOption(t *testing.T) {
 		}
 		updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: viewLine + 2, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if model.connection.form.values.mysqlTLS != test.want {
-			t.Fatalf("mysqlTLS = %q, want %q after clicking %q", model.connection.form.values.mysqlTLS, test.want, test.label)
+		if model.connection.component.Form.Values.MySQLTLS != test.want {
+			t.Fatalf("mysqlTLS = %q, want %q after clicking %q", model.connection.component.Form.Values.MySQLTLS, test.want, test.label)
 		}
 	}
 }
@@ -448,28 +448,28 @@ func TestConnectionForm_clickValueReadingLikeOptionFocusesField(t *testing.T) {
 	// A Name value that reads like a driver label must not change the
 	// driver: the click focuses the input field instead. Name title at
 	// view line 5, value at 6; pane content starts at screen y=2.
-	model.connection.form.values.name = "MySQL"
-	_ = model.connection.form.rebuildForm()
+	model.connection.component.Form.Values.Name = "MySQL"
+	_ = model.connection.component.Form.Rebuild()
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 8, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.driver != driverSQLite {
-		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.form.values.driver)
+	if model.connection.component.Form.Values.Driver != driverSQLite {
+		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.component.Form.Values.Driver)
 	}
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "name" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
 	}
 	// A Database value that reads like a wrapped TLS fragment must not
 	// change the TLS mode. Database title at view line 20, value at 21
 	// (screen y=23).
-	model.connection.form.values.driver = driverMySQL
-	model.connection.form.values.target = "certificate"
-	_ = model.connection.form.rebuildForm()
+	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Target = "certificate"
+	_ = model.connection.component.Form.Rebuild()
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 23, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.connection.form.values.mysqlTLS != mysqlTLSDisabled {
-		t.Fatalf("mysqlTLS = %q, want disabled unchanged", model.connection.form.values.mysqlTLS)
+	if model.connection.component.Form.Values.MySQLTLS != mysqlTLSDisabled {
+		t.Fatalf("mysqlTLS = %q, want disabled unchanged", model.connection.component.Form.Values.MySQLTLS)
 	}
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "database" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "database" {
 		t.Fatalf("focused field = %q, want database", got)
 	}
 }
@@ -483,7 +483,7 @@ func TestConnectionForm_clickFocusesClickedField(t *testing.T) {
 	// content starts at screen y=2, so the Name title is at y=7.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 8, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "name" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
 	}
 	if model.overlay.formMode.mode != formModeNormal {
@@ -504,7 +504,7 @@ func TestConnectionForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	if model.overlay.formMode.mode != formModeInsert {
 		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
 	}
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "target" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "target" {
 		t.Fatalf("focused field = %q, want target", got)
 	}
 }
@@ -523,8 +523,8 @@ func TestConnectionForm_clickExecutesActionButtons(t *testing.T) {
 			model.State = stateConnection
 			model = resizeModel(model, 100, 30)
 			_ = model.newConnection()
-			model.connection.form.values.target = ":memory:"
-			lines := strings.Split(ansi.Strip(model.connection.form.View()), "\n")
+			model.connection.component.Form.Values.Target = ":memory:"
+			lines := strings.Split(ansi.Strip(model.connection.component.Form.View()), "\n")
 			buttonLine, x := -1, -1
 			for line, text := range lines {
 				if start := strings.Index(text, test.action); start >= 0 {
@@ -567,15 +567,15 @@ func TestConnectionForm_compactClickExecutesActionButtons(t *testing.T) {
 		t.Fatal("model not compact after small resize")
 	}
 	_ = model.newConnection()
-	model.connection.form.values.target = ":memory:"
+	model.connection.component.Form.Values.Target = ":memory:"
 	for range 4 {
 		updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 		model = updated.(Model)
 	}
-	if got := model.connection.form.form.GetFocusedField().GetKey(); got != "action" {
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "action" {
 		t.Fatalf("focused field = %q, want action", got)
 	}
-	lines := strings.Split(ansi.Strip(model.connection.form.View()), "\n")
+	lines := strings.Split(ansi.Strip(model.connection.component.Form.View()), "\n")
 	buttonLine, x := -1, -1
 	for line, text := range lines {
 		if start := strings.Index(text, connectionActionTest); start >= 0 {

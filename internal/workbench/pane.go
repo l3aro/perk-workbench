@@ -208,7 +208,7 @@ func (m Model) recentFilterRow() string {
 	if !m.schemaFilterShown() {
 		return ""
 	}
-	return m.filterInputRow(m.connection.recentFilter, max(m.layout.schemaWidth-4, 0))
+	return m.filterInputRow(m.connection.component.RecentFilter, max(m.layout.schemaWidth-4, 0))
 }
 
 // abbreviateCount renders a compact human-readable count: 10k, 490k,

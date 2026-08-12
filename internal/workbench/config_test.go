@@ -93,7 +93,7 @@ func TestSetAppConfig_applies_defaults_to_new_models(t *testing.T) {
 	if !model.ReadOnly {
 		t.Fatal("ReadOnly = false, want true from config")
 	}
-	if !model.connection.form.values.readOnly {
+	if !model.connection.component.Form.Values.ReadOnly {
 		t.Fatal("connection form readOnly = false, want pre-checked from config")
 	}
 	if activeTheme != themeNord {

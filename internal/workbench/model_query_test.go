@@ -547,10 +547,10 @@ func TestExecute_destructive_statement_clickingYes_runsQuery(t *testing.T) {
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
 	dialog := model.overlay.queryConfirmation.dialog
-	layout := dialog.layout(model.layout.width, model.layout.height)
+	layout := dialog.Layout(model.layout.width, model.layout.height)
 
 	// When
-	updated, command := model.Update(tea.MouseClickMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseLeft})
+	updated, command := model.Update(tea.MouseClickMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseLeft})
 	model = updated.(Model)
 
 	// Then

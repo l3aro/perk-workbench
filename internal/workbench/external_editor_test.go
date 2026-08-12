@@ -87,10 +87,10 @@ func TestModel_ctrlEEditsFocusedHuhInput(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
 	model := readyModel(t)
 	model.State = stateConnection
-	model.connection.form.setFocus(connectionFocusForm)
-	model.connection.form.values.name = "before"
-	model.overlay.formMode.beginHuh(model.connection.form.focusForm())
-	updated, _ := model.Update(model.connection.form.form.NextField()())
+	model.connection.component.Form.SetFocus(connectionFocusForm)
+	model.connection.component.Form.Values.Name = "before"
+	model.overlay.formMode.beginHuh(model.connection.component.Form.FocusForm())
+	updated, _ := model.Update(model.connection.component.Form.Huh.NextField()())
 	model = updated.(Model)
 
 	// When
@@ -107,7 +107,7 @@ func TestModel_ctrlEEditsFocusedHuhInput(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.connection.form.values.name; got != "after" {
+	if got := model.connection.component.Form.Values.Name; got != "after" {
 		t.Fatalf("connection editor value = %q, want after", got)
 	}
 }
@@ -117,8 +117,8 @@ func TestModel_ctrlEIgnoresFocusedHuhSelect(t *testing.T) {
 	t.Setenv("EDITOR", "true")
 	model := readyModel(t)
 	model.State = stateConnection
-	model.connection.form.setFocus(connectionFocusForm)
-	model.overlay.formMode.beginHuh(model.connection.form.focusForm())
+	model.connection.component.Form.SetFocus(connectionFocusForm)
+	model.overlay.formMode.beginHuh(model.connection.component.Form.FocusForm())
 
 	// When
 	_, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})

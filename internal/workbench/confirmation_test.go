@@ -10,13 +10,13 @@ import (
 func TestConfirmationDialog_clickingOptionCompletesWithItsAction(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Delete row?", "DELETE FROM projects", []confirmationOption{
-		{label: "Yes, delete", action: "delete"},
-		{label: "Cancel", action: "cancel"},
+		{Label: "Yes, delete", Action: "delete"},
+		{Label: "Cancel", Action: "cancel"},
 	})
 
 	// When
-	layout := dialog.layout(40, 20)
-	completed, action := dialog.Update(tea.MouseClickMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseLeft}, 40, 20)
+	layout := dialog.Layout(40, 20)
+	completed, action := dialog.Update(tea.MouseClickMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseLeft}, 40, 20)
 
 	// Then
 	if !completed || action != "delete" {
@@ -27,8 +27,8 @@ func TestConfirmationDialog_clickingOptionCompletesWithItsAction(t *testing.T) {
 func TestConfirmationDialog_yAndEscapeConfirmAndCancel(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Save changes?", "", []confirmationOption{
-		{label: "Yes", action: "save"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "save"},
+		{Label: "No", Action: "cancel"},
 	})
 
 	// When
@@ -41,8 +41,8 @@ func TestConfirmationDialog_yAndEscapeConfirmAndCancel(t *testing.T) {
 
 	// Given
 	dialog = newConfirmationDialog("Save changes?", "", []confirmationOption{
-		{label: "Yes", action: "save"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "save"},
+		{Label: "No", Action: "cancel"},
 	})
 
 	// When
@@ -57,52 +57,52 @@ func TestConfirmationDialog_yAndEscapeConfirmAndCancel(t *testing.T) {
 func TestConfirmationDialog_shortTerminalKeepsEveryOptionClickable(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Run destructive SQL?", "CREATE TABLE projects (id INTEGER)", []confirmationOption{
-		{label: "Yes", action: "run"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "run"},
+		{Label: "No", Action: "cancel"},
 	})
-	layout := dialog.layout(100, 5)
+	layout := dialog.Layout(100, 5)
 
 	// When
-	completed, action := dialog.Update(tea.MouseClickMsg{X: layout.buttonX[1], Y: layout.buttonY[1], Button: tea.MouseLeft}, 100, 5)
+	completed, action := dialog.Update(tea.MouseClickMsg{X: layout.ButtonX[1], Y: layout.ButtonY[1], Button: tea.MouseLeft}, 100, 5)
 
 	// Then
-	if layout.buttonY[0] >= 5 || layout.buttonY[1] >= 5 || !completed || action != "cancel" {
-		t.Fatalf("short layout = buttons:%v completed:%t action:%q, want visible buttons and cancel", layout.buttonY, completed, action)
+	if layout.ButtonY[0] >= 5 || layout.ButtonY[1] >= 5 || !completed || action != "cancel" {
+		t.Fatalf("short layout = buttons:%v completed:%t action:%q, want visible buttons and cancel", layout.ButtonY, completed, action)
 	}
 }
 
 func TestConfirmationDialog_helpTextFitsInsideCard(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Discard row changes?", "", []confirmationOption{
-		{label: "Yes", action: "discard"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "discard"},
+		{Label: "No", Action: "cancel"},
 	})
 
 	// When
-	layout := dialog.layout(80, 20)
+	layout := dialog.Layout(80, 20)
 
 	// Then
-	if !layout.showHelp || layout.contentWidth < ansi.StringWidth("←/→ toggle • enter select") {
-		t.Fatalf("help layout = show:%t width:%d, want visible help with its full width", layout.showHelp, layout.contentWidth)
+	if !layout.ShowHelp || layout.ContentWidth < ansi.StringWidth("←/→ toggle • enter select") {
+		t.Fatalf("help layout = show:%t width:%d, want visible help with its full width", layout.ShowHelp, layout.ContentWidth)
 	}
 }
 
 func TestConfirmationDialog_buttonsAreCenteredAndEqualWidth(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Discard row changes?", "", []confirmationOption{
-		{label: "Yes", action: "discard"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "discard"},
+		{Label: "No", Action: "cancel"},
 	})
 
 	// When
-	layout := dialog.layout(80, 20)
+	layout := dialog.Layout(80, 20)
 
 	// Then
-	if layout.buttonWidth[0] != layout.buttonWidth[1] {
-		t.Fatalf("button widths = %v, want equal widths", layout.buttonWidth)
+	if layout.ButtonWidth[0] != layout.ButtonWidth[1] {
+		t.Fatalf("button widths = %v, want equal widths", layout.ButtonWidth)
 	}
-	groupCenter := layout.buttonX[0] + layout.buttonX[1] + layout.buttonWidth[1]
-	cardCenter := (layout.x - 2) + (layout.x + layout.contentWidth + 6)
+	groupCenter := layout.ButtonX[0] + layout.ButtonX[1] + layout.ButtonWidth[1]
+	cardCenter := (layout.X - 2) + (layout.X + layout.ContentWidth + 6)
 	if groupCenter < cardCenter-1 || groupCenter > cardCenter+1 {
 		t.Fatalf("button center = %d, card center = %d, want centered", groupCenter, cardCenter)
 	}
@@ -111,13 +111,13 @@ func TestConfirmationDialog_buttonsAreCenteredAndEqualWidth(t *testing.T) {
 func TestConfirmationDialog_mouseReleaseCompletesWithItsAction(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Discard changes?", "", []confirmationOption{
-		{label: "Yes", action: "discard"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "discard"},
+		{Label: "No", Action: "cancel"},
 	})
-	layout := dialog.layout(40, 20)
+	layout := dialog.Layout(40, 20)
 
 	// When
-	completed, action := dialog.Update(tea.MouseReleaseMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseLeft}, 40, 20)
+	completed, action := dialog.Update(tea.MouseReleaseMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseLeft}, 40, 20)
 
 	// Then
 	if !completed || action != "discard" {
@@ -128,13 +128,13 @@ func TestConfirmationDialog_mouseReleaseCompletesWithItsAction(t *testing.T) {
 func TestConfirmationDialog_buttonlessMouseReleaseCompletesWithItsAction(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Discard changes?", "", []confirmationOption{
-		{label: "Yes", action: "discard"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "discard"},
+		{Label: "No", Action: "cancel"},
 	})
-	layout := dialog.layout(40, 20)
+	layout := dialog.Layout(40, 20)
 
 	// When
-	completed, action := dialog.Update(tea.MouseReleaseMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseNone}, 40, 20)
+	completed, action := dialog.Update(tea.MouseReleaseMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseNone}, 40, 20)
 
 	// Then
 	if !completed || action != "discard" {
@@ -145,13 +145,13 @@ func TestConfirmationDialog_buttonlessMouseReleaseCompletesWithItsAction(t *test
 func TestConfirmationDialog_mouseMotionCompletesWithItsAction(t *testing.T) {
 	// Given
 	dialog := newConfirmationDialog("Discard changes?", "", []confirmationOption{
-		{label: "Yes", action: "discard"},
-		{label: "No", action: "cancel"},
+		{Label: "Yes", Action: "discard"},
+		{Label: "No", Action: "cancel"},
 	})
-	layout := dialog.layout(40, 20)
+	layout := dialog.Layout(40, 20)
 
 	// When
-	completed, action := dialog.Update(tea.MouseMotionMsg{X: layout.buttonX[0], Y: layout.buttonY[0], Button: tea.MouseLeft}, 40, 20)
+	completed, action := dialog.Update(tea.MouseMotionMsg{X: layout.ButtonX[0], Y: layout.ButtonY[0], Button: tea.MouseLeft}, 40, 20)
 
 	// Then
 	if !completed || action != "discard" {

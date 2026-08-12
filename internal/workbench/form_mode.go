@@ -121,8 +121,8 @@ func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
 		return nil
 	}
 	switch {
-	case m.State == stateConnection && m.connection.form.focus == connectionFocusForm && m.connection.form.form != nil && m.connection.form.confirmation == nil:
-		return m.overlay.formMode.beginHuh(m.connection.form.focusForm())
+	case m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Huh != nil && m.connection.component.Form.Confirmation == nil:
+		return m.overlay.formMode.beginHuh(m.connection.component.Form.FocusForm())
 	case m.sqlEditorActive() && !m.tableFormOpen():
 		return m.overlay.formMode.beginInsert(m.queryLog.editor)
 	case m.structure.columnForm.active():

@@ -250,20 +250,20 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 	case stateConnection:
 		if m.layout.compact {
-			if m.connection.form.focus == connectionFocusRecent {
+			if m.connection.component.Form.Focus == connectionFocusRecent {
 				return m.handleRecentClick(x, y)
 			}
 		} else if x < m.layout.schemaWidth {
 			return m.handleRecentClick(x, y)
 		}
-		if m.connection.form.focus != connectionFocusForm || m.connection.form.form == nil || m.connection.form.confirmation != nil {
+		if m.connection.component.Form.Focus != connectionFocusForm || m.connection.component.Form.Huh == nil || m.connection.component.Form.Confirmation != nil {
 			return m, nil
 		}
 		// A click on the Test connection / Connect buttons executes the
 		// action, matching Enter on the focused action field.
-		if action := connectionActionAt(m.connection.form.View(), contentY-1, x-workspaceLeft-1); action != "" {
+		if action := connectionActionAt(m.connection.component.Form.View(), contentY-1, x-workspaceLeft-1); action != "" {
 			m.overlay.formMode.mode = formModeNormal
-			m.connection.form.blur()
+			m.connection.component.Form.Blur()
 			if action == connectionActionTest {
 				return m, m.testConnection()
 			}
@@ -271,10 +271,10 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		// A click on an option row of the Driver or TLS select selects it:
 		// huh's select fields don't handle mouse clicks.
-		if field, option := m.connection.form.selectOptionAt(m.connection.form.View(), contentY-1); field != "" {
-			return m, m.connection.form.applySelectOption(field, option)
+		if field, option := m.connection.component.Form.SelectOptionAt(m.connection.component.Form.View(), contentY-1); field != "" {
+			return m, m.connection.component.Form.ApplySelectOption(field, option)
 		}
-		return m.clickFormField(x, y, m.connection.form.View(), 0, contentY-1, m.connection.form.fieldTitles(), m.connection.form.focusField, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.connection.form.focusForm()) })
+		return m.clickFormField(x, y, m.connection.component.Form.View(), 0, contentY-1, m.connection.component.Form.FieldTitles(), m.connection.component.Form.FocusField, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.connection.component.Form.FocusForm()) })
 	}
 	return m, nil
 }

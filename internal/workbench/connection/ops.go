@@ -1,0 +1,133 @@
+package connection
+
+import (
+	"path/filepath"
+	"strings"
+
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
+)
+
+// ValidationMsg asks the root to re-render the form focused on its first
+// invalid field after a failed validation attempt.
+type ValidationMsg struct{}
+
+// Same reports whether two profiles describe the same connection: SQLite
+// profiles match by resolved target, server profiles by name.
+func Same(left, right profile.Profile) bool {
+	if left.Driver != right.Driver {
+		return false
+	}
+	if left.Driver == DriverSQLite {
+		return left.Target == right.Target
+	}
+	return left.Name == right.Name
+}
+
+// Record saves the form's current credentials as a recent profile.
+// openedTarget is the target that was actually opened (Connect after
+// updateOpen, or the target a successful Test just verified); for SQLite
+// it wins over the form value, so Connect records the resolved file while
+// Test records the form target and never picks up a previously connected
+// root target. readOnly is the root's current read-only default.
+func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, error) {
+	driver := m.Form.Values.Driver
+	if driver == "" {
+		driver = DriverSQLite
+	}
+	target := strings.TrimSpace(m.Form.Values.Target)
+	name := strings.TrimSpace(m.Form.Values.Name)
+	if driver == DriverSQLite {
+		if opened := strings.TrimSpace(openedTarget); opened != "" {
+			target = opened
+		}
+		if name == "" {
+			name = filepath.Base(target)
+		}
+	} else if name == "" {
+		name = m.Form.ConnectionName()
+	}
+	connection := profile.Profile{
+		Driver:   driver,
+		Name:     name,
+		Target:   target,
+		Pass:     m.Form.Values.Pass,
+		ReadOnly: readOnly,
+	}
+	if connection.Driver != DriverSQLite {
+		connection.Host = m.Form.HostValue()
+		connection.Port = m.Form.PortValue()
+		connection.User = strings.TrimSpace(m.Form.Values.User)
+		switch connection.Driver {
+		case DriverMySQL:
+			connection.MySQLTLS = m.Form.Values.MySQLTLS
+		case DriverPostgreSQL:
+			connection.PostgreSQLTLS = m.Form.Values.PostgreSQLTLS
+		}
+	}
+	// Reuse or generate the opaque profile identity. Editing a profile
+	// keeps its ID; a new profile that matches an existing one reuses that
+	// ID so its scoped chat/query history survives; otherwise mint a
+	// UUIDv7. Never write a profile without a valid scope.
+	id := strings.TrimSpace(m.Form.Values.ID)
+	if !profile.ValidID(id) {
+		for _, existing := range m.Profiles {
+			if Same(existing, connection) && profile.ValidID(existing.ID) {
+				id = existing.ID
+				break
+			}
+		}
+	}
+	if !profile.ValidID(id) {
+		generated, err := profile.NewID()
+		if err != nil {
+			return profile.Profile{}, err
+		}
+		id = generated
+	}
+	connection.ID = id
+	connections := make([]profile.Profile, 0, min(len(m.Profiles)+1, profile.MaxProfiles))
+	connections = append(connections, connection)
+	for _, existing := range m.Profiles {
+		if Same(existing, connection) {
+			continue
+		}
+		if len(connections) == profile.MaxProfiles {
+			break
+		}
+		connections = append(connections, existing)
+	}
+	m.SetProfiles(connections)
+	m.Save()
+	return connection, nil
+}
+
+// LoadValues copies a saved profile into the connection form's values,
+// normalizing empty TLS modes to the disabled defaults.
+func (m *Model) LoadValues(connection profile.Profile) {
+	m.Form.Values.Driver, m.Form.Values.Name, m.Form.Values.Target = connection.Driver, connection.Name, connection.Target
+	m.Form.Values.ID = connection.ID
+	m.Form.Values.Host, m.Form.Values.Port, m.Form.Values.User = connection.Host, connection.Port, connection.User
+	m.Form.Values.MySQLTLS = connection.MySQLTLS
+	if m.Form.Values.MySQLTLS == "" {
+		m.Form.Values.MySQLTLS = MySQLTLSDisabled
+	}
+	m.Form.Values.PostgreSQLTLS = connection.PostgreSQLTLS
+	if m.Form.Values.PostgreSQLTLS == "" {
+		m.Form.Values.PostgreSQLTLS = PostgreSQLTLSDisabled
+	}
+	m.Form.Values.ReadOnly = connection.ReadOnly
+	m.Form.Values.Pass = connection.Pass
+}
+
+// Delete removes the given profile from the recent list.
+func (m *Model) Delete(connection profile.Profile) {
+	connections := make([]profile.Profile, 0, len(m.Profiles)-1)
+	for _, existing := range m.Profiles {
+		if Same(existing, connection) {
+			continue
+		}
+		connections = append(connections, existing)
+	}
+	m.SetProfiles(connections)
+	m.Save()
+}

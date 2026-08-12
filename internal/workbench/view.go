@@ -66,14 +66,14 @@ func (m Model) View() tea.View {
 	}
 	if m.browse.cellEditor != nil || m.browse.cellViewer != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
 		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() ||
-		m.connection.form.confirmation != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.overlay.queryConfirmation != nil || m.hasConfirming() {
+		m.connection.component.Form.Confirmation != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.overlay.queryConfirmation != nil || m.hasConfirming() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
 		if m.overlay.contextMenu != nil {
 			m.drawContextMenu(canvas)
 		} else if dialog := m.activeConfirmation(); dialog != nil {
-			dialog.draw(canvas)
+			dialog.Draw(canvas)
 		} else if dialog := m.confirmContent(); dialog != "" {
 			m.drawConfirmDialog(canvas, dialog)
 		} else if m.browse.cellViewer != nil {
@@ -151,7 +151,7 @@ func (m Model) tableFormOpen() bool {
 
 func (m Model) hasConfirming() bool {
 	return m.overlay.explainPicker != nil || m.overlay.quitDialog != nil || m.overlay.queryConfirmation != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
-		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() || m.connection.form.confirmation != nil || m.tableFormOpen() ||
+		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() || m.connection.component.Form.Confirmation != nil || m.tableFormOpen() ||
 		(m.browse.cellEditor != nil && m.browse.cellEditor.confirming) ||
 		(m.browse.documentEditor != nil && m.browse.documentEditor.confirming) ||
 		(m.chat.activeRun().pendingWrite != nil && m.chat.activeRun().pendingWrite.dialog != nil)
@@ -171,8 +171,8 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.structure.indexForm.confirmation
 	case m.structure.foreignKeyForm.confirming():
 		return m.structure.foreignKeyForm.confirmation
-	case m.connection.form.confirmation != nil:
-		return m.connection.form.confirmation
+	case m.connection.component.Form.Confirmation != nil:
+		return m.connection.component.Form.Confirmation
 	case m.tableFormOpen() && m.structure.tableForm.confirming():
 		return m.structure.tableForm.confirmation
 	case m.overlay.deleteConfirm != nil:
@@ -198,7 +198,7 @@ func (m Model) confirmContent() string {
 	case m.browse.cellEditor != nil:
 		return m.browse.cellEditor.confirmContent()
 	case m.overlay.queryConfirmation != nil:
-		raw = m.overlay.queryConfirmation.dialog.content(m.layout.width)
+		raw = m.overlay.queryConfirmation.dialog.Content(m.layout.width)
 	case m.overlay.explainPicker != nil:
 		raw = m.overlay.explainPicker.form.View()
 	case m.tableFormOpen():
@@ -206,21 +206,21 @@ func (m Model) confirmContent() string {
 	case m.chat.historyPicker != nil:
 		raw = m.chat.historyPicker.View()
 	case m.overlay.quitDialog != nil:
-		raw = m.overlay.quitDialog.content(m.layout.width)
+		raw = m.overlay.quitDialog.Content(m.layout.width)
 	case m.structure.columnForm.confirming():
-		raw = m.structure.columnForm.confirmation.content(m.layout.width)
+		raw = m.structure.columnForm.confirmation.Content(m.layout.width)
 	case m.browse.form.confirming():
-		raw = m.browse.form.confirmation.content(m.layout.width)
+		raw = m.browse.form.confirmation.Content(m.layout.width)
 	case m.structure.indexForm.confirming():
-		raw = m.structure.indexForm.confirmation.content(m.layout.width)
+		raw = m.structure.indexForm.confirmation.Content(m.layout.width)
 	case m.structure.foreignKeyForm.confirming():
-		raw = m.structure.foreignKeyForm.confirmation.content(m.layout.width)
-	case m.connection.form.confirmation != nil:
-		raw = m.connection.form.confirmation.content(m.layout.width)
+		raw = m.structure.foreignKeyForm.confirmation.Content(m.layout.width)
+	case m.connection.component.Form.Confirmation != nil:
+		raw = m.connection.component.Form.Confirmation.Content(m.layout.width)
 	case m.overlay.deleteConfirm != nil:
-		raw = m.overlay.deleteConfirm.content(m.layout.width)
+		raw = m.overlay.deleteConfirm.Content(m.layout.width)
 	case m.chat.activeRun().pendingWrite != nil:
-		return m.chat.activeRun().pendingWrite.dialog.content(m.layout.width)
+		return m.chat.activeRun().pendingWrite.dialog.Content(m.layout.width)
 	}
 	if raw == "" {
 		return ""
@@ -439,13 +439,13 @@ func (m Model) contentView() string {
 	case stateConnection:
 		if m.layout.compact {
 			title, content := "Connection <2>", m.connectionPaneView(max(m.layout.height-6, 0))
-			if m.connection.form.focus == connectionFocusRecent {
+			if m.connection.component.Form.Focus == connectionFocusRecent {
 				title, content = "Profiles <1>", m.recentPaneView()
 			}
 			return titledPane(title, content, paneStyle(true).Width(max(m.layout.width-2, 0)).MaxWidth(max(m.layout.width-2, 0)).Height(max(m.layout.height-4, 0)).MaxHeight(max(m.layout.height-4, 0)))
 		}
-		left := titledPane("Profiles <1>", m.recentPaneView(), paneStyle(m.connection.form.focus == connectionFocusRecent).Width(max(m.layout.schemaWidth-2, 0)).Height(max(m.layout.height-4, 0)))
-		right := titledPane("Connection <2>", m.connectionPaneView(max(m.layout.height-6, 0)), paneStyle(m.connection.form.focus != connectionFocusRecent).Width(max(m.layout.width-m.layout.schemaWidth, 0)).Height(max(m.layout.height-4, 0)))
+		left := titledPane("Profiles <1>", m.recentPaneView(), paneStyle(m.connection.component.Form.Focus == connectionFocusRecent).Width(max(m.layout.schemaWidth-2, 0)).Height(max(m.layout.height-4, 0)))
+		right := titledPane("Connection <2>", m.connectionPaneView(max(m.layout.height-6, 0)), paneStyle(m.connection.component.Form.Focus != connectionFocusRecent).Width(max(m.layout.width-m.layout.schemaWidth, 0)).Height(max(m.layout.height-4, 0)))
 		return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	case statePicking:
 		return paneStyle(true).Width(max(m.layout.width-2, 0)).Height(max(m.layout.height-4, 0)).Render(m.connection.picker.View())

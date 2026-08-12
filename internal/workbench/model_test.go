@@ -94,8 +94,8 @@ func TestOpen_missing_target_is_a_recoverable_failure(t *testing.T) {
 
 func TestNew_connectionScreenFocusesRecentConnections(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	if model.connection.form.focus != connectionFocusRecent {
-		t.Fatalf("connection focus = %d, want recent connections", model.connection.form.focus)
+	if model.connection.component.Form.Focus != connectionFocusRecent {
+		t.Fatalf("connection focus = %d, want recent connections", model.connection.component.Form.Focus)
 	}
 }
 
@@ -465,7 +465,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := profile.Load(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.component.Path)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -482,7 +482,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := profile.Load(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.component.Path)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -490,7 +490,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 	t.Run("connection form", func(t *testing.T) {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 		model := New("", context.Background(), testOpen, false)
-		model.connection.form.values.name, model.connection.form.values.target = "Form", target
+		model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "Form", target
 		updated, command := model.openConnection()
 		model = updated.(Model)
 		if command == nil {
@@ -501,7 +501,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := profile.Load(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.component.Path)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -518,7 +518,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.connectionID != "" {
 			t.Fatalf("failed open set connection ID %q", model.connectionID)
 		}
-		loaded, _ := profile.Load(model.connection.recentPath)
+		loaded, _ := profile.Load(model.connection.component.Path)
 		if len(loaded) != 0 {
 			t.Fatalf("failed open saved profiles = %#v, want none", loaded)
 		}
@@ -550,7 +550,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	}
 
 	model := New("", context.Background(), testOpen, false)
-	model.connection.form.values.name, model.connection.form.values.target = "A", aPath
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "A", aPath
 	updated, command := model.openConnection()
 	model = updated.(Model)
 	updated, _ = model.Update(command())
@@ -597,7 +597,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 			Objects: []sharedsql.SchemaObject{{Database: "b_db", Type: "database", Name: "b_db"}},
 		}, nil
 	}, false)
-	model.connection.form.values.name, model.connection.form.values.target = "B", bTarget
+	model.connection.component.Form.Values.Name, model.connection.component.Form.Values.Target = "B", bTarget
 	updated, command = model.openConnection()
 	model = updated.(Model)
 	updated, _ = model.Update(command())

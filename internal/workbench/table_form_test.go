@@ -98,7 +98,7 @@ func TestSchemaRename_viaM_renamesAndRefreshesSidebar(t *testing.T) {
 	if !model.structure.tableForm.confirming() || model.overlay.formMode.mode != formModeConfirm {
 		t.Fatalf("ctrl+s did not confirm: confirming=%t mode=%d", model.structure.tableForm.confirming(), model.overlay.formMode.mode)
 	}
-	if got, want := model.structure.tableForm.confirmation.description, `ALTER TABLE "old" RENAME TO "new"`; got != want {
+	if got, want := model.structure.tableForm.confirmation.Description, `ALTER TABLE "old" RENAME TO "new"`; got != want {
 		t.Fatalf("confirmation description = %q, want %q", got, want)
 	}
 
@@ -178,7 +178,7 @@ func TestSchemaAddTable_viaA_createsAndRefreshesSidebar(t *testing.T) {
 			}
 			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			model = updated.(Model)
-			if got, want := model.structure.tableForm.confirmation.description, `CREATE TABLE "created" (id INTEGER PRIMARY KEY)`; got != want {
+			if got, want := model.structure.tableForm.confirmation.Description, `CREATE TABLE "created" (id INTEGER PRIMARY KEY)`; got != want {
 				t.Fatalf("confirmation description = %q, want %q", got, want)
 			}
 			updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -298,8 +298,8 @@ func TestSchemaDelete_viaD_dropsTable(t *testing.T) {
 	if model.overlay.deleteConfirm == nil {
 		t.Fatal("d did not open the delete confirmation")
 	}
-	if !strings.Contains(model.overlay.deleteConfirm.description, `DROP TABLE "old"`) {
-		t.Fatalf("delete description = %q, want DROP TABLE \"old\"", model.overlay.deleteConfirm.description)
+	if !strings.Contains(model.overlay.deleteConfirm.Description, `DROP TABLE "old"`) {
+		t.Fatalf("delete description = %q, want DROP TABLE \"old\"", model.overlay.deleteConfirm.Description)
 	}
 
 	// When: decline; the table stays.
@@ -373,7 +373,7 @@ func TestSchemaContextMenu_renameDeleteViaRightClick(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = updated.(Model)
-	if model.overlay.deleteConfirm == nil || !strings.Contains(model.overlay.deleteConfirm.description, `DROP TABLE "old"`) {
+	if model.overlay.deleteConfirm == nil || !strings.Contains(model.overlay.deleteConfirm.Description, `DROP TABLE "old"`) {
 		t.Fatalf("d did not open the delete confirmation: %+v", model.overlay.deleteConfirm)
 	}
 
@@ -548,7 +548,7 @@ func TestSchemaCreateDatabase_flowConfirmsRunsAndRefreshes(t *testing.T) {
 				t.Fatal("Enter did not open the create-database confirmation")
 			}
 			want := "CREATE DATABASE " + tt.quote + "orders" + tt.quote
-			if got := model.structure.tableForm.confirmation.description; got != want {
+			if got := model.structure.tableForm.confirmation.Description; got != want {
 				t.Fatalf("confirmation DDL = %q, want %q", got, want)
 			}
 
@@ -915,8 +915,8 @@ func TestPostgresTree_reconnectDoesNotRecordProfile(t *testing.T) {
 	}
 	model = driveCommand(model, command)
 
-	if len(model.connection.recentConnections) != 0 {
-		t.Fatalf("reconnect recorded %d profiles, want none", len(model.connection.recentConnections))
+	if len(model.connection.component.Profiles) != 0 {
+		t.Fatalf("reconnect recorded %d profiles, want none", len(model.connection.component.Profiles))
 	}
 	if len(*opened) != 1 {
 		t.Fatalf("reopened %v targets, want 1", *opened)
@@ -1089,7 +1089,7 @@ func TestSchemaAddTable_onPostgresSchemaNodeTargetsSchema(t *testing.T) {
 	model.structure.tableForm.name = "new"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if got, want := model.structure.tableForm.confirmation.description, `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`; got != want {
+	if got, want := model.structure.tableForm.confirmation.Description, `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`; got != want {
 		t.Fatalf("confirmation DDL = %q, want %q", got, want)
 	}
 }
@@ -1261,7 +1261,7 @@ func TestSchemaCreateSchema_flowConfirmsRunsAndRefreshes(t *testing.T) {
 	if !model.structure.tableForm.confirming() {
 		t.Fatal("Enter did not open the create-schema confirmation")
 	}
-	if got, want := model.structure.tableForm.confirmation.description, `CREATE SCHEMA "audit"`; got != want {
+	if got, want := model.structure.tableForm.confirmation.Description, `CREATE SCHEMA "audit"`; got != want {
 		t.Fatalf("confirmation DDL = %q, want %q", got, want)
 	}
 
@@ -1305,7 +1305,7 @@ func TestSchemaRenameSchema_flowConfirmsRunsAndRefreshes(t *testing.T) {
 	model.structure.tableForm.name = "renamed"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if got, want := model.structure.tableForm.confirmation.description, `ALTER SCHEMA "public" RENAME TO "renamed"`; got != want {
+	if got, want := model.structure.tableForm.confirmation.Description, `ALTER SCHEMA "public" RENAME TO "renamed"`; got != want {
 		t.Fatalf("confirmation DDL = %q, want %q", got, want)
 	}
 
@@ -1344,7 +1344,7 @@ func TestSchemaRenameDatabase_flowConfirmsRunsAndRefreshes(t *testing.T) {
 	model.structure.tableForm.name = "holdings"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if got, want := model.structure.tableForm.confirmation.description, `ALTER DATABASE "archive" RENAME TO "holdings"`; got != want {
+	if got, want := model.structure.tableForm.confirmation.Description, `ALTER DATABASE "archive" RENAME TO "holdings"`; got != want {
 		t.Fatalf("confirmation DDL = %q, want %q", got, want)
 	}
 
@@ -1374,7 +1374,7 @@ func TestSchemaDeleteSchema_confirmsRestrictAndRefreshes(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 	model = updated.(Model)
-	if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.description != `DROP SCHEMA "public" RESTRICT` {
+	if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.Description != `DROP SCHEMA "public" RESTRICT` {
 		t.Fatalf("d did not open the DELETE SCHEMA confirmation: %+v", model.overlay.deleteConfirm)
 	}
 
@@ -1414,7 +1414,7 @@ func TestSchemaDeleteDatabase_confirmsAndRefreshes(t *testing.T) {
 			updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
 			model = updated.(Model)
 			want := "DROP DATABASE " + tt.quote + "app" + tt.quote
-			if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.description != want {
+			if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.Description != want {
 				t.Fatalf("d did not open the DELETE DATABASE confirmation: %+v", model.overlay.deleteConfirm)
 			}
 
@@ -1470,7 +1470,7 @@ func TestSchemaRenameTable_postgresPrefillsBareName(t *testing.T) {
 	model.structure.tableForm.name = "customers"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	if got, want := model.structure.tableForm.confirmation.description, `ALTER TABLE "public"."accounts" RENAME TO "customers"`; got != want {
+	if got, want := model.structure.tableForm.confirmation.Description, `ALTER TABLE "public"."accounts" RENAME TO "customers"`; got != want {
 		t.Fatalf("confirmation DDL = %q, want %q", got, want)
 	}
 

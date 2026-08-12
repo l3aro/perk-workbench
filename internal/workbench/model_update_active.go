@@ -160,8 +160,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							m.overlay.deletePending = "column"
 							m.overlay.deletePendingName = column.Name
 							m.overlay.deleteConfirm = newConfirmationDialog("Delete column?", "", []confirmationOption{
-								{label: "Yes, delete", action: "delete"},
-								{label: "Cancel", action: "cancel"},
+								{Label: "Yes, delete", Action: "delete"},
+								{Label: "Cancel", Action: "cancel"},
 							})
 						}
 						return m, nil
@@ -351,8 +351,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							m.overlay.deletePending = "index"
 							m.overlay.deletePendingName = index.Name
 							m.overlay.deleteConfirm = newConfirmationDialog("Delete index?", "", []confirmationOption{
-								{label: "Yes, delete", action: "delete"},
-								{label: "Cancel", action: "cancel"},
+								{Label: "Yes, delete", Action: "delete"},
+								{Label: "Cancel", Action: "cancel"},
 							})
 						}
 						return m, nil
@@ -400,8 +400,8 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 							m.overlay.deletePending = "foreign_key"
 							m.overlay.deletePendingName = foreignKey.ID
 							m.overlay.deleteConfirm = newConfirmationDialog("Delete foreign key?", "", []confirmationOption{
-								{label: "Yes, delete", action: "delete"},
-								{label: "Cancel", action: "cancel"},
+								{Label: "Yes, delete", Action: "delete"},
+								{Label: "Cancel", Action: "cancel"},
 							})
 						}
 						return m, nil

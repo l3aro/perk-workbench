@@ -222,7 +222,7 @@ func (e *cellEditor) beginConfirmation() tea.Cmd {
 
 func (e *cellEditor) confirmContent() string {
 	if e.confirming && e.confirm != nil {
-		return e.confirm.content(e.width)
+		return e.confirm.Content(e.width)
 	}
 	if !e.confirming && e.input != nil {
 		raw := e.input.View()
