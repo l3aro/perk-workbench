@@ -1,0 +1,1620 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"testing"
+	"time"
+
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
+)
+
+// runTableCommand executes one command and its children through the model,
+// expanding tea.BatchMsg like the runtime, until the model settles. The bound
+// contains blink/validation tick chains that the runtime would keep re-arming.
+func runTableCommand(model Model, command tea.Cmd) Model {
+	for range 8 {
+		if command == nil {
+			return model
+		}
+		message := command()
+		if message == nil {
+			return model
+		}
+		if batch, ok := message.(tea.BatchMsg); ok {
+			for _, child := range batch {
+				model = runTableCommand(model, child)
+			}
+			return model
+		}
+		updated, next := model.Update(message)
+		model, command = updated.(Model), next
+	}
+	return model
+}
+
+func createTableInSchema(t *testing.T, model Model, table string) Model {
+	t.Helper()
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE "+table+" (id INTEGER)"); err != nil {
+		t.Fatalf("creating table %s: %v", table, err)
+	}
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "table", Name: table},
+	})
+	return model
+}
+
+func findRenderedRow(t *testing.T, model Model, label string) int {
+	t.Helper()
+	lines := strings.Split(ansi.Strip(model.View().Content), "\n")
+	for y, line := range lines {
+		if strings.Contains(line, label) {
+			return y
+		}
+	}
+	t.Fatalf("rendered view does not contain %q", label)
+	return -1
+}
+
+func schemaTableNames(t *testing.T, model Model) []string {
+	t.Helper()
+	objects, err := model.Database.ListSchema(context.Background())
+	if err != nil {
+		t.Fatalf("listing schema: %v", err)
+	}
+	var names []string
+	for _, object := range objects {
+		if object.Type == "table" {
+			names = append(names, object.Name)
+		}
+	}
+	return names
+}
+
+func TestSchemaRename_viaM_renamesAndRefreshesSidebar(t *testing.T) {
+	// Given: a schema with one table "old" and schema focus on it.
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "old")
+	model.schema.component.List.Select(1)
+
+	// When: m opens the rename popup prefilled with the selected table.
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'm', Text: "m"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "old" || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormTable || model.schema.component.Structure.TableForm.Database != "main" {
+		t.Fatalf("rename popup = %+v, want prefilled old", model.schema.component.Structure.TableForm)
+	}
+
+	// When: rename to "new" and save; the confirmation carries the exact DDL.
+	model.schema.component.Structure.TableForm.Name = "new"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Confirming() || model.overlay.formMode.Mode != formModeConfirm {
+		t.Fatalf("ctrl+s did not confirm: confirming=%t mode=%d", model.schema.component.Structure.TableForm.Confirming(), model.overlay.formMode.Mode)
+	}
+	if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `ALTER TABLE "old" RENAME TO "new"`; got != want {
+		t.Fatalf("confirmation description = %q, want %q", got, want)
+	}
+
+	// When: accept; the ALTER runs and the sidebar refreshes.
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableFormRunning {
+		t.Fatal("popup still open after successful rename")
+	}
+	names := schemaTableNames(t, model)
+	if len(names) != 1 || names[0] != "new" {
+		t.Fatalf("database tables = %v, want only new", names)
+	}
+	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "  ▪ new") || strings.Contains(view, "  ▪ old") {
+		t.Fatalf("sidebar did not refresh: %q", view)
+	}
+}
+
+func TestSchemaRename_unchangedNameClosesWithoutSQL(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "old")
+	model.schema.component.List.Select(1)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'm', Text: "m"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+
+	// When: save with the unchanged name.
+	updated, command = model.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then: the popup closes with no confirmation, no query, no mutation.
+	if model.schema.component.Structure.TableForm.Active() {
+		t.Fatal("unchanged rename left the popup open")
+	}
+	if command != nil {
+		t.Fatalf("unchanged rename produced a command: %v", command)
+	}
+	if model.schema.component.Structure.TableForm.Confirming() || model.Running() {
+		t.Fatal("unchanged rename opened a confirmation or query")
+	}
+	if names := schemaTableNames(t, model); len(names) != 1 || names[0] != "old" {
+		t.Fatalf("database mutated by unchanged rename: %v", names)
+	}
+}
+
+func TestSchemaAddTable_viaA_createsAndRefreshesSidebar(t *testing.T) {
+	for _, selection := range []string{"table", "root"} {
+		t.Run(selection, func(t *testing.T) {
+			model := resizeModel(readyModel(t), 100, 24)
+			model.Focus = focusSchema
+			model = createTableInSchema(t, model, "accounts")
+			if selection == "table" {
+				model.schema.component.List.Select(1)
+			} else {
+				model.schema.component.List.Select(0)
+			}
+
+			// When: a opens an empty popup for the selection's database.
+			updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "" || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormTable || model.schema.component.Structure.TableForm.Database != "main" {
+				t.Fatalf("create popup = %+v, want empty in main", model.schema.component.Structure.TableForm)
+			}
+			model.Focus = focusWorkspace
+			model.Tab = tabSQL
+			model.overlay.formMode.Mode = formModeInsert
+			for _, key := range "created" {
+				updated, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
+				model = updated.(Model)
+			}
+			if model.schema.component.Structure.TableForm.Name != "created" {
+				t.Fatalf("typed table name = %q", model.schema.component.Structure.TableForm.Name)
+			}
+			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `CREATE TABLE "created" (id INTEGER PRIMARY KEY)`; got != want {
+				t.Fatalf("confirmation description = %q, want %q", got, want)
+			}
+			updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if model.schema.component.Structure.TableFormRunning || model.Running() {
+				t.Fatal("create query still running")
+			}
+			if model.schema.component.Structure.TableForm.Active() {
+				t.Fatalf("successful create left popup open: %+v", model.schema.component.Structure.TableForm)
+			}
+			if names := schemaTableNames(t, model); len(names) != 2 || names[0] != "accounts" || names[1] != "created" {
+				t.Fatalf("database tables = %v, want accounts and created", names)
+			}
+		})
+	}
+}
+
+func TestSchemaTableForm_enterSavesFromNormalMode(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "accounts")
+	model.schema.component.List.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	model.schema.component.Structure.TableForm.Name = "created"
+	model.overlay.formMode.Mode = formModeNormal
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	if !model.schema.component.Structure.TableForm.Confirming() {
+		t.Fatal("Enter in normal mode did not open confirmation")
+	}
+}
+
+func TestSchemaTableForm_blankNameShowsValidationError(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "accounts")
+
+	model.schema.component.List.Select(1)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	model.schema.component.Structure.TableForm.Name = "   "
+
+	// When: save a blank name.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	model = updated.(Model)
+
+	// Then: no confirmation, the popup stays, and the validation error shows.
+	if model.schema.component.Structure.TableForm.Confirming() {
+		t.Fatal("blank name opened a confirmation")
+	}
+	if !model.schema.component.Structure.TableForm.Active() {
+		t.Fatal("blank name closed the popup")
+	}
+	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "table name is required") {
+		t.Fatalf("validation error not rendered: %q", view)
+	}
+}
+
+func TestTableForm_isCompact(t *testing.T) {
+	form := schema.NewTableForm("main", "")
+	form.SetKeys(DefaultKeybindings())
+	form.SetWidth(100)
+	form.SetHeight(18)
+
+	if lines := len(strings.Split(ansi.Strip(form.View()), "\n")); lines >= form.Height {
+		t.Fatalf("table form rendered %d lines at height %d", lines, form.Height)
+	}
+}
+
+func TestSchemaTableForm_declinedConfirmationKeepsPopup(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "accounts")
+	model.schema.component.List.Select(1)
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	model.schema.component.Structure.TableForm.Name = "created"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Confirming() {
+		t.Fatal("ctrl+s did not open the confirmation")
+	}
+
+	// When: decline.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+
+	// Then: the popup stays editable with the typed name, schema unchanged.
+	if model.schema.component.Structure.TableForm.Confirming() || !model.schema.component.Structure.TableForm.Active() {
+		t.Fatalf("decline closed the popup: confirming=%t active=%t", model.schema.component.Structure.TableForm.Confirming(), model.schema.component.Structure.TableForm.Active())
+	}
+	if model.schema.component.Structure.TableForm.Name != "created" {
+		t.Fatalf("decline lost the typed name: %q", model.schema.component.Structure.TableForm.Name)
+	}
+	if names := schemaTableNames(t, model); len(names) != 1 || names[0] != "accounts" {
+		t.Fatalf("declined create mutated the database: %v", names)
+	}
+}
+
+func TestSchemaDelete_viaD_dropsTable(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "old")
+	model.schema.component.List.Select(1)
+
+	// When: d opens the delete confirmation with the exact DROP.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	if model.overlay.deleteConfirm == nil {
+		t.Fatal("d did not open the delete confirmation")
+	}
+	if !strings.Contains(model.overlay.deleteConfirm.Description, `DROP TABLE "old"`) {
+		t.Fatalf("delete description = %q, want DROP TABLE \"old\"", model.overlay.deleteConfirm.Description)
+	}
+
+	// When: decline; the table stays.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+	if model.overlay.deleteConfirm != nil {
+		t.Fatal("decline left the confirmation open")
+	}
+	if names := schemaTableNames(t, model); len(names) != 1 || names[0] != "old" {
+		t.Fatalf("declined delete mutated the database: %v", names)
+	}
+
+	// When: accept; the DROP runs and the sidebar refreshes.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if names := schemaTableNames(t, model); len(names) != 0 {
+		t.Fatalf("accepting delete left tables: %v", names)
+	}
+	if view := ansi.Strip(model.View().Content); strings.Contains(view, "  ▪ old") {
+		t.Fatalf("sidebar still shows old: %q", view)
+	}
+}
+
+func TestSchemaContextMenu_renameDeleteViaRightClick(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "old")
+	tableY := findRenderedRow(t, model, "  ▪ old")
+
+	// When: right-click the table row.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseRight})
+	model = updated.(Model)
+
+	// Then: the menu carries Rename and Delete with the row's target.
+	menu := model.overlay.contextMenu
+	if menu == nil || !menu.visible {
+		t.Fatal("right-click did not open a menu")
+	}
+	if len(menu.options) != 2 || menu.options[0].label != "Rename table" || menu.options[0].keys != "r" ||
+		menu.options[1].label != "Delete table" || menu.options[1].keys != "d" {
+		t.Fatalf("menu options = %+v, want Rename (r) and Delete (d)", menu.options)
+	}
+	if menu.database != "main" || menu.table != "old" {
+		t.Fatalf("menu target = %s.%s, want main.old", menu.database, menu.table)
+	}
+
+	// When: r opens the prefilled rename popup.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	model = updated.(Model)
+	if model.overlay.contextMenu != nil {
+		t.Fatal("menu stayed open after r")
+	}
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "old" {
+		t.Fatalf("r did not open the rename popup: %+v", model.schema.component.Structure.TableForm)
+	}
+
+	// Close the popup (Escape exits insert mode, then closes).
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	if model.schema.component.Structure.TableForm.Active() {
+		t.Fatal("Escape did not close the popup")
+	}
+
+	// When: right-click again and press d; the delete confirmation appears.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	if model.overlay.deleteConfirm == nil || !strings.Contains(model.overlay.deleteConfirm.Description, `DROP TABLE "old"`) {
+		t.Fatalf("d did not open the delete confirmation: %+v", model.overlay.deleteConfirm)
+	}
+
+	// When: decline once, then accept; the table is dropped and refreshed.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
+	model = updated.(Model)
+	if names := schemaTableNames(t, model); len(names) != 1 || names[0] != "old" {
+		t.Fatalf("decline removed the table: %v", names)
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: tableY, Button: tea.MouseRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if names := schemaTableNames(t, model); len(names) != 0 {
+		t.Fatalf("accepting delete left tables: %v", names)
+	}
+}
+
+func TestSchemaContextMenu_rootAndBlankSpaceAdd(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "accounts")
+	rootY := findRenderedRow(t, model, "▣ main")
+
+	// When: right-click the database root row.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
+	model = updated.(Model)
+
+	// Then: only Add table, targeted at that root.
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 1 || menu.options[0].label != "Add table" || menu.options[0].keys != "a" || menu.database != "main" {
+		t.Fatalf("root menu = %+v, want Add table in main", menu)
+	}
+
+	// When: a opens the empty create popup for the root's database.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "" || model.schema.component.Structure.TableForm.Database != "main" {
+		t.Fatalf("root add popup = %+v, want empty in main", model.schema.component.Structure.TableForm)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+
+	// When: right-click blank space below the rows; Add uses the current
+	// selection's database.
+	model.schema.component.List.Select(1)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: 20, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.overlay.contextMenu == nil || len(model.overlay.contextMenu.options) != 1 || model.overlay.contextMenu.options[0].action != "add_table" || model.overlay.contextMenu.database != "main" {
+		t.Fatalf("blank-space menu = %+v, want Add in main", model.overlay.contextMenu)
+	}
+}
+
+// createDatabaseStub accepts CREATE DATABASE statements and reports a fixed
+// schema listing, standing in for a MySQL/PostgreSQL connection.
+type createDatabaseStub struct {
+	sharedsql.Service
+	statements []string
+	objects    []sharedsql.SchemaObject
+}
+
+func (s *createDatabaseStub) Close() error { return nil }
+
+// closeTrackingService records whether Close was called, for tests that
+// assert superseded connections are released.
+type closeTrackingService struct {
+	sharedsql.Service
+	closed bool
+}
+
+func (s *closeTrackingService) Close() error {
+	s.closed = true
+	return nil
+}
+
+func (s *createDatabaseStub) Execute(_ context.Context, statement string) (sharedsql.Result, error) {
+	s.statements = append(s.statements, statement)
+	return sharedsql.Result{}, nil
+}
+
+func (s *createDatabaseStub) ListSchema(_ context.Context) ([]sharedsql.SchemaObject, error) {
+	return s.objects, nil
+}
+
+// serverProductModel builds a ready model backed by a stub reporting the
+// given server product (MySQL or PostgreSQL).
+func serverProductModel(t *testing.T, product string, stub *createDatabaseStub) Model {
+	t.Helper()
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{Service: stub, Info: sharedsql.DatabaseInfo{Product: product, Version: "16"}}, nil
+	}, false)
+	model.queryLog.path = t.TempDir() + "/data.db"
+	model.queryLog.component.Entries = nil
+	model.queryLog.component.Render()
+	model.State, model.Database = stateReady, stub
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: product}
+	model.Focus = focusSchema
+	return resizeModel(model, 100, 24)
+}
+
+func TestSchemaCreateDatabase_shiftAOpensDatabaseForm(t *testing.T) {
+	for _, product := range []string{"MySQL", "PostgreSQL"} {
+		t.Run(product, func(t *testing.T) {
+			model := serverProductModel(t, product, &createDatabaseStub{})
+			updated, command := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormDatabase {
+				t.Fatalf("Shift+A did not open the create-database popup: %+v", model.schema.component.Structure.TableForm)
+			}
+		})
+	}
+}
+
+func TestSchemaCreateDatabase_ignoredForSQLite(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	if model.schema.component.Structure.TableForm.Active() {
+		t.Fatal("Shift+A opened a create-database popup on SQLite")
+	}
+}
+
+func TestPostgresTree_connectedRootRecognizedWithoutSchemas(t *testing.T) {
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+
+	// After dropping the connected database's last schema, the target URL
+	// still identifies the connected root; it must not regain Edit/Delete.
+	if !model.databaseRootConnected("employees") {
+		t.Fatal("connected root not recognized without schema children")
+	}
+	if model.databaseRootConnected("employers") {
+		t.Fatal("unconnected root recognized as connected")
+	}
+}
+
+func TestSchemaCreateDatabase_flowConfirmsRunsAndRefreshes(t *testing.T) {
+	tests := []struct {
+		product string
+		quote   string
+	}{
+		{product: "PostgreSQL", quote: `"`},
+		{product: "MySQL", quote: "`"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.product, func(t *testing.T) {
+			stub := &createDatabaseStub{}
+			model := serverProductModel(t, tt.product, stub)
+
+			updated, command := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			model.schema.component.Structure.TableForm.Name = "orders"
+
+			// Save opens the confirmation with the exact DDL.
+			updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			if !model.schema.component.Structure.TableForm.Confirming() {
+				t.Fatal("Enter did not open the create-database confirmation")
+			}
+			want := "CREATE DATABASE " + tt.quote + "orders" + tt.quote
+			if got := model.schema.component.Structure.TableForm.Confirmation.Description; got != want {
+				t.Fatalf("confirmation DDL = %q, want %q", got, want)
+			}
+
+			// Accept: the DDL runs and the sidebar refreshes with the
+			// new database.
+			stub.objects = []sharedsql.SchemaObject{{Database: "orders", Type: "database", Name: "orders"}}
+			updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableFormRunning {
+				t.Fatal("popup still open after successful create database")
+			}
+			if len(stub.statements) != 1 || stub.statements[0] != want {
+				t.Fatalf("executed statements = %#v, want %q", stub.statements, want)
+			}
+			if !model.schema.component.ExpandedDatabases["orders"] {
+				t.Fatal("new database is not in the refreshed sidebar")
+			}
+			if view := ansi.Strip(model.View().Content); !strings.Contains(view, "orders") {
+				t.Fatalf("sidebar did not show the new Database: %q", view)
+			}
+		})
+	}
+}
+
+func TestSchemaContextMenu_blankSpaceOffersCreateDatabase(t *testing.T) {
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+
+	// Without any schema items or selection, blank-space right-click
+	// offers Add new database only; the A shortcut opens the popup.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: 20, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || !menu.visible {
+		t.Fatal("blank-space right-click did not open a menu")
+	}
+	if len(menu.options) != 1 || menu.options[0].action != "create_database" || menu.options[0].label != "Add new database" || menu.options[0].keys != "A" {
+		t.Fatalf("blank-space menu = %+v, want Add new database", menu.options)
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormDatabase {
+		t.Fatal("menu shortcut A did not open the create-database popup")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+
+	// With a selection the blank menu still offers Add new database only:
+	// the selection's own menu appears on its row.
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+	})
+	model.schema.component.List.Select(1)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: 20, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu = model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 1 || menu.options[0].action != "create_database" {
+		t.Fatalf("selected blank-space menu = %+v, want Add new database", menu.options)
+	}
+}
+
+// postgresTreeModel builds a ready PostgreSQL model whose sidebar shows two
+// databases, with the connected database ("main") holding schema "public"
+// and its table.
+func postgresTreeModel(t *testing.T) Model {
+	t.Helper()
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+		{Database: "archive", Type: "database", Name: "archive"},
+	})
+	return model
+}
+
+func TestPostgresTree_nerdFontMarkers(t *testing.T) {
+	previous := appConfig
+	t.Cleanup(func() { appConfig = previous })
+	SetAppConfig(Config{NerdFont: boolPtr(true)})
+
+	model := postgresTreeModel(t)
+	view := ansi.Strip(model.View().Content)
+	for _, label := range []string{"\uf1c0 main", "  \uf07b public", "    \uf0ce accounts", "\uf1c0 archive"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("nerd schema tree = %q, want %q", view, label)
+		}
+	}
+}
+
+func TestPostgresTree_rendersDatabaseSchemaAndTableLevels(t *testing.T) {
+	model := postgresTreeModel(t)
+	view := ansi.Strip(model.View().Content)
+	for _, label := range []string{"▣ main", "  ▤ public", "    ▪ accounts", "▣ archive"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("postgres sidebar = %q, want %q", view, label)
+		}
+	}
+	// Counts render as right-aligned badges on the connected root and its
+	// schema; the sidebar segment of the row ends with the badge.
+	mainRow := sidebarRow(view, "▣ main")
+	if !strings.HasSuffix(strings.TrimRight(mainRow, " "), " (1)") {
+		t.Fatalf("main row = %q, want a right-aligned count badge", mainRow)
+	}
+	// Objects outside the connected database are not introspected, so the
+	// archive root carries no count.
+	if strings.Contains(sidebarRow(view, "▣ archive"), " (") {
+		t.Fatalf("postgres sidebar = %q, want archive root without a count", view)
+	}
+}
+
+// sidebarRow returns the first 40 display cells of the view line that
+// contains label: the sidebar pane's left border, its padding, and the
+// 38-cell content area (the right border sits at cell 42).
+func sidebarRow(view, label string) string {
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, label) {
+			return ansi.Truncate(line, 40, "")
+		}
+	}
+	return ""
+}
+
+func TestSchemaSidebar_sqliteCountsAndViewLabel(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "table", Name: "accounts"},
+		{Database: "main", Type: "view", Name: "audit_log"},
+	})
+	view := ansi.Strip(model.View().Content)
+	for _, label := range []string{"▣ main", "  ▪ accounts", "  ▪ audit_log"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("sidebar = %q, want %q", view, label)
+		}
+	}
+	// The child count and the view marker render as right-aligned badges.
+	if !strings.HasSuffix(strings.TrimRight(sidebarRow(view, "▣ main"), " "), " (2)") {
+		t.Fatalf("sidebar = %q, want the child count badge on the main row", view)
+	}
+	if !strings.HasSuffix(strings.TrimRight(sidebarRow(view, "audit_log"), " "), " (view)") {
+		t.Fatalf("sidebar = %q, want the view marker badge on the audit_log row", view)
+	}
+}
+
+func TestSchemaSidebar_longNameStaysOnOneLine(t *testing.T) {
+	// Given — a table whose name exceeds the sidebar content width.
+	count := int64(331_600)
+	model := resizeModel(serverProductModel(t, "PostgreSQL", &createDatabaseStub{}), 100, 24)
+	model.Focus = focusSchema
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.department_employee_that_have_a_very_long_name", RowCount: &count},
+	})
+	view := ansi.Strip(model.View().Content)
+	row := sidebarRow(view, "▪")
+
+	// Then — the name truncates with an ellipsis and the count badge pins
+	// to the sidebar's right edge, all on one line: no wrapped tail row.
+	if strings.Contains(row, "long_name") || !strings.Contains(row, "…") {
+		t.Fatalf("table row = %q, want a truncated name with ellipsis", row)
+	}
+	if !strings.HasSuffix(strings.TrimRight(row, " "), " (331.6k)") {
+		t.Fatalf("table row = %q, want the count badge at the right edge", row)
+	}
+	if strings.Contains(view, "ong_name") {
+		t.Fatalf("sidebar = %q, want no wrapped name tail line", view)
+	}
+
+	// And the single-line row still maps back to the item for clicks.
+	rowY := findRenderedRow(t, model, "▪")
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rowY, Button: tea.MouseRight})
+	model = updated.(Model)
+	if menu := model.overlay.contextMenu; menu == nil || menu.table != "public.department_employee_that_have_a_very_long_name" {
+		t.Fatalf("right-click menu = %+v, want the long-name table's menu", menu)
+	}
+}
+
+func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
+	model := postgresTreeModel(t)
+
+	// Click the schema row: its tables hide behind a collapsed marker.
+	schemaY := findRenderedRow(t, model, "  ▤ public")
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: schemaY, Button: tea.MouseLeft})
+	model = updated.(Model)
+	model = completeTreeAnim(model)
+	view := ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "  ▤ public") || strings.Contains(view, "    ▪ accounts") {
+		t.Fatalf("collapsed postgres sidebar = %q, want ▤ public without tables", view)
+	}
+
+	// Enter on the selected schema node expands it again.
+	model.schema.component.List.Select(1)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = completeTreeAnim(model)
+	view = ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "  ▤ public") || !strings.Contains(view, "    ▪ accounts") {
+		t.Fatalf("re-expanded postgres sidebar = %q, want public with tables", view)
+	}
+}
+
+// reconnectPostgresModel builds a ready PostgreSQL model whose sidebar
+// shows employees (connected, with a public schema) and employers roots,
+// capturing every target the injected open function receives.
+func reconnectPostgresModel(t *testing.T) (Model, *[]string) {
+	t.Helper()
+	opened := &[]string{}
+	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+		*opened = append(*opened, target)
+		return sharedsql.Opened{Service: &createDatabaseStub{}, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employees", Type: "schema", Name: "public"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+	return model, opened
+}
+
+func TestPostgresTree_enterOnUnconnectedRootReconnects(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// When — Enter on the employers root.
+	model.schema.component.List.Select(2)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// Then — the session reopens against employers while the current
+	// view stays rendered: no stateOpening blank-out.
+	if model.State != stateReady || !model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with a pending switch", model.State, model.reconnectPending)
+	}
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	executeCommandAll(command)
+	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
+		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
+	}
+}
+
+func TestPostgresTree_enterOnConnectedRootToggles(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// Enter on the connected employees root collapses it instead of
+	// reconnecting.
+	model.schema.component.List.Select(0)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = completeTreeAnim(model)
+
+	if model.State != stateReady || len(*opened) != 0 {
+		t.Fatalf("connected root Enter = state %v, opens %v, want ready and no reopen", model.State, *opened)
+	}
+	view := ansi.Strip(model.View().Content)
+	if !strings.Contains(view, "▣ employees") || strings.Contains(view, "  ▤ public") {
+		t.Fatalf("sidebar = %q, want collapsed employees root", view)
+	}
+}
+
+func TestPostgresTree_doubleClickOnUnconnectedRootReconnects(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// A double-click on the employers root reconnects, matching the
+	// recent list's double-click-to-load convention.
+	model.schema.component.List.Select(2)
+	y := findRenderedRow(t, model, "▣ employers")
+	updated, command := model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+	model = updated.(Model)
+	updated, command = model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	if model.State != stateReady || !model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with a pending switch after double-click", model.State, model.reconnectPending)
+	}
+	if command == nil {
+		t.Fatal("double-click on an unconnected root returned no command")
+	}
+	executeCommandAll(command)
+	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
+		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
+	}
+
+	// A single click on the same row must not reconnect: the latch is
+	// reset by the completed double-click, and the toggle command it
+	// returns must not reopen the database.
+	model.State, model.Focus = stateReady, focusSchema
+	model.layout.lastFormClickTime = time.Time{}
+	opensBefore := len(*opened)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 3, Y: y, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.State != stateReady || len(*opened) != opensBefore {
+		t.Fatalf("single click = state %v, opens %d, want ready and no reopen", model.State, len(*opened))
+	}
+}
+
+func TestPostgresTree_rebuildKeepsCursorOnConnectedRoot(t *testing.T) {
+	model, _ := reconnectPostgresModel(t)
+
+	// Simulate the reopen against employers completing: updateOpen sets
+	// the target from the reopened URL, then rebuilds the tree.
+	model.Target = "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable"
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+		{Database: "employers", Type: "schema", Name: "public"},
+	})
+
+	// employees still sorts first; the cursor must land on the connected
+	// employers root, not on the first item.
+	if got := model.schema.component.List.Index(); got != 1 {
+		t.Fatalf("cursor = %d, want the connected employers root at 1", got)
+	}
+}
+
+func TestPostgresTree_contextMenuConnectSwitchesDatabase(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// Right-click the employers root: Connect is offered first.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▣ employers"), Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 4 || menu.options[0].action != "connect_database" || menu.options[1].action != "create_database" || menu.options[2].action != "rename_database" || menu.options[3].action != "delete_database" || menu.database != "employers" {
+		t.Fatalf("root menu = %+v, want Connect, Add new database, Edit database, Delete database on employers", menu)
+	}
+
+	// Enter activates Connect: the session reopens against employers.
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.State != stateReady || !model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with a pending switch", model.State, model.reconnectPending)
+	}
+	if command == nil {
+		t.Fatal("Connect returned no command")
+	}
+	executeCommandAll(command)
+	if len(*opened) != 1 || (*opened)[0] != "postgres://alice:secret@db.example.test:5433/employers?sslmode=disable" {
+		t.Fatalf("reopened target = %v, want the employees URL rewritten to employers", *opened)
+	}
+}
+
+func TestPostgresTree_reconnectDoesNotRecordProfile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	model, opened := reconnectPostgresModel(t)
+
+	// Enter on employers reopens; the switch must not add a profile.
+	model.schema.component.List.Select(2)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model = driveCommand(model, command)
+
+	if len(model.connection.component.Profiles) != 0 {
+		t.Fatalf("reconnect recorded %d profiles, want none", len(model.connection.component.Profiles))
+	}
+	if len(*opened) != 1 {
+		t.Fatalf("reopened %v targets, want 1", *opened)
+	}
+}
+
+func TestPostgresTree_failedSwitchKeepsCurrentSession(t *testing.T) {
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{}, errors.New("boom")
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+
+	// Enter on the employers root; the switch fails.
+	model.schema.component.List.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model = driveCommand(model, command)
+
+	// The previous session survives and the failure is reported inline.
+	if model.State != stateReady || model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want ready with no pending switch", model.State, model.reconnectPending)
+	}
+	if model.Target != "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable" {
+		t.Fatalf("target = %q, want the original employees session kept", model.Target)
+	}
+	if !strings.Contains(ansi.Strip(model.Status), "database switch failed: boom") {
+		t.Fatalf("status = %q, want the switch failure reported", model.Status)
+	}
+}
+
+func TestPostgresTree_secondSwitchWhilePendingIsIgnored(t *testing.T) {
+	model, opened := reconnectPostgresModel(t)
+
+	// First switch is in flight; a second Enter must not start another.
+	model.schema.component.List.Select(2)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("first Enter returned no command")
+	}
+	updated, second := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if second != nil {
+		t.Fatal("second Enter while a switch is pending returned a command")
+	}
+	executeCommandAll(command)
+	if len(*opened) != 1 {
+		t.Fatalf("reopened %v targets, want only the first switch", *opened)
+	}
+}
+
+func TestPostgresTree_disconnectWhileSwitchPendingDropsCompletion(t *testing.T) {
+	service := &closeTrackingService{Service: &createDatabaseStub{}}
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{Service: service, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+
+	// Start a switch, then disconnect before it completes.
+	model.schema.component.List.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model.disconnect()
+	model = driveCommand(model, command)
+
+	// The late completion must not yank the user back into a database.
+	if model.State != stateConnection {
+		t.Fatalf("state = %v, want connection after disconnect", model.State)
+	}
+	if model.Database != nil {
+		t.Fatal("disconnect was undone by a stale switch completion")
+	}
+	if !service.closed {
+		t.Fatal("superseded switch service was not closed")
+	}
+}
+
+func TestPostgresTree_successfulSwitchClosesPreviousSession(t *testing.T) {
+	oldService := &closeTrackingService{Service: &createDatabaseStub{}}
+	newService := &closeTrackingService{Service: &createDatabaseStub{}}
+	opens := 1
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		opens++
+		if opens == 1 {
+			return sharedsql.Opened{Service: oldService, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+		}
+		return sharedsql.Opened{Service: newService, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "employees", Type: "database", Name: "employees"},
+		{Database: "employers", Type: "database", Name: "employers"},
+	})
+	model = resizeModel(model, 100, 30)
+	model.State, model.Focus = stateReady, focusSchema
+	model.databaseInfo = sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}
+	model.Database = oldService
+
+	// Switch to employers; the completed open replaces the session.
+	model.schema.component.List.Select(1)
+	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if command == nil {
+		t.Fatal("Enter on an unconnected root returned no command")
+	}
+	model = driveCommand(model, command)
+
+	if model.Database != newService {
+		t.Fatal("switch did not install the new service")
+	}
+	if !oldService.closed {
+		t.Fatal("previous session was not closed after a successful switch")
+	}
+	if newService.closed {
+		t.Fatal("the new session was closed immediately")
+	}
+	if model.State != stateReady || model.reconnectPending {
+		t.Fatalf("state = %v, reconnectPending = %v, want a settled ready session", model.State, model.reconnectPending)
+	}
+}
+
+func TestPostgresTargetFor_escapesDatabaseNameOnce(t *testing.T) {
+	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+		return sharedsql.Opened{}, nil
+	}, false)
+	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
+	got := model.postgresTargetFor("my db")
+	want := "postgres://alice:secret@db.example.test:5433/my%20db?sslmode=disable"
+	if got != want {
+		t.Fatalf("postgresTargetFor() = %q, want %q", got, want)
+	}
+	if target := model.postgresTargetFor("x"); strings.Contains(target, "%25") {
+		t.Fatalf("postgresTargetFor() double-escaped the database Name: %q", target)
+	}
+}
+
+func TestSchemaAddTable_onPostgresSchemaNodeTargetsSchema(t *testing.T) {
+	model := postgresTreeModel(t)
+	model.schema.component.List.Select(1) // the public schema node
+
+	// a opens the create popup with the schema as its target.
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Database != "public" {
+		t.Fatalf("add popup = %+v, want target public", model.schema.component.Structure.TableForm)
+	}
+
+	// Saving confirms the schema-qualified DDL.
+	model.schema.component.Structure.TableForm.Name = "new"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`; got != want {
+		t.Fatalf("confirmation DDL = %q, want %q", got, want)
+	}
+}
+
+func TestSchemaContextMenu_mysqlRootOffersCreateDatabaseAndAddTable(t *testing.T) {
+	model := serverProductModel(t, "MySQL", &createDatabaseStub{})
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "app", Type: "database", Name: "app"},
+	})
+	rootY := findRenderedRow(t, model, "▣ app")
+
+	// Right-click the database root: Create database then Add table.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 3 || menu.options[0].action != "create_database" || menu.options[0].keys != "A" || menu.options[1].action != "add_table" || menu.options[2].action != "delete_database" || menu.database != "app" {
+		t.Fatalf("mysql root menu = %+v, want Add new database, Add new table, Delete database in app", menu.options)
+	}
+
+	// A opens the create-database popup.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormDatabase {
+		t.Fatal("A did not open the create-database popup")
+	}
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+
+	// a opens the add-table popup targeted at the root's database.
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: rootY, Button: tea.MouseRight})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormTable || model.schema.component.Structure.TableForm.Database != "app" {
+		t.Fatalf("a did not open the add-table popup in app: %+v", model.schema.component.Structure.TableForm)
+	}
+}
+
+func TestSchemaAddTable_ignoredOnPostgresDatabaseRoot(t *testing.T) {
+	model := postgresTreeModel(t)
+
+	// A database root has no schema to create in: a is a no-op, but
+	// right-click still offers Create database.
+	model.schema.component.List.Select(0)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if model.schema.component.Structure.TableForm.Active() {
+		t.Fatal("a opened an add-table popup on a PostgreSQL database root")
+	}
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▣ archive"), Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 4 || menu.options[0].action != "connect_database" || menu.options[1].action != "create_database" || menu.options[2].action != "rename_database" || menu.options[3].action != "delete_database" || menu.database != "archive" {
+		t.Fatalf("database-root right-click menu = %+v, want Connect, Add new database, Edit database, Delete database", menu)
+	}
+
+	// The connected database root keeps its menu: Add new database and
+	// Add new schema only, since PostgreSQL cannot rename or drop the
+	// active database.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: findRenderedRow(t, model, "▣ main"), Button: tea.MouseRight})
+	model = updated.(Model)
+	menu = model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 2 || menu.options[0].action != "create_database" || menu.options[1].action != "create_schema" {
+		t.Fatalf("connected-root right-click menu = %+v, want Add new database and Add new schema", menu)
+	}
+}
+
+func TestSchemaContextMenu_postgresSchemaRowOffersSiblingChildEditDelete(t *testing.T) {
+	model := postgresTreeModel(t)
+	model.schema.component.List.Select(1) // the public schema row
+
+	// , opens the schema menu: sibling, child, edit, delete.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 4 {
+		t.Fatalf("schema row menu = %+v, want four options", menu)
+	}
+	want := []struct{ label, action, keys string }{
+		{"Add new schema", "create_schema", "A"},
+		{"Add new table", "add_table", "a"},
+		{"Edit schema", "rename_schema", "r"},
+		{"Delete schema", "delete_schema", "d"},
+	}
+	for index, expected := range want {
+		option := menu.options[index]
+		if option.label != expected.label || option.action != expected.action || option.keys != expected.keys {
+			t.Fatalf("option %d = %+v, want %+v", index, option, expected)
+		}
+	}
+	if menu.database != "public" || menu.schema != "public" {
+		t.Fatalf("menu target = %s schema %s, want public/public", menu.database, menu.schema)
+	}
+
+	// r opens the prefilled schema rename popup.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	model = updated.(Model)
+	if model.overlay.contextMenu != nil {
+		t.Fatal("menu stayed open after r")
+	}
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormSchema || model.schema.component.Structure.TableForm.Name != "public" {
+		t.Fatalf("r did not open the schema rename popup: %+v", model.schema.component.Structure.TableForm)
+	}
+}
+
+func TestSchemaContextMenu_postgresTableRowOffersSiblingEditDelete(t *testing.T) {
+	model := postgresTreeModel(t)
+	model.schema.component.List.Select(2) // the public.accounts table row
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 3 {
+		t.Fatalf("postgres table row menu = %+v, want three options", menu)
+	}
+	if menu.options[0].action != "add_table" || menu.options[1].action != "rename_table" || menu.options[2].action != "delete_table" {
+		t.Fatalf("postgres table row menu = %+v, want Add new table, Edit table, Delete table", menu.options)
+	}
+	// The Add new table target is the table's schema, not the database.
+	if menu.database != "public" || menu.table != "public.accounts" {
+		t.Fatalf("postgres table menu target = %s table %s, want public/public.accounts", menu.database, menu.table)
+	}
+
+	// a opens the add popup inside that schema.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormTable || model.schema.component.Structure.TableForm.Database != "public" {
+		t.Fatalf("a did not open the add popup in public: %+v", model.schema.component.Structure.TableForm)
+	}
+}
+
+func TestSchemaContextMenu_emptySidebarCommaOffersAddNewDatabase(t *testing.T) {
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+
+	// , with no sidebar rows still opens the blank menu.
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || len(menu.options) != 1 || menu.options[0].action != "create_database" || menu.options[0].label != "Add new database" {
+		t.Fatalf("empty-sidebar comma menu = %+v, want Add new database", menu)
+	}
+}
+
+func TestSchemaCreateSchema_flowConfirmsRunsAndRefreshes(t *testing.T) {
+	stub := &createDatabaseStub{}
+	model := serverProductModel(t, "PostgreSQL", stub)
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+	})
+	model.schema.component.List.Select(1)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'A', Text: "A"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormSchema {
+		t.Fatal("A did not open the create-schema popup")
+	}
+
+	// Save opens the confirmation with the exact DDL.
+	model.schema.component.Structure.TableForm.Name = "audit"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.schema.component.Structure.TableForm.Confirming() {
+		t.Fatal("Enter did not open the create-schema confirmation")
+	}
+	if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `CREATE SCHEMA "audit"`; got != want {
+		t.Fatalf("confirmation DDL = %q, want %q", got, want)
+	}
+
+	// Accept: the DDL runs and the sidebar refreshes with the schema.
+	stub.objects = []sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "schema", Name: "audit"},
+	}
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableFormRunning {
+		t.Fatal("popup still open after successful create schema")
+	}
+	if len(stub.statements) != 1 || stub.statements[0] != `CREATE SCHEMA "audit"` {
+		t.Fatalf("executed statements = %#v, want CREATE SCHEMA \"audit\"", stub.statements)
+	}
+	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "audit") {
+		t.Fatalf("sidebar did not show the new schema: %q", view)
+	}
+}
+
+func TestSchemaRenameSchema_flowConfirmsRunsAndRefreshes(t *testing.T) {
+	stub := &createDatabaseStub{}
+	model := serverProductModel(t, "PostgreSQL", stub)
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+	})
+	model.schema.component.List.Select(1)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "public" {
+		t.Fatalf("r did not open the prefilled rename popup: %+v", model.schema.component.Structure.TableForm)
+	}
+
+	model.schema.component.Structure.TableForm.Name = "renamed"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `ALTER SCHEMA "public" RENAME TO "renamed"`; got != want {
+		t.Fatalf("confirmation DDL = %q, want %q", got, want)
+	}
+
+	stub.objects = []sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "renamed"},
+	}
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableFormRunning {
+		t.Fatal("popup still open after successful rename schema")
+	}
+	if len(stub.statements) != 1 || stub.statements[0] != `ALTER SCHEMA "public" RENAME TO "renamed"` {
+		t.Fatalf("executed statements = %#v, want the ALTER SCHEMA", stub.statements)
+	}
+	if view := ansi.Strip(model.View().Content); strings.Contains(view, "  ▤ public") || !strings.Contains(view, "renamed") {
+		t.Fatalf("sidebar did not show the renamed schema: %q", view)
+	}
+}
+
+func TestSchemaRenameDatabase_flowConfirmsRunsAndRefreshes(t *testing.T) {
+	stub := &createDatabaseStub{}
+	model := postgresTreeModel(t)
+	model.Database = stub
+	model.schema.component.List.Select(3) // the archive root
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormDatabase || model.schema.component.Structure.TableForm.Name != "archive" {
+		t.Fatalf("r did not open the prefilled database rename popup: %+v", model.schema.component.Structure.TableForm)
+	}
+
+	model.schema.component.Structure.TableForm.Name = "holdings"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `ALTER DATABASE "archive" RENAME TO "holdings"`; got != want {
+		t.Fatalf("confirmation DDL = %q, want %q", got, want)
+	}
+
+	stub.objects = []sharedsql.SchemaObject{
+		{Database: "holdings", Type: "database", Name: "holdings"},
+	}
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableFormRunning {
+		t.Fatal("popup still open after successful rename database")
+	}
+	if len(stub.statements) != 1 || stub.statements[0] != `ALTER DATABASE "archive" RENAME TO "holdings"` {
+		t.Fatalf("executed statements = %#v, want the ALTER DATABASE", stub.statements)
+	}
+	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "holdings") {
+		t.Fatalf("sidebar did not show the renamed Database: %q", view)
+	}
+}
+
+func TestSchemaDeleteSchema_confirmsRestrictAndRefreshes(t *testing.T) {
+	stub := &createDatabaseStub{}
+	model := postgresTreeModel(t)
+	model.Database = stub
+	model.schema.component.List.Select(1) // the public schema row
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.Description != `DROP SCHEMA "public" RESTRICT` {
+		t.Fatalf("d did not open the DELETE SCHEMA confirmation: %+v", model.overlay.deleteConfirm)
+	}
+
+	stub.objects = []sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "archive", Type: "database", Name: "archive"},
+	}
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if len(stub.statements) != 1 || stub.statements[0] != `DROP SCHEMA "public" RESTRICT` {
+		t.Fatalf("executed statements = %#v, want the DROP SCHEMA", stub.statements)
+	}
+	if view := ansi.Strip(model.View().Content); strings.Contains(view, "▤ public") {
+		t.Fatalf("sidebar still shows the dropped schema: %q", view)
+	}
+}
+
+func TestSchemaDeleteDatabase_confirmsAndRefreshes(t *testing.T) {
+	tests := []struct {
+		product string
+		quote   string
+	}{
+		{product: "PostgreSQL", quote: `"`},
+		{product: "MySQL", quote: "`"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.product, func(t *testing.T) {
+			stub := &createDatabaseStub{}
+			model := serverProductModel(t, tt.product, stub)
+			_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+				{Database: "app", Type: "database", Name: "app"},
+			})
+			model.schema.component.List.Select(0)
+			updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+			model = updated.(Model)
+			updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+			model = updated.(Model)
+			want := "DROP DATABASE " + tt.quote + "app" + tt.quote
+			if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.Description != want {
+				t.Fatalf("d did not open the DELETE DATABASE confirmation: %+v", model.overlay.deleteConfirm)
+			}
+
+			updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+			model = updated.(Model)
+			model = runTableCommand(model, command)
+			if len(stub.statements) != 1 || stub.statements[0] != want {
+				t.Fatalf("executed statements = %#v, want %q", stub.statements, want)
+			}
+		})
+	}
+}
+
+func TestSchemaContextMenu_shiftedShortcutMatchesRealTerminal(t *testing.T) {
+	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	if model.overlay.contextMenu == nil || len(model.overlay.contextMenu.options) != 1 || model.overlay.contextMenu.options[0].keys != "A" {
+		t.Fatalf("blank menu = %+v, want Add new database with A", model.overlay.contextMenu)
+	}
+
+	// A real terminal reports shift+a with the shift modifier; the menu
+	// must still trigger the A shortcut.
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "A", Mod: tea.ModShift})
+	model = updated.(Model)
+	if model.overlay.contextMenu != nil {
+		t.Fatal("menu stayed open after shifted A")
+	}
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.ObjectKind != schema.TableFormDatabase {
+		t.Fatal("shifted A did not open the create-database popup")
+	}
+}
+
+func TestSchemaRenameTable_postgresPrefillsBareName(t *testing.T) {
+	stub := &createDatabaseStub{}
+	model := serverProductModel(t, "PostgreSQL", stub)
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.accounts"},
+	})
+	model.schema.component.List.Select(2) // the accounts table row
+	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+
+	// The popup edits the bare name; the qualified name stays the target.
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "accounts" || model.schema.component.Structure.TableForm.OriginalName != "accounts" || model.schema.component.Structure.TableForm.Table != "public.accounts" {
+		t.Fatalf("rename popup = %+v, want bare accounts prefilled", model.schema.component.Structure.TableForm)
+	}
+	model.schema.component.Structure.TableForm.Name = "customers"
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if got, want := model.schema.component.Structure.TableForm.Confirmation.Description, `ALTER TABLE "public"."accounts" RENAME TO "customers"`; got != want {
+		t.Fatalf("confirmation DDL = %q, want %q", got, want)
+	}
+
+	stub.objects = []sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "schema", Name: "public"},
+		{Database: "main", Type: "table", Name: "public.customers"},
+	}
+	updated, command = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableFormRunning {
+		t.Fatal("popup still open after successful rename")
+	}
+	if len(stub.statements) != 1 || stub.statements[0] != `ALTER TABLE "public"."accounts" RENAME TO "customers"` {
+		t.Fatalf("executed statements = %#v, want the ALTER TABLE", stub.statements)
+	}
+	if view := ansi.Strip(model.View().Content); !strings.Contains(view, "customers") || strings.Contains(view, "accounts") {
+		t.Fatalf("sidebar did not show the renamed Table: %q", view)
+	}
+}
+
+func TestSchemaContextMenu_viewsExposeNoMenu(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE old (id INTEGER)"); err != nil {
+		t.Fatalf("creating Table: %v", err)
+	}
+	if _, err := model.Database.Execute(model.appContext, "CREATE VIEW v1 AS SELECT 1"); err != nil {
+		t.Fatalf("creating view: %v", err)
+	}
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "main", Type: "database", Name: "main"},
+		{Database: "main", Type: "table", Name: "old"},
+		{Database: "main", Type: "view", Name: "v1"},
+	})
+	model.schema.component.List.Select(2)
+	viewY := findRenderedRow(t, model, "  ▪ v1")
+
+	// Right-click and the d/r/m/a keys do nothing on a view.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 2, Y: viewY, Button: tea.MouseRight})
+	model = updated.(Model)
+	if model.overlay.contextMenu != nil {
+		t.Fatalf("view right-click opened a menu: %+v", model.overlay.contextMenu)
+	}
+	for _, key := range []tea.KeyPressMsg{
+		{Code: 'd', Text: "d"}, {Code: 'r', Text: "r"}, {Code: 'm', Text: "m"}, {Code: 'a', Text: "a"},
+	} {
+		updated, _ = model.Update(key)
+		model = updated.(Model)
+	}
+	if model.schema.component.Structure.TableForm.Active() || model.overlay.deleteConfirm != nil {
+		t.Fatal("view exposed a table action")
+	}
+}
+
+func TestSchemaContextMenu_filteredMapping(t *testing.T) {
+	model := resizeModel(New("", context.Background(), testOpen, false), 100, 24)
+	model.State, model.Focus = stateReady, focusSchema
+	model.schema.component.List.SetItems([]list.Item{
+		schema.Item{Name: "accounts", Detail: "table", Database: "main", Table: "accounts", Kind: "table"},
+		schema.Item{Name: "queue_1", Detail: "table", Database: "main", Table: "queue_1", Kind: "table"},
+	})
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Model)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, command = model.Update(tea.KeyPressMsg{Code: '1', Text: "1"})
+	model = updated.(Model)
+	model = updateFromCommand(model, command)
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	// The filtered render still maps to the right item.
+	rowY := findRenderedRow(t, model, "queue_1")
+	updated, _ = model.Update(tea.MouseClickMsg{X: 2, Y: rowY, Button: tea.MouseRight})
+	model = updated.(Model)
+	menu := model.overlay.contextMenu
+	if menu == nil || menu.table != "queue_1" || len(menu.options) != 2 {
+		t.Fatalf("filtered right-click menu = %+v, want queue_1 table menu", menu)
+	}
+}
+
+func TestTableFormStatement_quoting(t *testing.T) {
+	model := readyModel(t)
+	tests := []struct {
+		name     string
+		product  string
+		form     schema.TableForm
+		expected string
+	}{
+		{name: "sqlite create", product: "SQLite", form: schema.TableForm{Name: "new", Database: "main"}, expected: `CREATE TABLE "new" (id INTEGER PRIMARY KEY)`},
+		{name: "sqlite rename", product: "SQLite", form: schema.TableForm{Name: "new", OriginalName: "old", Table: "old", Database: "main", ObjectKind: schema.TableFormTable}, expected: `ALTER TABLE "old" RENAME TO "new"`},
+		{name: "mysql create", product: "MySQL", form: schema.TableForm{Name: "new", Database: "app"}, expected: "CREATE TABLE `app`.`new` (id INTEGER PRIMARY KEY)"},
+		{name: "mysql rename", product: "MySQL", form: schema.TableForm{Name: "new", OriginalName: "old", Database: "app", ObjectKind: schema.TableFormTable}, expected: "ALTER TABLE `app`.`old` RENAME TO `app`.`new`"},
+		{name: "postgres create", product: "PostgreSQL", form: schema.TableForm{Name: "new", Database: "public"}, expected: `CREATE TABLE "public"."new" (id INTEGER PRIMARY KEY)`},
+		{name: "postgres rename", product: "PostgreSQL", form: schema.TableForm{Name: "new", OriginalName: "old", Table: "public.old", Database: "main", ObjectKind: schema.TableFormTable}, expected: `ALTER TABLE "public"."old" RENAME TO "new"`},
+		{name: "postgres schema create", product: "PostgreSQL", form: schema.TableForm{Name: "audit", ObjectKind: schema.TableFormSchema}, expected: `CREATE SCHEMA "audit"`},
+		{name: "postgres schema create dotted", product: "PostgreSQL", form: schema.TableForm{Name: "audit.logs", ObjectKind: schema.TableFormSchema}, expected: `CREATE SCHEMA "audit.logs"`},
+		{name: "postgres schema rename", product: "PostgreSQL", form: schema.TableForm{Name: "new", OriginalName: "audit", ObjectKind: schema.TableFormSchema}, expected: `ALTER SCHEMA "audit" RENAME TO "new"`},
+		{name: "postgres database create", product: "PostgreSQL", form: schema.TableForm{Name: "orders", ObjectKind: schema.TableFormDatabase}, expected: `CREATE DATABASE "orders"`},
+		{name: "postgres database rename", product: "PostgreSQL", form: schema.TableForm{Name: "sales", OriginalName: "orders", ObjectKind: schema.TableFormDatabase}, expected: `ALTER DATABASE "orders" RENAME TO "sales"`},
+		{name: "postgres database rename dotted", product: "PostgreSQL", form: schema.TableForm{Name: "sales.old", OriginalName: "orders.x", ObjectKind: schema.TableFormDatabase}, expected: `ALTER DATABASE "orders.x" RENAME TO "sales.old"`},
+		{name: "mysql database create", product: "MySQL", form: schema.TableForm{Name: "orders", ObjectKind: schema.TableFormDatabase}, expected: "CREATE DATABASE `orders`"},
+		{name: "mysql database rename unsupported", product: "MySQL", form: schema.TableForm{Name: "sales", OriginalName: "orders", ObjectKind: schema.TableFormDatabase}, expected: ""},
+		{name: "sqlite schema unsupported", product: "SQLite", form: schema.TableForm{Name: "audit", ObjectKind: schema.TableFormSchema}, expected: ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			model.databaseInfo.Product = test.product
+			model.schema.component.Structure.TableForm = test.form
+			if got := model.tableFormStatement(); got != test.expected {
+				t.Fatalf("statement = %q, want %q", got, test.expected)
+			}
+		})
+	}
+}
+
+func TestSchemaTableActions_palette(t *testing.T) {
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusSchema
+	model = createTableInSchema(t, model, "old")
+
+	// The palette lists the three table actions in schema focus.
+	palette := newCommandPalette(model)
+	available := map[CommandID]bool{}
+	for _, item := range palette.items {
+		available[item.id] = true
+	}
+	for _, id := range []CommandID{"schema.add_table", "schema.rename_table", "schema.delete_table"} {
+		if !available[id] {
+			t.Fatalf("palette missing %s", id)
+		}
+	}
+
+	// Selecting rename from the palette opens the prefilled popup.
+	model.schema.component.List.Select(1)
+	updated, command := model.handlePaletteCommand("schema.rename_table")
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if !model.schema.component.Structure.TableForm.Active() || model.schema.component.Structure.TableForm.Name != "old" {
+		t.Fatalf("palette rename did not open the popup: %+v", model.schema.component.Structure.TableForm)
+	}
+}

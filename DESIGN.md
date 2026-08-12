@@ -17,14 +17,12 @@ Perk Workbench is an interactive terminal database client. It opens one SQLite, 
 cmd/perk-workbench
         |
         v
-internal/workbench  <-- Bubble Tea state, input, layout, async commands
+internal/workbench/app <-- Bubble Tea state, input, layout, async commands
         |                         |
         |                         +--> internal/ai (optional chat)
         |                         |
-        |   feature packages      |
-        |   querylog notification |
-        |   connection chat       |
-        |   browse schema         |
+        |   sibling packages under internal/workbench/:
+        |   querylog notification connection chat browse schema uikit
         v
 internal/database -- target routing --> sqlite | mysql | postgres | mongodb
         |                                      \       |       /        |
@@ -38,7 +36,7 @@ internal/log       event log with debug/info/warn/error levels
 
 `cmd/perk-workbench` owns process setup: command-line parsing, signal context, optional clipboard and AI initialization, Bubble Tea startup, and closing the database service and AI history.
 
-`internal/workbench` owns all Bubble Tea state and presentation decisions. It starts database work and query execution as commands, then applies result messages only when they match the active request. The root `workbench.Model` is a shell that coordinates; each UI feature lives in its own package under `internal/workbench/` (`querylog`, `notification`, `connection`, `chat`, `browse`, `schema`) and owns its state, interactions, and rendering behind typed events.
+`internal/workbench/app` owns all Bubble Tea state and presentation decisions. It starts database work and query execution as commands, then applies result messages only when they match the active request. The root `app.Model` is a shell that coordinates; each UI feature lives in its own package under `internal/workbench/` (`querylog`, `notification`, `connection`, `chat`, `browse`, `schema`, plus the shared `uikit` contract), and the shell itself lives in `internal/workbench/app`.
 
 `internal/core` owns the small workflow state machine: opening, ready, failure, and picking states; focused pane and tab; selected table; and the active cancelable query.
 
@@ -69,11 +67,11 @@ The MongoDB driver replaces SQL with a small mongosh-style DSL (`db.<collection>
 
 ## UI model
 
-The primary view has a schema pane and a workspace. Workspace tabs cover query editing/results, structure, and table browsing. Compact layout decisions, focus navigation, keybindings, palettes, dialogs, and forms all remain in `internal/workbench`; `internal/chrome` only renders stateless terminal fragments.
+The primary view has a schema pane and a workspace. Workspace tabs cover query editing/results, structure, and table browsing. Compact layout decisions, focus navigation, keybindings, palettes, dialogs, and forms all remain in `internal/workbench/app`; `internal/chrome` only renders stateless terminal fragments.
 
 ### Root shell and feature packages
 
-The root `workbench.Model` is a shell, not the home of feature state. Each UI feature is a package under `internal/workbench/` — `querylog` (query-log pane, paging, detail), `notification` (popup, detail, history), `connection` (profile form, recent list/filter), `chat` (assistant pane, runs, tools), `browse` (result table, pager, row/document/cell editors, filter form, cell viewer), and `schema` (sidebar tree, structure/index/foreign-key tabs and their forms). Every component exposes the same contract: an `Update` (or feature-specific routing methods) that returns the updated model plus typed events, and `View`/`Draw` methods for rendering. Components never reach into root state; the root hands each one an immutable snapshot (`uikit.Layout`, keybindings, and feature-specific context) per update.
+The root `app.Model` (package `internal/workbench/app`) is a shell, not the home of feature state. Each UI feature is a package under `internal/workbench/` — `querylog` (query-log pane, paging, detail), `notification` (popup, detail, history), `connection` (profile form, recent list/filter), `chat` (assistant pane, runs, tools), `browse` (result table, pager, row/document/cell editors, filter form, cell viewer), and `schema` (sidebar tree, structure/index/foreign-key tabs and their forms). Every component exposes the same contract: an `Update` (or feature-specific routing methods) that returns the updated model plus typed events, and `View`/`Draw` methods for rendering. Components never reach into root state; the shell hands each one an immutable snapshot (`uikit.Layout`, keybindings, an…
 
 The root owns what is shared across features: `core.Workflow` and the query lifecycle, window layout and focus/tab navigation, global keybindings and the command palette, the status/log drain, the form-mode controller, and the modal overlays (context menus, quit/delete dialogs, confirmations, the explain picker, the table popup, the cell viewer). It applies the typed events components emit — status changes, clipboard copies, query/schema/browse requests, and CRUD executions — and keeps the asynchronous invariants: one active query, stale completions rejected by request ID, Escape cancellation, failed or canceled queries preserving the prior result table, and pending quit completing only after the active query finishes or cancels.
 
@@ -116,7 +114,7 @@ Project entries override user entries by name. Strict JSON decoding rejects unkn
 
 ## Row-level writes (browse-tab CRUD)
 
-The browse tab's row operations — cell edit, row edit, insert, delete — are today implemented in `internal/workbench` as raw SQL statement strings (`browse_form_statement.go`, `cell_editor.go`, `query.go`), gated by ad-hoc `Product == "MongoDB"` string checks. That puts the dialect in the wrong layer: `internal/sql.Service` and DESIGN's own rule keep driver SQL inside driver packages, and the workbench's manual `''` quoting is the kind of thing parameter binding exists for. The current SQL insert form is the last of the four operations built this way.
+The browse tab's row operations — cell edit, row edit, insert, delete — are split across the package boundary: `internal/workbench/browse` owns the forms, editors, and their pure state transitions, and emits typed requests; the app shell (`internal/workbench/app`) owns statement construction (`action_log.go` and the browse execution paths in `model_update.go` build the ALTER/CREATE/UPDATE/DELETE strings and still branch identifier quoting on `databaseInfo.Product`), plus the execution flows and capability wiring. A serializable capability descriptor plus narrow optional interfaces in `internal/sql` gate every action: drivers that implement `WriteCapabilitiesProvider` advertise their capabilities; otherwise the app derives the same descriptor from in-process type assertions (`RowWriter`, `DocumentReader`, `DocumentWriter`). Product names remain display-only for write-action availability — every browse write action dispatches on the descriptor — while the quoting rules themselves stay in the shell's statement helpers, never in `internal/sql`. Stores without a capability simply hide or reject the action.
 
 The target is a **serializable capability descriptor plus narrow optional interfaces** in `internal/sql`, implemented by drivers that can coherently support them. `Service` itself does not change; Redis/Neo4j-style stores simply do not implement the interfaces and keep whatever views they get later.
 

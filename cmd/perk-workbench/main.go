@@ -17,7 +17,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
 	"github.com/l3aro/perk-workbench/internal/database"
-	"github.com/l3aro/perk-workbench/internal/workbench"
+	app "github.com/l3aro/perk-workbench/internal/workbench/app"
 )
 
 // version is injected at build time with -ldflags=-X main.version=<version>.
@@ -158,20 +158,20 @@ func preferEnv(real func(string) (string, bool), file map[string]string) func(st
 	}
 }
 
-func loadKeybindings() (workbench.Keybindings, error) {
-	path := workbench.KeybindingsPath()
+func loadKeybindings() (app.Keybindings, error) {
+	path := app.KeybindingsPath()
 	if path == "" {
-		return workbench.DefaultKeybindings(), nil
+		return app.DefaultKeybindings(), nil
 	}
-	return workbench.LoadKeybindings(path)
+	return app.LoadKeybindings(path)
 }
 
-func loadConfig() (workbench.Config, error) {
-	path := workbench.ConfigPath()
+func loadConfig() (app.Config, error) {
+	path := app.ConfigPath()
 	if path == "" {
-		return workbench.Config{}, nil
+		return app.Config{}, nil
 	}
-	return workbench.LoadConfig(path)
+	return app.LoadConfig(path)
 }
 
 func loadAI() (*ai.Client, *ai.History, error) {
@@ -241,13 +241,13 @@ func run(target string, readOnly bool) error {
 	if err != nil {
 		return err
 	}
-	workbench.SetAppConfig(config)
+	app.SetAppConfig(config)
 	client, history, err := loadAI()
 	if err != nil {
 		return err
 	}
 
-	model := workbench.New(target, ctx, database.Open, readOnly)
+	model := app.New(target, ctx, database.Open, readOnly)
 	model.SetKeybindings(keybindings)
 	if client != nil {
 		model.SetAI(client, history)
@@ -259,12 +259,12 @@ func run(target string, readOnly bool) error {
 		tea.WithoutSignalHandler(),
 	)
 	// Logs from async commands must wake the idle loop into a notification.
-	workbench.AttachLogProgram(program)
+	app.AttachLogProgram(program)
 	final, runErr := program.Run()
 
 	stop()
 	var closeErr error
-	if finalModel, ok := final.(workbench.Model); ok {
+	if finalModel, ok := final.(app.Model); ok {
 		if service := finalModel.Service(); service != nil {
 			closeErr = service.Close()
 		}
