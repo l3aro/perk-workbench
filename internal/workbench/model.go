@@ -97,13 +97,10 @@ type schemaState struct {
 }
 
 // queryState owns the SQL workspace: the editor, result table and raw
-// result, completion, validation, and query-log history state.
+// result, completion, validation, editor history, and the query-log
+// component (pane, paging, detail).
 type queryState struct {
-	table                 table.Model // query log table
-	entries               []queryLogEntry
-	detail                *queryLogEntry
-	page, pageSize        int
-	pendingG              bool
+	component             querylog.Model
 	path                  string
 	store                 *querylog.Store
 	history               []string
@@ -209,9 +206,9 @@ type layoutState struct {
 	workspaceHeight, queryLogHeight                    int
 	editorHeight, resultsHeight, tableViewportWidth    int
 	structureOffset, browseOffset, resultsOffset       int
-	indexesOffset, foreignKeysOffset, queryLogOffset   int
+	indexesOffset, foreignKeysOffset                   int
 	structureColumn, browseColumn, resultsColumn       int
-	indexesColumn, foreignKeysColumn, queryLogColumn   int
+	indexesColumn, foreignKeysColumn                   int
 	compact, fullscreen                                bool
 	lastClickTime                                      time.Time
 	lastClickX, lastClickY                             int
@@ -310,12 +307,11 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 			expandedSchemas:   map[string]bool{},
 		},
 		queryLog: queryState{
-			table:             newResultsTable(),
+			component:         querylog.New(queryLogPageSize()),
 			results:           newResultsTable(),
 			editor:            newEditor(),
 			completionColumns: map[string][]string{},
 			historyIndex:      -1,
-			pageSize:          queryLogPageSize(),
 		},
 		browse: browseState{
 			table:    newResultsTable(),
@@ -346,13 +342,9 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	// unused.
 	model.connection.recent.SetShowFilter(false)
 	model.connection.recent.KeyMap.Filter = key.NewBinding(key.WithDisabled())
-	model.queryLog.table.SetColumns(tableColumns([]string{"Time", "Status", "Statement", "Duration", "Message"}, nil))
-	model.queryLog.table.Blur()
 	model.focusActiveTable()
 	model.queryLog.path, _ = queryLogPath()
-	model.queryLog.entries = nil // no connection scope yet; scoped loads happen after open
 	model.notifications.path, _ = notificationPath()
-	model.renderQueryLog()
 	model.connection.recentPath, _ = profile.Path()
 	model.configPath = ConfigPath()
 	var migrated bool
@@ -503,18 +495,18 @@ func (m *Model) disconnect() {
 }
 
 // reset clears query workspace state: the editor, result table, raw
-// result, completion data, validation tag, and query-log history, and
-// closes the query-log store.
+// result, completion data, validation tag, editor history, and the
+// query-log component, and closes the query-log store. The component is
+// cleared in place so its sized table survives the disconnect layout
+// pass.
 func (s *queryState) reset() {
 	if s.store != nil {
 		_ = s.store.Close()
 		s.store = nil
 	}
-	s.entries = nil
-	s.page = 0
+	s.component.Reset()
 	s.history = nil
 	s.historyIndex = -1
-	s.table.SetRows(nil)
 	s.editor.setValue("")
 	s.editorValidity = sqlValidityPending
 	s.validationTag++

@@ -80,7 +80,7 @@ func TestWideLayout_shows_two_recent_browse_entries(t *testing.T) {
 
 	// Then
 	view := ansi.Strip(model.queryLogPaneView())
-	if got, want := len(model.queryLog.entries), 2; got != want {
+	if got, want := len(model.queryLog.component.Entries), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
 	if !strings.Contains(view, cellText("SELECT * FROM \"projects\" LIMIT 25 OFFSET 25")) {
@@ -100,7 +100,7 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if model.Focus != focusQueryLog || !model.queryLog.table.Focused() {
+	if model.Focus != focusQueryLog || !model.queryLog.component.Table.Focused() {
 		t.Fatal("3 did not focus the query log pane")
 	}
 
@@ -116,7 +116,7 @@ func TestQueryLog_focuses_with_3_and_navigates_with_jk_gG(t *testing.T) {
 	} {
 		updated, _ = model.Update(test.key)
 		model = updated.(Model)
-		if got := model.queryLog.table.Cursor(); got != test.want {
+		if got := model.queryLog.component.Table.Cursor(); got != test.want {
 			t.Fatalf("query log cursor = %d, want %d after %s", got, test.want, test.key.String())
 		}
 	}
@@ -136,10 +136,10 @@ func TestQueryLog_n_and_p_change_pages(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.page, 1; got != want {
+	if got, want := model.queryLog.component.Page, 1; got != want {
 		t.Fatalf("query log page = %d, want %d", got, want)
 	}
-	if got, want := model.queryLog.table.Rows()[0][2], "SELECT 0"; got != want {
+	if got, want := model.queryLog.component.Table.Rows()[0][2], "SELECT 0"; got != want {
 		t.Fatalf("next page statement = %q, want %q", got, want)
 	}
 
@@ -148,10 +148,10 @@ func TestQueryLog_n_and_p_change_pages(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.page, 0; got != want {
+	if got, want := model.queryLog.component.Page, 0; got != want {
 		t.Fatalf("query log page = %d, want %d", got, want)
 	}
-	if got, want := model.queryLog.table.Rows()[0][2], "SELECT 25"; got != want {
+	if got, want := model.queryLog.component.Table.Rows()[0][2], "SELECT 25"; got != want {
 		t.Fatalf("previous page statement = %q, want %q", got, want)
 	}
 }
@@ -162,7 +162,7 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT 42", Message: message})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
-	model.layout.queryLogColumn = 4
+	model.queryLog.component.Column = 4
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -175,8 +175,8 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	if command == nil {
 		t.Fatal("copy command = nil, want clipboard command")
 	}
-	if got, want := queryLogCell(model.queryLog.entries[0], model.layout.queryLogColumn), message; got != want {
-		t.Fatalf("copied cell value = %q, want full message", got)
+	if got, ok := model.queryLog.component.SelectedCellText(); !ok || got != message {
+		t.Fatalf("copied cell value = %q, want full message %q", got, message)
 	}
 }
 

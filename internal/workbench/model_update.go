@@ -569,23 +569,23 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
-				m.queryLog.pendingG = false
+				m.queryLog.component.ClearPendingG()
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				return m, nil
 			case m.keybindings.Match(message, "focus.workspace", []scope{scopeGlobal}):
 				m.Focus = focusWorkspace
-				m.queryLog.pendingG = false
+				m.queryLog.component.ClearPendingG()
 				m.focusActiveTable()
 				return m, nil
 			case m.keybindings.Match(message, "focus.query_log", []scope{scopeGlobal}):
 				m.Focus = focusQueryLog
-				m.queryLog.pendingG = false
+				m.queryLog.component.ClearPendingG()
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
-				m.queryLog.table.Focus()
-				if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
-					m.queryLog.table.SetCursor(0)
+				m.queryLog.component.Table.Focus()
+				if len(m.queryLog.component.Table.Rows()) > 0 && m.queryLog.component.Table.Cursor() < 0 {
+					m.queryLog.component.Table.SetCursor(0)
 				}
 				return m, nil
 			case m.keybindings.Match(message, "focus.chat", []scope{scopeGlobal}):
@@ -593,7 +593,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.Focus = focusChat
-				m.queryLog.pendingG = false
+				m.queryLog.component.ClearPendingG()
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				if !m.vimMode {

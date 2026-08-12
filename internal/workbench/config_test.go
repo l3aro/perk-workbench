@@ -87,8 +87,8 @@ func TestSetAppConfig_applies_defaults_to_new_models(t *testing.T) {
 	if model.browse.pageSize != 50 {
 		t.Fatalf("browsePageSize = %d, want 50", model.browse.pageSize)
 	}
-	if model.queryLog.pageSize != 7 {
-		t.Fatalf("queryLogPageSize = %d, want 7", model.queryLog.pageSize)
+	if model.queryLog.component.PageSize != 7 {
+		t.Fatalf("queryLogPageSize = %d, want 7", model.queryLog.component.PageSize)
 	}
 	if !model.ReadOnly {
 		t.Fatal("ReadOnly = false, want true from config")
@@ -115,8 +115,8 @@ func TestSetAppConfig_zero_keeps_builtin_defaults(t *testing.T) {
 	if model.browse.pageSize != core.BrowsePageSize {
 		t.Fatalf("browsePageSize = %d, want built-in %d", model.browse.pageSize, core.BrowsePageSize)
 	}
-	if model.queryLog.pageSize != defaultQueryLogPageSize {
-		t.Fatalf("queryLogPageSize = %d, want built-in %d", model.queryLog.pageSize, defaultQueryLogPageSize)
+	if model.queryLog.component.PageSize != defaultQueryLogPageSize {
+		t.Fatalf("queryLogPageSize = %d, want built-in %d", model.queryLog.component.PageSize, defaultQueryLogPageSize)
 	}
 	if model.ReadOnly {
 		t.Fatal("ReadOnly = true, want false with zero config")

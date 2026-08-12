@@ -36,7 +36,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	}
 
 	// Then
-	rows := model.queryLog.table.Rows()
+	rows := model.queryLog.component.Table.Rows()
 	if got, want := len(rows), defaultQueryLogPageSize; got != want {
 		t.Fatalf("visible query log rows = %d, want %d", got, want)
 	}
@@ -46,7 +46,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	if got, want := rows[0][2], "SELECT many"; got != want {
 		t.Fatalf("latest query log statement = %q, want %q", got, want)
 	}
-	if got := model.queryLog.entries[len(model.queryLog.entries)-1].Statement; got != "bad SQL" {
+	if got := model.queryLog.component.Entries[len(model.queryLog.component.Entries)-1].Statement; got != "bad SQL" {
 		t.Fatalf("oldest retained query = %q, want failed query after capped entries", got)
 	}
 }
@@ -56,7 +56,7 @@ func TestNew_queryLog_has_history_columns(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 
 	// When
-	columns := model.queryLog.table.Columns()
+	columns := model.queryLog.component.Table.Columns()
 
 	// Then
 	if got, want := len(columns), 5; got != want {
@@ -73,7 +73,7 @@ func TestQueryLogDetail_shows_statement(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	statement := "SELECT id, name FROM projects WHERE active = 1"
-	model.queryLog.detail = &queryLogEntry{Statement: statement}
+	model.queryLog.component.Detail = &queryLogEntry{Statement: statement}
 
 	// When
 	view := ansi.Strip(model.View().Content)
@@ -91,7 +91,7 @@ func TestQueryLogDetail_prettyPrintsJSON(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	value := `{"customer":{"name":"Ada"},"ids":[1,2]}`
-	model.queryLog.detail = &queryLogEntry{Message: value}
+	model.queryLog.component.Detail = &queryLogEntry{Message: value}
 
 	// When
 	view := ansi.Strip(model.View().Content)
@@ -122,14 +122,14 @@ func TestWorkspaceTabs_labelSchemaInspectionViews(t *testing.T) {
 func TestQueryLogDetail_y_doesNotOpenCopyDialog(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.queryLog.detail = &queryLogEntry{Statement: "SELECT 1"}
+	model.queryLog.component.Detail = &queryLogEntry{Statement: "SELECT 1"}
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)
 
 	// Then
-	if model.queryLog.detail == nil {
+	if model.queryLog.component.Detail == nil {
 		t.Fatal("y closed the detail overlay")
 	}
 	if command != nil {
@@ -147,26 +147,26 @@ func TestQueryLog_displayTruncatesLongStatementAndMessage(t *testing.T) {
 	model.appendQueryLog(queryLogEntry{Statement: statement, Message: message})
 
 	// Then
-	if got, want := model.queryLog.table.Rows()[0][2], cellText(statement); got != want {
+	if got, want := model.queryLog.component.Table.Rows()[0][2], cellText(statement); got != want {
 		t.Fatalf("display statement = %q, want %q", got, want)
 	}
-	if got, want := model.queryLog.table.Rows()[0][4], cellText(message); got != want {
+	if got, want := model.queryLog.component.Table.Rows()[0][4], cellText(message); got != want {
 		t.Fatalf("display message = %q, want %q", got, want)
 	}
-	if got := model.queryLog.table.Columns()[2].Width; got > 50 {
+	if got := model.queryLog.component.Table.Columns()[2].Width; got > 50 {
 		t.Fatalf("statement column width = %d, want at most 50", got)
 	}
-	if got := model.queryLog.table.Columns()[4].Width; got > 50 {
+	if got := model.queryLog.component.Table.Columns()[4].Width; got > 50 {
 		t.Fatalf("message column width = %d, want at most 50", got)
 	}
 	model = resizeModel(model, 160, 24)
-	if got := model.queryLog.table.Columns()[2].Width; got > 50 {
+	if got := model.queryLog.component.Table.Columns()[2].Width; got > 50 {
 		t.Fatalf("statement column width after resize = %d, want at most 50", got)
 	}
-	if got, want := model.queryLog.entries[0].Statement, statement; got != want {
+	if got, want := model.queryLog.component.Entries[0].Statement, statement; got != want {
 		t.Fatalf("stored statement = %q, want full value", got)
 	}
-	if got, want := model.queryLog.entries[0].Message, message; got != want {
+	if got, want := model.queryLog.component.Entries[0].Message, message; got != want {
 		t.Fatalf("stored message = %q, want full value", got)
 	}
 }
@@ -175,14 +175,14 @@ func TestQueryLogDetail_e_opens_explain_picker(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	model.databaseInfo.Product = "SQLite"
-	model.queryLog.detail = &queryLogEntry{Statement: "SELECT 1"}
+	model.queryLog.component.Detail = &queryLogEntry{Statement: "SELECT 1"}
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 	model = updated.(Model)
 
 	// Then
-	if model.queryLog.detail != nil {
+	if model.queryLog.component.Detail != nil {
 		t.Fatal("e did not close the detail overlay")
 	}
 	if model.overlay.explainPicker == nil {
@@ -212,7 +212,7 @@ func TestQueryLog_contextMenuExposesAndExecutesShortcuts(t *testing.T) {
 			name: "detail",
 			keys: []tea.KeyPressMsg{{Code: tea.KeyEnter}},
 			check: func(t *testing.T, model Model) {
-				if model.queryLog.detail == nil {
+				if model.queryLog.component.Detail == nil {
 					t.Fatal("detail action did not open query log detail")
 				}
 			},
@@ -231,9 +231,9 @@ func TestQueryLog_contextMenuExposesAndExecutesShortcuts(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			model := resizeModel(readyModel(t), 100, 24)
 			model.Focus = focusQueryLog
-			model.queryLog.table.Focus()
+			model.queryLog.component.Table.Focus()
 			model.appendQueryLog(queryLogEntry{Statement: "SELECT 1", Status: "success"})
-			model.queryLog.table.SetCursor(0)
+			model.queryLog.component.Table.SetCursor(0)
 			model.databaseInfo.Product = "SQLite"
 			updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
 			model = updated.(Model)
@@ -260,9 +260,9 @@ func TestQueryLog_contextMenuExposesAndExecutesShortcuts(t *testing.T) {
 func TestQueryLog_contextMenuMouseSelectsRenderedDetail(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.Focus = focusQueryLog
-	model.queryLog.table.Focus()
+	model.queryLog.component.Table.Focus()
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT 1", Status: "success"})
-	model.queryLog.table.SetCursor(0)
+	model.queryLog.component.Table.SetCursor(0)
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
 	model = updated.(Model)
@@ -287,7 +287,7 @@ func TestQueryLog_contextMenuMouseSelectsRenderedDetail(t *testing.T) {
 	if model.overlay.contextMenu != nil {
 		t.Fatal("query-log context menu remained open after mouse selection")
 	}
-	if model.queryLog.detail == nil {
+	if model.queryLog.component.Detail == nil {
 		t.Fatal("mouse-selected Detail action did not open query-log detail")
 	}
 }
@@ -302,7 +302,7 @@ func TestQueryLog_records_browse_page_load(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	rows := model.queryLog.table.Rows()
+	rows := model.queryLog.component.Table.Rows()
 	if got, want := len(rows), 1; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
@@ -340,7 +340,7 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	rows := model.queryLog.table.Rows()
+	rows := model.queryLog.component.Table.Rows()
 	if got, want := len(rows), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
@@ -380,7 +380,7 @@ func TestQueryLog_records_index_replacement_and_deletion(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	rows := model.queryLog.table.Rows()
+	rows := model.queryLog.component.Table.Rows()
 	if got, want := len(rows), 2; got != want {
 		t.Fatalf("query log entries = %d, want %d", got, want)
 	}
@@ -402,7 +402,7 @@ func TestQueryLog_shows_browse_message(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.table.Rows()[0][4], "fetched 2 rows"; got != want {
+	if got, want := model.queryLog.component.Table.Rows()[0][4], "fetched 2 rows"; got != want {
 		t.Fatalf("browse log message = %q, want %q", got, want)
 	}
 }
@@ -418,7 +418,7 @@ func TestQueryLog_uses_mysql_identifier_quoting_for_browse_statement(t *testing.
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.queryLog.table.Rows()[0][2], cellText("SELECT * FROM `projects` LIMIT 25 OFFSET 0"); got != want {
+	if got, want := model.queryLog.component.Table.Rows()[0][2], cellText("SELECT * FROM `projects` LIMIT 25 OFFSET 0"); got != want {
 		t.Fatalf("browse statement = %q, want %q", got, want)
 	}
 }
@@ -436,7 +436,7 @@ func TestQueryLog_records_applied_browse_filters(t *testing.T) {
 	model = updated.(Model)
 
 	want := "SELECT * FROM `office`.`customers` WHERE `City` LIKE 'A%' AND `SupportRepId` IS NOT NULL LIMIT 25 OFFSET 0"
-	if got := model.queryLog.table.Rows()[0][2]; got != cellText(want) {
+	if got := model.queryLog.component.Table.Rows()[0][2]; got != cellText(want) {
 		t.Fatalf("browse statement = %q, want %q", got, cellText(want))
 	}
 }
@@ -451,7 +451,7 @@ func TestQueryLog_uses_elapsed_duration_for_live_browse_load(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.entries[0].Duration; got <= 0 {
+	if got := model.queryLog.component.Entries[0].Duration; got <= 0 {
 		t.Fatalf("browse log duration = %s, want elapsed duration", got)
 	}
 }
@@ -459,14 +459,14 @@ func TestQueryLog_uses_elapsed_duration_for_live_browse_load(t *testing.T) {
 func TestQueryLog_summary_reports_session_extrema(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.queryLog.entries = []queryLogEntry{
+	model.queryLog.component.Entries = []queryLogEntry{
 		{Duration: 8 * time.Millisecond},
 		{Duration: 2 * time.Millisecond},
 		{Duration: 15 * time.Millisecond},
 	}
 
 	// When
-	summary := model.queryLogSummary()
+	summary := model.queryLog.component.Summary()
 
 	// Then
 	if got, want := summary, "page 1/1 | fastest 2ms | slowest 15ms"; got != want {

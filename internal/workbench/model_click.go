@@ -69,7 +69,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		if x < m.layout.schemaWidth {
 			if m.Focus != focusSchema {
 				m.Focus = focusSchema
-				m.queryLog.pendingG = false
+				m.queryLog.component.ClearPendingG()
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
 			}
@@ -77,7 +77,7 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 		if m.chat.visible && x >= m.layout.schemaWidth+m.layout.editorWidth {
 			m.Focus = focusChat
-			m.queryLog.pendingG = false
+			m.queryLog.component.ClearPendingG()
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
 			// A double-click press just entered insert mode; the trailing
@@ -236,7 +236,7 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	m.schema.filter.Blur()
 	if m.Focus != focusWorkspace {
 		m.Focus = focusWorkspace
-		m.queryLog.pendingG = false
+		m.queryLog.component.ClearPendingG()
 		m.focusActiveTable()
 	}
 	// The workspace pane has a RoundedBorder (top border at contentY=0).
@@ -490,27 +490,27 @@ func (m Model) focusQueryLogClick(x, contentY int) (tea.Model, tea.Cmd) {
 	// header line at 1, and data rows from 2.
 	if m.Focus != focusQueryLog {
 		m.Focus = focusQueryLog
-		m.queryLog.pendingG = false
+		m.queryLog.component.ClearPendingG()
 		m.queryLog.editor.text.Blur()
 		m.blurTables()
-		m.queryLog.table.Focus()
-		if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
-			m.queryLog.table.SetCursor(0)
+		m.queryLog.component.Table.Focus()
+		if len(m.queryLog.component.Table.Rows()) > 0 && m.queryLog.component.Table.Cursor() < 0 {
+			m.queryLog.component.Table.SetCursor(0)
 		}
 	}
 	rowY := contentY - 2
-	if rowY < 0 || rowY >= m.queryLog.table.Height() {
+	if rowY < 0 || rowY >= m.queryLog.component.Table.Height() {
 		return m, nil
 	}
-	rows := m.queryLog.table.Rows()
-	start := min(max(m.queryLog.table.Cursor()-m.queryLog.table.Height()+1, 0), max(len(rows)-m.queryLog.table.Height(), 0))
+	rows := m.queryLog.component.Table.Rows()
+	start := min(max(m.queryLog.component.Table.Cursor()-m.queryLog.component.Table.Height()+1, 0), max(len(rows)-m.queryLog.component.Table.Height(), 0))
 	if row := start + rowY; row < len(rows) {
-		m.queryLog.table.SetCursor(row)
-		cellX := x - m.workspaceLeft() - 1 + m.layout.queryLogOffset
-		for index, column := range m.queryLog.table.Columns() {
+		m.queryLog.component.Table.SetCursor(row)
+		cellX := x - m.workspaceLeft() - 1 + m.queryLog.component.Offset
+		for index, column := range m.queryLog.component.Table.Columns() {
 			cellWidth := column.Width + 2*spaceCompact
 			if cellX < cellWidth {
-				m.layout.queryLogColumn = index
+				m.queryLog.component.Column = index
 				break
 			}
 			cellX -= cellWidth
@@ -565,16 +565,16 @@ func (m Model) handleMouseWheel(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		}
 	case focusQueryLog:
 		if hStep != 0 {
-			moveTableColumn(&m.queryLog.table, &m.layout.queryLogColumn, &m.layout.queryLogOffset, m.layout.tableViewportWidth, hStep)
+			moveTableColumn(&m.queryLog.component.Table, &m.queryLog.component.Column, &m.queryLog.component.Offset, m.layout.tableViewportWidth, hStep)
 			return m, nil
 		}
-		rows := m.queryLog.table.Rows()
+		rows := m.queryLog.component.Table.Rows()
 		rowCount := len(rows)
 		if rowCount == 0 {
 			return m, nil
 		}
-		newCursor := clamp(m.queryLog.table.Cursor()+step, 0, rowCount-1)
-		m.queryLog.table.SetCursor(newCursor)
+		newCursor := clamp(m.queryLog.component.Table.Cursor()+step, 0, rowCount-1)
+		m.queryLog.component.Table.SetCursor(newCursor)
 	}
 	return m, nil
 }

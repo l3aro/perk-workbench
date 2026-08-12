@@ -47,26 +47,24 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "delete_profile":
 			m.confirmDeleteRecentConnection()
 		case "query_log_yank":
-			entry, ok := m.queryLogSelectedEntry()
+			text, ok := m.queryLog.component.SelectedCellText()
 			if !ok {
 				return m, nil
 			}
 			m.setStatus("copied to clipboard")
-			return m, copyQueryLogStatement(queryLogCell(entry, m.layout.queryLogColumn))
+			return m, copyQueryLogStatement(text)
 		case "query_log_explain":
-			entry, ok := m.queryLogSelectedEntry()
+			statement, ok := m.queryLog.component.SelectedStatement()
 			if !ok {
 				return m, nil
 			}
-			m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.Statement, m.layout.tableViewportWidth)
+			m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, statement, m.layout.tableViewportWidth)
 			if m.overlay.explainPicker == nil {
 				return m, nil
 			}
 			return m, m.overlay.explainPicker.form.Init()
 		case "query_log_detail":
-			if entry, ok := m.queryLogSelectedEntry(); ok {
-				m.queryLog.detail = &entry
-			}
+			m.queryLog.component.OpenDetailAtCursor()
 		}
 		return m, nil
 	}

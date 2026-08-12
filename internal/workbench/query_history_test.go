@@ -54,22 +54,22 @@ func TestNew_loadsPersistedQueryLog(t *testing.T) {
 	}
 	model := New("", context.Background(), testOpen, false)
 	// No connection is open yet, so the persisted entries must not surface.
-	if got := model.queryLog.entries; len(got) != 0 {
+	if got := model.queryLog.component.Entries; len(got) != 0 {
 		t.Fatalf("query log before a connection = %#v, want none", got)
 	}
-	if got := model.queryLog.table.Rows(); len(got) != 0 {
+	if got := model.queryLog.component.Table.Rows(); len(got) != 0 {
 		t.Fatalf("query log rows before a connection = %#v, want none", got)
 	}
 	// The scoped load (what updateOpen runs after recordConnection) shows them.
 	model.connectionID = "conn-a"
 	if store := model.queryLogStore(); store != nil {
-		model.queryLog.entries = loadQueryLogEntries(store, model.connectionID)
+		model.queryLog.component.Entries = loadQueryLogEntries(store, model.connectionID)
 	}
-	model.renderQueryLog()
-	if got := model.queryLog.entries; len(got) != 1 || got[0].Statement != entry.Statement {
+	model.queryLog.component.Render()
+	if got := model.queryLog.component.Entries; len(got) != 1 || got[0].Statement != entry.Statement {
 		t.Fatalf("loaded query log = %#v, want %#v", got, []queryLogEntry{entry})
 	}
-	if got := model.queryLog.table.Rows(); len(got) != 1 || got[0][2] != entry.Statement {
+	if got := model.queryLog.component.Table.Rows(); len(got) != 1 || got[0][2] != entry.Statement {
 		t.Fatalf("query log rows = %#v, want persisted statement", got)
 	}
 }

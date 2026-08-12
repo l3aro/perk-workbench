@@ -58,10 +58,9 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if store := m.queryLogStore(); store != nil {
-		m.queryLog.entries = loadQueryLogEntries(store, m.connectionID)
+		m.queryLog.component.SetEntries(loadQueryLogEntries(store, m.connectionID))
 	}
-	m.queryLog.page = 0
-	m.renderQueryLog()
+	m.queryLog.component.SetPage(0)
 	if store := m.notificationStore(); store != nil {
 		if entries, err := store.Load(m.connectionID, 0); err == nil {
 			m.notifications.entries = notificationEntriesOf(entries)

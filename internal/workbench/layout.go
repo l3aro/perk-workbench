@@ -95,10 +95,10 @@ func (m *Model) applyLayout(width, height int) {
 			}
 			resultTable.SetColumns(tableColumns(titles, resultTable.Rows()))
 		}
-		m.renderQueryLog()
+		m.queryLog.component.RefreshViewport(m.layout.tableViewportWidth)
 	}
 	resizeResultsTable(&m.queryLog.results, m.layout.tableViewportWidth, max(m.layout.resultsHeight-5, 2))
-	resizeResultsTable(&m.queryLog.table, m.layout.tableViewportWidth, max(m.layout.queryLogHeight-5, 2))
+	m.queryLog.component.Resize(queryLogLayout(*m))
 	// The tab tables yield one row to the blank line that separates their
 	// status line from the mode/tab-hint footer.
 	resizeResultsTable(&m.structure.table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
@@ -113,5 +113,5 @@ func (m *Model) applyLayout(width, height int) {
 	revealTableColumn(m.queryLog.results, m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth)
 	m.layout.indexesOffset = tableOffset(m.structure.indexes, m.layout.indexesOffset, m.layout.tableViewportWidth)
 	m.layout.foreignKeysOffset = tableOffset(m.structure.foreignKeys, m.layout.foreignKeysOffset, m.layout.tableViewportWidth)
-	revealTableColumn(m.queryLog.table, m.layout.queryLogColumn, &m.layout.queryLogOffset, m.layout.tableViewportWidth)
+	m.queryLog.component.RevealColumn(m.layout.tableViewportWidth)
 }

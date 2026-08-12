@@ -789,23 +789,23 @@ func TestCompactClick_queryLogSelectsRenderedRow(t *testing.T) {
 	// The query log renders newest first, so the newest entry is row 0.
 	updated, _ := model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got, want := model.queryLog.table.Cursor(), 0; got != want {
+	if got, want := model.queryLog.component.Table.Cursor(), 0; got != want {
 		t.Fatalf("compact click on newest row = cursor %d, want %d", got, want)
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: 20, Y: renderedRowY(t, model, "SELECT first"), Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got, want := model.queryLog.table.Cursor(), 1; got != want {
+	if got, want := model.queryLog.component.Table.Cursor(), 1; got != want {
 		t.Fatalf("compact click on oldest row = cursor %d, want %d", got, want)
 	}
 	// A click at the start of the Statement column (third column) must
 	// select that column, not fall back to column 0.
 	clickX := 1 // pane left border
-	for _, column := range model.queryLog.table.Columns()[:2] {
+	for _, column := range model.queryLog.component.Table.Columns()[:2] {
 		clickX += column.Width + 2*spaceCompact
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: clickX, Y: renderedRowY(t, model, "SELECT second"), Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got, want := model.layout.queryLogColumn, 2; got != want {
+	if got, want := model.queryLog.component.Column, 2; got != want {
 		t.Fatalf("compact click on Statement column = column %d, want %d", got, want)
 	}
 }

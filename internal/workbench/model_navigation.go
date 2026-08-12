@@ -234,14 +234,14 @@ func (m *Model) blurTables() {
 	m.queryLog.results.Blur()
 	m.structure.indexes.Blur()
 	m.structure.foreignKeys.Blur()
-	m.queryLog.table.Blur()
+	m.queryLog.component.Blur()
 	m.chat.input.Blur()
 }
 
 func (m *Model) cycleFocus(forward bool) {
 	m.queryLog.editor.text.Blur()
 	m.blurTables()
-	m.queryLog.pendingG = false
+	m.queryLog.component.ClearPendingG()
 
 	focusCount := focus(3)
 	if m.chat.visible {
@@ -258,10 +258,8 @@ func (m *Model) cycleFocus(forward bool) {
 	case focusWorkspace:
 		m.focusActiveTable()
 	case focusQueryLog:
-		m.queryLog.table.Focus()
-		if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
-			m.queryLog.table.SetCursor(0)
-		}
+		m.queryLog.component.Focus()
+		m.queryLog.component.EnsureCursor()
 	case focusChat:
 		m.chat.chatMode = formModeNormal
 		if !m.vimMode {

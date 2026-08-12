@@ -245,7 +245,7 @@ func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 
 	// When
 	workspace := ansi.Strip(model.workspaceView())
-	history := ansi.Strip(model.queryLogContentView())
+	history := ansi.Strip(model.queryLog.component.View(queryLogLayout(model)))
 	footer := ansi.Strip(model.footer())
 
 	// Then
@@ -819,19 +819,19 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	model.appendQueryLog(queryLogEntry{Statement: "select 2"})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
-	model.queryLog.table.SetCursor(1)
-	initialRow := model.queryLog.table.Cursor()
-	view := model.queryLogContentView()
+	model.queryLog.component.Table.SetCursor(1)
+	initialRow := model.queryLog.component.Table.Cursor()
+	view := model.queryLog.component.View(queryLogLayout(model))
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.table.Cursor(); got != initialRow {
+	if got := model.queryLog.component.Table.Cursor(); got != initialRow {
 		t.Fatalf("query log cursor = %d, want %d after l", got, initialRow)
 	}
-	if got, want := model.layout.queryLogColumn, 1; got != want {
+	if got, want := model.queryLog.component.Column, 1; got != want {
 		t.Fatalf("selected query-log column = %d, want %d after l", got, want)
 	}
 
@@ -840,10 +840,10 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLog.table.Cursor(); got != initialRow {
+	if got := model.queryLog.component.Table.Cursor(); got != initialRow {
 		t.Fatalf("query log cursor = %d, want %d after h", got, initialRow)
 	}
-	if got, want := model.layout.queryLogColumn, 0; got != want {
+	if got, want := model.queryLog.component.Column, 0; got != want {
 		t.Fatalf("selected query-log column = %d, want %d after h", got, want)
 	}
 
@@ -856,7 +856,7 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got := model.queryLogContentView(); got != view {
+	if got := model.queryLog.component.View(queryLogLayout(model)); got != view {
 		t.Fatal("query-log cell motion changed the viewport after returning left")
 	}
 }

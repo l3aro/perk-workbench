@@ -316,7 +316,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "chat.delete", "chat.clear", "chat.apply_sql":
 		return m.State == stateReady && m.Focus == focusChat
 	case "detail.explain", "detail.close":
-		return m.queryLog.detail != nil
+		return m.queryLog.component.Detail != nil
 	case "picker.reload", "picker.select":
 		return m.State == statePicking
 	case "failure.return_to_picker":

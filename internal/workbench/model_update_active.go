@@ -4,28 +4,17 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
-	if m.queryLog.detail != nil {
-		if keyPress, ok := message.(tea.KeyPressMsg); ok {
-			switch {
-			case m.keybindings.Match(keyPress, "detail.explain", []scope{scopeView, scopeGlobal}):
-				explain := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, m.queryLog.detail.Statement, m.layout.tableViewportWidth)
-				if explain == nil {
-					return m, nil
-				}
-				m.overlay.explainPicker = explain
-				m.queryLog.detail = nil
-				return m, m.overlay.explainPicker.form.Init()
-			case m.keybindings.Match(keyPress, "detail.close", []scope{scopeView, scopeGlobal}):
-				m.queryLog.detail = nil
-				return m, nil
-			}
-		}
-		return m, nil
+	// The query-log detail overlay replaces normal content and consumes
+	// every message while open.
+	if m.queryLog.component.DetailOpen() {
+		model, event, cmd := m.queryLog.component.Update(message, queryLogLayout(m), m.keybindings)
+		m.queryLog.component = model
+		return m.applyQueryLogEvent(event, cmd)
 	}
-
 	switch m.State {
 	case stateConnection:
 		return m.updateConnection(message)
@@ -425,103 +414,44 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, command
 		case focusQueryLog:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok {
-				if !m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}) {
-					if m.queryLog.pendingG {
-						m.queryLog.pendingG = false
-						return m, nil
-					}
-					m.queryLog.pendingG = false
-				}
-				if m.keybindings.Match(keyPress, "query_log.context_menu", []scope{scopeView, scopeGlobal}) {
-					if len(m.queryLog.table.Rows()) == 0 {
-						return m, nil
-					}
-					options := []menuOption{
-						{label: "Detail", action: "query_log_detail", keys: "enter"},
-						{label: "Copy cell", action: "query_log_yank", keys: "y"},
-						{label: "Explain", action: "query_log_explain", keys: "e"},
-					}
-					maxLabel, maxKeys := 0, 0
-					for _, option := range options {
-						maxLabel = max(maxLabel, len(option.label))
-						maxKeys = max(maxKeys, len(option.keys))
-					}
-					contentWidth := max(maxLabel+2+maxKeys+2, len("Row actions")+2, 24)
-					menuWidth := contentWidth + 2
-					menuX := min(max(m.layout.schemaWidth+1, 0), max(m.layout.width-menuWidth, 0))
-					menuY := min(max(m.layout.workspaceHeight+4, 0), max(m.layout.height-(4+len(options)), 0))
-					m.overlay.contextMenu = &contextMenuModel{
-						options:  options,
-						selected: 0,
-						visible:  true,
-						x:        menuX,
-						y:        menuY,
-					}
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "query_log.context_menu", []scope{scopeView, scopeGlobal}) {
+				// The pending top mark gates the first press of any key:
+				// an armed mark clears and stops without opening the menu.
+				// The menu itself needs screen geometry, so root builds it.
+				if m.queryLog.component.PendingG {
+					m.queryLog.component.ClearPendingG()
 					return m, nil
 				}
-				if m.keybindings.Match(keyPress, "query_log.next_page", []scope{scopeView, scopeGlobal}) {
-					if m.queryLog.page+1 < m.queryLogPageCount() {
-						m.queryLog.page++
-						m.queryLog.table.SetCursor(0)
-						m.renderQueryLog()
-					}
+				m.queryLog.component.ClearPendingG()
+				if !m.queryLog.component.HasRows() {
 					return m, nil
 				}
-				if m.keybindings.Match(keyPress, "query_log.prev_page", []scope{scopeView, scopeGlobal}) {
-					if m.queryLog.page > 0 {
-						m.queryLog.page--
-						m.queryLog.table.SetCursor(0)
-						m.renderQueryLog()
-					}
-					return m, nil
+				options := []menuOption{
+					{label: "Detail", action: "query_log_detail", keys: "enter"},
+					{label: "Copy cell", action: "query_log_yank", keys: "y"},
+					{label: "Explain", action: "query_log_explain", keys: "e"},
 				}
-				if moveTableCell(&m.queryLog.table, &m.layout.queryLogColumn, &m.layout.queryLogOffset, m.layout.tableViewportWidth, keyPress) {
-					return m, nil
+				maxLabel, maxKeys := 0, 0
+				for _, option := range options {
+					maxLabel = max(maxLabel, len(option.label))
+					maxKeys = max(maxKeys, len(option.keys))
 				}
-				rows := m.queryLog.table.Rows()
-				if len(rows) == 0 {
-					return m, nil
+				contentWidth := max(maxLabel+2+maxKeys+2, len("Row actions")+2, 24)
+				menuWidth := contentWidth + 2
+				menuX := min(max(m.layout.schemaWidth+1, 0), max(m.layout.width-menuWidth, 0))
+				menuY := min(max(m.layout.workspaceHeight+4, 0), max(m.layout.height-(4+len(options)), 0))
+				m.overlay.contextMenu = &contextMenuModel{
+					options:  options,
+					selected: 0,
+					visible:  true,
+					x:        menuX,
+					y:        menuY,
 				}
-				switch {
-				case m.keybindings.Match(keyPress, "query_log.yank", []scope{scopeView, scopeGlobal}):
-					entry, ok := m.queryLogSelectedEntry()
-					if !ok {
-						return m, nil
-					}
-					m.setStatus("copied to clipboard")
-					return m, copyQueryLogStatement(queryLogCell(entry, m.layout.queryLogColumn))
-				case m.keybindings.Match(keyPress, "query_log.explain", []scope{scopeView, scopeGlobal}):
-					entry, ok := m.queryLogSelectedEntry()
-					if !ok {
-						return m, nil
-					}
-					m.overlay.explainPicker = newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, entry.Statement, m.layout.tableViewportWidth)
-					if m.overlay.explainPicker == nil {
-						return m, nil
-					}
-					return m, m.overlay.explainPicker.form.Init()
-				case m.keybindings.Match(keyPress, "query_log.top_first", []scope{scopeView, scopeGlobal}):
-					if m.queryLog.pendingG {
-						m.queryLog.table.SetCursor(0)
-						m.layout.queryLogColumn, m.layout.queryLogOffset = 0, 0
-						m.queryLog.pendingG = false
-					} else {
-						m.queryLog.pendingG = true
-					}
-					return m, nil
-				case m.keybindings.Match(keyPress, "query_log.top_last", []scope{scopeView, scopeGlobal}):
-					m.queryLog.table.SetCursor(len(rows) - 1)
-					return m, nil
-				case m.keybindings.Match(keyPress, "query_log.detail", []scope{scopeView, scopeGlobal}):
-					if entry, ok := m.queryLogSelectedEntry(); ok {
-						m.queryLog.detail = &entry
-					}
-					return m, nil
-				}
+				return m, nil
 			}
-			m.queryLog.table, command = m.queryLog.table.Update(message)
-			return m, command
+			model, event, cmd := m.queryLog.component.Update(message, queryLogLayout(m), m.keybindings)
+			m.queryLog.component = model
+			return m.applyQueryLogEvent(event, cmd)
 		case focusChat:
 			return m.updateChat(message)
 		}
@@ -532,6 +462,50 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// queryLogLayout builds the layout snapshot root hands to the query-log
+// component.
+func queryLogLayout(m Model) uikit.Layout {
+	return uikit.Layout{
+		Width:         m.layout.width,
+		Height:        m.layout.height,
+		ViewportWidth: m.layout.tableViewportWidth,
+		PaneHeight:    m.layout.queryLogHeight,
+	}
+}
+
+// applyQueryLogEvent applies one query-log event: status transitions,
+// clipboard copies, and EXPLAIN picker construction all stay root-owned.
+func (m Model) applyQueryLogEvent(event uikit.Event, cmd tea.Cmd) (tea.Model, tea.Cmd) {
+	switch e := event.(type) {
+	case nil:
+		return m, cmd
+	case uikit.StatusChanged:
+		m.setStatus(uikit.SafeText(e.Text))
+		return m, cmd
+	case uikit.ClipboardRequested:
+		m.setStatus("copied to clipboard")
+		if cmd == nil {
+			return m, copyQueryLogStatement(e.Text)
+		}
+		return m, tea.Batch(cmd, copyQueryLogStatement(e.Text))
+	case uikit.ExplainRequested:
+		picker := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, e.Statement, m.layout.tableViewportWidth)
+		if picker == nil {
+			// Unsupported product: keep whatever overlay state exists.
+			return m, cmd
+		}
+		m.overlay.explainPicker = picker
+		// A detail-triggered explain closes the detail only when the
+		// picker was built, matching the original behavior.
+		m.queryLog.component.CloseDetail()
+		if cmd == nil {
+			return m, picker.form.Init()
+		}
+		return m, tea.Batch(cmd, picker.form.Init())
+	}
+	return m, cmd
 }
 
 func (m Model) formActive() bool {

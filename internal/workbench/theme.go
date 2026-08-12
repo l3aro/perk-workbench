@@ -6,6 +6,7 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 var (
@@ -34,50 +35,15 @@ func init() { setTheme(themeOcean) }
 
 func setTheme(name appTheme) {
 	activeTheme = name
-	switch name {
-	case themeDracula:
-		colorCanvas, colorPanel, colorStripe = "#282a36", "#343746", "#44475a"
-		colorInk, colorMuted, colorPrimary = "#f8f8f2", "#b1b2c7", "#bd93f9"
-		colorSecondary, colorDanger, colorFocused = "#ff79c6", "#ff5555", "#50fa7b"
-		colorSuccess = "#50fa7b"
-		colorBorder, colorModeNormal, colorModeInsert = "#6272a4", "#8be9fd", "#50fa7b"
-		colorWarn = "#f1fa8c"
-	case themeNord:
-		colorCanvas, colorPanel, colorStripe = "#2e3440", "#3b4252", "#434c5e"
-		colorInk, colorMuted, colorPrimary = "#eceff4", "#d8dee9", "#88c0d0"
-		colorSecondary, colorDanger, colorFocused = "#ebcb8b", "#bf616a", "#a3be8c"
-		colorSuccess = "#a3be8c"
-		colorBorder, colorModeNormal, colorModeInsert = "#4c566a", "#81a1c1", "#a3be8c"
-		colorWarn = "#ebcb8b"
-	case themeMonokai:
-		colorCanvas, colorPanel, colorStripe = "#272822", "#2f302a", "#3e3d32"
-		colorInk, colorMuted, colorPrimary = "#f8f8f2", "#75715e", "#a6e22e"
-		colorSecondary, colorDanger, colorFocused = "#f92672", "#f92672", "#a6e22e"
-		colorSuccess = "#a6e22e"
-		colorBorder, colorModeNormal, colorModeInsert = "#49483e", "#66d9ef", "#fd971f"
-		colorWarn = "#e6db74"
-	case themeCatppuccin:
-		colorCanvas, colorPanel, colorStripe = "#1e1e2e", "#313244", "#45475a"
-		colorInk, colorMuted, colorPrimary = "#cdd6f4", "#a6adc8", "#cba6f7"
-		colorSecondary, colorDanger, colorFocused = "#f9e2af", "#f38ba8", "#a6e3a1"
-		colorSuccess = "#a6e3a1"
-		colorBorder, colorModeNormal, colorModeInsert = "#6c7086", "#89b4fa", "#a6e3a1"
-		colorWarn = "#f9e2af"
-	case themeSolarized:
-		colorCanvas, colorPanel, colorStripe = "#002b36", "#073642", "#123f4a"
-		colorInk, colorMuted, colorPrimary = "#839496", "#657b83", "#268bd2"
-		colorSecondary, colorDanger, colorFocused = "#d33682", "#dc322f", "#859900"
-		colorSuccess = "#859900"
-		colorBorder, colorModeNormal, colorModeInsert = "#0e5553", "#268bd2", "#859900"
-		colorWarn = "#b58900"
-	default:
-		colorCanvas, colorPanel, colorStripe = "#10151f", "#17202e", "#1c2838"
-		colorInk, colorMuted, colorPrimary = "#e6edf3", "#8b9bb4", "#94e2d5"
-		colorSecondary, colorDanger, colorFocused = "#89b4fa", "#f38ba8", "#f9e2af"
-		colorSuccess = "#3fb950"
-		colorBorder, colorModeNormal, colorModeInsert = "#324155", "#58a6ff", "#3fb950"
-		colorWarn = "#f9e2af"
-	}
+	// The palette values live in the shared UI layer so feature components
+	// and the root derive their styles from one source; the root snapshots
+	// them into its own style registry below.
+	uikit.SetTheme(string(name))
+	colorCanvas, colorPanel, colorStripe = uikit.ColorCanvas, uikit.ColorPanel, uikit.ColorStripe
+	colorInk, colorMuted, colorPrimary = uikit.ColorInk, uikit.ColorMuted, uikit.ColorPrimary
+	colorSecondary, colorDanger, colorFocused, colorSuccess = uikit.ColorSecondary, uikit.ColorDanger, uikit.ColorFocused, uikit.ColorSuccess
+	colorBorder, colorModeNormal, colorModeInsert = uikit.ColorBorder, uikit.ColorModeNormal, uikit.ColorModeInsert
+	colorWarn = uikit.ColorWarn
 	resetStyles()
 }
 

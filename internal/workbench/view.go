@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/chrome"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 func (m Model) View() tea.View {
@@ -58,10 +59,10 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.queryLog.detail != nil {
+	if m.queryLog.component.DetailOpen() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
-		m.drawQueryLogDetail(canvas)
+		m.queryLog.component.Draw(canvas, uikit.Layout{Width: m.layout.width, Height: m.layout.height})
 		m.drawNotificationPopup(canvas)
 		view.SetContent(canvas.Render())
 		return view
@@ -191,7 +192,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.detail != nil || m.notifications.history != nil || m.notifications.detail != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
+	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.history != nil || m.notifications.detail != nil || m.overlay.explainPicker != nil || m.chat.historyPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
@@ -465,7 +466,7 @@ func (m Model) drawContextMenu(canvas uv.ScreenBuffer) {
 }
 
 func (m Model) drawQueryLogDetail(canvas uv.ScreenBuffer) {
-	d := m.queryLog.detail
+	d := m.queryLog.component.Detail
 	if d == nil {
 		return
 	}
@@ -553,7 +554,7 @@ func (m Model) contentView() string {
 		case focusWorkspace:
 			return titledPane("Workspace <2>", m.workspaceView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusQueryLog:
-			return titledPane("Query Log <3>", m.queryLogContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
+			return titledPane("Query Log <3>", m.queryLog.component.View(queryLogLayout(m)), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		case focusChat:
 			return titledPane("Assistant <4>", m.chatContentView(), paneStyle(true).Width(width).MaxWidth(width).Height(height).MaxHeight(height))
 		}
@@ -580,7 +581,7 @@ func (m Model) rightView() string {
 }
 
 func (m Model) queryLogPaneView() string {
-	return titledPane("Query Log <3>", m.queryLogContentView(), paneStyle(m.Focus == focusQueryLog).Width(max(m.layout.editorWidth-2, 0)).Height(max(m.layout.queryLogHeight, 0)))
+	return titledPane("Query Log <3>", m.queryLog.component.View(queryLogLayout(m)), paneStyle(m.Focus == focusQueryLog).Width(max(m.layout.editorWidth-2, 0)).Height(max(m.layout.queryLogHeight, 0)))
 }
 
 func (m Model) chatPaneView() string {
@@ -605,14 +606,6 @@ func (m Model) chatContentView() string {
 		lipgloss.NewStyle().Padding(1, 0).Render(m.chat.input.View()),
 		m.chatModeBadge(),
 	)
-}
-
-func (m Model) queryLogContentView() string {
-	content := tableViewportViewWithAlignment(m.queryLog.table, nil, m.layout.queryLogOffset, m.layout.tableViewportWidth, m.layout.queryLogColumn)
-	summary := m.queryLogSummary() + colsHint(m.queryLog.table.Columns(), m.layout.tableViewportWidth)
-	padding := max(m.layout.queryLogHeight-1-lipgloss.Height(content)-1, 0)
-	return content + strings.Repeat("\n", padding+1) +
-		chrome.PaneStatus(statusStyle.Render("n/p page"), statusStyle.Render(summary), m.layout.tableViewportWidth)
 }
 
 func (m Model) workspaceView() string {

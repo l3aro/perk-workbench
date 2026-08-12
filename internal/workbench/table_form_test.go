@@ -471,8 +471,8 @@ func serverProductModel(t *testing.T, product string, stub *createDatabaseStub) 
 		return sharedsql.Opened{Service: stub, Info: sharedsql.DatabaseInfo{Product: product, Version: "16"}}, nil
 	}, false)
 	model.queryLog.path = t.TempDir() + "/data.db"
-	model.queryLog.entries = nil
-	model.renderQueryLog()
+	model.queryLog.component.Entries = nil
+	model.queryLog.component.Render()
 	model.State, model.Database = stateReady, stub
 	model.databaseInfo = sharedsql.DatabaseInfo{Product: product}
 	model.Focus = focusSchema

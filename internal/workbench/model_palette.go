@@ -61,7 +61,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "focus.schema":
 		if m.State == stateReady {
 			m.Focus = focusSchema
-			m.queryLog.pendingG = false
+			m.queryLog.component.PendingG = false
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
 		}
@@ -69,26 +69,26 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "focus.workspace":
 		if m.State == stateReady {
 			m.Focus = focusWorkspace
-			m.queryLog.pendingG = false
+			m.queryLog.component.PendingG = false
 			m.focusActiveTable()
 		}
 		return m, nil
 	case "focus.query_log":
 		if m.State == stateReady {
 			m.Focus = focusQueryLog
-			m.queryLog.pendingG = false
+			m.queryLog.component.PendingG = false
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
-			m.queryLog.table.Focus()
-			if len(m.queryLog.table.Rows()) > 0 && m.queryLog.table.Cursor() < 0 {
-				m.queryLog.table.SetCursor(0)
+			m.queryLog.component.Table.Focus()
+			if len(m.queryLog.component.Table.Rows()) > 0 && m.queryLog.component.Table.Cursor() < 0 {
+				m.queryLog.component.Table.SetCursor(0)
 			}
 		}
 		return m, nil
 	case "focus.chat":
 		if m.State == stateReady && m.chat.visible {
 			m.Focus = focusChat
-			m.queryLog.pendingG = false
+			m.queryLog.component.PendingG = false
 			m.queryLog.editor.text.Blur()
 			m.blurTables()
 			if !m.vimMode {

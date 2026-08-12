@@ -6,31 +6,22 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 // CommandID is a stable identifier for an application keyboard command.
-type CommandID string
+type CommandID = uikit.CommandID
 
-type scope int
+// scope is the routing scope of a command binding; the type and constants
+// live in the shared UI contract package so feature subpackages can name
+// them in their own matcher interfaces.
+type scope = uikit.Scope
 
 const (
-	scopeGlobal scope = iota
-	scopeView         // pane/view scoped (structure tab, browse tab, query log, etc.)
-	scopeForm         // form/modal scoped (edit forms, confirmation dialogs)
+	scopeGlobal scope = uikit.ScopeGlobal
+	scopeView         = uikit.ScopeView
+	scopeForm         = uikit.ScopeForm
 )
-
-func (s scope) String() string {
-	switch s {
-	case scopeGlobal:
-		return "global"
-	case scopeView:
-		return "view"
-	case scopeForm:
-		return "form"
-	default:
-		return "unknown"
-	}
-}
 
 type commandDef struct {
 	id    CommandID

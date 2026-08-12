@@ -398,8 +398,8 @@ func readyModel(t *testing.T) Model {
 	})
 	model := New("", context.Background(), testOpen, false)
 	model.queryLog.path = t.TempDir() + "/data.db"
-	model.queryLog.entries = nil
-	model.renderQueryLog()
+	model.queryLog.component.Entries = nil
+	model.queryLog.component.Render()
 	model.State, model.Database = stateReady, service
 	return model
 }
@@ -579,8 +579,8 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	if model.databaseInfo != (sharedsql.DatabaseInfo{}) {
 		t.Fatalf("disconnect kept database info %#v", model.databaseInfo)
 	}
-	if len(model.queryLog.entries) != 0 {
-		t.Fatalf("disconnect kept query log entries %#v", model.queryLog.entries)
+	if len(model.queryLog.component.Entries) != 0 {
+		t.Fatalf("disconnect kept query log entries %#v", model.queryLog.component.Entries)
 	}
 
 	// Open B through a stub backend with a distinct product identity.

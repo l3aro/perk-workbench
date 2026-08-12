@@ -510,28 +510,28 @@ func TestStructure_horizontalWheelPansViewport(t *testing.T) {
 func TestQueryLog_horizontalWheelTravelsCells(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 100, 24)
-	model.queryLog.table.SetRows(nil) // drop the fixture's rows first
-	model.queryLog.table.SetColumns([]table.Column{
+	model.queryLog.component.Table.SetRows(nil) // drop the fixture's rows first
+	model.queryLog.component.Table.SetColumns([]table.Column{
 		{Title: "A", Width: 4},
 		{Title: "B", Width: 4},
 		{Title: "C", Width: 4},
 	})
-	model.queryLog.table.SetRows([]table.Row{{"1", "2", "3"}})
-	resizeResultsTable(&model.queryLog.table, model.layout.tableViewportWidth, 3)
-	model.queryLog.table.SetCursor(0)
-	model.Focus, model.layout.queryLogColumn = focusQueryLog, 0
+	model.queryLog.component.Table.SetRows([]table.Row{{"1", "2", "3"}})
+	resizeResultsTable(&model.queryLog.component.Table, model.layout.tableViewportWidth, 3)
+	model.queryLog.component.Table.SetCursor(0)
+	model.Focus, model.queryLog.component.Column = focusQueryLog, 0
 
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
 	model = updated.(Model)
-	if got, want := model.layout.queryLogColumn, 1; got != want {
+	if got, want := model.queryLog.component.Column, 1; got != want {
 		t.Fatalf("query log column after wheel right = %d, want %d", got, want)
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
 	model = updated.(Model)
-	if got, want := model.layout.queryLogColumn, 0; got != want {
+	if got, want := model.queryLog.component.Column, 0; got != want {
 		t.Fatalf("query log column after wheel left = %d, want %d", got, want)
 	}
-	if got, want := model.queryLog.table.Cursor(), 0; got != want {
+	if got, want := model.queryLog.component.Table.Cursor(), 0; got != want {
 		t.Fatalf("query log cursor after horizontal wheel = %d, want %d untouched", got, want)
 	}
 }

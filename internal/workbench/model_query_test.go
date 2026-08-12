@@ -54,7 +54,7 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	if !strings.Contains(model.queryLog.resultsStatus, "1 row affected") || !strings.Contains(model.queryLog.resultsStatus, "truncated") {
 		t.Fatalf("result status = %q, want row count and truncation", model.queryLog.resultsStatus)
 	}
-	if got, want := model.queryLog.entries[0].Message, "inserted 1 row"; got != want {
+	if got, want := model.queryLog.component.Entries[0].Message, "inserted 1 row"; got != want {
 		t.Fatalf("query log message = %q, want %q", got, want)
 	}
 }
@@ -120,7 +120,7 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	if got := model.browse.table.Rows(); len(got) != 0 {
 		t.Fatalf("browse rows = %#v, want no query before Browse tab focus", got)
 	}
-	if got := len(model.queryLog.entries); got != 0 {
+	if got := len(model.queryLog.component.Entries); got != 0 {
 		t.Fatalf("query log entries = %d, want no browse query before Browse tab focus", got)
 	}
 
@@ -285,13 +285,13 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	if got := model.queryLog.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("error replaced prior rows: %#v", got)
 	}
-	if len(model.queryLog.entries) == 0 {
+	if len(model.queryLog.component.Entries) == 0 {
 		t.Fatal("no query log entry recorded for failure")
 	}
-	if got, want := model.queryLog.entries[0].Status, "failed"; got != want {
+	if got, want := model.queryLog.component.Entries[0].Status, "failed"; got != want {
 		t.Fatalf("query log status = %q, want %q", got, want)
 	}
-	if got, want := model.queryLog.entries[0].Message, "near \"bad\": syntax error"; got != want {
+	if got, want := model.queryLog.component.Entries[0].Message, "near \"bad\": syntax error"; got != want {
 		t.Fatalf("query log message = %q, want %q", got, want)
 	}
 }
@@ -320,10 +320,10 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	if got := model.queryLog.results.Rows(); len(got) != 1 || got[0][0] != "prior" {
 		t.Fatalf("late success replaced prior rows: %#v", got)
 	}
-	if len(model.queryLog.entries) == 0 {
+	if len(model.queryLog.component.Entries) == 0 {
 		t.Fatal("no query log entry recorded for cancellation")
 	}
-	if got, want := model.queryLog.entries[0].Status, "canceled"; got != want {
+	if got, want := model.queryLog.component.Entries[0].Status, "canceled"; got != want {
 		t.Fatalf("query log status = %q, want %q", got, want)
 	}
 }

@@ -208,13 +208,13 @@ func TestInsertForm_savesInsertedRow(t *testing.T) {
 		t.Fatal("insert form remained open after save")
 	}
 	var insertEntry *queryLogEntry
-	for index := range min(len(model.queryLog.entries), 3) {
-		if model.queryLog.entries[index].Message == "inserted 1 row" {
-			insertEntry = &model.queryLog.entries[index]
+	for index := range min(len(model.queryLog.component.Entries), 3) {
+		if model.queryLog.component.Entries[index].Message == "inserted 1 row" {
+			insertEntry = &model.queryLog.component.Entries[index]
 		}
 	}
 	if insertEntry == nil {
-		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLog.entries)
+		t.Fatalf("query log = %#v, want inserted 1 row entry", model.queryLog.component.Entries)
 	}
 	if got, want := insertEntry.Statement, "Table: items\nValues:\n  name = \"third\""; got != want {
 		t.Fatalf("query log statement = %q, want preview %q", got, want)

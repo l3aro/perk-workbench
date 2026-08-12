@@ -332,7 +332,7 @@ func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT first"})
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT second"})
-	columns := model.queryLog.table.Columns()
+	columns := model.queryLog.component.Table.Columns()
 	clickX := model.layout.schemaWidth + 1
 	for _, column := range columns[:2] {
 		clickX += column.Width + 2*spaceCompact
@@ -347,10 +347,10 @@ func TestQueryLog_mouseClick_selectsClickedCell(t *testing.T) {
 	if got, want := model.Focus, focusQueryLog; got != want {
 		t.Fatalf("focus = %v, want %v", got, want)
 	}
-	if got, want := model.queryLog.table.Cursor(), 0; got != want {
+	if got, want := model.queryLog.component.Table.Cursor(), 0; got != want {
 		t.Fatalf("query log cursor = %d, want %d", got, want)
 	}
-	if got, want := model.layout.queryLogColumn, 2; got != want {
+	if got, want := model.queryLog.component.Column, 2; got != want {
 		t.Fatalf("query log column = %d, want %d", got, want)
 	}
 }
@@ -360,7 +360,7 @@ func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT first"})
 	model.appendQueryLog(queryLogEntry{Statement: "SELECT second"})
-	columns := model.queryLog.table.Columns()
+	columns := model.queryLog.component.Table.Columns()
 	clickX := model.layout.schemaWidth + 1
 	for _, column := range columns[:2] {
 		clickX += column.Width + 2*spaceCompact
@@ -375,10 +375,10 @@ func TestQueryLog_mouseRelease_selectsClickedCell(t *testing.T) {
 	if got, want := model.Focus, focusQueryLog; got != want {
 		t.Fatalf("focus = %v, want %v", got, want)
 	}
-	if got, want := model.queryLog.table.Cursor(), 0; got != want {
+	if got, want := model.queryLog.component.Table.Cursor(), 0; got != want {
 		t.Fatalf("query log cursor = %d, want %d", got, want)
 	}
-	if got, want := model.layout.queryLogColumn, 2; got != want {
+	if got, want := model.queryLog.component.Column, 2; got != want {
 		t.Fatalf("query log column = %d, want %d", got, want)
 	}
 }
