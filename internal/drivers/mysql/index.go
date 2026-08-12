@@ -13,7 +13,7 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT index_name, non_unique, column_name
 		FROM information_schema.statistics
-		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ?
+		WHERE BINARY table_schema = BINARY COALESCE(NULLIF(?, ''), DATABASE()) AND BINARY table_name = BINARY ?
 		ORDER BY index_name, seq_in_index`, database, name)
 	if err != nil {
 		return nil, fmt.Errorf("reading indexes: %w", err)

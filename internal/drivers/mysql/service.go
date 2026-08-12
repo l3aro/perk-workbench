@@ -207,7 +207,7 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]sharedsql.Colum
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT column_name, column_type, is_nullable, column_default, column_key, extra
 		FROM information_schema.columns
-		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ?
+		WHERE BINARY table_schema = BINARY COALESCE(NULLIF(?, ''), DATABASE()) AND BINARY table_name = BINARY ?
 		ORDER BY ordinal_position`, database, table)
 	if err != nil {
 		return nil, fmt.Errorf("reading table info: %w", err)
@@ -365,7 +365,7 @@ func (s *Service) columnAttributes(ctx context.Context, table, column string) (m
 	err := s.db.QueryRowContext(ctx, `
 		SELECT extra, column_comment, character_set_name, collation_name
 		FROM information_schema.columns
-		WHERE table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND table_name = ? AND column_name = ?`, database, name, column).Scan(&attributes.extra, &attributes.comment, &attributes.characterSet, &attributes.collation)
+		WHERE BINARY table_schema = BINARY COALESCE(NULLIF(?, ''), DATABASE()) AND BINARY table_name = BINARY ? AND BINARY column_name = BINARY ?`, database, name, column).Scan(&attributes.extra, &attributes.comment, &attributes.characterSet, &attributes.collation)
 	if err != nil {
 		return mysqlColumnAttributes{}, fmt.Errorf("reading column attributes: %w", err)
 	}

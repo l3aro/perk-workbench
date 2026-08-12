@@ -19,7 +19,7 @@ func (s *Service) ListForeignKeys(ctx context.Context, table string) ([]sharedsq
 			ON BINARY referential_constraints.constraint_schema = BINARY key_column_usage.constraint_schema
 			AND BINARY referential_constraints.table_name = BINARY key_column_usage.table_name
 			AND BINARY referential_constraints.constraint_name = BINARY key_column_usage.constraint_name
-		WHERE key_column_usage.table_schema = COALESCE(NULLIF(?, ''), DATABASE()) AND key_column_usage.table_name = ?
+		WHERE BINARY key_column_usage.table_schema = BINARY COALESCE(NULLIF(?, ''), DATABASE()) AND BINARY key_column_usage.table_name = BINARY ?
 			AND key_column_usage.referenced_table_name IS NOT NULL
 		ORDER BY key_column_usage.constraint_name, key_column_usage.ordinal_position`, database, name)
 	if err != nil {
@@ -58,9 +58,9 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 			ON BINARY referential_constraints.constraint_schema = BINARY key_column_usage.constraint_schema
 			AND BINARY referential_constraints.table_name = BINARY key_column_usage.table_name
 			AND BINARY referential_constraints.constraint_name = BINARY key_column_usage.constraint_name
-		WHERE key_column_usage.table_schema = COALESCE(NULLIF(?, ''), DATABASE())
-			AND key_column_usage.referenced_table_schema = COALESCE(NULLIF(?, ''), DATABASE())
-			AND key_column_usage.referenced_table_name = ?
+		WHERE BINARY key_column_usage.table_schema = BINARY COALESCE(NULLIF(?, ''), DATABASE())
+			AND BINARY key_column_usage.referenced_table_schema = BINARY COALESCE(NULLIF(?, ''), DATABASE())
+			AND BINARY key_column_usage.referenced_table_name = BINARY ?
 		ORDER BY key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.ordinal_position`, database, database, name)
 	if err != nil {
 		return nil, fmt.Errorf("reading referencing foreign keys: %w", err)
