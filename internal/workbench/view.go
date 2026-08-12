@@ -64,8 +64,8 @@ func (m Model) View() tea.View {
 		view.SetContent(canvas.Render())
 		return view
 	}
-	if m.browse.cellEditor != nil || m.browse.cellViewer != nil || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
-		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() ||
+	if m.browse.component.CellEditor != nil || m.browse.component.CellViewer != nil || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
+		m.structure.foreignKeyForm.confirming() || m.browse.component.Form.Confirming() ||
 		m.connection.component.Form.Confirmation != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.overlay.queryConfirmation != nil || m.hasConfirming() {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
@@ -76,7 +76,7 @@ func (m Model) View() tea.View {
 			dialog.Draw(canvas)
 		} else if dialog := m.confirmContent(); dialog != "" {
 			m.drawConfirmDialog(canvas, dialog)
-		} else if m.browse.cellViewer != nil {
+		} else if m.browse.component.CellViewer != nil {
 			m.drawCellViewer(canvas)
 		}
 		m.notifications.component.Draw(canvas, notificationLayout(m))
@@ -151,9 +151,9 @@ func (m Model) tableFormOpen() bool {
 
 func (m Model) hasConfirming() bool {
 	return m.overlay.explainPicker != nil || m.overlay.quitDialog != nil || m.overlay.queryConfirmation != nil || m.structure.columnForm.confirming() || m.structure.indexForm.confirming() ||
-		m.structure.foreignKeyForm.confirming() || m.browse.form.confirming() || m.connection.component.Form.Confirmation != nil || m.tableFormOpen() ||
-		(m.browse.cellEditor != nil && m.browse.cellEditor.confirming) ||
-		(m.browse.documentEditor != nil && m.browse.documentEditor.confirming) ||
+		m.structure.foreignKeyForm.confirming() || m.browse.component.Form.Confirming() || m.connection.component.Form.Confirmation != nil || m.tableFormOpen() ||
+		(m.browse.component.CellEditor != nil && m.browse.component.CellEditor.Confirming) ||
+		(m.browse.component.DocumentEditor != nil && m.browse.component.DocumentEditor.Confirming) ||
 		(m.chat.writeConfirmation != nil)
 }
 
@@ -165,8 +165,8 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.overlay.quitDialog
 	case m.structure.columnForm.confirming():
 		return m.structure.columnForm.confirmation
-	case m.browse.form.confirming():
-		return m.browse.form.confirmation
+	case m.browse.component.Form.Confirming():
+		return m.browse.component.Form.Confirmation
 	case m.structure.indexForm.confirming():
 		return m.structure.indexForm.confirmation
 	case m.structure.foreignKeyForm.confirming():
@@ -177,10 +177,10 @@ func (m Model) activeConfirmation() *confirmationDialog {
 		return m.structure.tableForm.confirmation
 	case m.overlay.deleteConfirm != nil:
 		return m.overlay.deleteConfirm
-	case m.browse.cellEditor != nil && m.browse.cellEditor.confirming:
-		return m.browse.cellEditor.confirm
-	case m.browse.documentEditor != nil && m.browse.documentEditor.confirming:
-		return m.browse.documentEditor.confirmation
+	case m.browse.component.CellEditor != nil && m.browse.component.CellEditor.Confirming:
+		return m.browse.component.CellEditor.Confirm
+	case m.browse.component.DocumentEditor != nil && m.browse.component.DocumentEditor.Confirming:
+		return m.browse.component.DocumentEditor.Confirmation
 	case m.chat.writeConfirmation != nil:
 		return m.chat.writeConfirmation
 	default:
@@ -189,14 +189,14 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.browse.cellEditor != nil || m.browse.documentEditor != nil || m.browse.cellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
+	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.browse.component.CellEditor != nil || m.browse.component.DocumentEditor != nil || m.browse.component.CellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {
 	var raw string
 	switch {
-	case m.browse.cellEditor != nil:
-		return m.browse.cellEditor.confirmContent()
+	case m.browse.component.CellEditor != nil:
+		return m.browse.component.CellEditor.ConfirmContent()
 	case m.overlay.queryConfirmation != nil:
 		raw = m.overlay.queryConfirmation.dialog.Content(m.layout.width)
 	case m.overlay.explainPicker != nil:
@@ -209,8 +209,8 @@ func (m Model) confirmContent() string {
 		raw = m.overlay.quitDialog.Content(m.layout.width)
 	case m.structure.columnForm.confirming():
 		raw = m.structure.columnForm.confirmation.Content(m.layout.width)
-	case m.browse.form.confirming():
-		raw = m.browse.form.confirmation.Content(m.layout.width)
+	case m.browse.component.Form.Confirming():
+		raw = m.browse.component.Form.Confirmation.Content(m.layout.width)
 	case m.structure.indexForm.confirming():
 		raw = m.structure.indexForm.confirmation.Content(m.layout.width)
 	case m.structure.foreignKeyForm.confirming():
@@ -236,8 +236,8 @@ func (m Model) confirmContent() string {
 }
 
 func (m Model) drawCellViewer(canvas uv.ScreenBuffer) {
-	if m.browse.cellViewer != nil {
-		uikit.DrawCellViewerBox(canvas, m.browse.cellViewer)
+	if m.browse.component.CellViewer != nil {
+		uikit.DrawCellViewerBox(canvas, m.browse.component.CellViewer)
 	}
 }
 
@@ -535,7 +535,7 @@ func (m Model) workspaceView() string {
 	}
 	footer := modeLine + " " + statusStyle.Render("L/H tabs")
 	if m.formTabActive() {
-		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.overlay.formMode.buttonsFocused, m.overlay.formMode.buttonChoice), "", footer)
+		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.overlay.formMode.ButtonsFocused, m.overlay.formMode.ButtonChoice), "", footer)
 	}
 	// A blank line separates the tab's status line from the mode/tab-hint
 	// footer; the browse tab renders that gap again between its status
@@ -590,92 +590,27 @@ func (m Model) structureView() string {
 }
 
 func (m Model) browseView() string {
-	if m.browse.filterForm != nil {
-		// The filter view is already windowed at its scroll offset (it
-		// renders at most one screenful per frame), so the viewport slice
-		// must not re-apply the offset.
-		return m.formViewport(m.browse.filterForm.View(), 0)
-	}
-	if m.browse.documentEditor != nil {
-		return m.formViewport(m.browse.documentEditor.View(), m.browse.documentEditor.scrollOffset)
-	}
-	if m.browse.form.active() {
-		return m.formViewport(m.browse.form.View(), m.browse.form.scrollOffset)
-	}
-	view := tableViewportViewWithAlignment(m.browse.table, m.browse.numericColumns, m.layout.browseOffset, m.layout.tableViewportWidth, m.layout.browseColumn) + "\n" + m.browseStatusLine() + "\n\n" + m.browsePagerLine()
-	return view
+	m.browse.component.Page = m.BrowsePage
+	return m.browse.component.View(browseLayout(m))
 }
 
-// browseStatusHints is the keyboard-hint segment of the browse status
-// line; the row-range summary (browseStatus) is the other segment.
-const browseStatusHints = "/ filter | r reset | s sort column"
-
 // browseStatusSplit reports whether the browse status line renders on two
-// lines: the keyboard hints on the first, the row-range summary
-// right-aligned on the second. It splits exactly when the single-line
-// layout would truncate the summary (left + 4 = the two segments plus the
-// two cells each reserves for its padding). The browse table height, the
-// pager row's y position, and the pager click hit-test all mirror this
-// choice, so it is the single source of truth.
+// lines. The layout decision lives in the browse component, the single
+// source of truth the table height and the pager click hit-test mirror;
+// the root wrapper keeps the name for the pager hit-test.
 func (m Model) browseStatusSplit() bool {
-	return m.browse.status != "" && ansi.StringWidth(browseStatusHints)+4+ansi.StringWidth(m.browse.status) > m.layout.tableViewportWidth
+	return m.browse.component.StatusSplit(browseLayout(m))
 }
 
 // browseFooterRows is the number of workspace rows the browse view
-// reserves below its data rows: the status line, the footer gap, the
-// pager button row, plus the pane chrome. A narrow viewport splits the
-// status line onto two rows (browseStatusSplit), reserving one more.
+// reserves below its data rows; see the component for the exact equation.
 func (m Model) browseFooterRows() int {
-	if m.browseStatusSplit() {
-		return 9
-	}
-	return 8
+	return m.browse.component.FooterRows(browseLayout(m))
 }
 
-// browseStatusLine renders the browse status line: the keyboard hints on
-// the left, the row-range summary on the right. Both segments are
-// truncated so the line always fits the viewport width: PaneStatus wraps
-// overflowing text, which would push the pager button row below the fixed
-// row the click handler tests. The n/p page hint is not offered because
-// the pager button row below always renders that affordance.
-//
-// On narrow viewports where the segments would collide (browseStatusSplit)
-// they move onto two lines, each keeping as much width as the viewport
-// allows; large screens keep the single-line layout unchanged.
 func (m Model) browseStatusLine() string {
-	width := m.layout.tableViewportWidth
-	left, right := browseStatusHints, m.browse.status
-	if m.browseStatusSplit() {
-		if ansi.StringWidth(left) > max(width-2, 0) {
-			left = ansi.Truncate(left, max(width-2, 0), "…")
-		}
-		if ansi.StringWidth(right) > max(width-2, 0) {
-			right = ansi.Truncate(right, max(width-2, 0), "…")
-		}
-		return statusStyle.Render(left) + "\n" + chrome.PaneStatus("", statusStyle.Render(right), width)
-	}
-	if ansi.StringWidth(left)+2 > width {
-		left = ansi.Truncate(left, max(width-2, 0), "…")
-	}
-	remaining := width - ansi.StringWidth(left) - 2
-	if remaining < 2 {
-		// Fewer than two cells left: even the styled empty segment would
-		// overflow, so drop the summary entirely.
-		return statusStyle.Render(left)
-	}
-	if ansi.StringWidth(right)+2 > remaining {
-		right = ansi.Truncate(right, remaining-2, "…")
-	}
-	return chrome.PaneStatus(statusStyle.Render(left), statusStyle.Render(right), width)
+	return m.browse.component.StatusLine(browseLayout(m))
 }
-
-// browsePrevLabel and browseNextLabel are the pager button labels on the
-// browse button row, shared with the notification history modal through
-// the UI contract layer.
-const (
-	browsePrevLabel = uikit.PrevLabel
-	browseNextLabel = uikit.NextLabel
-)
 
 // browsePager is the shared pager button row type from the UI contract
 // layer: the rendered line, each button's content-x span, and whether each
@@ -684,17 +619,13 @@ const (
 type browsePager = uikit.Pager
 
 func (m Model) browsePager() browsePager {
-	pager := uikit.NewPager(m.BrowsePage > 0, m.browse.result.HasMore)
-	gap := max(m.layout.tableViewportWidth-2-ansi.StringWidth(pager.Prev)-ansi.StringWidth(pager.Next), 0)
-	pager.PrevStart = 1 // statusStyle pads the row by one cell on each side
-	pager.NextStart = 1 + ansi.StringWidth(pager.Prev) + gap
-	pager.Line = statusStyle.Render(pager.Prev + strings.Repeat(" ", gap) + pager.Next)
-	return pager
+	m.browse.component.Page = m.BrowsePage
+	return m.browse.component.Pager(browseLayout(m))
 }
 
 // browsePagerLine returns the pager button row.
 func (m Model) browsePagerLine() string {
-	return m.browsePager().Line
+	return m.browse.component.PagerLine(browseLayout(m))
 }
 
 func (m Model) formViewport(view string, offset int) string {
@@ -753,7 +684,7 @@ func (m Model) modeBadge() string {
 	badge := ""
 	if m.vimMode {
 		// The modal INSERT/NORMAL state only exists in vim mode.
-		if m.overlay.formMode.editing() {
+		if m.overlay.formMode.Editing() {
 			badge = modeInsertStyle.Render("INSERT")
 		} else {
 			badge = modeNormalStyle.Render("NORMAL")

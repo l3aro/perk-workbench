@@ -46,7 +46,7 @@ func TestModel_sqlEditorCompletionReportsError(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus, model.Tab = focusWorkspace, tabSQL
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	model.queryLog.editorEditTag = 1
 
 	// When
@@ -63,7 +63,7 @@ func TestModel_sqlEditorCompletionReportsStaleTarget(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.Focus, model.Tab = focusWorkspace, tabSQL
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	model.queryLog.editorEditTag = 1
 	model.Focus = focusSchema
 
@@ -89,7 +89,7 @@ func TestModel_ctrlEEditsFocusedHuhInput(t *testing.T) {
 	model.State = stateConnection
 	model.connection.component.Form.SetFocus(connectionFocusForm)
 	model.connection.component.Form.Values.Name = "before"
-	model.overlay.formMode.beginHuh(model.connection.component.Form.FocusForm())
+	model.overlay.formMode.BeginHuh(model.connection.component.Form.FocusForm())
 	updated, _ := model.Update(model.connection.component.Form.Huh.NextField()())
 	model = updated.(Model)
 
@@ -118,7 +118,7 @@ func TestModel_ctrlEIgnoresFocusedHuhSelect(t *testing.T) {
 	model := readyModel(t)
 	model.State = stateConnection
 	model.connection.component.Form.SetFocus(connectionFocusForm)
-	model.overlay.formMode.beginHuh(model.connection.component.Form.FocusForm())
+	model.overlay.formMode.BeginHuh(model.connection.component.Form.FocusForm())
 
 	// When
 	_, command := model.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})

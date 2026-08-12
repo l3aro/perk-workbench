@@ -120,7 +120,7 @@ func (m *Model) openPopup(form tableForm) tea.Cmd {
 	m.structure.tableForm.setWidth(m.layout.tableViewportWidth)
 	m.structure.tableForm.setHeight(m.formViewportHeight())
 	m.structure.tableForm.form.Init()
-	return m.overlay.formMode.beginHuh(m.structure.tableForm.focus())
+	return m.overlay.formMode.BeginHuh(m.structure.tableForm.focus())
 }
 
 func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea.Cmd, tableFormAction) {
@@ -130,7 +130,7 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 			return nil, tableFormNoAction
 		}
 		f.confirmation = nil
-		controller.mode = formModeNormal
+		controller.Mode = formModeNormal
 		if action != "confirm" {
 			return nil, tableFormNoAction
 		}
@@ -138,15 +138,15 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 	}
 	if keyPress, ok := message.(tea.KeyPressMsg); ok &&
 		(keyPress.Key().Code == tea.KeyEnter || f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal})) &&
-		!controller.buttonsFocused {
+		!controller.ButtonsFocused {
 		return f.save(controller)
 	}
 	// The Save/Cancel bar is a real focus target in both modes: route its
 	// keys first so insert mode (vim off) never needs Escape to reach it.
 	keyPress, ok := message.(tea.KeyPressMsg)
 	replay := false
-	if ok && controller.buttonsFocused {
-		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focus() }); route != formButtonContinue {
+	if ok && controller.ButtonsFocused {
+		if route, replayed, cmd := controller.RouteFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focus() }); route != formButtonContinue {
 			if route == formButtonReplay {
 				keyPress, replay = replayed, true
 			} else {
@@ -155,7 +155,7 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 		}
 	}
 	if !replay {
-		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+		if route := controller.RouteHuh(message, f.blur); route != formRouteParent {
 			if route == formRouteHuh {
 				return f.updateHuh(message, controller)
 			}
@@ -167,7 +167,7 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
-		return controller.beginHuh(f.focus()), tableFormNoAction
+		return controller.BeginHuh(f.focus()), tableFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		return f.save(controller)
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
@@ -179,7 +179,7 @@ func (f *tableForm) Update(message tea.Msg, controller *formModeController) (tea
 
 func (f *tableForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, tableFormAction) {
 	// The name field is the form's only field, so Tab always lands on the bar.
-	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, true, f.blur) {
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.RouteToBar(keyPress, true, f.blur) {
 		return nil, tableFormNoAction
 	}
 	model, command := f.form.Update(message)
@@ -213,7 +213,7 @@ func (f *tableForm) save(controller *formModeController) (tea.Cmd, tableFormActi
 		title = editTitle
 	}
 	f.confirmation = yesNoConfirmation(title, "", "confirm")
-	controller.beginConfirm()
+	controller.BeginConfirm()
 	return nil, tableFormSave
 }
 

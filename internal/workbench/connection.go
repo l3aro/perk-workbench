@@ -121,7 +121,7 @@ func (m *Model) newConnection() tea.Cmd {
 	m.connection.component.Form.Values = &connectionFormValues{MySQLTLS: mysqlTLSDisabled, PostgreSQLTLS: postgresTLSDisabled, Action: connectionActionTest}
 	command := m.connection.component.Form.Rebuild()
 	m.connection.component.Form.Focus = connectionFocusForm
-	m.overlay.formMode.mode = formModeNormal
+	m.overlay.formMode.Mode = formModeNormal
 	m.setStatus("new connection")
 	return m.openForm(command, m.connection.component.Form.FocusForm)
 }
@@ -228,7 +228,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.connection.component.Form.Confirmation = nil
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 		if action == connectionActionConnect {
 			return m.openConnection()
 		}
@@ -237,7 +237,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	keyPress, isKeyPress := message.(tea.KeyPressMsg)
 	if isKeyPress && m.connection.component.Form.Confirmation == nil && m.connectionActionFocused() &&
 		m.keybindings.Match(keyPress, "connection.action_enter", []scope{scopeView, scopeGlobal}) {
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 		m.connection.component.Form.Blur()
 		if m.connection.component.Form.Values.Action == connectionActionTest {
 			return m, m.testConnection()
@@ -249,11 +249,11 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus(safeText(err.Error()))
 			return m, m.connection.component.Form.ShowValidationError()
 		}
-		m.overlay.formMode.beginConfirm()
+		m.overlay.formMode.BeginConfirm()
 		m.connection.component.Form.BeginConfirmation()
 		return m, nil
 	}
-	if route := m.overlay.formMode.routeHuh(message, m.connection.component.Form.Blur); route != formRouteParent {
+	if route := m.overlay.formMode.RouteHuh(message, m.connection.component.Form.Blur); route != formRouteParent {
 		if route != formRouteHuh {
 			return m, nil
 		}
@@ -289,7 +289,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.connection.component.Form.SetFocus(connectionFocusRecent)
 		return m, nil
 	case isInsertModeKey(keyPress), m.keybindings.Match(keyPress, "connection.edit_field", []scope{scopeView, scopeGlobal}):
-		return m, m.overlay.formMode.beginHuh(m.connection.component.Form.FocusForm())
+		return m, m.overlay.formMode.BeginHuh(m.connection.component.Form.FocusForm())
 	case m.keybindings.Match(keyPress, "connection.field_next", []scope{scopeView, scopeGlobal}):
 		return m, m.connection.component.Form.Huh.NextField()
 	case m.keybindings.Match(keyPress, "connection.field_prev", []scope{scopeView, scopeGlobal}):

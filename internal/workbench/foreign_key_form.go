@@ -67,7 +67,7 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 			return nil, foreignKeyFormNoAction
 		}
 		f.confirmation = nil
-		controller.mode = formModeNormal
+		controller.Mode = formModeNormal
 		if action != "confirm" {
 			return nil, foreignKeyFormNoAction
 		}
@@ -83,8 +83,8 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 	// keys first so insert mode (vim off) never needs Escape to reach it.
 	keyPress, ok := message.(tea.KeyPressMsg)
 	replay := false
-	if ok && controller.buttonsFocused {
-		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(4) }); route != formButtonContinue {
+	if ok && controller.ButtonsFocused {
+		if route, replayed, cmd := controller.RouteFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(4) }); route != formButtonContinue {
 			if route == formButtonReplay {
 				keyPress, replay = replayed, true
 			} else {
@@ -93,7 +93,7 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 		}
 	}
 	if !replay {
-		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+		if route := controller.RouteHuh(message, f.blur); route != formRouteParent {
 			if route == formRouteHuh {
 				return f.updateHuh(message, controller)
 			}
@@ -105,33 +105,33 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
-		return controller.beginHuh(f.focus()), foreignKeyFormNoAction
+		return controller.BeginHuh(f.focus()), foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if _, err := f.change(); err != nil {
 			f.showValidationError()
 			return nil, foreignKeyFormNoAction
 		}
 		f.beginConfirmation(true, false)
-		controller.beginConfirm()
+		controller.BeginConfirm()
 		return nil, foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		if !f.hasChanges() {
-			controller.mode = formModeNormal
-			controller.buttonsFocused = false
+			controller.Mode = formModeNormal
+			controller.ButtonsFocused = false
 			return nil, foreignKeyFormDiscard
 		}
 		f.beginConfirmation(false, false)
-		controller.beginConfirm()
+		controller.BeginConfirm()
 		return nil, foreignKeyFormNoAction
 	case f.keybindings.Match(keyPress, "form.delete", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.previous != "" {
 			f.beginConfirmation(false, true)
-			controller.beginConfirm()
+			controller.BeginConfirm()
 			return nil, foreignKeyFormNoAction
 		}
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.focusedField() >= 4 {
-			controller.focusButtons()
+			controller.FocusButtons()
 			f.blur()
 			return nil, foreignKeyFormNoAction
 		}
@@ -145,7 +145,7 @@ func (f *foreignKeyForm) Update(message tea.Msg, controller *formModeController)
 }
 
 func (f *foreignKeyForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, foreignKeyFormAction) {
-	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, f.focusedField() >= 4, f.blur) {
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.RouteToBar(keyPress, f.focusedField() >= 4, f.blur) {
 		return nil, foreignKeyFormNoAction
 	}
 	focused := f.focusedField()

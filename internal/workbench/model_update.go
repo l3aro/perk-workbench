@@ -72,8 +72,8 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if window, ok := message.(tea.WindowSizeMsg); ok {
 		m.applyLayout(window.Width, window.Height)
-		if m.browse.cellViewer != nil {
-			m.browse.cellViewer.Resize(max(m.layout.width-8, 1), max(m.layout.height-10, 1))
+		if m.browse.component.CellViewer != nil {
+			m.browse.component.CellViewer.Resize(max(m.layout.width-8, 1), max(m.layout.height-10, 1))
 		}
 		m.notifications.component.ResizeHistory(window.Width, window.Height)
 		return m, nil
@@ -198,12 +198,12 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	if m.browse.cellViewer != nil {
+	if m.browse.component.CellViewer != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
-			m.browse.cellViewer = nil
+			m.browse.component.CellViewer = nil
 			return m, nil
 		}
-		cmd := m.browse.cellViewer.Update(message)
+		cmd := m.browse.component.CellViewer.Update(message)
 		return m, cmd
 	}
 	if m.overlay.contextMenu != nil && m.overlay.contextMenu.visible {
@@ -263,7 +263,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		pending := *m.chat.writePending
 		m.chat.writeConfirmation = nil
 		m.chat.writePending = nil
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 
 		if action != "run" {
 			// Decline — send error result and stop round.
@@ -303,35 +303,35 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	if m.browse.documentEditor != nil {
-		editor := m.browse.documentEditor
-		if editor.saving || editor.loading {
+	if m.browse.component.DocumentEditor != nil {
+		editor := m.browse.component.DocumentEditor
+		if editor.Saving || editor.Loading {
 			// The payload arrives via documentEditorLoadedMsg, routed
 			// before this branch; ignore user input meanwhile.
 			return m, nil
 		}
 		keyPress, isKeyPress := message.(tea.KeyPressMsg)
 		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
-			if editor.confirming {
-				editor.confirming = false
-				editor.confirmation = nil
-				m.overlay.formMode.mode = formModeNormal
-				return m, editor.form.Init()
+			if editor.Confirming {
+				editor.Confirming = false
+				editor.Confirmation = nil
+				m.overlay.formMode.Mode = formModeNormal
+				return m, editor.Form.Init()
 			}
-			m.browse.documentEditor = nil
+			m.browse.component.DocumentEditor = nil
 			return m, nil
 		}
-		if editor.confirming {
-			completed, action := editor.confirmation.Update(message, m.layout.width, m.layout.height)
+		if editor.Confirming {
+			completed, action := editor.Confirmation.Update(message, m.layout.width, m.layout.height)
 			if !completed {
 				return m, nil
 			}
 			if action != "confirm" {
-				m.browse.documentEditor = nil
+				m.browse.component.DocumentEditor = nil
 				return m, nil
 			}
-			editor.confirming = false
-			editor.saving = true
+			editor.Confirming = false
+			editor.Saving = true
 			cmd := m.executeDocumentSave()
 			return m, cmd
 		}
@@ -339,48 +339,48 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-			cmd, err := editor.beginConfirmation()
+			cmd, err := editor.BeginConfirmation()
 			if err != nil {
 				m.setStatus(safeText(err.Error()))
 				return m, nil
 			}
 			return m, cmd
 		}
-		model, command := editor.form.Update(message)
-		editor.form = model.(*huh.Form)
-		if editor.form.State != huh.StateCompleted {
+		model, command := editor.Form.Update(message)
+		editor.Form = model.(*huh.Form)
+		if editor.Form.State != huh.StateCompleted {
 			return m, command
 		}
-		cmd, err := editor.beginConfirmation()
+		cmd, err := editor.BeginConfirmation()
 		if err != nil {
 			m.setStatus(safeText(err.Error()))
 			return m, nil
 		}
 		return m, cmd
 	}
-	if m.browse.cellEditor != nil {
+	if m.browse.component.CellEditor != nil {
 		keyPress, isKeyPress := message.(tea.KeyPressMsg)
 		if isKeyPress && keyPress.Key().Code == tea.KeyEscape {
-			if m.browse.cellEditor.confirming {
-				m.browse.cellEditor.confirming = false
-				m.browse.cellEditor.confirm = nil
-				m.overlay.formMode.mode = formModeNormal
-				return m, m.browse.cellEditor.input.Init()
+			if m.browse.component.CellEditor.Confirming {
+				m.browse.component.CellEditor.Confirming = false
+				m.browse.component.CellEditor.Confirm = nil
+				m.overlay.formMode.Mode = formModeNormal
+				return m, m.browse.component.CellEditor.Input.Init()
 			}
-			m.browse.cellEditor = nil
+			m.browse.component.CellEditor = nil
 			return m, nil
 		}
-		if m.browse.cellEditor.confirming {
-			completed, action := m.browse.cellEditor.confirm.Update(message, m.layout.width, m.layout.height)
+		if m.browse.component.CellEditor.Confirming {
+			completed, action := m.browse.component.CellEditor.Confirm.Update(message, m.layout.width, m.layout.height)
 			if !completed {
 				return m, nil
 			}
 			if action != "save" {
-				m.browse.cellEditor = nil
+				m.browse.component.CellEditor = nil
 				return m, nil
 			}
 			cmd := m.executeCellUpdate()
-			m.browse.cellEditor = nil
+			m.browse.component.CellEditor = nil
 			return m, cmd
 		}
 
@@ -390,10 +390,10 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.cellEditorButtonAt(mouse.X, mouse.Y) {
 			case "save":
 				m.layout.formButtonHit = true
-				return m, m.browse.cellEditor.beginConfirmation()
+				return m, m.browse.component.CellEditor.BeginConfirmation()
 			case "cancel":
 				m.layout.formButtonHit = true
-				m.browse.cellEditor = nil
+				m.browse.component.CellEditor = nil
 				return m, nil
 			}
 		}
@@ -405,14 +405,14 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if isKeyPress && m.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}) {
-			return m, m.browse.cellEditor.beginConfirmation()
+			return m, m.browse.component.CellEditor.BeginConfirmation()
 		}
-		model, command := m.browse.cellEditor.input.Update(message)
-		m.browse.cellEditor.input = model.(*huh.Form)
-		if m.browse.cellEditor.input.State != huh.StateCompleted {
+		model, command := m.browse.component.CellEditor.Input.Update(message)
+		m.browse.component.CellEditor.Input = model.(*huh.Form)
+		if m.browse.component.CellEditor.Input.State != huh.StateCompleted {
 			return m, command
 		}
-		return m, m.browse.cellEditor.beginConfirmation()
+		return m, m.browse.component.CellEditor.BeginConfirmation()
 	}
 	if m.overlay.explainPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
@@ -428,7 +428,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.Focus, m.Tab = focusWorkspace, tabSQL
 		m.blurTables()
 		m.queryLog.editorValidity = sqlValidityPending
-		return m, tea.Batch(m.overlay.formMode.beginInsert(m.queryLog.editor), m.scheduleSQLValidation())
+		return m, tea.Batch(beginInsert(m.overlay.formMode, m.queryLog.editor), m.scheduleSQLValidation())
 	}
 	if m.chat.component.HistoryPicker != nil {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok && keyPress.Key().Code == tea.KeyEscape {
@@ -449,16 +449,17 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyLayout(message.Width, message.Height)
 		return m, nil
 	case browseDebounceMsg:
-		if message.tag != m.browse.pageTag || message.table != m.SelectedTable || m.browse.loading {
+		if message.tag != m.browse.component.PageTag || message.table != m.SelectedTable || m.browse.component.Loading {
 			return m, nil
 		}
-		if message.delta > 0 && !m.browse.result.HasMore {
+		if message.delta > 0 && !m.browse.component.Result.HasMore {
 			return m, nil
 		}
 		if !m.ChangeBrowsePage(message.delta) {
 			return m, nil
 		}
-		m.browse.loading = true
+		m.browse.component.Page = m.BrowsePage
+		m.browse.component.Loading = true
 		return m, m.loadBrowse()
 	case tea.KeyPressMsg:
 		if m.structure.tableFiltering {
@@ -476,8 +477,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schema.filter.Focused() &&
-			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
-			!(m.sqlEditorActive() && m.overlay.formMode.editing()) &&
+			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
+			!(m.sqlEditorActive() && m.overlay.formMode.Editing()) &&
 			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.queryLog.editor.value == "") {
 			if m.Running() {
 				m.RequestQuit()
@@ -498,7 +499,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateChat(message)
 		}
 
-		if m.State == stateReady && !m.formActive() && !m.schema.filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
+		if m.State == stateReady && !m.formActive() && !m.schema.filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.Editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
@@ -561,7 +562,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory(1) {
 			m.Focus, m.Tab = focusWorkspace, tabSQL
 			m.blurTables()
-			return m, m.overlay.formMode.beginInsert(m.queryLog.editor)
+			return m, beginInsert(m.overlay.formMode, m.queryLog.editor)
 		}
 		if m.sqlEditorActive() && !m.tableFormOpen() {
 			if m.queryLog.editor.completionVisible() {
@@ -584,10 +585,10 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			if m.overlay.formMode.editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
+			if m.overlay.formMode.Editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
 				return m, m.startCompletion()
 			}
-			if m.overlay.formMode.editing() {
+			if m.overlay.formMode.Editing() {
 				key := message.Key()
 				if (key.Code == tea.KeyUp && (m.queryLog.editor.value == "" || m.queryLog.historyIndex >= 0)) ||
 					(key.Code == tea.KeyDown && m.queryLog.historyIndex >= 0) {
@@ -603,7 +604,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			switch m.overlay.formMode.route(message, m.queryLog.editor) {
+			switch formModeRoute(m.overlay.formMode, message, m.queryLog.editor) {
 			case formRouteConsumed:
 				return m, nil
 			case formRouteHuh:
@@ -627,7 +628,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, command
 			case formRouteParent:
 				if isInsertModeKey(message) || m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
-					return m, m.overlay.formMode.beginInsert(m.queryLog.editor)
+					return m, beginInsert(m.overlay.formMode, m.queryLog.editor)
 				}
 			}
 		}
@@ -863,7 +864,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, command
 	}
-	if m.sqlEditorActive() && m.overlay.formMode.editing() {
+	if m.sqlEditorActive() && m.overlay.formMode.Editing() {
 		previous := m.queryLog.editor.value
 		command := m.queryLog.editor.update(message)
 		if m.queryLog.editor.value != previous {

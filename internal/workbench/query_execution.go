@@ -145,7 +145,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		// The table DDL was rejected: keep the popup open with its typed
 		// name so the user can adjust or discard it.
 		m.structure.tableFormRunning = false
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 		m.setStatus(safeText("table action failed: " + message.err.Error()))
 	}
 	return m, nil
@@ -163,7 +163,7 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 	if m.structure.tableFormRunning {
 		// The statement never ran; restore the popup.
 		m.structure.tableFormRunning = false
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 	}
 	return m, nil
 }

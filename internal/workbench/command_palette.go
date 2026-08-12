@@ -262,8 +262,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
 	case "app.quit":
 		return !m.formActive() && !m.schema.filter.Focused() &&
-			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.editing()))) &&
-			!(m.sqlEditorActive() && m.overlay.formMode.editing())
+			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
+			!(m.sqlEditorActive() && m.overlay.formMode.Editing())
 	case "editor.external":
 		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil
 	case "query.cancel":
@@ -291,21 +291,21 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "structure.filter", "structure.reset", "structure.edit", "structure.add", "structure.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabStructure && !m.formActive()
 	case "browse.edit":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil && m.browseWriteAvailable()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable()
 	case "browse.edit_cell":
 		// On document stores the cell binding edits the whole document, so
 		// it merges into "edit document" and is not offered separately.
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil && m.writeCapabilities().RowWriter
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.writeCapabilities().RowWriter
 	case "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil
 	case "browse.insert_row":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil && m.browseWriteAvailable()
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable()
 	case "cell.view":
-		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.editing() && m.queryLog.results.Focused())
+		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
 	case "cell.yank":
-		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.editing() && m.queryLog.results.Focused())
+		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
 	case "indexes.filter", "indexes.reset", "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.structure.indexForm.active()
 	case "foreign_keys.filter", "foreign_keys.reset", "foreign_keys.toggle_diagram", "foreign_keys.create", "foreign_keys.edit", "foreign_keys.delete":

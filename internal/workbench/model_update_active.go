@@ -1,9 +1,8 @@
 package workbench
 
 import (
-	"time"
-
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
@@ -117,7 +116,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, command
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.overlay.formMode.editing()) &&
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.overlay.formMode.Editing()) &&
 				m.keybindings.Match(keyPress, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
 				m.Focus = focusSchema
 				m.queryLog.editor.text.Blur()
@@ -172,53 +171,48 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.structure.table, command = m.structure.table.Update(message)
 			case tabBrowse:
-				if m.browse.filterForm != nil {
-					command, action := m.browse.filterForm.Update(message, m.keybindings)
-					if m.browse.filterForm.editing {
-						m.overlay.formMode.mode = formModeInsert
+				if m.browse.component.FilterForm != nil {
+					command, action := m.browse.component.FilterForm.Update(message, m.keybindings)
+					if m.browse.component.FilterForm.Editing {
+						m.overlay.formMode.Mode = formModeInsert
 					} else {
-						m.overlay.formMode.mode = formModeNormal
+						m.overlay.formMode.Mode = formModeNormal
 					}
 					switch action {
-					case browseFilterDiscard:
-						m.browse.filterForm = nil
-					case browseFilterApply:
-						settings, err := m.browse.filterForm.apply()
+					case browse.FilterDiscard:
+						m.browse.component.FilterForm = nil
+					case browse.FilterApply:
+						settings, err := m.browse.component.FilterForm.Apply()
 						if err != nil {
 							m.setStatus(safeText(err.Error()))
 							return m, nil
 						}
-						m.browse.settings = settings
-						m.browse.filterForm = nil
-						m.BrowsePage, m.browse.loading = 0, true
-						m.browse.pageTag++
+						m.browse.component.Settings = settings
+						m.browse.component.FilterForm = nil
+						m.BrowsePage, m.browse.component.Loading = 0, true
+						m.browse.component.PageTag++
+						m.browse.component.Page = 0
 						return m, m.loadBrowse()
 					}
 					return m, command
 				}
-				if m.browse.form.active() {
-					m.browse.form.height = m.layout.height
-					command, action := m.browse.form.Update(message, m.overlay.formMode)
+				if m.browse.component.Form.Active() {
+					m.browse.component.Form.Height = m.layout.height
+					command, action := m.browse.component.Form.Update(message, m.overlay.formMode)
 					switch action {
-					case browseFormSave:
-						m.browse.form.saving = true
-						if m.browse.form.inserting {
+					case browse.FormSave:
+						m.browse.component.Form.Saving = true
+						if m.browse.component.Form.Inserting {
 							return m, m.insertBrowseRow()
 						}
 						return m, m.updateBrowseRow()
-					case browseFormDiscard:
-						m.browse.form = browseForm{}
+					case browse.FormDiscard:
+						m.browse.component.Form = browse.Form{}
 					}
 					return m, command
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseFilterForm()
-				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.reset", []scope{scopeView, scopeGlobal}) {
-					return m, m.resetBrowseFilters()
-				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.sort", []scope{scopeView, scopeGlobal}) {
-					return m, m.cycleBrowseSort()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
 					if m.writeCapabilities().RowWriter {
@@ -236,68 +230,47 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, m.openInsertRowForm()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
-					row := m.browse.table.Cursor()
-					col := m.layout.browseColumn
+					row := m.browse.component.Table.Cursor()
+					col := m.browse.component.SelectedColumn
 					display := ""
-					if row >= 0 && row < len(m.browse.table.Rows()) && col >= 0 && col < len(m.browse.table.Rows()[row]) {
-						display = m.browse.table.Rows()[row][col]
+					if row >= 0 && row < len(m.browse.component.Table.Rows()) && col >= 0 && col < len(m.browse.component.Table.Rows()[row]) {
+						display = m.browse.component.Table.Rows()[row][col]
 					}
 					raw := m.rawCellValue("browse", row, col, display)
-					return m, m.openCellViewer(m.browse.table, col, raw)
+					return m, m.openCellViewer(m.browse.component.Table, col, raw)
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					switch {
-					case m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}):
-						return m, m.copyBrowseCell()
-					case m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}):
-						row := m.browse.table.Cursor()
-						if row < 0 || row >= len(m.browse.result.Rows) {
-							return m, nil
-						}
-						rows := m.browse.table.Rows()
-						rowHeight := m.browse.table.Height()
-						start := min(max(row-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
-						menuX := m.layout.schemaWidth + 1 - m.layout.browseOffset
-						for _, column := range m.browse.table.Columns()[:m.layout.browseColumn] {
-							menuX += column.Width + 2*spaceCompact
-						}
-						m.overlay.contextMenu = &contextMenuModel{
-							options: m.browseRowMenuOptions(),
-							visible: true,
-							x:       menuX,
-							y:       row - start + 6,
-						}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}) {
+					row := m.browse.component.Table.Cursor()
+					if row < 0 || row >= len(m.browse.component.Result.Rows) {
 						return m, nil
-					case m.keybindings.Match(keyPress, "browse.next_page", []scope{scopeView, scopeGlobal}):
-						if m.browse.loading {
-							return m, nil
-						}
-						m.browse.pageTag++
-						tag := m.browse.pageTag
-						table := m.SelectedTable
-						return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
-							return browseDebounceMsg{tag: tag, delta: 1, table: table}
-						})
-					case m.keybindings.Match(keyPress, "browse.prev_page", []scope{scopeView, scopeGlobal}):
-						if m.browse.loading {
-							return m, nil
-						}
-						m.browse.pageTag++
-						tag := m.browse.pageTag
-						table := m.SelectedTable
-						return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
-							return browseDebounceMsg{tag: tag, delta: -1, table: table}
-						})
 					}
-				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && moveTableCell(&m.browse.table, &m.layout.browseColumn, &m.layout.browseOffset, m.layout.tableViewportWidth, keyPress) {
-					m.refreshBrowseStatus()
+					rows := m.browse.component.Table.Rows()
+					rowHeight := m.browse.component.Table.Height()
+					start := min(max(row-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+					menuX := m.layout.schemaWidth + 1 - m.browse.component.Offset
+					for _, column := range m.browse.component.Table.Columns()[:m.browse.component.SelectedColumn] {
+						menuX += column.Width + 2*spaceCompact
+					}
+					m.overlay.contextMenu = &contextMenuModel{
+						options: m.browseRowMenuOptions(),
+						visible: true,
+						x:       menuX,
+						y:       row - start + 6,
+					}
 					return m, nil
 				}
-				m.browse.table, command = m.browse.table.Update(message)
+				// Pane keys: route into the component, which owns the
+				// sort/reset/copy/paging keys and the table passthrough;
+				// the root applies the events (reloads, page ticks,
+				// clipboard) and refreshes the status after navigation.
+				component, event, cmd := m.browse.component.Update(message, browseLayout(m), m.keybindings, m.browseBackend())
+				m.browse.component = component
+				model, cmd := m.applyBrowseEvent(event, cmd)
+				m = model.(Model)
 				m.refreshBrowseStatus()
+				return m, cmd
 			case tabSQL:
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.queryLog.results.Cursor()
 					col := m.layout.resultsColumn
 					display := ""
@@ -307,10 +280,10 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					raw := m.rawCellValue("results", row, col, display)
 					return m, m.openCellViewer(m.queryLog.results, col, raw)
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
 					return m, m.copySQLCell()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.editing() && moveTableCell(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, keyPress) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && moveTableCell(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, keyPress) {
 					return m, nil
 				}
 				if m.queryLog.results.Focused() {
@@ -509,5 +482,5 @@ func (m Model) applyQueryLogEvent(event uikit.Event, cmd tea.Cmd) (tea.Model, te
 }
 
 func (m Model) formActive() bool {
-	return m.structure.tableFiltering || m.structure.columnForm.active() || m.tableFormOpen() || m.browse.documentEditor != nil || m.browse.form.active() || m.browse.filterForm != nil || m.structure.indexForm.active() || m.structure.foreignKeyForm.active()
+	return m.structure.tableFiltering || m.structure.columnForm.active() || m.tableFormOpen() || m.browse.component.DocumentEditor != nil || m.browse.component.Form.Active() || m.browse.component.FilterForm != nil || m.structure.indexForm.active() || m.structure.foreignKeyForm.active()
 }

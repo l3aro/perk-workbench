@@ -192,7 +192,7 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 	if !model.vimMode {
 		t.Fatal("test setup: vim mode should default on")
 	}
-	if model.overlay.formMode.editing() {
+	if model.overlay.formMode.Editing() {
 		t.Fatal("test setup: SQL editor should start in normal mode")
 	}
 	for _, item := range newCommandPalette(model).items {
@@ -214,7 +214,7 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 	if model.vimMode {
 		t.Fatal("vim mode still on after toggle")
 	}
-	if !model.overlay.formMode.editing() {
+	if !model.overlay.formMode.Editing() {
 		t.Fatal("SQL editor did not enter insert mode when vim mode switched off")
 	}
 

@@ -55,10 +55,10 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 }
 
 func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLocation, bool) {
-	if m.sqlEditorActive() && m.overlay.formMode.editing() {
+	if m.sqlEditorActive() && m.overlay.formMode.Editing() {
 		return m.queryLog.editor, externalEditorLocation{kind: externalEditorTargetSQL}, true
 	}
-	if !m.overlay.formMode.editing() {
+	if !m.overlay.formMode.Editing() {
 		return nil, externalEditorLocation{}, false
 	}
 
@@ -67,14 +67,14 @@ func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLoc
 		location externalEditorLocation
 	)
 	switch {
-	case m.browse.cellEditor != nil:
+	case m.browse.component.CellEditor != nil:
 		return nil, externalEditorLocation{}, false
 	case m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil:
 		form, location.kind = m.connection.component.Form.Huh, externalEditorTargetConnection
 	case m.structure.columnForm.active() && !m.structure.columnForm.confirming():
 		form, location.kind = m.structure.columnForm.form, externalEditorTargetColumn
-	case m.browse.form.active() && !m.browse.form.confirming():
-		form, location.kind = m.browse.form.form, externalEditorTargetBrowse
+	case m.browse.component.Form.Active() && !m.browse.component.Form.Confirming():
+		form, location.kind = m.browse.component.Form.Form, externalEditorTargetBrowse
 	case m.structure.indexForm.active() && !m.structure.indexForm.confirming():
 		form, location.kind = m.structure.indexForm.form, externalEditorTargetIndex
 	case m.structure.foreignKeyForm.active() && !m.structure.foreignKeyForm.confirming():

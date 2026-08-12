@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
@@ -38,12 +39,12 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — a viewer exists with the full untruncated value and column title
-	if model.browse.cellViewer == nil {
+	if model.browse.component.CellViewer == nil {
 		t.Fatal("cell.view did not open a cell viewer")
 	}
 	// GetContent returns the entire stored string, not just the visible viewport.
 	// ANSI codes and BEL should be sanitized.
-	full := model.browse.cellViewer.Viewport.GetContent()
+	full := model.browse.component.CellViewer.Viewport.GetContent()
 	if !strings.Contains(full, "red ") || !strings.Contains(full, strings.Repeat("x", 200)) {
 		t.Fatalf("cell viewer GetContent missing full value (got %d chars, want 200+):\n%s", len(full), full)
 	}
@@ -56,7 +57,7 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	if strings.Contains(full, "\x07") || strings.Contains(full, "\x1b") {
 		t.Fatal("control characters not sanitized from cell viewer")
 	}
-	if !strings.Contains(model.browse.cellViewer.Content(), "note") {
+	if !strings.Contains(model.browse.component.CellViewer.Content(), "note") {
 		t.Fatalf("cell viewer content missing column title")
 	}
 	if cmd != nil {
@@ -64,16 +65,16 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	}
 
 	// When — press w to toggle soft wrap off (changing wrap resets horizontal scroll)
-	cmd = model.browse.cellViewer.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	cmd = model.browse.component.CellViewer.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
 	if cmd != nil {
 		t.Fatal("cell viewer w returned non-nil command")
 	}
-	if model.browse.cellViewer.Viewport.SoftWrap {
+	if model.browse.component.CellViewer.Viewport.SoftWrap {
 		t.Fatal("soft wrap not disabled after w (default is on)")
 	}
 	// Press w again to toggle back on
-	cmd = model.browse.cellViewer.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
-	if !model.browse.cellViewer.Viewport.SoftWrap {
+	cmd = model.browse.component.CellViewer.Update(tea.KeyPressMsg{Code: 'w', Text: "w"})
+	if !model.browse.component.CellViewer.Viewport.SoftWrap {
 		t.Fatal("soft wrap should be enabled after second w")
 	}
 
@@ -82,7 +83,7 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — viewer cleared, selection unchanged
-	if model.browse.cellViewer != nil {
+	if model.browse.component.CellViewer != nil {
 		t.Fatal("cell viewer not cleared after Escape")
 	}
 	if model.queryLog.results.Cursor() != 0 {
@@ -99,14 +100,14 @@ func TestCellViewer_opens_for_Browse_selected_column(t *testing.T) {
 	model.Focus = focusWorkspace
 	model.Tab = tabBrowse
 	model.SelectedTable = "projects"
-	model.browse.result = sqlite.Result{
+	model.browse.component.Result = sqlite.Result{
 		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer("target-value"), stringPointer("active")}},
 	}
-	model.browse.table.SetColumns(tableColumns([]string{"id", "name", "state"}, []table.Row{{"1", "target-value", "active"}}))
-	model.browse.table.SetRows([]table.Row{{"1", "target-value", "active"}})
-	model.layout.browseColumn = 1
-	model.browse.table.SetCursor(0)
-	resizeResultsTable(&model.browse.table, model.layout.tableViewportWidth, 5)
+	model.browse.component.Table.SetColumns(tableColumns([]string{"id", "name", "state"}, []table.Row{{"1", "target-value", "active"}}))
+	model.browse.component.Table.SetRows([]table.Row{{"1", "target-value", "active"}})
+	model.browse.component.SelectedColumn = 1
+	model.browse.component.Table.SetCursor(0)
+	resizeResultsTable(&model.browse.component.Table, model.layout.tableViewportWidth, 5)
 	model.focusActiveTable()
 
 	// When — press v
@@ -114,10 +115,10 @@ func TestCellViewer_opens_for_Browse_selected_column(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — viewer shows the selected column's value, not its row peers
-	if model.browse.cellViewer == nil {
+	if model.browse.component.CellViewer == nil {
 		t.Fatal("cell.view did not open a cell viewer for Browse")
 	}
-	content := model.browse.cellViewer.Content()
+	content := model.browse.component.CellViewer.Content()
 	if !strings.Contains(content, "target-value") {
 		t.Fatalf("cell viewer content = %q, want 'target-value'", content)
 	}
@@ -138,14 +139,14 @@ func TestCellViewer_not_opened_during_SQL_edit(t *testing.T) {
 	model.Focus = focusWorkspace
 	model.Tab = tabSQL
 	model.queryLog.editor.setValue("SELECT 1")
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 
 	// When — press v while SQL editor active
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	model = updated.(Model)
 
 	// Then — no viewer
-	if model.browse.cellViewer != nil {
+	if model.browse.component.CellViewer != nil {
 		t.Fatal("cell viewer opened during active SQL editor")
 	}
 }
@@ -167,7 +168,7 @@ func TestCellViewer_resizes_on_window_size(t *testing.T) {
 	model.queryLog.results.Focus()
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	model = updated.(Model)
-	if model.browse.cellViewer == nil {
+	if model.browse.component.CellViewer == nil {
 		t.Fatal("test precondition: viewer not opened")
 	}
 
@@ -178,13 +179,13 @@ func TestCellViewer_resizes_on_window_size(t *testing.T) {
 	// Then — viewport dimensions updated
 	wantW := max(model.layout.width-8, 1)
 	wantH := max(model.layout.height-10, 1)
-	if model.browse.cellViewer == nil {
+	if model.browse.component.CellViewer == nil {
 		t.Fatal("cell viewer cleared after resize")
 	}
-	if got, want := model.browse.cellViewer.Viewport.Width(), wantW; got != want {
+	if got, want := model.browse.component.CellViewer.Viewport.Width(), wantW; got != want {
 		t.Fatalf("cell viewer width = %d, want %d", got, want)
 	}
-	if got, want := model.browse.cellViewer.Viewport.Height(), wantH; got != want {
+	if got, want := model.browse.component.CellViewer.Viewport.Height(), wantH; got != want {
 		t.Fatalf("cell viewer height = %d, want %d", got, want)
 	}
 }
@@ -223,26 +224,26 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — viewer opened
-	if model.browse.cellViewer == nil {
+	if model.browse.component.CellViewer == nil {
 		t.Fatal("handlePaletteCommand('cell.view') did not open viewer for SQL")
 	}
-	content := model.browse.cellViewer.Content()
+	content := model.browse.component.CellViewer.Content()
 	if !strings.Contains(content, "palette-value") {
 		t.Fatalf("palette-opened viewer content = %q, want 'palette-value'", content)
 	}
 
 	// Given Browse state
-	model.browse.cellViewer = nil
+	model.browse.component.CellViewer = nil
 	model.Tab = tabBrowse
 	model.SelectedTable = "projects"
-	model.browse.result = sqlite.Result{
+	model.browse.component.Result = sqlite.Result{
 		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer("browse-palette")}},
 	}
-	model.browse.table.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "browse-palette"}}))
-	model.browse.table.SetRows([]table.Row{{"1", "browse-palette"}})
-	model.layout.browseColumn = 1
-	model.browse.table.SetCursor(0)
-	resizeResultsTable(&model.browse.table, model.layout.tableViewportWidth, 5)
+	model.browse.component.Table.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "browse-palette"}}))
+	model.browse.component.Table.SetRows([]table.Row{{"1", "browse-palette"}})
+	model.browse.component.SelectedColumn = 1
+	model.browse.component.Table.SetCursor(0)
+	resizeResultsTable(&model.browse.component.Table, model.layout.tableViewportWidth, 5)
 	model.focusActiveTable()
 
 	// Then — palette includes cell.view for Browse
@@ -263,10 +264,10 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — viewer opens with selected column value
-	if model.browse.cellViewer == nil {
+	if model.browse.component.CellViewer == nil {
 		t.Fatal("handlePaletteCommand('cell.view') did not open viewer for Browse")
 	}
-	content = model.browse.cellViewer.Content()
+	content = model.browse.component.CellViewer.Content()
 	if !strings.Contains(content, "browse-palette") {
 		t.Fatalf("palette-opened viewer content = %q, want 'browse-palette'", content)
 	}
@@ -282,11 +283,11 @@ func TestCellViewer_not_in_palette_when_inactive(t *testing.T) {
 			setup: func(t *testing.T) Model {
 				model := resizeModel(readyModel(t), 100, 24)
 				model.Tab = tabBrowse
-				model.browse.table.SetColumns(tableColumns(nil, nil))
-				model.browse.table.SetRows(nil)
+				model.browse.component.Table.SetColumns(tableColumns(nil, nil))
+				model.browse.component.Table.SetRows(nil)
 				model.Focus = focusWorkspace
-				model.browse.form = browseForm{columns: []string{"id"}}
-				model.overlay.formMode.mode = formModeInsert
+				model.browse.component.Form = browse.Form{Columns: []string{"id"}}
+				model.overlay.formMode.Mode = formModeInsert
 				return model
 			},
 		},
@@ -309,7 +310,7 @@ func TestCellViewer_not_in_palette_when_inactive(t *testing.T) {
 				model.queryLog.results.SetColumns(tableColumns([]string{"x"}, nil))
 				model.queryLog.results.SetRows(nil)
 				model.queryLog.editor.setValue("SELECT ")
-				model.overlay.formMode.beginInsert(model.queryLog.editor)
+				beginInsert(model.overlay.formMode, model.queryLog.editor)
 				return model
 			},
 		},
@@ -383,7 +384,7 @@ func TestCellViewer_draw_has_title_padding_footer(t *testing.T) {
 
 	// Set up model with viewer
 	model := resizeModel(readyModel(t), 60, 20)
-	model.browse.cellViewer = cv
+	model.browse.component.CellViewer = cv
 
 	// When — render to canvas
 	canvas := uv.NewScreenBuffer(60, 20)

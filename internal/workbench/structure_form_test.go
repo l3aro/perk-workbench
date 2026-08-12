@@ -21,23 +21,23 @@ func TestStructureForm_buttonsNavigableFromLastField(t *testing.T) {
 		t.Fatalf("focused field = %q, want attributes", got)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if !model.overlay.formMode.buttonsFocused || model.overlay.formMode.buttonChoice != 0 {
-		t.Fatalf("bar = focused:%t choice:%d, want focused on Save", model.overlay.formMode.buttonsFocused, model.overlay.formMode.buttonChoice)
+	if !model.overlay.formMode.ButtonsFocused || model.overlay.formMode.ButtonChoice != 0 {
+		t.Fatalf("bar = focused:%t choice:%d, want focused on Save", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.ButtonChoice)
 	}
 
 	// h/l switch the choice between Save and Cancel.
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if model.overlay.formMode.buttonChoice != 1 {
-		t.Fatalf("button choice = %d, want 1 (Cancel)", model.overlay.formMode.buttonChoice)
+	if model.overlay.formMode.ButtonChoice != 1 {
+		t.Fatalf("button choice = %d, want 1 (Cancel)", model.overlay.formMode.ButtonChoice)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'h', Text: "h"})
-	if model.overlay.formMode.buttonChoice != 0 {
-		t.Fatalf("button choice = %d, want 0 (Save)", model.overlay.formMode.buttonChoice)
+	if model.overlay.formMode.ButtonChoice != 0 {
+		t.Fatalf("button choice = %d, want 0 (Save)", model.overlay.formMode.ButtonChoice)
 	}
 
 	// k returns to the last field.
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if model.overlay.formMode.buttonsFocused {
+	if model.overlay.formMode.ButtonsFocused {
 		t.Fatal("k on the button bar did not return to the fields")
 	}
 	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "attributes" {
@@ -50,8 +50,8 @@ func TestStructureForm_buttonsNavigableFromLastField(t *testing.T) {
 	if !model.structure.columnForm.confirming() || !model.structure.columnForm.confirmationSave {
 		t.Fatalf("form = confirming:%t save:%t, want confirming save", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
 	}
-	if model.overlay.formMode.mode != formModeConfirm {
-		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeConfirm {
+		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.Mode)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestStructureForm_barConfirmationDismissKeepsBarFocus(t *testing.T) {
 	for range 5 {
 		model = updateColumn(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
 	}
-	if !model.overlay.formMode.buttonsFocused {
+	if !model.overlay.formMode.ButtonsFocused {
 		t.Fatal("fixture: expected the button bar focused")
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -80,10 +80,10 @@ func TestStructureForm_barConfirmationDismissKeepsBarFocus(t *testing.T) {
 	if model.structure.columnForm.confirming() {
 		t.Fatal("Enter on No did not dismiss the confirmation")
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal after dismissal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal after dismissal", model.overlay.formMode.Mode)
 	}
-	if !model.overlay.formMode.buttonsFocused {
+	if !model.overlay.formMode.ButtonsFocused {
 		t.Fatal("dismissing a bar-initiated confirmation lost the bar focus")
 	}
 
@@ -160,8 +160,8 @@ func TestStructureForm_discardWithoutChangesClosesWithoutConfirmation(t *testing
 	if model.structure.columnForm.active() || model.structure.columnForm.confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -246,14 +246,14 @@ func TestStructureForm_normalInputCannotMutateAndEscapeReturnsToNormal(t *testin
 		t.Fatalf("normal mode changed name to %q", model.structure.columnForm.values.name)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("column mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("column mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
-	if model.structure.columnForm.values.name != "namex" || model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("name/mode = %q/%d", model.structure.columnForm.values.name, model.overlay.formMode.mode)
+	if model.structure.columnForm.values.name != "namex" || model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("name/mode = %q/%d", model.structure.columnForm.values.name, model.overlay.formMode.Mode)
 	}
 }
 
@@ -264,8 +264,8 @@ func TestStructureForm_normalModeNavigatesFields(t *testing.T) {
 	if got, want := model.structure.columnForm.form.GetFocusedField().GetKey(), "type"; got != want {
 		t.Fatalf("focused field after j = %q, want %q", got, want)
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode after normal navigation = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode after normal navigation = %d, want normal", model.overlay.formMode.Mode)
 	}
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
@@ -363,8 +363,8 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 	}
 	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = resolveColumnCommand(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
-	if !model.overlay.formMode.editing() {
-		t.Fatalf("vim-off edit opened mode = %d, want insert", model.overlay.formMode.mode)
+	if !model.overlay.formMode.Editing() {
+		t.Fatalf("vim-off edit opened mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 	// Typing must reach the focused Name field: mode alone could be set by
 	// beginHuh while the field stayed blurred.
@@ -378,8 +378,8 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 	model.SelectedTable, model.Tab = "items", tabStructure
 	updated, _ = model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = resolveColumnCommand(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
-	if model.overlay.formMode.editing() {
-		t.Fatalf("vim-on edit opened mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Editing() {
+		t.Fatalf("vim-on edit opened mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -390,26 +390,26 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 // types instead of navigating.
 func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	model.overlay.formMode.beginHuh(model.structure.columnForm.focus()) // insert mode, vim off
+	model.overlay.formMode.BeginHuh(model.structure.columnForm.focus()) // insert mode, vim off
 	for range 4 {
 		_ = model.structure.columnForm.form.NextField() // attributes (last field)
 	}
 
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !model.overlay.formMode.buttonsFocused || model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.overlay.formMode.buttonsFocused, model.overlay.formMode.mode)
+	if !model.overlay.formMode.ButtonsFocused || model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.Mode)
 	}
 
 	// h/l still switch the choice while the bar is focused in insert mode.
 	model = updateColumn(model, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if model.overlay.formMode.buttonChoice != 1 {
-		t.Fatalf("button choice = %d, want 1 (Cancel)", model.overlay.formMode.buttonChoice)
+	if model.overlay.formMode.ButtonChoice != 1 {
+		t.Fatalf("button choice = %d, want 1 (Cancel)", model.overlay.formMode.ButtonChoice)
 	}
 
 	// Shift+Tab returns to the last field, keeping insert mode.
 	model = updateColumn(model, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	if model.overlay.formMode.buttonsFocused || model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("shift+tab from bar: bar=%t mode=%d, want unfocused/insert", model.overlay.formMode.buttonsFocused, model.overlay.formMode.mode)
+	if model.overlay.formMode.ButtonsFocused || model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("shift+tab from bar: bar=%t mode=%d, want unfocused/insert", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.Mode)
 	}
 
 	// j is content on the field, not field navigation.
@@ -424,7 +424,7 @@ func TestStructureForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 // confirmation, not be eaten as an insert-mode Escape.
 func TestStructureForm_insertModeBarEnterActivatesChoice(t *testing.T) {
 	model := openColumn(t, "name", "TEXT")
-	model.overlay.formMode.beginHuh(model.structure.columnForm.focus()) // insert mode, vim off
+	model.overlay.formMode.BeginHuh(model.structure.columnForm.focus()) // insert mode, vim off
 	// Type a real edit into the name field: a direct values assignment would
 	// be overwritten by Huh's internal input buffer on the next field step.
 	for _, character := range "renamed" {
@@ -440,8 +440,8 @@ func TestStructureForm_insertModeBarEnterActivatesChoice(t *testing.T) {
 	if !model.structure.columnForm.confirming() || model.structure.columnForm.confirmationSave {
 		t.Fatalf("form = confirming:%t save:%t, want confirming discard", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
 	}
-	if model.overlay.formMode.mode != formModeConfirm {
-		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeConfirm {
+		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.Mode)
 	}
 }
 

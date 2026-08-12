@@ -14,6 +14,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/core"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
@@ -129,22 +130,13 @@ type queryState struct {
 	resultsNumericColumns []bool
 }
 
-// browseState owns the browse tab: the result table, row/document
-// editors, cell viewer, settings, filter form, and paging state.
+// browseState owns the browse tab's root half: the browse component
+// (result table, editors, settings, rendering) and the cached database
+// adapter. Root keeps the query lifecycle and the overlays; the component
+// owns the browse state and interactions.
 type browseState struct {
-	table            table.Model
-	result           sharedsql.Result
-	status           string
-	numericColumns   []bool
-	loading, pending bool
-	pageTag          uint64
-	settings         browseSettings
-	form             browseForm
-	filterForm       *browseFilterForm
-	pageSize         int
-	cellEditor       *cellEditor
-	documentEditor   *documentEditor
-	cellViewer       *cellViewer
+	component browse.Model
+	backend   browse.Backend
 }
 
 // structureState owns the structure/index/foreign-key tabs: their tables,
@@ -320,8 +312,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 			historyIndex:      -1,
 		},
 		browse: browseState{
-			table:    newResultsTable(),
-			pageSize: browsePageSizeDefault(),
+			component: browse.New(),
 		},
 		structure: structureState{
 			table:       newResultsTable(),
@@ -338,6 +329,7 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		vimMode:     vimModeEnabled(),
 	}
 	model.ReadOnly = readOnly || appConfig.ReadOnly
+	model.browse.component.PageSize = browsePageSizeDefault()
 	if appConfig.ReadOnly {
 		// Pre-check the per-connection toggle so fresh forms keep the
 		// configured default; the user can still opt a connection back.
@@ -477,6 +469,7 @@ func (m *Model) disconnect() {
 	m.SelectedTable = ""
 	m.BrowsePage = 0
 	m.setStatus("")
+	m.refreshBrowseBackend()
 	m.queryLog.reset()
 	m.schema.reset()
 	m.databaseInfo = sharedsql.DatabaseInfo{}
@@ -534,8 +527,7 @@ func (s *structureState) reset() {
 
 // reset clears the browse result table and result data.
 func (s *browseState) reset() {
-	s.table.SetRows(nil)
-	s.result = sharedsql.Result{}
+	s.component.Reset()
 }
 
 // reset reloads the persisted profile list and clears the profile list

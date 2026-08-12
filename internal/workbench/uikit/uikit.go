@@ -305,12 +305,12 @@ func TableViewportView(resultTable table.Model, offset, width int) string {
 func TableViewportViewWithAlignment(resultTable table.Model, numericColumns []bool, offset, width, selectedColumn int) string {
 	offset = min(max(offset, 0), max(resultTable.Width()-width, 0))
 	columns := resultTable.Columns()
-	lines := []string{HeaderStyle.Padding(0, 0).Render(tableLineWithSelection(columns, nil, numericColumns, offset, width, -1, false))}
+	lines := []string{HeaderStyle.Padding(0, 0).Render(TableLineWithSelection(columns, nil, numericColumns, offset, width, -1, false))}
 	rows, rowHeight := resultTable.Rows(), resultTable.Height()
 	start := min(max(resultTable.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
 	for rowIndex := start; rowIndex < min(start+rowHeight, len(rows)); rowIndex++ {
 		selectedRow := rowIndex == resultTable.Cursor()
-		row := tableLineWithSelection(columns, rows[rowIndex], numericColumns, offset, width, selectedColumn, selectedRow)
+		row := TableLineWithSelection(columns, rows[rowIndex], numericColumns, offset, width, selectedColumn, selectedRow)
 		lines = append(lines, row)
 	}
 	for range max(rowHeight-(len(lines)-1), 0) {
@@ -320,7 +320,7 @@ func TableViewportViewWithAlignment(resultTable table.Model, numericColumns []bo
 }
 
 func tableLine(columns []table.Column, row table.Row, numericColumns []bool, offset, width int) string {
-	return tableLineWithSelection(columns, row, numericColumns, offset, width, -1, false)
+	return TableLineWithSelection(columns, row, numericColumns, offset, width, -1, false)
 }
 
 // cellStyle returns a cached width-fixed table cell style. Styles depend only
@@ -347,7 +347,7 @@ func cellStyle(width int, numeric bool) lipgloss.Style {
 	return style
 }
 
-func tableLineWithSelection(columns []table.Column, row table.Row, numericColumns []bool, offset, width, selectedColumn int, selectedRow bool) string {
+func TableLineWithSelection(columns []table.Column, row table.Row, numericColumns []bool, offset, width, selectedColumn int, selectedRow bool) string {
 	cells := make([]string, len(columns))
 	for index, column := range columns {
 		value := column.Title
@@ -364,7 +364,7 @@ func tableLineWithSelection(columns []table.Column, row table.Row, numericColumn
 		cell := strings.Repeat(" ", SpaceCompact) + style.Render(ansi.Truncate(value, column.Width, "…")) + strings.Repeat(" ", SpaceCompact)
 		cells[index] = cell
 	}
-	line := cropTableLine(strings.Join(cells, ""), offset, width)
+	line := CropTableLine(strings.Join(cells, ""), offset, width)
 	if !selectedRow {
 		return line
 	}
@@ -378,7 +378,7 @@ func tableLineWithSelection(columns []table.Column, row table.Row, numericColumn
 	return highlightedTableRow(line, selectedStart-offset, columns[selectedColumn].Width+2*SpaceCompact)
 }
 
-func cropTableLine(line string, offset, width int) string {
+func CropTableLine(line string, offset, width int) string {
 	visible := tableLineSegment(line, offset, width)
 	return visible + strings.Repeat(" ", max(width-ansi.StringWidth(visible), 0))
 }

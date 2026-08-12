@@ -84,8 +84,8 @@ func TestSetAppConfig_applies_defaults_to_new_models(t *testing.T) {
 	SetAppConfig(Config{BrowsePageSize: 50, QueryLogPageSize: 7, QueryLogRetentionDays: 90, ReadOnly: true, Theme: "nord"})
 	model := New("", context.Background(), testOpen, false)
 
-	if model.browse.pageSize != 50 {
-		t.Fatalf("browsePageSize = %d, want 50", model.browse.pageSize)
+	if model.browse.component.PageSize != 50 {
+		t.Fatalf("browsePageSize = %d, want 50", model.browse.component.PageSize)
 	}
 	if model.queryLog.component.PageSize != 7 {
 		t.Fatalf("queryLogPageSize = %d, want 7", model.queryLog.component.PageSize)
@@ -112,8 +112,8 @@ func TestSetAppConfig_zero_keeps_builtin_defaults(t *testing.T) {
 	SetAppConfig(Config{})
 	model := New("", context.Background(), testOpen, false)
 
-	if model.browse.pageSize != core.BrowsePageSize {
-		t.Fatalf("browsePageSize = %d, want built-in %d", model.browse.pageSize, core.BrowsePageSize)
+	if model.browse.component.PageSize != core.BrowsePageSize {
+		t.Fatalf("browsePageSize = %d, want built-in %d", model.browse.component.PageSize, core.BrowsePageSize)
 	}
 	if model.queryLog.component.PageSize != defaultQueryLogPageSize {
 		t.Fatalf("queryLogPageSize = %d, want built-in %d", model.queryLog.component.PageSize, defaultQueryLogPageSize)

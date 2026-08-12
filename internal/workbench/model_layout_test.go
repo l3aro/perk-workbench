@@ -363,9 +363,9 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	}
 	assertTableRenderGeometry(t, model.structure.table)
 
-	assertTableTitlesAndPositiveWidths(t, model.browse.table, []string{"id", "name", "state"})
-	assertTableRows(t, model.browse.table, []table.Row{{"1", "first", "open"}})
-	assertTableRenderGeometry(t, model.browse.table)
+	assertTableTitlesAndPositiveWidths(t, model.browse.component.Table, []string{"id", "name", "state"})
+	assertTableRows(t, model.browse.component.Table, []table.Row{{"1", "first", "open"}})
+	assertTableRenderGeometry(t, model.browse.component.Table)
 }
 
 func TestResize_tiny_multicolumn_results_render_within_viewport(t *testing.T) {
@@ -775,7 +775,7 @@ func TestCompactClick_browseRowSelectsClickedCell(t *testing.T) {
 		clickY := renderedRowY(t, model, tc.needle)
 		updated, _ := model.Update(tea.MouseClickMsg{X: 3, Y: clickY, Button: tea.MouseLeft})
 		model = updated.(Model)
-		if got, want := model.browse.table.Cursor(), tc.wantRow; got != want {
+		if got, want := model.browse.component.Table.Cursor(), tc.wantRow; got != want {
 			t.Fatalf("compact click on %q selected row %d, want %d", tc.needle, got, want)
 		}
 	}

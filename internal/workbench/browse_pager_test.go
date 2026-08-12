@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
 func TestBrowsePager_buttonsAlwaysRenderedAndStyledByAvailability(t *testing.T) {
@@ -26,7 +27,7 @@ func TestBrowsePager_buttonsAlwaysRenderedAndStyledByAvailability(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			model := readyBrowseModel(t)
 			model.BrowsePage = test.page
-			model.browse.result.HasMore = test.hasMore
+			model.browse.component.Result.HasMore = test.hasMore
 
 			pager := model.browsePager()
 			if pager.Line == "" {
@@ -35,16 +36,16 @@ func TestBrowsePager_buttonsAlwaysRenderedAndStyledByAvailability(t *testing.T) 
 			if pager.PrevEnabled != test.wantPrevEnabled || pager.NextEnabled != test.wantNextEnabled {
 				t.Fatalf("enabled = %t/%t, want %t/%t", pager.PrevEnabled, pager.NextEnabled, test.wantPrevEnabled, test.wantNextEnabled)
 			}
-			wantPrev := formCancelButtonStyle.Render(browsePrevLabel)
+			wantPrev := formCancelButtonStyle.Render(uikit.PrevLabel)
 			if test.wantPrevEnabled {
-				wantPrev = formSaveButtonStyle.Render(browsePrevLabel)
+				wantPrev = formSaveButtonStyle.Render(uikit.PrevLabel)
 			}
 			if pager.Prev != wantPrev {
 				t.Fatalf("Prev = %q, want %q (disabled keeps the secondary color, enabled switches to primary)", pager.Prev, wantPrev)
 			}
-			wantNext := formCancelButtonStyle.Render(browseNextLabel)
+			wantNext := formCancelButtonStyle.Render(uikit.NextLabel)
 			if test.wantNextEnabled {
-				wantNext = formSaveButtonStyle.Render(browseNextLabel)
+				wantNext = formSaveButtonStyle.Render(uikit.NextLabel)
 			}
 			if pager.Next != wantNext {
 				t.Fatalf("Next = %q, want %q (disabled keeps the secondary color, enabled switches to primary)", pager.Next, wantNext)
@@ -71,7 +72,7 @@ func TestBrowsePager_buttonsStayPinnedToTheirEdges(t *testing.T) {
 		{page: 1, hasMore: false},
 		{page: 1, hasMore: true},
 	} {
-		model.BrowsePage, model.browse.result.HasMore = test.page, test.hasMore
+		model.BrowsePage, model.browse.component.Result.HasMore = test.page, test.hasMore
 		row := strings.TrimSpace(ansi.Strip(model.browsePagerLine()))
 		if !strings.HasPrefix(row, "◀ Prev") || !strings.HasSuffix(row, "Next ▶") {
 			t.Fatalf("row = %q, want Prev left and Next right", row)
@@ -92,7 +93,7 @@ func TestBrowsePager_buttonsStayPinnedToTheirEdges(t *testing.T) {
 func TestBrowsePager_statusLineFitsViewport(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.BrowsePage = 1
-	model.browse.result.HasMore = true
+	model.browse.component.Result.HasMore = true
 
 	// Wide viewports keep the single-line layout with the full summary.
 	for _, width := range []int{118, 120, 130, 160} {
@@ -150,7 +151,7 @@ func TestBrowsePager_rowIsLastBrowseViewLine(t *testing.T) {
 		model := readyBrowseModel(t)
 		model = resizeModel(model, test.width, 24)
 		model.BrowsePage = 1
-		model.browse.result.HasMore = true
+		model.browse.component.Result.HasMore = true
 
 		if got := model.browseStatusSplit(); got != test.splits {
 			t.Fatalf("width %d: browseStatusSplit = %t, want %t", test.width, got, test.splits)
@@ -158,7 +159,7 @@ func TestBrowsePager_rowIsLastBrowseViewLine(t *testing.T) {
 		// The browse view is header + Height() rows + status rows + gap +
 		// pager row.
 		lines := strings.Split(ansi.Strip(model.browseView()), "\n")
-		if want := model.browse.table.Height() + test.footerLn; len(lines) != want {
+		if want := model.browse.component.Table.Height() + test.footerLn; len(lines) != want {
 			t.Fatalf("browse view height at width %d = %d, want %d", test.width, len(lines), want)
 		}
 		last := strings.TrimSpace(lines[len(lines)-1])
@@ -171,7 +172,7 @@ func TestBrowsePager_rowIsLastBrowseViewLine(t *testing.T) {
 func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
-	model.browse.result.HasMore = true
+	model.browse.component.Result.HasMore = true
 	model.focusActiveTable()
 
 	pager := model.browsePager()
@@ -183,7 +184,7 @@ func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 	// Height()+7: contentY = Height()+6 plus the header row).
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.NextStart,
-		Y:      model.browse.table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -196,7 +197,7 @@ func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 	if model.BrowsePage != 1 {
 		t.Fatalf("page = %d, want 1", model.BrowsePage)
 	}
-	if model.browse.loading {
+	if model.browse.component.Loading {
 		t.Fatal("browse still loading after the page load")
 	}
 }
@@ -205,7 +206,7 @@ func TestBrowsePager_clickPrevLoadsPreviousPage(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 	model.BrowsePage = 1
-	model.browse.result.HasMore = false
+	model.browse.component.Result.HasMore = false
 	model.focusActiveTable()
 
 	pager := model.browsePager()
@@ -216,7 +217,7 @@ func TestBrowsePager_clickPrevLoadsPreviousPage(t *testing.T) {
 	// When — click the Prev button on the button row.
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.PrevStart,
-		Y:      model.browse.table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -229,7 +230,7 @@ func TestBrowsePager_clickPrevLoadsPreviousPage(t *testing.T) {
 	if model.BrowsePage != 0 {
 		t.Fatalf("page = %d, want 0", model.BrowsePage)
 	}
-	if rows := model.browse.table.Rows(); len(rows) != 2 {
+	if rows := model.browse.component.Table.Rows(); len(rows) != 2 {
 		t.Fatalf("rows = %d, want the two fixture rows", len(rows))
 	}
 }
@@ -249,7 +250,7 @@ func TestBrowsePager_clickDisabledButtonDoesNothing(t *testing.T) {
 			model := readyBrowseModel(t)
 			model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 			model.BrowsePage = test.page
-			model.browse.result.HasMore = test.hasMore
+			model.browse.component.Result.HasMore = test.hasMore
 			model.focusActiveTable()
 
 			pager := model.browsePager()
@@ -259,7 +260,7 @@ func TestBrowsePager_clickDisabledButtonDoesNothing(t *testing.T) {
 			}
 			updated, command := model.Update(tea.MouseClickMsg{
 				X:      model.layout.schemaWidth + 1 + start,
-				Y:      model.browse.table.Height() + 7,
+				Y:      model.browse.component.Table.Height() + 7,
 				Button: tea.MouseLeft,
 			})
 			model = updated.(Model)
@@ -282,9 +283,9 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	model.focusActiveTable()
 	// The last page loaded no rows (e.g. rows were deleted since the
 	// previous load); Prev stays enabled and must still page back.
-	updated, _ := model.Update(browseTableMsg{table: "items", page: 1, tag: model.browse.pageTag, result: sqlite.Result{Columns: []string{"id", "name"}}})
+	updated, _ := model.Update(browseTableMsg{table: "items", page: 1, tag: model.browse.component.PageTag, result: sqlite.Result{Columns: []string{"id", "name"}}})
 	model = updated.(Model)
-	if rows := model.browse.table.Rows(); len(rows) != 0 {
+	if rows := model.browse.component.Table.Rows(); len(rows) != 0 {
 		t.Fatalf("fixture: browse rows = %d, want an empty page", len(rows))
 	}
 
@@ -296,7 +297,7 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	// When — click Prev.
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.PrevStart,
-		Y:      model.browse.table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -309,7 +310,7 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	if model.BrowsePage != 0 {
 		t.Fatalf("page = %d, want 0", model.BrowsePage)
 	}
-	if rows := model.browse.table.Rows(); len(rows) != 2 {
+	if rows := model.browse.component.Table.Rows(); len(rows) != 2 {
 		t.Fatalf("rows = %d, want the two fixture rows", len(rows))
 	}
 }
@@ -317,9 +318,9 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
-	model.browse.result.HasMore = true
+	model.browse.component.Result.HasMore = true
 	model.focusActiveTable()
-	cursor := model.browse.table.Cursor()
+	cursor := model.browse.component.Table.Cursor()
 
 	// When — click the gap between the pinned buttons.
 	pager := model.browsePager()
@@ -328,7 +329,7 @@ func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 	}
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.NextStart - 1,
-		Y:      model.browse.table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -340,15 +341,15 @@ func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 	if model.BrowsePage != 0 {
 		t.Fatalf("page = %d, want 0", model.BrowsePage)
 	}
-	if model.browse.table.Cursor() != cursor {
-		t.Fatalf("cursor = %d, want %d unchanged", model.browse.table.Cursor(), cursor)
+	if model.browse.component.Table.Cursor() != cursor {
+		t.Fatalf("cursor = %d, want %d unchanged", model.browse.component.Table.Cursor(), cursor)
 	}
 }
 
 func TestBrowsePager_clickNextWorksWithSplitStatus(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 100, 24) // narrow: the status line splits onto two rows
-	model.browse.result.HasMore = true
+	model.browse.component.Result.HasMore = true
 	model.focusActiveTable()
 
 	if !model.browseStatusSplit() {
@@ -363,7 +364,7 @@ func TestBrowsePager_clickNextWorksWithSplitStatus(t *testing.T) {
 	// Height()+8 (contentY = Height()+7).
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.NextStart,
-		Y:      model.browse.table.Height() + 8,
+		Y:      model.browse.component.Table.Height() + 8,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -383,23 +384,23 @@ func TestBrowse_horizontalWheelTravelsCells(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 	// Widen the table beyond the viewport so travel has room: content
 	// width 4+40+40 plus per-cell padding.
-	model.browse.table.SetColumns([]table.Column{
+	model.browse.component.Table.SetColumns([]table.Column{
 		{Title: "ID", Width: 4},
 		{Title: "Left", Width: 40},
 		{Title: "Right", Width: 40},
 	})
-	model.browse.table.SetRows([]table.Row{
+	model.browse.component.Table.SetRows([]table.Row{
 		{"1", strings.Repeat("a", 40), strings.Repeat("b", 40)},
 		{"2", strings.Repeat("c", 40), strings.Repeat("d", 40)},
 	})
-	resizeResultsTable(&model.browse.table, model.layout.tableViewportWidth, 5)
-	model.layout.browseOffset, model.layout.browseColumn = 0, 0
+	resizeResultsTable(&model.browse.component.Table, model.layout.tableViewportWidth, 5)
+	model.browse.component.Offset, model.browse.component.SelectedColumn = 0, 0
 
 	// Horizontal trackpad wheel travels the selected column right, and the
 	// viewport reveals it.
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 1; got != want {
+	if got, want := model.browse.component.SelectedColumn, 1; got != want {
 		t.Fatalf("column after wheel right = %d, want %d", got, want)
 	}
 	if view := ansi.Strip(model.browseView()); !strings.Contains(view, "Left") {
@@ -409,7 +410,7 @@ func TestBrowse_horizontalWheelTravelsCells(t *testing.T) {
 	// content edge.
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 2; got != want {
+	if got, want := model.browse.component.SelectedColumn, 2; got != want {
 		t.Fatalf("column after two wheel rights = %d, want %d", got, want)
 	}
 	if view := ansi.Strip(model.browseView()); !strings.Contains(view, "Right") {
@@ -420,27 +421,27 @@ func TestBrowse_horizontalWheelTravelsCells(t *testing.T) {
 	// column, the second home.
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 1; got != want {
+	if got, want := model.browse.component.SelectedColumn, 1; got != want {
 		t.Fatalf("column after wheel left = %d, want %d", got, want)
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 0; got != want {
+	if got, want := model.browse.component.SelectedColumn, 0; got != want {
 		t.Fatalf("column after two wheel lefts = %d, want %d", got, want)
 	}
-	if got, want := model.layout.browseOffset, 0; got != want {
+	if got, want := model.browse.component.Offset, 0; got != want {
 		t.Fatalf("offset after two wheel lefts = %d, want %d", got, want)
 	}
 
 	// Shift+vertical wheel travels horizontally the same way.
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown, Mod: tea.ModShift})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 1; got != want {
+	if got, want := model.browse.component.SelectedColumn, 1; got != want {
 		t.Fatalf("column after shift+wheel down = %d, want %d", got, want)
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp, Mod: tea.ModShift})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 0; got != want {
+	if got, want := model.browse.component.SelectedColumn, 0; got != want {
 		t.Fatalf("column after shift+wheel up = %d, want %d", got, want)
 	}
 
@@ -449,27 +450,27 @@ func TestBrowse_horizontalWheelTravelsCells(t *testing.T) {
 		updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelRight})
 		model = updated.(Model)
 	}
-	if got, want := model.layout.browseColumn, 2; got != want {
+	if got, want := model.browse.component.SelectedColumn, 2; got != want {
 		t.Fatalf("column after repeated wheel right = %d, want %d", got, want)
 	}
-	if got, want := model.layout.browseOffset, tableOffset(model.browse.table, 1<<20, model.layout.tableViewportWidth); got != want {
+	if got, want := model.browse.component.Offset, tableOffset(model.browse.component.Table, 1<<20, model.layout.tableViewportWidth); got != want {
 		t.Fatalf("offset after repeated wheel right = %d, want clamped %d", got, want)
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelLeft})
 	model = updated.(Model)
-	if got, want := model.layout.browseColumn, 1; got != want {
+	if got, want := model.browse.component.SelectedColumn, 1; got != want {
 		t.Fatalf("column after one wheel left from the last = %d, want %d", got, want)
 	}
 
 	// Plain vertical wheel still moves the cursor, not the cell.
-	model.layout.browseOffset, model.layout.browseColumn = 0, 0
-	model.browse.table.SetCursor(0)
+	model.browse.component.Offset, model.browse.component.SelectedColumn = 0, 0
+	model.browse.component.Table.SetCursor(0)
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	if model.layout.browseOffset != 0 || model.layout.browseColumn != 0 {
-		t.Fatalf("plain wheel down moved cell to offset=%d column=%d, want 0/0", model.layout.browseOffset, model.layout.browseColumn)
+	if model.browse.component.Offset != 0 || model.browse.component.SelectedColumn != 0 {
+		t.Fatalf("plain wheel down moved cell to offset=%d column=%d, want 0/0", model.browse.component.Offset, model.browse.component.SelectedColumn)
 	}
-	if got, want := model.browse.table.Cursor(), 1; got != want {
+	if got, want := model.browse.component.Table.Cursor(), 1; got != want {
 		t.Fatalf("cursor after plain wheel down = %d, want %d", got, want)
 	}
 }
@@ -539,21 +540,21 @@ func TestQueryLog_horizontalWheelTravelsCells(t *testing.T) {
 func TestBrowse_status_followsCursorMoves(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 140, 24) // wheel handling needs a sized model
-	if got, want := model.browse.status, "items | 1-2 | 1/2 | page 1"; got != want {
+	if got, want := model.browse.component.Status, "items | 1-2 | 1/2 | page 1"; got != want {
 		t.Fatalf("browse status = %q, want %q", got, want)
 	}
 
 	// j moves down: the position in the status follows the cursor.
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	model = updated.(Model)
-	if got, want := model.browse.status, "items | 1-2 | 2/2 | page 1"; got != want {
+	if got, want := model.browse.component.Status, "items | 1-2 | 2/2 | page 1"; got != want {
 		t.Fatalf("browse status after j = %q, want %q", got, want)
 	}
 
 	// Mouse wheel up moves back.
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(Model)
-	if got, want := model.browse.status, "items | 1-2 | 1/2 | page 1"; got != want {
+	if got, want := model.browse.component.Status, "items | 1-2 | 1/2 | page 1"; got != want {
 		t.Fatalf("browse status after wheel = %q, want %q", got, want)
 	}
 }
@@ -561,8 +562,8 @@ func TestBrowse_status_followsCursorMoves(t *testing.T) {
 func TestBrowsePager_longSummarySplitsUntilWideEnough(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.BrowsePage = 1
-	model.browse.result.HasMore = true
-	model.browse.status = "orderdetails | 2,996-3,020 | 7/25 | page 9"
+	model.browse.component.Result.HasMore = true
+	model.browse.component.Status = "orderdetails | 2,996-3,020 | 7/25 | page 9"
 
 	// A long summary never fits beside the hints until the viewport is
 	// wide enough for both in full.

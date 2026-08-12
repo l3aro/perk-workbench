@@ -3,6 +3,7 @@ package workbench
 import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
@@ -179,12 +180,14 @@ func (m *Model) selectSchemaTable(item schemaItem) tea.Cmd {
 	// The landing tab is configurable; SelectTable defaults to the
 	// Structure (columns) tab.
 	m.Tab = tableOpenTargetTab()
-	m.browse.settings = browseSettings{}
+	m.browse.component.Settings = browse.Settings{}
 	m.structure.columns = nil
+	m.browse.component.Structure = nil
+	m.browse.component.Page = 0
 	m.structure.foreignKeyInfo = nil
 	m.structure.referencingForeignKeyInfo = nil
 	m.structure.relationshipDiagram = false
-	m.browse.pending = true
+	m.browse.component.Pending = true
 	m.focusActiveTable()
 	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
 }
@@ -196,10 +199,10 @@ func (m *Model) toggleTab(forward bool) tea.Cmd {
 }
 
 func (m *Model) loadPendingBrowse() tea.Cmd {
-	if !m.browse.pending || m.Tab != tabBrowse {
+	if !m.browse.component.Pending || m.Tab != tabBrowse {
 		return nil
 	}
-	m.browse.pending = false
+	m.browse.component.Pending = false
 	return m.loadBrowse()
 }
 
@@ -210,13 +213,13 @@ func (m *Model) focusActiveTable() {
 	case tabStructure:
 		m.structure.table.Focus()
 	case tabBrowse:
-		m.browse.table.Focus()
+		m.browse.component.Table.Focus()
 	case tabSQL:
 		if !m.vimMode {
 			// No modal modes: the editor is the SQL tab's text target, so
 			// typing works the moment the tab gains focus. The focus cmd is
 			// dropped by design; Focused is set synchronously.
-			m.overlay.formMode.beginInsert(m.queryLog.editor)
+			beginInsert(m.overlay.formMode, m.queryLog.editor)
 			return
 		}
 		if len(m.queryLog.results.Rows()) > 0 {
@@ -231,7 +234,7 @@ func (m *Model) focusActiveTable() {
 
 func (m *Model) blurTables() {
 	m.structure.table.Blur()
-	m.browse.table.Blur()
+	m.browse.component.Table.Blur()
 	m.queryLog.results.Blur()
 	m.structure.indexes.Blur()
 	m.structure.foreignKeys.Blur()
@@ -283,7 +286,7 @@ const mouseHorizontalStep = 6
 func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
 	switch m.Tab {
 	case tabBrowse:
-		moveTableColumn(&m.browse.table, &m.layout.browseColumn, &m.layout.browseOffset, m.layout.tableViewportWidth, step)
+		moveTableColumn(&m.browse.component.Table, &m.browse.component.SelectedColumn, &m.browse.component.Offset, m.layout.tableViewportWidth, step)
 		m.refreshBrowseStatus()
 		return
 	case tabSQL:
@@ -312,9 +315,9 @@ func (m *Model) scrollActiveWorkspaceTable(step int) {
 		newCursor := clamp(m.structure.table.Cursor()+step, 0, max(len(rows)-1, 0))
 		m.structure.table.SetCursor(newCursor)
 	case tabBrowse:
-		rows := m.browse.table.Rows()
-		newCursor := clamp(m.browse.table.Cursor()+step, 0, max(len(rows)-1, 0))
-		m.browse.table.SetCursor(newCursor)
+		rows := m.browse.component.Table.Rows()
+		newCursor := clamp(m.browse.component.Table.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.browse.component.Table.SetCursor(newCursor)
 		m.refreshBrowseStatus()
 	case tabSQL:
 		rows := m.queryLog.results.Rows()

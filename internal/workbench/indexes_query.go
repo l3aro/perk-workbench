@@ -119,7 +119,7 @@ func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) 
 }
 func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {
 	m.structure.indexForm = newIndexForm(index)
-	m.overlay.formMode.buttonsFocused = false
+	m.overlay.formMode.ButtonsFocused = false
 	m.structure.indexForm.keybindings = m.keybindings
 	m.structure.indexForm.setWidth(m.layout.tableViewportWidth)
 	return m.openForm(m.structure.indexForm.form.Init(), m.structure.indexForm.focus)

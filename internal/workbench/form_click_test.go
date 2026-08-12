@@ -21,7 +21,7 @@ func TestNonVim_singleClickEntersInsertOnEditor(t *testing.T) {
 
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.overlay.formMode.editing() {
+	if !model.overlay.formMode.Editing() {
 		t.Fatal("single click on SQL editor did not enter insert mode")
 	}
 	for _, ch := range "select 1" {
@@ -42,7 +42,7 @@ func TestNonVim_singleClickEntersInsertOnFormField(t *testing.T) {
 
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
+	if model.overlay.formMode.Mode != formModeInsert {
 		t.Fatal("single click on form field did not enter insert mode")
 	}
 	for _, ch := range "renamed" {
@@ -138,11 +138,11 @@ func TestBrowseForm_singleClickFocusesFieldInNormalMode(t *testing.T) {
 	// the name field's title line is view line 3.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.browse.form.form.GetFocusedField().GetKey(); got != "value-1" {
+	if got := model.browse.component.Form.Form.GetFocusedField().GetKey(); got != "value-1" {
 		t.Fatalf("focused field = %q, want value-1", got)
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -152,11 +152,11 @@ func TestBrowseForm_singleClickFirstFieldStaysFocused(t *testing.T) {
 	// Click the id field's value line (view line 1, screen y=5).
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.browse.form.form.GetFocusedField().GetKey(); got != "value-0" {
+	if got := model.browse.component.Form.Form.GetFocusedField().GetKey(); got != "value-0" {
 		t.Fatalf("focused field = %q, want value-0", got)
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -167,10 +167,10 @@ func TestBrowseForm_doubleClickEntersInsertModeOnClickedField(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
-	if got := model.browse.form.form.GetFocusedField().GetKey(); got != "value-1" {
+	if got := model.browse.component.Form.Form.GetFocusedField().GetKey(); got != "value-1" {
 		t.Fatalf("focused field = %q, want value-1", got)
 	}
 }
@@ -182,8 +182,8 @@ func TestBrowseForm_releaseAfterClickDoesNotEnterInsert(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseReleaseMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal after release", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal after release", model.overlay.formMode.Mode)
 	}
 }
 
@@ -196,8 +196,8 @@ func TestBrowseForm_doubleClickInInsertModeKeepsEditingField(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 }
 
@@ -210,15 +210,15 @@ func TestBrowseFilterForm_clickSelectsRowAndDoubleClickEdits(t *testing.T) {
 	// View: line 0 header, line 1 id row, line 2 name row, line 3 Rows row.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.browse.filterForm.row != 1 {
-		t.Fatalf("filter row = %d, want 1", model.browse.filterForm.row)
+	if model.browse.component.FilterForm.Row != 1 {
+		t.Fatalf("filter row = %d, want 1", model.browse.component.FilterForm.Row)
 	}
-	if model.browse.filterForm.editing {
+	if model.browse.component.FilterForm.Editing {
 		t.Fatal("single click started editing")
 	}
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.browse.filterForm.editing {
+	if !model.browse.component.FilterForm.Editing {
 		t.Fatal("double click did not start editing")
 	}
 }
@@ -232,8 +232,8 @@ func TestColumnForm_clickFocusesClickedFieldInNormalMode(t *testing.T) {
 	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "type" {
 		t.Fatalf("focused field = %q, want type", got)
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -244,8 +244,8 @@ func TestColumnForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 	if got := model.structure.columnForm.form.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
@@ -264,8 +264,8 @@ func TestIndexForm_clickFocusesClickedField(t *testing.T) {
 	if got := model.structure.indexForm.form.GetFocusedField().GetKey(); got != "columns" {
 		t.Fatalf("focused field = %q, want columns", got)
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -279,8 +279,8 @@ func TestIndexForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 	if got := model.structure.indexForm.form.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
@@ -311,8 +311,8 @@ func TestForeignKeyForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 	if got := model.structure.foreignKeyForm.form.GetFocusedField().GetKey(); got != "columns" {
 		t.Fatalf("focused field = %q, want columns", got)
@@ -487,8 +487,8 @@ func TestConnectionForm_clickFocusesClickedField(t *testing.T) {
 	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "name" {
 		t.Fatalf("focused field = %q, want name", got)
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -502,8 +502,8 @@ func TestConnectionForm_doubleClickEntersInsertOnClickedField(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 11, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("mode = %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("mode = %d, want insert", model.overlay.formMode.Mode)
 	}
 	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "target" {
 		t.Fatalf("focused field = %q, want target", got)
@@ -607,7 +607,7 @@ func TestSQLTab_doubleClickEditorEntersInsertMode(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.overlay.formMode.editing() {
+	if !model.overlay.formMode.Editing() {
 		t.Fatal("editor double click did not enter insert mode")
 	}
 }
@@ -618,8 +618,8 @@ func TestSQLTab_singleClickEditorStaysNormal(t *testing.T) {
 	model = resizeModel(model, 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
@@ -632,31 +632,31 @@ func TestSQLTab_singleClickFocusesEditor(t *testing.T) {
 	if !model.queryLog.editor.text.Focused() {
 		t.Fatal("editor not focused after single click")
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 
 func TestBrowseForm_singleClickKeepsNullFlagDoubleClickClearsIt(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.browse.table.SetCursor(0)
-	model.browse.result.Rows[0][1] = nil // name is NULL
+	model.browse.component.Table.SetCursor(0)
+	model.browse.component.Result.Rows[0][1] = nil // name is NULL
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = resizeModel(model, 100, 26)
-	if !model.browse.form.values.nulls[1] {
+	if !model.browse.component.Form.Values.Nulls[1] {
 		t.Fatal("fixture: name should start as NULL")
 	}
 	// Single click on the name field only focuses it; the NULL flag survives.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeNormal || !model.browse.form.values.nulls[1] {
-		t.Fatalf("single click mode/nulls = %d/%t, want normal/true", model.overlay.formMode.mode, model.browse.form.values.nulls[1])
+	if model.overlay.formMode.Mode != formModeNormal || !model.browse.component.Form.Values.Nulls[1] {
+		t.Fatalf("single click mode/nulls = %d/%t, want normal/true", model.overlay.formMode.Mode, model.browse.component.Form.Values.Nulls[1])
 	}
 	// Double click enters insert mode and clears the NULL flag for typing.
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert || model.browse.form.values.nulls[1] {
-		t.Fatalf("double click mode/nulls = %d/%t, want insert/false", model.overlay.formMode.mode, model.browse.form.values.nulls[1])
+	if model.overlay.formMode.Mode != formModeInsert || model.browse.component.Form.Values.Nulls[1] {
+		t.Fatalf("double click mode/nulls = %d/%t, want insert/false", model.overlay.formMode.Mode, model.browse.component.Form.Values.Nulls[1])
 	}
 }
 

@@ -182,12 +182,12 @@ func (m *Model) applyTheme(name appTheme) {
 	applyFormTheme(
 		m.connection.component.Form.Huh,
 		m.structure.columnForm.form,
-		m.browse.form.form,
+		m.browse.component.Form.Form,
 		m.structure.indexForm.form,
 		m.structure.foreignKeyForm.form,
 	)
-	if m.browse.cellEditor != nil {
-		applyFormTheme(m.browse.cellEditor.input)
+	if m.browse.component.CellEditor != nil {
+		applyFormTheme(m.browse.component.CellEditor.Input)
 	}
 	if m.overlay.explainPicker != nil {
 		applyFormTheme(m.overlay.explainPicker.form)

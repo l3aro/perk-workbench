@@ -222,8 +222,8 @@ func TestConnectionForm_connectRequiresConfirmationAfterValidation(t *testing.T)
 			if model.connection.component.Form.Confirmation == nil {
 				t.Fatal("valid connection did not enter confirmation")
 			}
-			if model.overlay.formMode.mode != formModeConfirm {
-				t.Fatalf("form mode = %v, want confirmation", model.overlay.formMode.mode)
+			if model.overlay.formMode.Mode != formModeConfirm {
+				t.Fatalf("form mode = %v, want confirmation", model.overlay.formMode.Mode)
 			}
 		})
 	}
@@ -251,8 +251,8 @@ func TestConnectionForm_executeKeysWorkWhileEditing(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if model.connection.component.Form.Confirmation == nil || model.overlay.formMode.mode != formModeConfirm {
-				t.Fatalf("execute key did not enter confirmation: confirmation=%t mode=%v", model.connection.component.Form.Confirmation != nil, model.overlay.formMode.mode)
+			if model.connection.component.Form.Confirmation == nil || model.overlay.formMode.Mode != formModeConfirm {
+				t.Fatalf("execute key did not enter confirmation: confirmation=%t mode=%v", model.connection.component.Form.Confirmation != nil, model.overlay.formMode.Mode)
 			}
 		})
 	}
@@ -286,7 +286,7 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 			}
 			model.connection.component.Form.Values.Target = ":memory:"
 			if test.editing {
-				model.overlay.formMode.beginHuh(model.connection.component.Form.FocusForm())
+				model.overlay.formMode.BeginHuh(model.connection.component.Form.FocusForm())
 			}
 
 			// When
@@ -305,8 +305,8 @@ func TestConnectionForm_actionButtonsExecuteFromNormalAndInsertModes(t *testing.
 			}
 
 			// Then
-			if model.overlay.formMode.mode != formModeNormal {
-				t.Fatalf("form mode = %v, want normal", model.overlay.formMode.mode)
+			if model.overlay.formMode.Mode != formModeNormal {
+				t.Fatalf("form mode = %v, want normal", model.overlay.formMode.Mode)
 			}
 			if model.connection.component.Form.Values.Action != test.action {
 				t.Fatalf("selected action = %q, want %q", model.connection.component.Form.Values.Action, test.action)

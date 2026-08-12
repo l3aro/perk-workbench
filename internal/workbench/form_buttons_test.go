@@ -108,8 +108,8 @@ func TestColumnForm_mouseSaveStartsSaveConfirmation(t *testing.T) {
 	if !model.structure.columnForm.confirming() || !model.structure.columnForm.confirmationSave {
 		t.Fatalf("column form = confirming:%t save:%t, want confirming save", model.structure.columnForm.confirming(), model.structure.columnForm.confirmationSave)
 	}
-	if model.overlay.formMode.mode != formModeConfirm {
-		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeConfirm {
+		t.Fatalf("mode = %d, want confirm", model.overlay.formMode.Mode)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestColumnForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
+	if model.overlay.formMode.Mode != formModeInsert {
 		t.Fatal("double click did not enter insert mode")
 	}
 	for _, ch := range "renamed" {
@@ -150,7 +150,7 @@ func TestIndexForm_mouseSaveAfterMouseEditSaves(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if model.overlay.formMode.mode != formModeInsert {
+	if model.overlay.formMode.Mode != formModeInsert {
 		t.Fatal("double click did not enter insert mode")
 	}
 	for _, ch := range "idx_name" {
@@ -177,17 +177,17 @@ func TestBrowseFilterForm_mouseSaveCommitsEditAndApplies(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(tea.MouseClickMsg{X: 60, Y: 7, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if !model.browse.filterForm.editing {
+	if !model.browse.component.FilterForm.Editing {
 		t.Fatal("double click did not start editing the rows limit")
 	}
-	model.browse.filterForm.input.SetValue("3")
+	model.browse.component.FilterForm.Input.SetValue("3")
 
 	model = clickFormButton(model, model.layout.schemaWidth+1+2, workspaceButtonRowY(model))
 
-	if model.browse.filterForm != nil {
+	if model.browse.component.FilterForm != nil {
 		t.Fatal("Save did not apply the filter form")
 	}
-	if got := model.browse.settings.limit; got != 3 {
+	if got := model.browse.component.Settings.Limit; got != 3 {
 		t.Fatalf("limit = %d, want 3", got)
 	}
 }
@@ -247,8 +247,8 @@ func TestBrowseForm_mouseSaveStartsSaveConfirmation(t *testing.T) {
 
 	model = clickFormButton(model, x, workspaceButtonRowY(model))
 
-	if !model.browse.form.confirming() || !model.browse.form.confirmationSave {
-		t.Fatalf("browse form = confirming:%t save:%t, want confirming save", model.browse.form.confirming(), model.browse.form.confirmationSave)
+	if !model.browse.component.Form.Confirming() || !model.browse.component.Form.ConfirmationSave {
+		t.Fatalf("browse form = confirming:%t save:%t, want confirming save", model.browse.component.Form.Confirming(), model.browse.component.Form.ConfirmationSave)
 	}
 }
 
@@ -256,14 +256,14 @@ func TestBrowseFilterForm_mouseButtonsApplyAndDiscard(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = resizeModel(model, 100, 24)
-	if model.browse.filterForm == nil {
+	if model.browse.component.FilterForm == nil {
 		t.Fatal("filter form did not open")
 	}
 	y := workspaceButtonRowY(model)
 
 	// Save = apply filters, closing the form.
 	model = clickFormButton(model, model.layout.schemaWidth+1+2, y)
-	if model.browse.filterForm != nil {
+	if model.browse.component.FilterForm != nil {
 		t.Fatal("Save click did not apply the filter form")
 	}
 
@@ -271,7 +271,7 @@ func TestBrowseFilterForm_mouseButtonsApplyAndDiscard(t *testing.T) {
 	model = updateBrowseFilterGrid(t, model, tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = resizeModel(model, 100, 24)
 	model = clickFormButton(model, model.layout.schemaWidth+1+8, y)
-	if model.browse.filterForm != nil {
+	if model.browse.component.FilterForm != nil {
 		t.Fatal("Cancel click did not discard the filter form")
 	}
 }
@@ -284,7 +284,7 @@ func TestFormButtonPress_swallowsTrailingRelease(t *testing.T) {
 	y := workspaceButtonRowY(model)
 
 	model = clickFormButton(model, x, y)
-	cursor := model.browse.table.Cursor()
+	cursor := model.browse.component.Table.Cursor()
 
 	// The release trailing the Save press must not click the pane underneath.
 	updated, _ := model.Update(tea.MouseReleaseMsg{X: x, Y: y, Button: tea.MouseLeft})
@@ -292,14 +292,14 @@ func TestFormButtonPress_swallowsTrailingRelease(t *testing.T) {
 	if model.layout.formButtonHit {
 		t.Fatal("release was not swallowed")
 	}
-	if got := model.browse.table.Cursor(); got != cursor {
+	if got := model.browse.component.Table.Cursor(); got != cursor {
 		t.Fatalf("swallowed release moved browse cursor %d -> %d", cursor, got)
 	}
 
 	// The swallow is one-shot: a later real click presses normally.
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 6, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.browse.table.Cursor(); got == cursor {
+	if got := model.browse.component.Table.Cursor(); got == cursor {
 		t.Fatal("press after the swallow did not click the browse table")
 	}
 }
@@ -508,8 +508,8 @@ func TestBrowseFilterForm_mouseWheelScrollsRowsNotHeader(t *testing.T) {
 
 	updated, _ := model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	model = updated.(Model)
-	if model.browse.filterForm.scrollOffset != 1 {
-		t.Fatalf("wheel down scroll offset = %d, want 1", model.browse.filterForm.scrollOffset)
+	if model.browse.component.FilterForm.ScrollOffset != 1 {
+		t.Fatalf("wheel down scroll offset = %d, want 1", model.browse.component.FilterForm.ScrollOffset)
 	}
 	// The wheel must advance the field rows, not double-scroll the already
 	// windowed view: the header stays pinned and the first field row shows
@@ -542,7 +542,7 @@ func TestColumnForm_mouseWheelMovesFieldFocus(t *testing.T) {
 		updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 		model = updated.(Model)
 	}
-	if model.overlay.formMode.buttonsFocused {
+	if model.overlay.formMode.ButtonsFocused {
 		t.Fatal("wheel down past the last field focused the button bar")
 	}
 	if got := model.structure.columnForm.focusedField(); got != model.structure.columnForm.fieldCount()-1 {
@@ -569,15 +569,15 @@ func TestConnectionForm_mouseWheelMovesFieldFocus(t *testing.T) {
 
 func TestCellEditor_mouseSaveStartsConfirmation(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1
+	model.browse.component.SelectedColumn = 1
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = resizeModel(model, 100, 24)
-	e := model.browse.cellEditor
+	e := model.browse.component.CellEditor
 	if e == nil {
 		t.Fatal("cell editor did not open")
 	}
-	contentLines := len(strings.Split(e.input.View(), "\n")) + 1
-	dialogW := min(e.width, 94)
+	contentLines := len(strings.Split(e.Input.View(), "\n")) + 1
+	dialogW := min(e.Width, 94)
 	dialogH := min(contentLines, 18)
 	boxX := (100 - dialogW - 2) / 2
 	boxY := (24 - dialogH - 2) / 2
@@ -585,7 +585,7 @@ func TestCellEditor_mouseSaveStartsConfirmation(t *testing.T) {
 	updated, _ := model.Update(tea.MouseClickMsg{X: boxX + 1 + 2, Y: boxY + dialogH, Button: tea.MouseLeft})
 	model = updated.(Model)
 
-	if !model.browse.cellEditor.confirming {
+	if !model.browse.component.CellEditor.Confirming {
 		t.Fatal("Save click did not start the cell save confirmation")
 	}
 	if !model.layout.formButtonHit {
@@ -595,12 +595,12 @@ func TestCellEditor_mouseSaveStartsConfirmation(t *testing.T) {
 
 func TestCellEditor_mouseCancelClosesEditor(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1
+	model.browse.component.SelectedColumn = 1
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = resizeModel(model, 100, 24)
-	e := model.browse.cellEditor
-	contentLines := len(strings.Split(e.input.View(), "\n")) + 1
-	dialogW := min(e.width, 94)
+	e := model.browse.component.CellEditor
+	contentLines := len(strings.Split(e.Input.View(), "\n")) + 1
+	dialogW := min(e.Width, 94)
 	dialogH := min(contentLines, 18)
 	boxX := (100 - dialogW - 2) / 2
 	boxY := (24 - dialogH - 2) / 2
@@ -608,14 +608,14 @@ func TestCellEditor_mouseCancelClosesEditor(t *testing.T) {
 	updated, _ := model.Update(tea.MouseClickMsg{X: boxX + 1 + 8, Y: boxY + dialogH, Button: tea.MouseLeft})
 	model = updated.(Model)
 
-	if model.browse.cellEditor != nil {
+	if model.browse.component.CellEditor != nil {
 		t.Fatal("Cancel click did not close the cell editor")
 	}
 	// The trailing release must not click the browse table underneath.
-	cursor := model.browse.table.Cursor()
+	cursor := model.browse.component.Table.Cursor()
 	updated, _ = model.Update(tea.MouseReleaseMsg{X: boxX + 1 + 8, Y: boxY + dialogH, Button: tea.MouseLeft})
 	model = updated.(Model)
-	if got := model.browse.table.Cursor(); got != cursor {
+	if got := model.browse.component.Table.Cursor(); got != cursor {
 		t.Fatalf("release after Cancel moved browse cursor %d -> %d", cursor, got)
 	}
 }

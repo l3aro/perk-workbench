@@ -32,7 +32,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		if m.connection.component.Form.Focus == connectionFocusForm {
 			m.State = stateConnection
 			m.setStatus(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
-			m.overlay.formMode.mode = formModeNormal
+			m.overlay.formMode.Mode = formModeNormal
 			return m, nil
 		}
 		m.Fail(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
@@ -47,6 +47,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.databaseInfo = message.info
+	m.refreshBrowseBackend()
 	m.chat.component.Executor = chatExecutor{service: message.service}
 	m.chat.component.Target = message.target
 	m.chat.component.ReadOnly = m.ReadOnly

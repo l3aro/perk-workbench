@@ -203,8 +203,8 @@ func TestForeignKeyForm_discardWithoutChangesClosesWithoutConfirmation(t *testin
 	if model.structure.foreignKeyForm.active() || model.structure.foreignKeyForm.confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 

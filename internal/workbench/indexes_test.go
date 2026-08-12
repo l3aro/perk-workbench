@@ -210,8 +210,8 @@ func TestIndexForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T) 
 	if model.structure.indexForm.active() || model.structure.indexForm.confirming() {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal", model.overlay.formMode.Mode)
 	}
 }
 

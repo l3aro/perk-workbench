@@ -189,43 +189,43 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		if m.formTabActive() && contentY == m.layout.workspaceHeight-4 {
 			switch formButtonAt(x - workspaceLeft - 1) {
 			case "save":
-				m.overlay.formMode.focusButtons()
+				m.overlay.formMode.FocusButtons()
 				m.layout.formButtonHit = true
 				var command tea.Cmd
 				m, command = m.formSaveCommand()
 				return m, command
 			case "cancel":
-				m.overlay.formMode.focusButtons()
-				m.overlay.formMode.buttonChoice = 1
+				m.overlay.formMode.FocusButtons()
+				m.overlay.formMode.ButtonChoice = 1
 				m.layout.formButtonHit = true
 				return m, formEscapeKeyPress()
 			}
 			return m, nil
 		}
 		// Any other click lands on a form field: leave the button bar.
-		m.overlay.formMode.buttonsFocused = false
+		m.overlay.formMode.ButtonsFocused = false
 		switch m.Tab {
 		case tabStructure:
 			if m.structure.columnForm.active() && !m.structure.columnForm.confirming() {
 				return m.clickFormField(x, y, m.structure.columnForm.View(), m.structure.columnForm.scrollOffset, contentY-3, m.structure.columnForm.fieldTitles(), func(field int) tea.Cmd {
 					m.structure.columnForm.scrollToField(field)
 					return m.structure.columnForm.focusField(field)
-				}, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.structure.columnForm.focus()) })
+				}, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.structure.columnForm.focus()) })
 			}
 		case tabBrowse:
-			if m.browse.documentEditor != nil && !m.browse.documentEditor.confirming {
-				return m.clickFormField(x, y, m.browse.documentEditor.View(), m.browse.documentEditor.scrollOffset, contentY-3, []string{m.browse.documentEditor.title}, func(field int) tea.Cmd {
-					m.browse.documentEditor.scrollOffset = 0
-					return m.browse.documentEditor.focus()
-				}, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.browse.documentEditor.focus()) })
+			if m.browse.component.DocumentEditor != nil && !m.browse.component.DocumentEditor.Confirming {
+				return m.clickFormField(x, y, m.browse.component.DocumentEditor.View(), m.browse.component.DocumentEditor.ScrollOffset, contentY-3, []string{m.browse.component.DocumentEditor.Title}, func(field int) tea.Cmd {
+					m.browse.component.DocumentEditor.ScrollOffset = 0
+					return m.browse.component.DocumentEditor.Focus()
+				}, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.browse.component.DocumentEditor.Focus()) })
 			}
-			if m.browse.filterForm != nil {
+			if m.browse.component.FilterForm != nil {
 				return m.handleFilterFormClick(x, y, contentY-3, workspaceLeft)
 			}
-			if m.browse.form.active() && !m.browse.form.confirming() {
-				return m.clickFormField(x, y, m.browse.form.View(), m.browse.form.scrollOffset, contentY-3, m.browse.form.columns, m.browse.form.focusColumn, func(field int) tea.Cmd {
-					m.browse.form.values.nulls[field] = false
-					return m.overlay.formMode.beginHuh(m.browse.form.focus())
+			if m.browse.component.Form.Active() && !m.browse.component.Form.Confirming() {
+				return m.clickFormField(x, y, m.browse.component.Form.View(), m.browse.component.Form.ScrollOffset, contentY-3, m.browse.component.Form.Columns, m.browse.component.Form.FocusColumn, func(field int) tea.Cmd {
+					m.browse.component.Form.Values.Nulls[field] = false
+					return m.overlay.formMode.BeginHuh(m.browse.component.Form.Focus())
 				})
 			}
 		case tabSQL:
@@ -235,18 +235,18 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			// mode, a double-click enters insert.
 			if !m.formActive() && contentY-3 < m.layout.editorHeight {
 				if !m.vimMode || m.recordFormClick(x, y) {
-					return m, m.overlay.formMode.beginInsert(m.queryLog.editor)
+					return m, beginInsert(m.overlay.formMode, m.queryLog.editor)
 				}
 				m.queryLog.editor.text.Focus()
 				return m, nil
 			}
 		case tabIndexes:
 			if m.structure.indexForm.active() && !m.structure.indexForm.confirming() {
-				return m.clickFormField(x, y, m.structure.indexForm.View(), m.structure.indexForm.scrollOffset, contentY-3, m.structure.indexForm.fieldTitles(), m.structure.indexForm.focusField, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.structure.indexForm.focus()) })
+				return m.clickFormField(x, y, m.structure.indexForm.View(), m.structure.indexForm.scrollOffset, contentY-3, m.structure.indexForm.fieldTitles(), m.structure.indexForm.focusField, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.structure.indexForm.focus()) })
 			}
 		case tabForeignKeys:
 			if m.structure.foreignKeyForm.active() && !m.structure.foreignKeyForm.confirming() && !m.structure.relationshipDiagram {
-				return m.clickFormField(x, y, m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset, contentY-3, m.structure.foreignKeyForm.fieldTitles(), m.structure.foreignKeyForm.focusField, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.structure.foreignKeyForm.focus()) })
+				return m.clickFormField(x, y, m.structure.foreignKeyForm.View(), m.structure.foreignKeyForm.scrollOffset, contentY-3, m.structure.foreignKeyForm.fieldTitles(), m.structure.foreignKeyForm.focusField, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.structure.foreignKeyForm.focus()) })
 			}
 		}
 	case stateConnection:
@@ -263,7 +263,7 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		// A click on the Test connection / Connect buttons executes the
 		// action, matching Enter on the focused action field.
 		if action := connectionActionAt(m.connection.component.Form.View(), contentY-1, x-workspaceLeft-1); action != "" {
-			m.overlay.formMode.mode = formModeNormal
+			m.overlay.formMode.Mode = formModeNormal
 			m.connection.component.Form.Blur()
 			if action == connectionActionTest {
 				return m, m.testConnection()
@@ -275,7 +275,7 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 		if field, option := m.connection.component.Form.SelectOptionAt(m.connection.component.Form.View(), contentY-1); field != "" {
 			return m, m.connection.component.Form.ApplySelectOption(field, option)
 		}
-		return m.clickFormField(x, y, m.connection.component.Form.View(), 0, contentY-1, m.connection.component.Form.FieldTitles(), m.connection.component.Form.FocusField, func(int) tea.Cmd { return m.overlay.formMode.beginHuh(m.connection.component.Form.FocusForm()) })
+		return m.clickFormField(x, y, m.connection.component.Form.View(), 0, contentY-1, m.connection.component.Form.FieldTitles(), m.connection.component.Form.FocusField, func(int) tea.Cmd { return m.overlay.formMode.BeginHuh(m.connection.component.Form.FocusForm()) })
 	}
 	return m, nil
 }
@@ -284,35 +284,21 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 // on a double-click (or on any click without vim mode). The rendered view is:
 // header line, one line per filter row, then the Rows limit row.
 func (m Model) handleFilterFormClick(x, y, viewLine, workspaceLeft int) (tea.Model, tea.Cmd) {
-	f := m.browse.filterForm
-	row := viewLine + f.scrollOffset - 1
-	if row < 0 || row > len(f.fields) {
+	f := m.browse.component.FilterForm
+	row := viewLine + f.ScrollOffset - 1
+	if row < 0 || row > len(f.Fields) {
 		return m, nil
 	}
-	relX := x - workspaceLeft - 1 + f.horizontalOffset
+	relX := x - workspaceLeft - 1 + f.HorizontalOffset
 	if !m.vimMode || m.recordFormClick(x, y) {
-		f.row = row
-		if row < len(f.fields) {
-			f.cell = f.cellAtX(relX)
+		f.Row = row
+		if row < len(f.Fields) {
+			f.Cell = f.CellAtX(relX)
 		}
-		cmd, _ := f.beginEdit()
+		cmd, _ := f.BeginEdit()
 		return m, cmd
 	}
-	f.row = row
-	f.revealSelection()
+	f.Row = row
+	f.RevealSelection()
 	return m, nil
-}
-
-// cellAtX maps a click x (relative to the filter form) to the operator or
-// value cell of a row. Column and type cells fall back to the value cell.
-func (f *browseFilterForm) cellAtX(relX int) browseFilterCell {
-	start := 0
-	for index, column := range f.columns() {
-		end := start + column.Width + 2*spaceCompact
-		if index == 2 && relX >= start && relX < end {
-			return browseFilterOperatorCell
-		}
-		start = end
-	}
-	return browseFilterValueCell
 }

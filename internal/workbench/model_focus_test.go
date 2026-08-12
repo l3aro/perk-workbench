@@ -192,7 +192,7 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 				// Given
 				model := New("", context.Background(), testOpen, false)
 				model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tab
-				model.overlay.formMode.mode = mode.value
+				model.overlay.formMode.Mode = mode.value
 				model.applyLayout(100, 24)
 
 				// When
@@ -218,7 +218,7 @@ func TestView_vimOffHidesModeBadges(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.vimMode = false
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
-	model.overlay.formMode.mode = formModeInsert
+	model.overlay.formMode.Mode = formModeInsert
 	model.ReadOnly = true
 	model.applyLayout(100, 24)
 
@@ -864,7 +864,7 @@ func TestQueryLog_l_selects_history_cells_without_changing_row(t *testing.T) {
 func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column"},
@@ -922,7 +922,7 @@ func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	requestID := model.StartQueryForTest(context.Background())
 	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column", "sixth column", "seventh column", "eighth column"},
@@ -963,7 +963,7 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 				model.focusActiveTable()
 				updated, _ := model.Update(browseTableMsg{table: "projects", page: model.BrowsePage, result: sqlite.Result{Columns: []string{"ID"}, Rows: [][]*string{{stringPointer("1")}, {stringPointer("2")}}}})
 				model = updated.(Model)
-				model.browse.table.SetCursor(1)
+				model.browse.component.Table.SetCursor(1)
 				return model
 			},
 		},
@@ -982,8 +982,8 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 			if test.name == "structure" && model.structure.table.Cursor() != 0 {
 				t.Fatalf("structure cursor = %d, want 0 after k", model.structure.table.Cursor())
 			}
-			if test.name == "browse" && model.browse.table.Cursor() != 0 {
-				t.Fatalf("browse cursor = %d, want 0 after k", model.browse.table.Cursor())
+			if test.name == "browse" && model.browse.component.Table.Cursor() != 0 {
+				t.Fatalf("browse cursor = %d, want 0 after k", model.browse.component.Table.Cursor())
 			}
 		})
 	}
@@ -993,13 +993,13 @@ func TestBrowse_next_stays_on_final_page(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab, model.BrowsePage = "projects", tabBrowse, 2
-	model.browse.result.HasMore = false
+	model.browse.component.Result.HasMore = false
 	model.focusActiveTable()
 
 	// When
 	updated, timer := model.Update(tea.KeyPressMsg{Code: 'n', Text: "n"})
 	model = updated.(Model)
-	updated, command := model.Update(browseDebounceMsg{tag: model.browse.pageTag, delta: 1, table: "projects"})
+	updated, command := model.Update(browseDebounceMsg{tag: model.browse.component.PageTag, delta: 1, table: "projects"})
 	model = updated.(Model)
 
 	// Then
@@ -1012,7 +1012,7 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "projects", tabBrowse
-	model.browse.result.HasMore = true
+	model.browse.component.Result.HasMore = true
 	model.focusActiveTable()
 
 	// When
@@ -1022,7 +1022,7 @@ func TestBrowse_debounces_navigation(t *testing.T) {
 	model = updated.(Model)
 	updated, staleCommand := model.Update(browseDebounceMsg{tag: 1, delta: 1, table: "projects"})
 	model = updated.(Model)
-	updated, loadCommand := model.Update(browseDebounceMsg{tag: model.browse.pageTag, delta: 1, table: "projects"})
+	updated, loadCommand := model.Update(browseDebounceMsg{tag: model.browse.component.PageTag, delta: 1, table: "projects"})
 	model = updated.(Model)
 
 	// Then

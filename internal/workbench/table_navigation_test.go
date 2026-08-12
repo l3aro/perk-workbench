@@ -257,7 +257,7 @@ func TestResults_cellNavigation_doesNotInterceptSQLInsertMode(t *testing.T) {
 	model.queryLog.results.SetRows([]table.Row{{"first", "second"}})
 	model.queryLog.results.Focus()
 	model.queryLog.editor.setValue("SELECT ")
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'l', Text: "l"})
@@ -451,7 +451,7 @@ func TestBrowse_mouseClickUsesRenderedRow(t *testing.T) {
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
-	if got := model.browse.table.Cursor(); got != 1 {
+	if got := model.browse.component.Table.Cursor(); got != 1 {
 		t.Fatalf("clicked rendered row selected cursor %d, want 1", got)
 	}
 }

@@ -610,12 +610,12 @@ func (m Model) scrollForm(wheel tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 			return m, m.structure.columnForm.nextField()
 		}
 		return m, m.structure.columnForm.previousField()
-	case m.browse.filterForm != nil:
-		m.browse.filterForm.scrollOffset = clamp(m.browse.filterForm.scrollOffset+step, 0, len(m.browse.filterForm.fields)+1)
-	case m.browse.documentEditor != nil:
-		m.browse.documentEditor.scrollOffset = formScrollOffset(m.browse.documentEditor.View(), m.browse.documentEditor.scrollOffset, step, m.formViewportHeight())
-	case m.browse.form.active():
-		m.browse.form.scrollOffset = formScrollOffset(m.browse.form.View(), m.browse.form.scrollOffset, step, m.formViewportHeight())
+	case m.browse.component.FilterForm != nil:
+		m.browse.component.FilterForm.ScrollOffset = clamp(m.browse.component.FilterForm.ScrollOffset+step, 0, len(m.browse.component.FilterForm.Fields)+1)
+	case m.browse.component.DocumentEditor != nil:
+		m.browse.component.DocumentEditor.ScrollOffset = formScrollOffset(m.browse.component.DocumentEditor.View(), m.browse.component.DocumentEditor.ScrollOffset, step, m.formViewportHeight())
+	case m.browse.component.Form.Active():
+		m.browse.component.Form.ScrollOffset = formScrollOffset(m.browse.component.Form.View(), m.browse.component.Form.ScrollOffset, step, m.formViewportHeight())
 	case m.structure.indexForm.active():
 		m.structure.indexForm.scrollOffset = formScrollOffset(m.structure.indexForm.View(), m.structure.indexForm.scrollOffset, step, m.formViewportHeight())
 	case m.structure.foreignKeyForm.active():
@@ -699,7 +699,7 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	// Non-vim mode: the clicked table owns focus, so leave any text editing.
 	if !m.vimMode {
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 		m.queryLog.editor.text.Blur()
 		targetTable.Focus()
 	}
@@ -757,11 +757,11 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	// table's rows-empty guard: on an empty page (e.g. the last page after
 	// deletions) Prev is still enabled and must page back. Disabled
 	// buttons share the row but ignore clicks.
-	pagerRow := m.browse.table.Height() + 6
+	pagerRow := m.browse.component.Table.Height() + 6
 	if m.browseStatusSplit() {
 		pagerRow++
 	}
-	if m.Tab == tabBrowse && contentY == pagerRow && !m.browse.form.active() && m.browse.filterForm == nil {
+	if m.Tab == tabBrowse && contentY == pagerRow && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 		pager := m.browsePager()
 		browseX := absX - 1
 		if !m.layout.compact {
@@ -778,7 +778,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	// Determine which table tab we're on and which table to target.
 	switch m.Tab {
 	case tabBrowse:
-		if m.browse.form.active() || m.browse.filterForm != nil || len(m.browse.table.Rows()) == 0 {
+		if m.browse.component.Form.Active() || m.browse.component.FilterForm != nil || len(m.browse.component.Table.Rows()) == 0 {
 			return m, nil
 		}
 	case tabSQL:
@@ -799,10 +799,10 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	var rows []table.Row
 	switch m.Tab {
 	case tabBrowse:
-		targetTable = &m.browse.table
-		targetCol = &m.layout.browseColumn
-		targetOffset = &m.layout.browseOffset
-		rows = m.browse.table.Rows()
+		targetTable = &m.browse.component.Table
+		targetCol = &m.browse.component.SelectedColumn
+		targetOffset = &m.browse.component.Offset
+		rows = m.browse.component.Table.Rows()
 	case tabSQL:
 		targetTable = &m.queryLog.results
 		targetCol = &m.layout.resultsColumn
@@ -844,7 +844,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		if m.Tab != tabBrowse {
 			return m, nil
 		}
-		m.layout.browseColumn = col
+		m.browse.component.SelectedColumn = col
 		return m, m.cycleBrowseSort()
 	}
 	if browseLine < 1 {
@@ -860,7 +860,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	// Non-vim mode: the clicked table owns focus, so leave any text editing.
 	if !m.vimMode {
-		m.overlay.formMode.mode = formModeNormal
+		m.overlay.formMode.Mode = formModeNormal
 		m.queryLog.editor.text.Blur()
 		targetTable.Focus()
 	}
@@ -941,10 +941,10 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	}
 
 	// Only show context menu on browse table (tabBrowse) when form isn't active.
-	if !(m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active()) {
+	if !(m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active()) {
 		return m, nil
 	}
-	rows := m.browse.table.Rows()
+	rows := m.browse.component.Table.Rows()
 	if len(rows) == 0 {
 		return m, nil
 	}
@@ -954,15 +954,15 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if browseLine < 1 {
 		return m, nil
 	}
-	rowHeight := m.browse.table.Height()
-	start := min(max(m.browse.table.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	rowHeight := m.browse.component.Table.Height()
+	start := min(max(m.browse.component.Table.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
 	dataRow := start + browseLine - 1
 	if dataRow < 0 || dataRow >= len(rows) {
 		return m, nil
 	}
 
 	// Select the row and build context menu.
-	m.browse.table.SetCursor(dataRow)
+	m.browse.component.Table.SetCursor(dataRow)
 	m.refreshBrowseStatus()
 
 	m.overlay.contextMenu = &contextMenuModel{

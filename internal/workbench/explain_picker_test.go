@@ -58,8 +58,8 @@ func TestExplainShortcut_prefillsSelectedCommandAndFocusesSQLEditor(t *testing.T
 	if model.overlay.explainPicker != nil {
 		t.Fatal("selection did not close the explain command picker")
 	}
-	if model.Focus != focusWorkspace || model.Tab != tabSQL || !model.overlay.formMode.editing() {
-		t.Fatalf("SQL editor focus = focus:%v tab:%v editing:%t", model.Focus, model.Tab, model.overlay.formMode.editing())
+	if model.Focus != focusWorkspace || model.Tab != tabSQL || !model.overlay.formMode.Editing() {
+		t.Fatalf("SQL editor focus = focus:%v tab:%v editing:%t", model.Focus, model.Tab, model.overlay.formMode.Editing())
 	}
 	if got, want := model.queryLog.editor.value, "EXPLAIN QUERY PLAN\nSELECT 1"; got != want {
 		t.Fatalf("editor value = %q, want %q", got, want)

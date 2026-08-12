@@ -224,32 +224,32 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "browse.refine":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 			return m, m.openBrowseFilterForm()
 		}
 		return m, nil
 	case "browse.reset":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 			return m, m.resetBrowseFilters()
 		}
 		return m, nil
 	case "browse.sort":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 			return m, m.cycleBrowseSort()
 		}
 		return m, nil
 	case "cell.view":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
-			row := m.browse.table.Cursor()
-			col := m.layout.browseColumn
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
+			row := m.browse.component.Table.Cursor()
+			col := m.browse.component.SelectedColumn
 			display := ""
-			if row >= 0 && row < len(m.browse.table.Rows()) && col >= 0 && col < len(m.browse.table.Rows()[row]) {
-				display = m.browse.table.Rows()[row][col]
+			if row >= 0 && row < len(m.browse.component.Table.Rows()) && col >= 0 && col < len(m.browse.component.Table.Rows()[row]) {
+				display = m.browse.component.Table.Rows()[row][col]
 			}
 			raw := m.rawCellValue("browse", row, col, display)
-			return m, m.openCellViewer(m.browse.table, col, raw)
+			return m, m.openCellViewer(m.browse.component.Table, col, raw)
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.editing() && m.queryLog.results.Focused() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() {
 			row := m.queryLog.results.Cursor()
 			col := m.layout.resultsColumn
 			display := ""
@@ -261,20 +261,20 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "cell.yank":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 			return m, m.copyBrowseCell()
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.editing() && m.queryLog.results.Focused() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() {
 			return m, m.copySQLCell()
 		}
 		return m, nil
 	case "browse.next_page":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
-			if m.browse.loading {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
+			if m.browse.component.Loading {
 				return m, nil
 			}
-			m.browse.pageTag++
-			tag := m.browse.pageTag
+			m.browse.component.PageTag++
+			tag := m.browse.component.PageTag
 			table := m.SelectedTable
 			return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
 				return browseDebounceMsg{tag: tag, delta: 1, table: table}
@@ -282,12 +282,12 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "browse.prev_page":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.form.active() && m.browse.filterForm == nil {
-			if m.browse.loading {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
+			if m.browse.component.Loading {
 				return m, nil
 			}
-			m.browse.pageTag++
-			tag := m.browse.pageTag
+			m.browse.component.PageTag++
+			tag := m.browse.component.PageTag
 			table := m.SelectedTable
 			return m, tea.Tick(browseDebounceDuration, func(time.Time) tea.Msg {
 				return browseDebounceMsg{tag: tag, delta: -1, table: table}
@@ -330,14 +330,14 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 				m.setStatus(safeText(err.Error()))
 				return m, m.connection.component.Form.ShowValidationError()
 			}
-			m.overlay.formMode.beginConfirm()
+			m.overlay.formMode.BeginConfirm()
 			m.connection.component.Form.BeginConfirmation()
 			return m, nil
 		}
 		return m, nil
 	case "connection.action_enter":
 		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil && m.connectionActionFocused() {
-			m.overlay.formMode.mode = formModeNormal
+			m.overlay.formMode.Mode = formModeNormal
 			m.connection.component.Form.Blur()
 			if m.connection.component.Form.Values.Action == connectionActionTest {
 				return m, m.testConnection()
@@ -347,7 +347,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "connection.edit_field":
 		if m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil && !m.connectionActionFocused() {
-			return m, m.overlay.formMode.beginHuh(m.connection.component.Form.FocusForm())
+			return m, m.overlay.formMode.BeginHuh(m.connection.component.Form.FocusForm())
 		}
 		return m, nil
 	case "connection.field_next":

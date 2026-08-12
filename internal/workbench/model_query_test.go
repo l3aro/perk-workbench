@@ -79,15 +79,15 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 		// Given
 		model := readyModel(t)
 		model.SelectedTable = "projects"
-		model.browse.table.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
-		model.browse.table.SetRows([]table.Row{{"prior", "row"}})
+		model.browse.component.Table.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
+		model.browse.component.Table.SetRows([]table.Row{{"prior", "row"}})
 
 		// When
 		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{}})
 		model = updated.(Model)
 
 		// Then
-		assertResultsPlaceholder(t, model.browse.table)
+		assertResultsPlaceholder(t, model.browse.component.Table)
 	})
 }
 
@@ -117,7 +117,7 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	if got := model.structure.table.Rows(); len(got) != 2 || got[0][0] != "id" || got[0][2] != "INTEGER" {
 		t.Fatalf("structure rows = %#v, want selected table columns", got)
 	}
-	if got := model.browse.table.Rows(); len(got) != 0 {
+	if got := model.browse.component.Table.Rows(); len(got) != 0 {
 		t.Fatalf("browse rows = %#v, want no query before Browse tab focus", got)
 	}
 	if got := len(model.queryLog.component.Entries); got != 0 {
@@ -133,7 +133,7 @@ func TestSchema_enter_defers_browse_until_browse_tab_is_focused(t *testing.T) {
 	if model.Tab != tabBrowse {
 		t.Fatalf("tab = %v, want Browse", model.Tab)
 	}
-	if got := model.browse.table.Rows(); len(got) != 1 || got[0][1] != "first" {
+	if got := model.browse.component.Table.Rows(); len(got) != 1 || got[0][1] != "first" {
 		t.Fatalf("browse rows = %#v, want selected table data", got)
 	}
 }
@@ -165,7 +165,7 @@ func TestSchema_enter_lands_on_configured_target_tab(t *testing.T) {
 	model = updateFromCommand(model, command)
 
 	// Then — the browse query ran immediately, no tab toggle needed.
-	if got := model.browse.table.Rows(); len(got) != 1 || got[0][1] != "first" {
+	if got := model.browse.component.Table.Rows(); len(got) != 1 || got[0][1] != "first" {
 		t.Fatalf("browse rows = %#v, want selected table data", got)
 	}
 }
@@ -196,19 +196,19 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 		// Given
 		model := readyModel(t)
 		model.SelectedTable = "projects"
-		model.browse.table.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
-		model.browse.table.SetRows([]table.Row{{"prior", "row"}})
+		model.browse.component.Table.SetColumns([]table.Column{{Title: "Previous", Width: 8}, {Title: "Columns", Width: 8}})
+		model.browse.component.Table.SetRows([]table.Row{{"prior", "row"}})
 
 		// When
 		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
 		model = updated.(Model)
 
 		// Then
-		columns := model.browse.table.Columns()
+		columns := model.browse.component.Table.Columns()
 		if len(columns) != 3 || columns[0].Title != "ID" || columns[1].Title != "Name" || columns[2].Title != "State" {
 			t.Fatalf("browse columns = %#v, want ID, Name, State", columns)
 		}
-		if got := model.browse.table.Rows(); len(got) != 1 || got[0][0] != "2" || got[0][1] != "next" || got[0][2] != "ready" {
+		if got := model.browse.component.Table.Rows(); len(got) != 1 || got[0][0] != "2" || got[0][1] != "next" || got[0][2] != "ready" {
 			t.Fatalf("browse rows = %#v, want replacement row", got)
 		}
 	})
@@ -220,15 +220,15 @@ func TestBrowse_status_shows_position_within_page(t *testing.T) {
 	model.SelectedTable, model.BrowsePage = "projects", 1
 	rows := make([][]*string, defaultBrowsePageSize)
 	// Give the table rows first so the cursor lands on row 7 of the page.
-	model.browse.table.SetRows(make([]table.Row, defaultBrowsePageSize))
-	model.browse.table.SetCursor(6)
+	model.browse.component.Table.SetRows(make([]table.Row, defaultBrowsePageSize))
+	model.browse.component.Table.SetCursor(6)
 
 	// When
 	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, HasMore: true}})
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.browse.status, "projects | 26-50 | 7/25 | page 2"; got != want {
+	if got, want := model.browse.component.Status, "projects | 26-50 | 7/25 | page 2"; got != want {
 		t.Fatalf("browse status = %q, want %q", got, want)
 	}
 }
@@ -245,7 +245,7 @@ func TestBrowse_status_fresh_load_reports_first_position(t *testing.T) {
 	model = updated.(Model)
 
 	// Then — the position never reads 0 of N on a nonempty page.
-	if got, want := model.browse.status, "projects | 1-25 | 1/25 | page 1"; got != want {
+	if got, want := model.browse.component.Status, "projects | 1-25 | 1/25 | page 1"; got != want {
 		t.Fatalf("browse status = %q, want %q", got, want)
 	}
 }
@@ -260,7 +260,7 @@ func TestBrowse_status_empty_page_reports_zero_position(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.browse.status, "projects | 0-50 | 0/0 | page 3"; got != want {
+	if got, want := model.browse.component.Status, "projects | 0-50 | 0/0 | page 3"; got != want {
 		t.Fatalf("browse status = %q, want %q", got, want)
 	}
 }
@@ -476,7 +476,7 @@ func TestExecute_history_arrow_recall_and_edit_exit(t *testing.T) {
 
 	// When — Up on a non-empty editor must not replace it.
 	model.queryLog.editor.setValue("my query")
-	model.overlay.formMode.beginInsert(model.queryLog.editor)
+	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	press(tea.KeyUp)
 	if got, want := model.queryLog.editor.value, "my query"; got != want {
 		t.Fatalf("Up on non-empty editor = %q, want %q", got, want)
@@ -579,8 +579,8 @@ func TestExecute_destructive_fromInsertMode_Enter_confirms(t *testing.T) {
 	if model.overlay.queryConfirmation == nil {
 		t.Fatal("F5 did not open query confirmation")
 	}
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("form mode = %d, want insert after confirmation opened", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("form mode = %d, want insert after confirmation opened", model.overlay.formMode.Mode)
 	}
 
 	// When — Enter confirms the dialog
@@ -594,8 +594,8 @@ func TestExecute_destructive_fromInsertMode_Enter_confirms(t *testing.T) {
 	if command == nil || !model.Running() {
 		t.Fatal("Enter did not confirm the destructive query")
 	}
-	if model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("Enter on confirmation changed form mode to %d, want insert", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("Enter on confirmation changed form mode to %d, want insert", model.overlay.formMode.Mode)
 	}
 }
 
@@ -802,7 +802,7 @@ func TestSQL_y_ignored_without_focus_or_during_edit(t *testing.T) {
 	}
 
 	// When — editor is editing
-	model.overlay.formMode = &formModeController{mode: formModeInsert}
+	model.overlay.formMode = &formModeController{Mode: formModeInsert}
 	model.queryLog.results.Focus()
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 	model = updated.(Model)

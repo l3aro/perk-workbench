@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 )
 
@@ -21,27 +22,27 @@ func TestBrowseForm_enterOpensSelectedRow(t *testing.T) {
 	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
 
-	if !model.browse.form.active() || model.browse.form.form == nil || model.browse.form.values.fields[1] != "first" {
-		t.Fatalf("browse form = %#v, status = %q, want selected row", model.browse.form, model.Status)
+	if !model.browse.component.Form.Active() || model.browse.component.Form.Form == nil || model.browse.component.Form.Values.Fields[1] != "first" {
+		t.Fatalf("browse form = %#v, status = %q, want selected row", model.browse.component.Form, model.Status)
 	}
 }
 
 func TestBrowseForm_iOpensCellEditor(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1 // select the "name" column
+	model.browse.component.SelectedColumn = 1 // select the "name" column
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 
 	// Then — cell editor opened
-	if model.browse.cellEditor == nil || !model.browse.cellEditor.active() {
-		t.Fatalf("cellEditor = %v, want active cell editor", model.browse.cellEditor)
+	if model.browse.component.CellEditor == nil || !model.browse.component.CellEditor.Active() {
+		t.Fatalf("cellEditor = %v, want active cell editor", model.browse.component.CellEditor)
 	}
-	if got, want := model.browse.cellEditor.columnName, "name"; got != want {
+	if got, want := model.browse.component.CellEditor.ColumnName, "name"; got != want {
 		t.Fatalf("cellEditor column = %q, want %q", got, want)
 	}
-	if got, want := model.browse.cellEditor.editedVal, "first"; got != want {
+	if got, want := model.browse.component.CellEditor.EditedVal, "first"; got != want {
 		t.Fatalf("cellEditor value = %q, want %q", got, want)
 	}
 }
@@ -49,26 +50,26 @@ func TestBrowseForm_iOpensCellEditor(t *testing.T) {
 func TestBrowseForm_cellEditorUsesModelWidth(t *testing.T) {
 	model := readyBrowseModel(t)
 	model = resizeModel(model, 120, 24)
-	model.layout.browseColumn = 1
+	model.browse.component.SelectedColumn = 1
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 
-	if got, want := model.browse.cellEditor.width, 66; got != want {
+	if got, want := model.browse.component.CellEditor.Width, 66; got != want {
 		t.Fatalf("cell editor width = %d, want %d", got, want)
 	}
 }
 
 func TestBrowseForm_cellEditorEnterSubmitsConfirmation(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1
+	model.browse.component.SelectedColumn = 1
 
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyF5})
 	model = updated.(Model)
 
-	if model.browse.cellEditor == nil || !model.browse.cellEditor.confirming || model.browse.cellEditor.confirm == nil {
+	if model.browse.component.CellEditor == nil || !model.browse.component.CellEditor.Confirming || model.browse.component.CellEditor.Confirm == nil {
 		t.Fatal("save did not open the cell update confirmation")
 	}
 	updated, command := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -77,7 +78,7 @@ func TestBrowseForm_cellEditorEnterSubmitsConfirmation(t *testing.T) {
 		t.Fatal("Enter did not submit the cell update confirmation")
 	}
 	model = resolveBrowseCommand(model, command())
-	if model.browse.cellEditor != nil {
+	if model.browse.component.CellEditor != nil {
 		t.Fatal("Enter did not submit the cell update confirmation")
 	}
 }
@@ -92,10 +93,10 @@ func TestBrowseForm_normalModeNavigatesWithoutMutatingValues(t *testing.T) {
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'x', Text: "x"})
 
 	// Then
-	if got := model.browse.form.form.GetFocusedField().GetKey(); got != "value-1" {
+	if got := model.browse.component.Form.Form.GetFocusedField().GetKey(); got != "value-1" {
 		t.Fatalf("focused field = %q, want value-1", got)
 	}
-	if got := model.browse.form.values.fields[1]; got != "second" {
+	if got := model.browse.component.Form.Values.Fields[1]; got != "second" {
 		t.Fatalf("normal mode changed value = %q, want second", got)
 	}
 }
@@ -109,18 +110,18 @@ func TestBrowseForm_nKeySetsFocusedColumnToNull(t *testing.T) {
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
 
 	// Then
-	if !model.browse.form.values.nulls[1] {
+	if !model.browse.component.Form.Values.Nulls[1] {
 		t.Fatal("name field nulls[1] should be true after pressing n")
 	}
 	wantValues := []sharedsql.RowValue{{Name: "name", Value: sharedsql.Value{Kind: sharedsql.ValueNull}}}
-	if values := model.browse.form.rowValues(); !reflect.DeepEqual(values, wantValues) {
+	if values := model.browse.component.Form.RowValues(); !reflect.DeepEqual(values, wantValues) {
 		t.Fatalf("rowValues = %#v, want %#v", values, wantValues)
 	}
 	wantKey := []sharedsql.RowValue{{Name: "id", Value: sharedsql.Value{Kind: sharedsql.ValueString, String: "2"}}}
-	if key, err := model.browse.form.keyValues(); err != nil || !reflect.DeepEqual(key, wantKey) {
+	if key, err := model.browse.component.Form.KeyValues(); err != nil || !reflect.DeepEqual(key, wantKey) {
 		t.Fatalf("keyValues = %#v, %v; want %#v", key, err, wantKey)
 	}
-	if got, want := model.browse.form.preview(), "Table: items\nKey:\n  id = \"2\"\nChanges:\n  name = NULL"; got != want {
+	if got, want := model.browse.component.Form.Preview(), "Table: items\nKey:\n  id = \"2\"\nChanges:\n  name = NULL"; got != want {
 		t.Fatalf("preview = %q, want %q", got, want)
 	}
 }
@@ -131,7 +132,7 @@ func TestBrowseForm_enterEditModeClearsNullFlag(t *testing.T) {
 
 	// Mark id column (field 0) as NULL
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.browse.form.values.nulls[0] {
+	if !model.browse.component.Form.Values.Nulls[0] {
 		t.Fatal("id nulls[0] should be true before entering edit mode")
 	}
 
@@ -139,7 +140,7 @@ func TestBrowseForm_enterEditModeClearsNullFlag(t *testing.T) {
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
 
 	// Then
-	if model.browse.form.values.nulls[0] {
+	if model.browse.component.Form.Values.Nulls[0] {
 		t.Fatal("nulls[0] should be false after entering edit mode on that field")
 	}
 }
@@ -147,19 +148,19 @@ func TestBrowseForm_enterEditModeClearsNullFlag(t *testing.T) {
 func TestBrowseForm_savesOnlyAfterPositiveHuhConfirmation(t *testing.T) {
 	// Given
 	model := openBrowseRow(t, 1)
-	model.browse.form.values.fields[1] = "edited"
+	model.browse.component.Form.Values.Fields[1] = "edited"
 
 	// When
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.browse.form.active() || model.browse.form.confirmation != nil {
+	if !model.browse.component.Form.Active() || model.browse.component.Form.Confirmation != nil {
 		t.Fatal("negative save confirmation changed the form")
 	}
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.browse.form.active() {
+	if model.browse.component.Form.Active() {
 		t.Fatal("saved row form remained open")
 	}
 	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
@@ -169,10 +170,10 @@ func TestBrowseForm_savesOnlyAfterPositiveHuhConfirmation(t *testing.T) {
 	if got := *result.Rows[0][0]; got != "edited" {
 		t.Fatalf("name = %q, want edited", got)
 	}
-	if got := model.browse.table.Rows()[1][1]; got != "edited" {
-		t.Fatalf("browse row = %#v, want refreshed edited value", model.browse.table.Rows()[1])
+	if got := model.browse.component.Table.Rows()[1][1]; got != "edited" {
+		t.Fatalf("browse row = %#v, want refreshed edited value", model.browse.component.Table.Rows()[1])
 	}
-	if got := model.browse.table.Cursor(); got != 1 {
+	if got := model.browse.component.Table.Cursor(); got != 1 {
 		t.Fatalf("browse cursor = %d, want saved row cursor 1", got)
 	}
 }
@@ -188,7 +189,7 @@ func TestBrowseForm_nThenF5ThenYSavesRowWithNull(t *testing.T) {
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then — form closed, name is NULL in database
-	if model.browse.form.active() {
+	if model.browse.component.Form.Active() {
 		t.Fatal("form should be closed after save")
 	}
 	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
@@ -203,19 +204,19 @@ func TestBrowseForm_nThenF5ThenYSavesRowWithNull(t *testing.T) {
 func TestBrowseForm_positiveDiscardConfirmationClosesWithoutPersistence(t *testing.T) {
 	// Given
 	model := openBrowseRow(t, 1)
-	model.browse.form.values.fields[1] = "discarded"
+	model.browse.component.Form.Values.Fields[1] = "discarded"
 
 	// When
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'n', Text: "n"})
-	if !model.browse.form.active() || model.browse.form.confirmation != nil {
+	if !model.browse.component.Form.Active() || model.browse.component.Form.Confirmation != nil {
 		t.Fatal("negative discard confirmation changed the form")
 	}
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 	model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
 
 	// Then
-	if model.browse.form.active() {
+	if model.browse.component.Form.Active() {
 		t.Fatal("positive discard confirmation left the form open")
 	}
 	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
@@ -235,7 +236,7 @@ func TestBrowseForm_discardWithoutChangesClosesWithoutConfirmation(t *testing.T)
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEscape})
 
 	// Then — form closes directly, no confirmation
-	if model.browse.form.active() || model.browse.form.confirmation != nil {
+	if model.browse.component.Form.Active() || model.browse.component.Form.Confirmation != nil {
 		t.Fatal("unchanged discard opened a confirmation")
 	}
 	result, err := model.Database.Execute(model.appContext, "SELECT name FROM items WHERE id = 2")
@@ -254,30 +255,30 @@ func TestBrowseForm_discardFromButtonBarNormalizesFormMode(t *testing.T) {
 	model.vimMode = false
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !model.overlay.formMode.editing() {
+	if !model.overlay.formMode.Editing() {
 		t.Fatal("row form should open in insert mode without vim mode")
 	}
-	_ = model.browse.form.form.NextField() // id -> name (last field)
+	_ = model.browse.component.Form.Form.NextField() // id -> name (last field)
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !model.overlay.formMode.buttonsFocused {
+	if !model.overlay.formMode.ButtonsFocused {
 		t.Fatal("Tab did not focus the button bar")
 	}
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'l', Text: "l"})
-	if model.overlay.formMode.buttonChoice != 1 {
-		t.Fatalf("button choice = %d, want Cancel", model.overlay.formMode.buttonChoice)
+	if model.overlay.formMode.ButtonChoice != 1 {
+		t.Fatalf("button choice = %d, want Cancel", model.overlay.formMode.ButtonChoice)
 	}
 
 	// When — Enter activates Cancel (replayed Escape) on an unchanged form
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
 
 	// Then — form closes directly and form mode is normalized
-	if model.browse.form.active() || model.browse.form.confirmation != nil {
+	if model.browse.component.Form.Active() || model.browse.component.Form.Confirmation != nil {
 		t.Fatal("bar Cancel on unchanged form opened a confirmation")
 	}
-	if model.overlay.formMode.mode != formModeNormal {
-		t.Fatalf("form mode = %d, want normal after close", model.overlay.formMode.mode)
+	if model.overlay.formMode.Mode != formModeNormal {
+		t.Fatalf("form mode = %d, want normal after close", model.overlay.formMode.Mode)
 	}
-	if model.overlay.formMode.buttonsFocused {
+	if model.overlay.formMode.ButtonsFocused {
 		t.Fatal("button bar stayed focused after form closed")
 	}
 }
@@ -285,7 +286,7 @@ func TestBrowseForm_discardFromButtonBarNormalizesFormMode(t *testing.T) {
 func TestBrowseForm_rejectsRowsWithoutPrimaryKey(t *testing.T) {
 	// Given
 	// When
-	_, err := newBrowseForm([]string{"name"}, []*string{stringPointer("first")}, []sqlite.ColumnInfo{{Name: "name"}})
+	_, err := browse.NewForm([]string{"name"}, []*string{stringPointer("first")}, []sharedsql.ColumnInfo{{Name: "name"}})
 
 	// Then
 	if err == nil || !strings.Contains(err.Error(), "primary key") {
@@ -298,8 +299,8 @@ func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
 		t.Run("affected="+strconv.FormatInt(affected, 10), func(t *testing.T) {
 			// Given
 			model := openBrowseRow(t, 1)
-			model.browse.form.values.fields[1] = "changed" // dirty a field so a real update reaches the fake
-			model.browse.form.saving = true
+			model.browse.component.Form.Values.Fields[1] = "changed" // dirty a field so a real update reaches the fake
+			model.browse.component.Form.Saving = true
 			model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: affected}}
 
 			// When
@@ -307,8 +308,8 @@ func TestBrowseForm_retainsFormAfterZeroOrMultipleAffectedRows(t *testing.T) {
 			model = updated.(Model)
 
 			// Then
-			if !model.browse.form.active() || model.browse.form.saving {
-				t.Fatalf("form = %#v, want retained unsaved form", model.browse.form)
+			if !model.browse.component.Form.Active() || model.browse.component.Form.Saving {
+				t.Fatalf("form = %#v, want retained unsaved form", model.browse.component.Form)
 			}
 		})
 	}
@@ -354,8 +355,8 @@ func (s browseExecuteService) Execute(context.Context, string) (sharedsql.Result
 // error instead of a broken statement.
 func TestBrowseForm_staleRowActionReportsCapabilityError(t *testing.T) {
 	model := openBrowseRow(t, 1)
-	model.browse.form.values.fields[1] = "changed"
-	model.browse.form.saving = true
+	model.browse.component.Form.Values.Fields[1] = "changed"
+	model.browse.component.Form.Saving = true
 	model.Database = browseExecuteService{result: sharedsql.Result{RowsAffected: 1}}
 
 	updated, _ := model.Update(model.updateBrowseRow()())
@@ -364,8 +365,8 @@ func TestBrowseForm_staleRowActionReportsCapabilityError(t *testing.T) {
 	if !strings.Contains(model.Status, "row editing is not supported by") {
 		t.Fatalf("status = %q, want capability error", model.Status)
 	}
-	if !model.browse.form.active() || model.browse.form.saving {
-		t.Fatalf("form = %#v, want retained form after capability error", model.browse.form)
+	if !model.browse.component.Form.Active() || model.browse.component.Form.Saving {
+		t.Fatalf("form = %#v, want retained form after capability error", model.browse.component.Form)
 	}
 }
 
@@ -374,22 +375,22 @@ func TestBrowseForm_staleRowActionReportsCapabilityError(t *testing.T) {
 // without leaving insert mode, and k returns with typing intact.
 func TestBrowseForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 	model := openBrowseRow(t, 0)
-	model.overlay.formMode.beginHuh(model.browse.form.focus()) // insert mode, vim off
-	_ = model.browse.form.form.NextField()                     // id -> name (last field)
+	model.overlay.formMode.BeginHuh(model.browse.component.Form.Focus()) // insert mode, vim off
+	_ = model.browse.component.Form.Form.NextField()                     // id -> name (last field)
 
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyTab})
-	if !model.overlay.formMode.buttonsFocused || model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.overlay.formMode.buttonsFocused, model.overlay.formMode.mode)
+	if !model.overlay.formMode.ButtonsFocused || model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("tab on last field: bar=%t mode=%d, want focused/insert", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.Mode)
 	}
 
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'k', Text: "k"})
-	if model.overlay.formMode.buttonsFocused || model.overlay.formMode.mode != formModeInsert {
-		t.Fatalf("k from bar: bar=%t mode=%d, want unfocused/insert", model.overlay.formMode.buttonsFocused, model.overlay.formMode.mode)
+	if model.overlay.formMode.ButtonsFocused || model.overlay.formMode.Mode != formModeInsert {
+		t.Fatalf("k from bar: bar=%t mode=%d, want unfocused/insert", model.overlay.formMode.ButtonsFocused, model.overlay.formMode.Mode)
 	}
 
 	// j is content on the name field, not field navigation.
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'j', Text: "j"})
-	if got := model.browse.form.values.fields[1]; got != "firstj" {
+	if got := model.browse.component.Form.Values.Fields[1]; got != "firstj" {
 		t.Fatalf("name = %q, want %q", got, "firstj")
 	}
 }
@@ -397,7 +398,7 @@ func TestBrowseForm_tabReachesButtonsFromInsertMode(t *testing.T) {
 func openBrowseRow(t *testing.T, row int) Model {
 	t.Helper()
 	model := readyBrowseModel(t)
-	model.browse.table.SetCursor(row)
+	model.browse.component.Table.SetCursor(row)
 	model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyEnter})
 	return model
 }
@@ -431,14 +432,14 @@ func readyBrowseModel(t *testing.T) Model {
 	model = updated.(Model)
 	updated, _ = model.Update(browseTableMsg{table: "items", page: 0, result: sqlite.Result{Columns: []string{"id", "name"}, Rows: [][]*string{{stringPointer("1"), stringPointer("first")}, {stringPointer("2"), stringPointer("second")}}}})
 	model = updated.(Model)
-	model.browse.table.SetCursor(0)
+	model.browse.component.Table.SetCursor(0)
 	return model
 }
 
 func TestBrowse_y_yanks_current_cell_value(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1 // select the "name" column
-	model.browse.table.SetCursor(0)
+	model.browse.component.SelectedColumn = 1 // select the "name" column
+	model.browse.component.Table.SetCursor(0)
 
 	// When — y yanks current cell
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -455,10 +456,10 @@ func TestBrowse_y_yanks_current_cell_value(t *testing.T) {
 
 func TestBrowse_y_yanks_full_value_not_display_trimmed(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1 // select the "name" column
-	model.browse.table.SetCursor(0)
+	model.browse.component.SelectedColumn = 1 // select the "name" column
+	model.browse.component.Table.SetCursor(0)
 	full := strings.Repeat("x", 400)
-	model.browse.result = sqlite.Result{
+	model.browse.component.Result = sqlite.Result{
 		Columns:         []string{"id", "name"},
 		Rows:            [][]*string{{stringPointer("1"), stringPointer(cellText(full))}, {stringPointer("2"), stringPointer("second")}},
 		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer(full)}, {stringPointer("2"), stringPointer("second")}},
@@ -562,7 +563,7 @@ func TestBrowse_contextMenuJAndKNavigateOptions(t *testing.T) {
 func TestBrowse_y_yanks_cursor_start_column_by_default(t *testing.T) {
 	model := readyBrowseModel(t)
 	// browseColumn defaults to 0 (id column)
-	model.browse.table.SetCursor(0)
+	model.browse.component.Table.SetCursor(0)
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -579,8 +580,8 @@ func TestBrowse_y_yanks_cursor_start_column_by_default(t *testing.T) {
 
 func TestBrowse_y_yanks_moved_cell_value(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1   // name column
-	model.browse.table.SetCursor(1) // second row "second"
+	model.browse.component.SelectedColumn = 1 // name column
+	model.browse.component.Table.SetCursor(1) // second row "second"
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
@@ -601,19 +602,19 @@ func TestBrowse_refineOpensFilterGrid(t *testing.T) {
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
 	model = updated.(Model)
 
-	if model.browse.filterForm == nil {
+	if model.browse.component.FilterForm == nil {
 		t.Fatal("browse filter form = nil, want opened grid")
 	}
 }
 
 func TestBrowse_loadUsesFiltersAndLimit(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.browse.settings = browseSettings{filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%second%"}}, limit: 1}
+	model.browse.component.Settings = browse.Settings{Filters: []sharedsql.BrowseFilter{{Column: "name", Operator: sharedsql.BrowseFilterLike, Value: "%second%"}}, Limit: 1}
 
 	updated, _ := model.Update(model.loadBrowse()())
 	model = updated.(Model)
 
-	if rows := model.browse.table.Rows(); len(rows) != 1 || rows[0][1] != "second" {
+	if rows := model.browse.component.Table.Rows(); len(rows) != 1 || rows[0][1] != "second" {
 		t.Fatalf("browse rows = %#v, want filtered row", rows)
 	}
 }
@@ -623,7 +624,7 @@ func TestBrowse_headerClickSortsColumnLikeS(t *testing.T) {
 	model = resizeModel(model, 140, 24) // wide: the status line stays on one row
 	model.focusActiveTable()
 
-	columns := model.browse.table.Columns()
+	columns := model.browse.component.Table.Columns()
 	nameX := model.layout.schemaWidth + 1
 	for _, column := range columns[:1] {
 		nameX += column.Width + 2*spaceCompact
@@ -636,13 +637,13 @@ func TestBrowse_headerClickSortsColumnLikeS(t *testing.T) {
 	model = resolveBrowseCommand(model, command())
 
 	// Then — name sorts ascending, the column is selected, marker shows.
-	if got := model.browse.settings.sorts; !slices.Equal(got, []browseSort{{column: "name"}}) {
+	if got := model.browse.component.Settings.Sorts; !slices.Equal(got, []browse.Sort{{Column: "name"}}) {
 		t.Fatalf("browse sorts = %#v, want name ascending", got)
 	}
-	if got := model.layout.browseColumn; got != 1 {
+	if got := model.browse.component.SelectedColumn; got != 1 {
 		t.Fatalf("browse column = %d, want 1", got)
 	}
-	if got := model.browse.table.Columns()[1].Title; got != "⌃ name" {
+	if got := model.browse.component.Table.Columns()[1].Title; got != "⌃ name" {
 		t.Fatalf("sort title = %q, want %q", got, "⌃ name")
 	}
 
@@ -652,7 +653,7 @@ func TestBrowse_headerClickSortsColumnLikeS(t *testing.T) {
 	model = resolveBrowseCommand(model, command())
 
 	// Then — it flips to descending.
-	if got := model.browse.settings.sorts; !slices.Equal(got, []browseSort{{column: "name", desc: true}}) {
+	if got := model.browse.component.Settings.Sorts; !slices.Equal(got, []browse.Sort{{Column: "name", Desc: true}}) {
 		t.Fatalf("browse sorts = %#v, want name descending", got)
 	}
 
@@ -662,37 +663,37 @@ func TestBrowse_headerClickSortsColumnLikeS(t *testing.T) {
 	model = resolveBrowseCommand(model, command())
 
 	// Then — id joins the sort chain after name, selection moves to it.
-	if got := model.browse.settings.sorts; !slices.Equal(got, []browseSort{{column: "name", desc: true}, {column: "id"}}) {
+	if got := model.browse.component.Settings.Sorts; !slices.Equal(got, []browse.Sort{{Column: "name", Desc: true}, {Column: "id"}}) {
 		t.Fatalf("browse sorts = %#v, want name desc then id asc", got)
 	}
-	if got := model.layout.browseColumn; got != 0 {
+	if got := model.browse.component.SelectedColumn; got != 0 {
 		t.Fatalf("browse column = %d, want 0", got)
 	}
 }
 
 func TestBrowse_sCyclesSelectedColumnSort(t *testing.T) {
 	model := readyBrowseModel(t)
-	model.layout.browseColumn = 1
+	model.browse.component.SelectedColumn = 1
 
 	for _, want := range []struct {
 		column int
-		sorts  []browseSort
+		sorts  []browse.Sort
 		titles []string
 	}{
-		{column: 1, sorts: []browseSort{{column: "name"}}, titles: []string{"id", "⌃ name"}},
-		{column: 0, sorts: []browseSort{{column: "name"}, {column: "id"}}, titles: []string{"⌃ id", "⌃ name"}},
-		{column: 1, sorts: []browseSort{{column: "name", desc: true}, {column: "id"}}, titles: []string{"⌃ id", "⌄ name"}},
-		{column: 1, sorts: []browseSort{{column: "id"}}, titles: []string{"⌃ id", "name"}},
+		{column: 1, sorts: []browse.Sort{{Column: "name"}}, titles: []string{"id", "⌃ name"}},
+		{column: 0, sorts: []browse.Sort{{Column: "name"}, {Column: "id"}}, titles: []string{"⌃ id", "⌃ name"}},
+		{column: 1, sorts: []browse.Sort{{Column: "name", Desc: true}, {Column: "id"}}, titles: []string{"⌃ id", "⌄ name"}},
+		{column: 1, sorts: []browse.Sort{{Column: "id"}}, titles: []string{"⌃ id", "name"}},
 	} {
-		model.layout.browseColumn = want.column
+		model.browse.component.SelectedColumn = want.column
 		updated, command := model.Update(tea.KeyPressMsg{Code: 's', Text: "s"})
 		model = updated.(Model)
 		model = resolveBrowseCommand(model, command())
-		if got := model.browse.settings.sorts; !slices.Equal(got, want.sorts) {
+		if got := model.browse.component.Settings.Sorts; !slices.Equal(got, want.sorts) {
 			t.Fatalf("browse sorts = %#v, want %#v", got, want.sorts)
 		}
 		for index, title := range want.titles {
-			if got := model.browse.table.Columns()[index].Title; got != title {
+			if got := model.browse.component.Table.Columns()[index].Title; got != title {
 				t.Fatalf("sort title[%d] = %q, want %q", index, got, title)
 			}
 		}

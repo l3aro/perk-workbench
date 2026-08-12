@@ -95,8 +95,8 @@ func TestSchemaRename_viaM_renamesAndRefreshesSidebar(t *testing.T) {
 	model.structure.tableForm.name = "new"
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 	model = updated.(Model)
-	if !model.structure.tableForm.confirming() || model.overlay.formMode.mode != formModeConfirm {
-		t.Fatalf("ctrl+s did not confirm: confirming=%t mode=%d", model.structure.tableForm.confirming(), model.overlay.formMode.mode)
+	if !model.structure.tableForm.confirming() || model.overlay.formMode.Mode != formModeConfirm {
+		t.Fatalf("ctrl+s did not confirm: confirming=%t mode=%d", model.structure.tableForm.confirming(), model.overlay.formMode.Mode)
 	}
 	if got, want := model.structure.tableForm.confirmation.Description, `ALTER TABLE "old" RENAME TO "new"`; got != want {
 		t.Fatalf("confirmation description = %q, want %q", got, want)
@@ -168,7 +168,7 @@ func TestSchemaAddTable_viaA_createsAndRefreshesSidebar(t *testing.T) {
 			}
 			model.Focus = focusWorkspace
 			model.Tab = tabSQL
-			model.overlay.formMode.mode = formModeInsert
+			model.overlay.formMode.Mode = formModeInsert
 			for _, key := range "created" {
 				updated, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})
 				model = updated.(Model)
@@ -206,7 +206,7 @@ func TestSchemaTableForm_enterSavesFromNormalMode(t *testing.T) {
 	model = updated.(Model)
 	model = runTableCommand(model, command)
 	model.structure.tableForm.name = "created"
-	model.overlay.formMode.mode = formModeNormal
+	model.overlay.formMode.Mode = formModeNormal
 
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)

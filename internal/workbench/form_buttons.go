@@ -2,41 +2,15 @@ package workbench
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
-// formButtonsBar renders the Save/Cancel button row shown under editable
-// forms. When focused, only the chosen button is lit (focus color) and the
-// other renders dimmed, so the primary style never reads as a second
-// highlight. The row is hit-tested with formButtonAt.
-func formButtonsBar(focused bool, choice int) string {
-	save, cancel := formSaveButtonStyle, formCancelButtonStyle
-	if focused {
-		save, cancel = formCancelButtonStyle, formCancelButtonStyle
-		if choice == 0 {
-			save = formButtonFocusedStyle
-		} else {
-			cancel = formButtonFocusedStyle
-		}
-	}
-	return lipgloss.JoinHorizontal(lipgloss.Left,
-		save.Render("Save"), " ", cancel.Render("Cancel"))
-}
+// The Save/Cancel button bar is a shared UI contract: the rendered row and
+// its click hit-test live in uikit so the browse cell editor and the root
+// form footer draw identically.
+var formButtonsBar = uikit.FormButtonsBar
 
-// formButtonAt returns the button under a click at relX within the buttons
-// bar: "save", "cancel", or "" when the click misses both buttons.
-func formButtonAt(relX int) string {
-	saveWidth := ansi.StringWidth(formSaveButtonStyle.Render("Save"))
-	if relX >= 0 && relX < saveWidth {
-		return "save"
-	}
-	gap := saveWidth + 1 // one space between the buttons
-	if relX >= gap && relX < gap+ansi.StringWidth(formCancelButtonStyle.Render("Cancel")) {
-		return "cancel"
-	}
-	return ""
-}
+var formButtonAt = uikit.FormButtonAt
 
 // formTabActive reports whether the current workspace tab shows an editable
 // form, which owns the bottom button bar.
@@ -45,7 +19,7 @@ func (m Model) formTabActive() bool {
 	case tabStructure:
 		return m.structure.columnForm.active()
 	case tabBrowse:
-		return m.browse.filterForm != nil || m.browse.documentEditor != nil || m.browse.form.active()
+		return m.browse.component.FilterForm != nil || m.browse.component.DocumentEditor != nil || m.browse.component.Form.Active()
 	case tabIndexes:
 		return m.structure.indexForm.active()
 	case tabForeignKeys:
@@ -74,7 +48,7 @@ func formEscapeKeyPress() tea.Cmd {
 // by the field editor. Mouse-entered filter edits set only
 // browseFilterForm.editing, so it is checked alongside the controller mode.
 func (m Model) formSaveCommand() (Model, tea.Cmd) {
-	if m.overlay.formMode.editing() || (m.browse.filterForm != nil && m.browse.filterForm.editing) {
+	if m.overlay.formMode.Editing() || (m.browse.component.FilterForm != nil && m.browse.component.FilterForm.Editing) {
 		updated, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 		m = updated.(Model)
 	}

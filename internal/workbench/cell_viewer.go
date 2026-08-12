@@ -17,7 +17,7 @@ func (m *Model) rawCellValue(tableType string, row, col int, displayValue string
 	var source [][]*string
 	switch tableType {
 	case "browse":
-		source = m.browse.result.UntruncatedRows
+		source = m.browse.component.Result.UntruncatedRows
 	case "results":
 		source = m.queryLog.resultsRaw
 	}
@@ -45,6 +45,6 @@ func (m *Model) openCellViewer(resultTable table.Model, selectedColumn int, rawV
 
 	columnTitle := columns[selectedColumn].Title
 
-	m.browse.cellViewer = uikit.NewCellViewer(columnTitle, rawValue, max(m.layout.width-8, 1), max(m.layout.height-10, 1))
+	m.browse.component.CellViewer = uikit.NewCellViewer(columnTitle, rawValue, max(m.layout.width-8, 1), max(m.layout.height-10, 1))
 	return nil
 }

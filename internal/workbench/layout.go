@@ -77,9 +77,9 @@ func (m *Model) applyLayout(width, height int) {
 	m.structure.columnForm.setHeight(m.formViewportHeight())
 	m.structure.tableForm.setWidth(m.layout.tableViewportWidth)
 	m.structure.tableForm.setHeight(m.formViewportHeight())
-	m.browse.form.setWidth(m.layout.tableViewportWidth)
-	if m.browse.filterForm != nil {
-		m.browse.filterForm.setSize(m.layout.tableViewportWidth, m.formViewportHeight())
+	m.browse.component.Form.SetWidth(m.layout.tableViewportWidth)
+	if m.browse.component.FilterForm != nil {
+		m.browse.component.FilterForm.SetSize(m.layout.tableViewportWidth, m.formViewportHeight())
 	}
 	m.structure.indexForm.setWidth(m.layout.tableViewportWidth)
 	m.structure.foreignKeyForm.setWidth(m.layout.tableViewportWidth)
@@ -87,7 +87,7 @@ func (m *Model) applyLayout(width, height int) {
 		m.overlay.explainPicker.setWidth(m.layout.tableViewportWidth)
 	}
 	if m.layout.tableViewportWidth != previousViewportWidth {
-		for _, resultTable := range []*table.Model{&m.queryLog.results, &m.structure.table, &m.browse.table, &m.structure.indexes, &m.structure.foreignKeys} {
+		for _, resultTable := range []*table.Model{&m.queryLog.results, &m.structure.table, &m.browse.component.Table, &m.structure.indexes, &m.structure.foreignKeys} {
 			columns := resultTable.Columns()
 			titles := make([]string, len(columns))
 			for index, column := range columns {
@@ -105,11 +105,11 @@ func (m *Model) applyLayout(width, height int) {
 	// The browse table yields the footer rows below its data rows
 	// (browseFooterRows: the status line, the footer gap, and the pager
 	// button row, plus pane chrome), keeping the pane exactly full.
-	resizeResultsTable(&m.browse.table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-m.browseFooterRows(), 2))
+	resizeResultsTable(&m.browse.component.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-m.browseFooterRows(), 2))
 	resizeResultsTable(&m.structure.indexes, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
 	resizeResultsTable(&m.structure.foreignKeys, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
 	m.layout.structureOffset = tableOffset(m.structure.table, m.layout.structureOffset, m.layout.tableViewportWidth)
-	revealTableColumn(m.browse.table, m.layout.browseColumn, &m.layout.browseOffset, m.layout.tableViewportWidth)
+	revealTableColumn(m.browse.component.Table, m.browse.component.SelectedColumn, &m.browse.component.Offset, m.layout.tableViewportWidth)
 	revealTableColumn(m.queryLog.results, m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth)
 	m.layout.indexesOffset = tableOffset(m.structure.indexes, m.layout.indexesOffset, m.layout.tableViewportWidth)
 	m.layout.foreignKeysOffset = tableOffset(m.structure.foreignKeys, m.layout.foreignKeysOffset, m.layout.tableViewportWidth)

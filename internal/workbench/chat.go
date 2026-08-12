@@ -178,7 +178,7 @@ func (m Model) applyChatEvent(event chat.Event, cmd tea.Cmd) (tea.Model, tea.Cmd
 		}
 		m.chat.writePending = &chat.WriteRequest{Statement: e.Statement, Generation: e.Generation, Deadline: time.Now().Add(chat.ToolPhaseTimeout)}
 		m.chat.writeConfirmation = yesNoConfirmation("Run assistant SQL write?", e.Statement, "run")
-		m.overlay.formMode.mode = formModeConfirm
+		m.overlay.formMode.Mode = formModeConfirm
 		return m, nil
 	}
 	return m, cmd

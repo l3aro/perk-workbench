@@ -427,7 +427,7 @@ func TestQueryLog_records_applied_browse_filters(t *testing.T) {
 	model := readyModel(t)
 	model.SelectedTable = "office.customers"
 	model.databaseInfo.Product = "MySQL"
-	model.browse.settings.filters = []sharedsql.BrowseFilter{
+	model.browse.component.Settings.Filters = []sharedsql.BrowseFilter{
 		{Column: "City", Operator: sharedsql.BrowseFilterLike, Value: "A%"},
 		{Column: "SupportRepId", Operator: sharedsql.BrowseFilterIsNotNull},
 	}

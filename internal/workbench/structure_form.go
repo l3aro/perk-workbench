@@ -92,7 +92,7 @@ func (m *Model) openColumnForm() tea.Cmd {
 		return nil
 	}
 	m.structure.columnForm = newColumnForm(*column, sharedsql.ColumnTypes(m.databaseInfo))
-	m.overlay.formMode.buttonsFocused = false
+	m.overlay.formMode.ButtonsFocused = false
 	m.structure.columnForm.keybindings = m.keybindings
 	m.structure.columnForm.setWidth(m.layout.tableViewportWidth)
 	m.structure.columnForm.setHeight(m.formViewportHeight())
@@ -101,7 +101,7 @@ func (m *Model) openColumnForm() tea.Cmd {
 
 func (m *Model) openNewColumnForm() tea.Cmd {
 	m.structure.columnForm = newEmptyColumnForm(sharedsql.ColumnTypes(m.databaseInfo))
-	m.overlay.formMode.buttonsFocused = false
+	m.overlay.formMode.ButtonsFocused = false
 	m.structure.columnForm.keybindings = m.keybindings
 	m.structure.columnForm.setWidth(m.layout.tableViewportWidth)
 	m.structure.columnForm.setHeight(m.formViewportHeight())
@@ -122,7 +122,7 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 			return nil, columnFormNoAction
 		}
 		f.confirmation = nil
-		controller.mode = formModeNormal
+		controller.Mode = formModeNormal
 		if action != "confirm" {
 			return nil, columnFormNoAction
 		}
@@ -140,8 +140,8 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	// discards instead of being eaten as insert-mode Escape.
 	keyPress, ok := message.(tea.KeyPressMsg)
 	replay := false
-	if ok && controller.buttonsFocused {
-		if route, replayed, cmd := controller.routeFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(f.fieldCount() - 1) }); route != formButtonContinue {
+	if ok && controller.ButtonsFocused {
+		if route, replayed, cmd := controller.RouteFormButtons(keyPress, f.keybindings, func() tea.Cmd { return f.focusField(f.fieldCount() - 1) }); route != formButtonContinue {
 			if route == formButtonReplay {
 				keyPress, replay = replayed, true
 			} else {
@@ -150,7 +150,7 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 		}
 	}
 	if !replay {
-		if route := controller.routeHuh(message, f.blur); route != formRouteParent {
+		if route := controller.RouteHuh(message, f.blur); route != formRouteParent {
 			if route == formRouteHuh {
 				return f.updateHuh(message, controller)
 			}
@@ -162,7 +162,7 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 	}
 	switch {
 	case isInsertModeKey(keyPress), f.keybindings.Match(keyPress, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}):
-		return controller.beginHuh(f.focus()), columnFormNoAction
+		return controller.BeginHuh(f.focus()), columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.save", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.isNew {
 			if _, err := f.columnDef(); err != nil {
@@ -174,26 +174,26 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 			return nil, columnFormNoAction
 		}
 		f.beginConfirmation(true, false)
-		controller.beginConfirm()
+		controller.BeginConfirm()
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.discard", []scope{scopeForm, scopeView, scopeGlobal}):
 		if !f.hasChanges() {
-			controller.mode = formModeNormal
-			controller.buttonsFocused = false
+			controller.Mode = formModeNormal
+			controller.ButtonsFocused = false
 			return nil, columnFormDiscard
 		}
 		f.beginConfirmation(false, false)
-		controller.beginConfirm()
+		controller.BeginConfirm()
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.delete", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.previousName != "" {
 			f.beginConfirmation(false, true)
-			controller.beginConfirm()
+			controller.BeginConfirm()
 		}
 		return nil, columnFormNoAction
 	case f.keybindings.Match(keyPress, "form.field_next", []scope{scopeForm, scopeView, scopeGlobal}):
 		if f.focusedField() >= f.fieldCount()-1 {
-			controller.focusButtons()
+			controller.FocusButtons()
 			f.blur()
 			return nil, columnFormNoAction
 		}
@@ -205,7 +205,7 @@ func (f *columnForm) Update(message tea.Msg, controller *formModeController) (te
 }
 
 func (f *columnForm) updateHuh(message tea.Msg, controller *formModeController) (tea.Cmd, columnFormAction) {
-	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.routeToBar(keyPress, f.focusedField() >= f.fieldCount()-1, f.blur) {
+	if keyPress, ok := message.(tea.KeyPressMsg); ok && controller.RouteToBar(keyPress, f.focusedField() >= f.fieldCount()-1, f.blur) {
 		return nil, columnFormNoAction
 	}
 	focused := f.focusedField()

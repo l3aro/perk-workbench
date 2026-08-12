@@ -142,13 +142,13 @@ func (m *Model) confirmDatabaseDelete(database string) {
 }
 
 func (m *Model) copyBrowseCell() tea.Cmd {
-	row, col := m.browse.table.Cursor(), m.layout.browseColumn
-	if row < 0 || row >= len(m.browse.result.Rows) || col < 0 || col >= len(m.browse.result.Columns) {
+	row, col := m.browse.component.Table.Cursor(), m.browse.component.SelectedColumn
+	if row < 0 || row >= len(m.browse.component.Result.Rows) || col < 0 || col >= len(m.browse.component.Result.Columns) {
 		return nil
 	}
 	display := ""
-	if row < len(m.browse.table.Rows()) && col < len(m.browse.table.Rows()[row]) {
-		display = m.browse.table.Rows()[row][col]
+	if row < len(m.browse.component.Table.Rows()) && col < len(m.browse.component.Table.Rows()[row]) {
+		display = m.browse.component.Table.Rows()[row][col]
 	}
 	value := m.rawCellValue("browse", row, col, display)
 	m.setStatus("copied to clipboard")

@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/sqlite"
+	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 )
 
@@ -21,11 +22,11 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 			return form.View()
 		}},
 		{name: "browse", view: func(width int) string {
-			form, err := newBrowseForm([]string{"id", "name"}, []*string{stringPointer("1"), stringPointer("Ada")}, []sharedsql.ColumnInfo{{Name: "id", PrimaryKey: 1}, {Name: "name"}})
+			form, err := browse.NewForm([]string{"id", "name"}, []*string{stringPointer("1"), stringPointer("Ada")}, []sharedsql.ColumnInfo{{Name: "id", PrimaryKey: 1}, {Name: "name"}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			form.setWidth(width)
+			form.SetWidth(width)
 			return form.View()
 		}},
 		{name: "index", view: func(width int) string {
@@ -90,8 +91,8 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 			model := resizeModel(readyModel(t), width, 24)
 			model.SelectedTable = "items"
 			model.structure.columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}
-			model.browse.result = sqlite.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
-			model.browse.table.SetCursor(0)
+			model.browse.component.Result = sqlite.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
+			model.browse.component.Table.SetCursor(0)
 
 			// When
 			model.Tab = tabStructure
@@ -99,8 +100,8 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 			columnWidth := model.structure.columnForm.width
 			columnView := model.structure.columnForm.View()
 			_ = model.openBrowseForm()
-			browseWidth := model.browse.form.width
-			browseView := model.browse.form.View()
+			browseWidth := model.browse.component.Form.Width
+			browseView := model.browse.component.Form.View()
 			_ = model.openIndexForm(nil)
 			indexWidth := model.structure.indexForm.width
 			indexView := model.structure.indexForm.View()
