@@ -212,8 +212,8 @@ func TestForeignKeysDiagram_showsCardinalityAndDirection(t *testing.T) {
 		"(N)",
 		"(1)",
 		"▲",
-		"customer_id → id",
-		"order_id → id",
+		"orders.customer_id → id", // outgoing: the hub's key is the left side
+		"order_id → orders.id",    // incoming: the hub's key is the right side
 	} {
 		if !strings.Contains(view, text) {
 			t.Fatalf("diagram view = %q, want %q", view, text)

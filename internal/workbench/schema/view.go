@@ -269,7 +269,7 @@ func relationshipEdgesForLevel(names []string, hub string, foreignKeys map[strin
 		}
 		unique, uniqueOK := true, false
 		appendFK := func(foreignKey sharedsql.ForeignKeyInfo) {
-			edge.pairs = appendUnique(edge.pairs, []string{relationshipPairLabel(foreignKey)})
+			edge.pairs = appendUnique(edge.pairs, []string{relationshipPairLabel(foreignKey, hub, !incoming)})
 			u, ok := fkCardinality(indexes, foreignKeyTable(foreignKey, name, hub, incoming), foreignKey.Columns)
 			uniqueOK = uniqueOK || ok
 			unique = unique && u
@@ -795,7 +795,7 @@ func (m Model) relationshipEdges(snapshot Snapshot) (incoming, outgoing []relati
 		}
 		merge(&outgoing, "out:"+strings.ToLower(foreignKey.ReferenceTable), relationshipEdge{
 			table: foreignKey.ReferenceTable,
-			pairs: []string{relationshipPairLabel(foreignKey)},
+			pairs: []string{relationshipPairLabel(foreignKey, snapshot.SelectedTable, true)},
 		})
 	}
 	for _, foreignKey := range m.Structure.ReferencingForeignKeyInfo {
@@ -804,21 +804,41 @@ func (m Model) relationshipEdges(snapshot Snapshot) (incoming, outgoing []relati
 		}
 		merge(&incoming, "in:"+strings.ToLower(foreignKey.Table), relationshipEdge{
 			table: foreignKey.Table,
-			pairs: []string{relationshipPairLabel(foreignKey.ForeignKeyInfo)},
+			pairs: []string{relationshipPairLabel(foreignKey.ForeignKeyInfo, snapshot.SelectedTable, false)},
 		})
 	}
 	return incoming, outgoing
 }
 
-// relationshipPairLabel renders one foreign key as "column → column" pairs.
-func relationshipPairLabel(foreignKey sharedsql.ForeignKeyInfo) string {
+// hubColumnStyle highlights the hub's key inside a mapping so the main
+// table's column is identifiable at a glance.
+var hubColumnStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(uikit.ColorPrimary))
+
+// relationshipPairLabel renders one foreign key as "column → column"
+// pairs. The hub's column is qualified with the hub's bare table name
+// (the hub card carries the full qualified name) and highlighted;
+// hubOnLeft marks outgoing edges, where the hub declares the foreign
+// key and its column is the left one. An empty hub leaves the mapping
+// plain.
+func relationshipPairLabel(foreignKey sharedsql.ForeignKeyInfo, hub string, hubOnLeft bool) string {
+	if dot := strings.LastIndex(hub, "."); dot >= 0 {
+		hub = hub[dot+1:]
+	}
 	pairs := make([]string, 0, len(foreignKey.Columns))
 	for index, column := range foreignKey.Columns {
 		reference := ""
 		if index < len(foreignKey.ReferenceColumns) {
 			reference = foreignKey.ReferenceColumns[index]
 		}
-		pairs = append(pairs, column+" → "+reference)
+		if hub == "" {
+			pairs = append(pairs, column+" → "+reference)
+			continue
+		}
+		if hubOnLeft {
+			pairs = append(pairs, hubColumnStyle.Render(hub+"."+column)+" → "+reference)
+		} else {
+			pairs = append(pairs, column+" → "+hubColumnStyle.Render(hub+"."+reference))
+		}
 	}
 	return strings.Join(pairs, ", ")
 }
@@ -850,7 +870,7 @@ func (m Model) relationshipCenterCard(connector bool, snapshot Snapshot) []strin
 	}
 	for _, foreignKey := range m.Structure.ForeignKeyInfo {
 		if strings.EqualFold(foreignKey.ReferenceTable, snapshot.SelectedTable) {
-			rows = append(rows, "↺ "+relationshipPairLabel(foreignKey))
+			rows = append(rows, "↺ "+relationshipPairLabel(foreignKey, "", false))
 		}
 	}
 	return boxCard(snapshot.SelectedTable, rows, true, 0, connector)

@@ -26,7 +26,7 @@ func TestForeignKeysTab_togglesRelationshipDiagram_withIncomingAndOutgoingKeys(t
 
 	// Then — the selected table is the hub: the referencing table above it,
 	// the referenced table below, both connectors labeled with the mapping.
-	for _, text := range []string{"orders", "customers", "items", "🔑 id", "🔗 customer_id", "order_id → id", "customer_id → id"} {
+	for _, text := range []string{"orders", "customers", "items", "🔑 id", "🔗 customer_id", "order_id → orders.id", "orders.customer_id → id"} {
 		if !strings.Contains(view, text) {
 			t.Fatalf("diagram view = %q, want %q", view, text)
 		}
