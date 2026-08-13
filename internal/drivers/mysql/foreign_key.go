@@ -87,23 +87,25 @@ func (s *Service) ListReferencingForeignKeys(ctx context.Context, table string) 
 	return references, nil
 }
 
-// ListForeignKeysAll returns every foreign key in the connected database,
-// keyed by the declaring table's bare name. The table names match the
-// reference tables reported by ListForeignKeys, so the app can join them
-// with its qualified table names by suffix.
+// ListForeignKeysAll returns every foreign key in the connected server,
+// keyed by the declaring table's qualified name (database.table), with
+// the referenced table qualified the same way — mirroring PostgreSQL's
+// bulk map. Unlike the per-table queries it does not depend on the DSN's
+// default database (which may be empty or differ from the tables the
+// user browses), so it scans every non-system schema instead.
 func (s *Service) ListForeignKeysAll(ctx context.Context) (map[string][]sharedsql.ForeignKeyInfo, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.column_name,
-			key_column_usage.referenced_table_name, key_column_usage.referenced_column_name,
+		SELECT key_column_usage.table_schema, key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.column_name,
+			key_column_usage.referenced_table_schema, key_column_usage.referenced_table_name, key_column_usage.referenced_column_name,
 			referential_constraints.update_rule, referential_constraints.delete_rule
 		FROM information_schema.key_column_usage
 		JOIN information_schema.referential_constraints
 			ON BINARY referential_constraints.constraint_schema = BINARY key_column_usage.constraint_schema
 			AND BINARY referential_constraints.table_name = BINARY key_column_usage.table_name
 			AND BINARY referential_constraints.constraint_name = BINARY key_column_usage.constraint_name
-		WHERE BINARY key_column_usage.table_schema = BINARY DATABASE()
+		WHERE key_column_usage.table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
 			AND key_column_usage.referenced_table_name IS NOT NULL
-		ORDER BY key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.ordinal_position`)
+		ORDER BY key_column_usage.table_schema, key_column_usage.table_name, key_column_usage.constraint_name, key_column_usage.ordinal_position`)
 	if err != nil {
 		return nil, fmt.Errorf("reading foreign keys: %w", err)
 	}
@@ -116,14 +118,15 @@ func (s *Service) ListForeignKeysAll(ctx context.Context) (map[string][]sharedsq
 		}
 	}
 	for rows.Next() {
-		var table, id, column, referencedTable, referencedColumn, onUpdate, onDelete string
-		if err := rows.Scan(&table, &id, &column, &referencedTable, &referencedColumn, &onUpdate, &onDelete); err != nil {
+		var schema, table, id, column, referenceSchema, referencedTable, referencedColumn, onUpdate, onDelete string
+		if err := rows.Scan(&schema, &table, &id, &column, &referenceSchema, &referencedTable, &referencedColumn, &onUpdate, &onDelete); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning foreign keys", err)
 		}
-		if info == nil || table != lastTable || id != lastID {
+		qualified := schema + "." + table
+		if info == nil || qualified != lastTable || id != lastID {
 			finish()
-			lastTable, lastID = table, id
-			info = &sharedsql.ForeignKeyInfo{ID: sharedsql.SanitizeDisplay(id), ReferenceTable: sharedsql.SanitizeDisplay(referencedTable), OnDelete: sharedsql.SanitizeDisplay(onDelete), OnUpdate: sharedsql.SanitizeDisplay(onUpdate)}
+			lastTable, lastID = qualified, id
+			info = &sharedsql.ForeignKeyInfo{ID: sharedsql.SanitizeDisplay(id), ReferenceTable: sharedsql.SanitizeDisplay(referenceSchema + "." + referencedTable), OnDelete: sharedsql.SanitizeDisplay(onDelete), OnUpdate: sharedsql.SanitizeDisplay(onUpdate)}
 		}
 		info.Columns = append(info.Columns, sharedsql.SanitizeDisplay(column))
 		info.ReferenceColumns = append(info.ReferenceColumns, sharedsql.SanitizeDisplay(referencedColumn))

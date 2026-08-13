@@ -106,6 +106,7 @@ func TestDiagramDepth_keysWidenTheFocusRing(t *testing.T) {
 	model := diagramFixture(t)
 	model.schema.foreignKeysAll["users"] = []sharedsql.ForeignKeyInfo{{Columns: []string{"team_id"}, ReferenceTable: "teams", ReferenceColumns: []string{"id"}}}
 	model.schema.foreignKeysAll["payments"] = []sharedsql.ForeignKeyInfo{{Columns: []string{"invoice_id"}, ReferenceTable: "invoices", ReferenceColumns: []string{"id"}}}
+	model = resizeModel(model, 80, 30)
 	model.Tab, model.Focus = tabForeignKeys, focusWorkspace
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
 	model = updated.(Model)
@@ -148,74 +149,7 @@ func TestDiagramDepth_keysWidenTheFocusRing(t *testing.T) {
 	}
 }
 
-func TestDiagramClick_refocusesOnNeighborCard(t *testing.T) {
-	// Given — the FK diagram with one incoming neighbor above the hub.
-	model := readyModel(t)
-	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
-	model.schema.component.Structure.Columns = []sharedsql.ColumnInfo{{Name: "id", PrimaryKey: 1}}
-	model.schema.foreignKeysAll = map[string][]sharedsql.ForeignKeyInfo{
-		"invoices": {{Columns: []string{"order_id"}, ReferenceTable: "orders", ReferenceColumns: []string{"id"}}},
-	}
-	model = resizeModel(model, 80, 24)
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
-	model = updated.(Model)
 
-	// Locate the invoices card in the rendered diagram: its title line and
-	// its left border column.
-	view := ansi.Strip(model.foreignKeysView())
-	titleLine := -1
-	titleX := -1
-	for index, line := range strings.Split(view, "\n") {
-		if column := strings.Index(line, "┌─ invoices"); column >= 0 {
-			titleLine, titleX = index, column
-			break
-		}
-	}
-	if titleLine < 0 {
-		t.Fatalf("diagram view = %q, want an invoices card", view)
-	}
-
-	// When — click inside the card. Screen Y = contentY + 1, and the
-	// diagram starts at contentY 2, so a card line at diagram Y i is at
-	// screen Y i+3.
-	updated, _ = model.Update(tea.MouseClickMsg{X: titleX + 3, Y: titleLine + 3, Button: tea.MouseLeft})
-	model = updated.(Model)
-
-	// Then — the focus follows the click: the table switches, the tab and
-	// diagram stay active.
-	if !strings.EqualFold(model.SelectedTable, "invoices") {
-		t.Fatalf("SelectedTable = %q, want invoices", model.SelectedTable)
-	}
-	if model.Tab != tabForeignKeys {
-		t.Fatalf("tab = %v, want foreign keys", model.Tab)
-	}
-	if !model.schema.component.Structure.RelationshipDiagram {
-		t.Fatal("diagram turned off after refocus")
-	}
-}
-
-func TestDiagramClick_ignoresGapsBetweenCards(t *testing.T) {
-	// Given — two outgoing neighbors so there is a gap between the cards.
-	model := readyModel(t)
-	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
-	model.schema.foreignKeysAll = map[string][]sharedsql.ForeignKeyInfo{
-		"orders": {
-			{Columns: []string{"user_id"}, ReferenceTable: "users", ReferenceColumns: []string{"id"}},
-			{Columns: []string{"team_id"}, ReferenceTable: "teams", ReferenceColumns: []string{"id"}},
-		},
-	}
-	model = resizeModel(model, 80, 24)
-	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
-	model = updated.(Model)
-
-	// Click on the connector row between the two cards (inside the pane
-	// body, diagram row 0): no card is there, so nothing refocuses.
-	updated, _ = model.Update(tea.MouseClickMsg{X: 20, Y: 3, Button: tea.MouseLeft})
-	model = updated.(Model)
-	if !strings.EqualFold(model.SelectedTable, "orders") {
-		t.Fatalf("gap click changed the selection to %q", model.SelectedTable)
-	}
-}
 
 func TestDiagramToggles_areMutuallyExclusive(t *testing.T) {
 	// Given — the FK diagram is on.
@@ -242,41 +176,196 @@ func TestDiagramToggles_areMutuallyExclusive(t *testing.T) {
 	}
 }
 
-func TestDiagramClick_mysqlCardNamesAreQualified(t *testing.T) {
-	// Given — a MySQL connection: bulk cache keys are bare table names
-	// while the selected table is database-qualified.
+
+func TestForeignKeysDiagram_showsCardinalityAndDirection(t *testing.T) {
+	// Given — orders references customers twice (customer_id non-unique,
+	// billing_id unique → mixed, so the card-level relation is N:1) and
+	// invoices references orders (N:1).
 	model := readyModel(t)
-	model.SelectedTable, model.Tab, model.Focus = "office.orders", tabForeignKeys, focusWorkspace
-	model.databaseInfo = sharedsql.DatabaseInfo{Product: "MySQL", Version: "8.0"}
-	model.Target = "mysql:root:secret@tcp(db.example.test:3306)/office"
+	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
 	model.schema.foreignKeysAll = map[string][]sharedsql.ForeignKeyInfo{
+		"orders": {
+			{Columns: []string{"customer_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}},
+			{Columns: []string{"billing_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}},
+		},
 		"invoices": {{Columns: []string{"order_id"}, ReferenceTable: "orders", ReferenceColumns: []string{"id"}}},
+	}
+	model.schema.indexesAll = map[string][]sharedsql.IndexInfo{
+		"orders": {
+			{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}},
+			{Name: "orders_billing_key", Unique: true, Columns: []string{"billing_id"}},
+		},
+		"customers": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+		"invoices":  {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
 	}
 	model = resizeModel(model, 80, 24)
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
 	model = updated.(Model)
-
-	// Locate the invoices card in the rendered diagram.
 	view := ansi.Strip(model.foreignKeysView())
-	titleLine, titleX := -1, -1
-	for index, line := range strings.Split(view, "\n") {
-		if column := strings.Index(line, "┌─ invoices"); column >= 0 {
-			titleLine, titleX = index, column
+
+	// Then — every connector between the hub and a neighbor carries the
+	// relation as endpoint labels: "(N)" beside the child (FK holder),
+	// "(1)" beside the parent (referenced table), and an upward arrow
+	// glyph between them pointing from (1) to (N). The card mappings stay
+	// on the cards.
+	for _, text := range []string{
+		"(N)",
+		"(1)",
+		"▲",
+		"customer_id → id",
+		"order_id → id",
+	} {
+		if !strings.Contains(view, text) {
+			t.Fatalf("diagram view = %q, want %q", view, text)
+		}
+	}
+	if strings.Contains(view, "─▶") {
+		t.Fatalf("diagram view = %q, the arrow must be the vertical glyph, not a horizontal text arrow", view)
+	}
+}
+
+func TestForeignKeysDiagram_marksUniqueRelationOneToOne(t *testing.T) {
+	// Given — a unique FK: a single unique index over exactly the FK
+	// columns turns the edge into 1:1.
+	model := readyModel(t)
+	model.SelectedTable, model.Tab, model.Focus = "users", tabForeignKeys, focusWorkspace
+	model.schema.foreignKeysAll = map[string][]sharedsql.ForeignKeyInfo{
+		"passports": {{Columns: []string{"user_id"}, ReferenceTable: "users", ReferenceColumns: []string{"id"}}},
+	}
+	model.schema.indexesAll = map[string][]sharedsql.IndexInfo{
+		"passports": {
+			{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}},
+			{Name: "passports_user_key", Unique: true, Columns: []string{"user_id"}},
+		},
+		"users": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+	}
+	model = resizeModel(model, 80, 24)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	model = updated.(Model)
+	view := ansi.Strip(model.foreignKeysView())
+
+	// Then — the 1:1 connector shows "(1)" at both ends: no N side at
+	// all.
+	if got := strings.Count(view, "(1)"); got != 2 {
+		t.Fatalf("diagram view = %q, want the 1:1 label at both ends", view)
+	}
+	for _, text := range []string{"(N)", "─▶"} {
+		if strings.Contains(view, text) {
+			t.Fatalf("diagram view = %q, must not claim an N relation", view)
+		}
+	}
+}
+
+func TestForeignKeysDiagram_bottomFanOutKeepsPerEdgeLabels(t *testing.T) {
+	// Given — the hub references two tables on the bottom side with
+	// different uniqueness: customers via a plain FK (N) and passports
+	// via a unique FK (1:1). The child is the shared hub, so the child
+	// labels stay per edge at the stub columns rather than collapsing
+	// onto the hub column.
+	model := readyModel(t)
+	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
+	model.schema.foreignKeysAll = map[string][]sharedsql.ForeignKeyInfo{
+		"orders": {
+			{Columns: []string{"customer_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}},
+			{Columns: []string{"passport_id"}, ReferenceTable: "passports", ReferenceColumns: []string{"id"}},
+		},
+	}
+	model.schema.indexesAll = map[string][]sharedsql.IndexInfo{
+		"orders": {
+			{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}},
+			{Name: "orders_passport_key", Unique: true, Columns: []string{"passport_id"}},
+		},
+		"customers": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+		"passports": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+	}
+	model = resizeModel(model, 80, 24)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
+	model = updated.(Model)
+	view := ansi.Strip(model.foreignKeysView())
+
+	// Then — the bottom fan-out keeps every endpoint label per edge at
+	// the stub columns, in the documented row order: merge bar, child
+	// row, arrow row, parent row, cards. The child row carries both
+	// labels ("(N)" for customers, "(1)" for the unique passports edge);
+	// the arrow row has one glyph per edge; the parent row one "(1)" per
+	// card.
+	lines := strings.Split(view, "\n")
+	find := func(fragment string) int {
+		for index, line := range lines {
+			if strings.Contains(line, fragment) {
+				return index
+			}
+		}
+		t.Fatalf("diagram view = %q, want a line containing %q", view, fragment)
+		return -1
+	}
+	mergeIndex := find("┴")
+	childIndex := find("(N)")
+	arrowIndex := find("▲")
+	// The child row carries the unique edge's "(1)" too, so the parent
+	// row is the row after the arrow row with one "(1)" per card, and
+	// the shaft row sits between arrow and parent.
+	parentIndex := -1
+	shaftIndex := -1
+	for index := arrowIndex + 1; index < len(lines); index++ {
+		if strings.Contains(lines[index], "│") && shaftIndex < 0 {
+			shaftIndex = index
+		}
+		if strings.Count(lines[index], "(1)") == 2 {
+			parentIndex = index
 			break
 		}
 	}
-	if titleLine < 0 {
-		t.Fatalf("diagram view = %q, want an invoices card", view)
+	if parentIndex < 0 {
+		t.Fatalf("diagram view = %q, want a parent row after the arrow row", view)
 	}
+	if !(mergeIndex < childIndex && childIndex < arrowIndex && arrowIndex < shaftIndex && shaftIndex < parentIndex) {
+		t.Fatalf("diagram view = %q, row order must be merge < child < arrow < parent, got %d < %d < %d < %d", view, mergeIndex, childIndex, arrowIndex, parentIndex)
+	}
+	if got := strings.Count(lines[childIndex], "(N)"); got != 1 {
+		t.Fatalf("child row = %q, want one (N) for the plain edge, got %d", lines[childIndex], got)
+	}
+	if got := strings.Count(lines[childIndex], "(1)"); got != 1 {
+		t.Fatalf("child row = %q, want one (1) for the unique edge, got %d", lines[childIndex], got)
+	}
+	if got := strings.Count(lines[arrowIndex], "▲"); got != 2 {
+		t.Fatalf("arrow row = %q, want one glyph per edge, got %d", lines[arrowIndex], got)
+	}
+	if got := strings.Count(lines[parentIndex], "(1)"); got != 2 {
+		t.Fatalf("parent row = %q, want one (1) per card, got %d", lines[parentIndex], got)
+	}
+	if !(parentIndex < find("customers") && parentIndex < find("passports")) {
+		t.Fatalf("diagram view = %q, the parent row must sit above the cards", view)
+	}
+	for _, text := range []string{"customer_id → id", "passport_id → id"} {
+		if !strings.Contains(view, text) {
+			t.Fatalf("diagram view = %q, want %q", view, text)
+		}
+	}
+}
 
-	// When — click the card.
-	updated, _ = model.Update(tea.MouseClickMsg{X: titleX + 3, Y: titleLine + 3, Button: tea.MouseLeft})
+func TestForeignKeysDiagram_omitsCardinalityWithoutIndexCache(t *testing.T) {
+	// Given — the same graph but no index cache: labels are omitted rather
+	// than guessed; the arrowheads stay.
+	model := readyModel(t)
+	model.SelectedTable, model.Tab, model.Focus = "orders", tabForeignKeys, focusWorkspace
+	model.schema.foreignKeysAll = map[string][]sharedsql.ForeignKeyInfo{
+		"orders": {{Columns: []string{"customer_id"}, ReferenceTable: "customers", ReferenceColumns: []string{"id"}}},
+	}
+	model = resizeModel(model, 80, 24)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'g', Text: "g"})
 	model = updated.(Model)
+	view := ansi.Strip(model.foreignKeysView())
 
-	// Then — the selection is database-qualified, so the schema tree's
-	// open-path highlight stays in sync.
-	if !strings.EqualFold(model.SelectedTable, "office.invoices") {
-		t.Fatalf("SelectedTable = %q, want office.invoices", model.SelectedTable)
+	// Then — without the index cache no cardinality is guessed: no
+	// endpoint labels and no arrow glyph; the mapping stays.
+	for _, text := range []string{"(N)", "(1)", "▲"} {
+		if strings.Contains(view, text) {
+			t.Fatalf("diagram view = %q, must not render %q without the index cache", view, text)
+		}
+	}
+	if !strings.Contains(view, "customer_id → id") {
+		t.Fatalf("diagram view = %q, want the column mapping", view)
 	}
 }
 

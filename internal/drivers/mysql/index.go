@@ -40,14 +40,17 @@ func (s *Service) ListIndexes(ctx context.Context, table string) ([]sharedsql.In
 	return indexes, nil
 }
 
-// ListIndexesAll returns every index in the connected database, keyed by
-// the table's bare name.
+// ListIndexesAll returns every index in the connected server, keyed by
+// the indexed table's qualified name (database.table). It scans every
+// non-system schema instead of relying on the DSN's default database, so
+// diagrams keep their cardinality data no matter which database the user
+// browses — matching how PostgreSQL keys its bulk maps.
 func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.IndexInfo, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT table_name, index_name, non_unique, column_name
+		SELECT table_schema, table_name, index_name, non_unique, column_name
 		FROM information_schema.statistics
-		WHERE BINARY table_schema = BINARY DATABASE()
-		ORDER BY table_name, index_name, seq_in_index`)
+		WHERE table_schema NOT IN ('mysql', 'information_schema', 'performance_schema', 'sys')
+		ORDER BY table_schema, table_name, index_name, seq_in_index`)
 	if err != nil {
 		return nil, fmt.Errorf("reading indexes: %w", err)
 	}
@@ -60,14 +63,15 @@ func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]sharedsql.In
 		}
 	}
 	for rows.Next() {
-		var table, name, column string
+		var schema, table, name, column string
 		var nonUnique int
-		if err := rows.Scan(&table, &name, &nonUnique, &column); err != nil {
+		if err := rows.Scan(&schema, &table, &name, &nonUnique, &column); err != nil {
 			return nil, sharedsql.CloseRows(rows, "scanning indexes", err)
 		}
-		if info == nil || table != lastTable || name != lastName {
+		qualified := schema + "." + table
+		if info == nil || qualified != lastTable || name != lastName {
 			finish()
-			lastTable, lastName = table, name
+			lastTable, lastName = qualified, name
 			info = &sharedsql.IndexInfo{Name: sharedsql.SanitizeDisplay(name), Unique: nonUnique == 0 && name != "PRIMARY", PrimaryKey: name == "PRIMARY"}
 		}
 		info.Columns = append(info.Columns, sharedsql.SanitizeDisplay(column))

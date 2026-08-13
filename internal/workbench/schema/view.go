@@ -149,10 +149,14 @@ func viewportSlice(view string, offset int, layout uikit.Layout) string {
 }
 
 // relationshipEdge describes one neighbor of the selected table and every
-// foreign key connecting the two tables.
+// foreign key connecting the two tables. unique is the card-level FK
+// uniqueness (all FKs between the two tables unique → 1:1); uniqueOK is
+// false when the index cache cannot answer.
 type relationshipEdge struct {
-	table string   // neighbor table name
-	pairs []string // "fk column → referenced column" labels
+	table    string   // neighbor table name
+	pairs    []string // "fk column → referenced column" labels
+	unique   bool
+	uniqueOK bool
 }
 
 // RelationshipView renders the relationship diagram, falling back to the
@@ -165,18 +169,9 @@ func (m Model) RelationshipView(layout uikit.Layout, snapshot Snapshot) string {
 	return strings.Join(art.lines, "\n")
 }
 
-// diagramCard describes one rendered card of a focus diagram: its table
-// and its rectangle in diagram coordinates (0,0 = the first diagram line).
-type diagramCard struct {
-	table      string
-	x, y, w, h int
-}
-
-// diagramArt is a rendered focus diagram: the output lines and every
-// card's rectangle for mouse hit-testing.
+// diagramArt is a rendered focus diagram: the output lines.
 type diagramArt struct {
 	lines []string
-	cards []diagramCard
 }
 
 // diagramFits reports whether the diagram fits the workspace viewport.
@@ -191,13 +186,11 @@ type diagramNode struct {
 	rows  []string
 }
 
-// diagramLane is one rendered ring level: the lane rows, the column of
-// each card's center (where its connector attaches), and the cards'
-// lane-local rectangles.
+// diagramLane is one rendered ring level: the lane rows and the column of
+// each card's center (where its connector attaches).
 type diagramLane struct {
 	rows  []string
 	stubs []int
-	cards []diagramCard
 }
 
 // relationshipDiagramArt renders the selected table as the hub of a focus
@@ -208,14 +201,22 @@ func (m Model) relationshipDiagramArt(snapshot Snapshot) diagramArt {
 	top, bottom := m.relationshipRings(snapshot)
 	hub := m.relationshipCenterCard(len(bottom) > 0, snapshot)
 	topLanes := make([]diagramLane, len(top))
+	topLabels := make([]*connectorLabels, len(top))
 	for level, edges := range top {
 		topLanes[level] = diagramLaneFor(relationshipNodes(edges))
+		if level == 0 {
+			topLabels[level] = relationshipLaneLabels(edges)
+		}
 	}
 	bottomLanes := make([]diagramLane, len(bottom))
+	bottomLabels := make([]*connectorLabels, len(bottom))
 	for level, edges := range bottom {
 		bottomLanes[level] = diagramLaneFor(relationshipNodes(edges))
+		if level == 0 {
+			bottomLabels[level] = relationshipLaneLabels(edges)
+		}
 	}
-	return focusDiagramArt(topLanes, bottomLanes, hub, snapshot.SelectedTable)
+	return focusDiagramArt(topLanes, bottomLanes, hub, topLabels, bottomLabels)
 }
 
 // relationshipRings returns the selected table's focus rings: top levels
@@ -234,11 +235,11 @@ func (m Model) relationshipRings(snapshot Snapshot) (top, bottom [][]relationshi
 		topNames, bottomNames := ringsFromMap(snapshot.ForeignKeysAll, hub, depth)
 		top = make([][]relationshipEdge, len(topNames))
 		for level, names := range topNames {
-			top[level] = relationshipEdgesForLevel(names, hub, snapshot.ForeignKeysAll, true, level == 0)
+			top[level] = relationshipEdgesForLevel(names, hub, snapshot.ForeignKeysAll, snapshot.IndexesAll, true, level == 0)
 		}
 		bottom = make([][]relationshipEdge, len(bottomNames))
 		for level, names := range bottomNames {
-			bottom[level] = relationshipEdgesForLevel(names, hub, snapshot.ForeignKeysAll, false, level == 0)
+			bottom[level] = relationshipEdgesForLevel(names, hub, snapshot.ForeignKeysAll, snapshot.IndexesAll, false, level == 0)
 		}
 		return top, bottom
 	}
@@ -255,8 +256,10 @@ func (m Model) relationshipRings(snapshot Snapshot) (top, bottom [][]relationshi
 // relationshipEdgesForLevel builds one ring level's edges from the
 // whole-schema map. Incoming levels list tables referencing the hub;
 // labeled levels carry the FK column mappings to the hub (the hub's own
-// list only when it declares foreign keys in the map).
-func relationshipEdgesForLevel(names []string, hub string, foreignKeys map[string][]sharedsql.ForeignKeyInfo, incoming, labeled bool) []relationshipEdge {
+// list only when it declares foreign keys in the map). Each level-0 edge
+// also records the card-level FK uniqueness: 1:1 only when every FK
+// between the two tables is unique.
+func relationshipEdgesForLevel(names []string, hub string, foreignKeys map[string][]sharedsql.ForeignKeyInfo, indexes map[string][]sharedsql.IndexInfo, incoming, labeled bool) []relationshipEdge {
 	edges := make([]relationshipEdge, 0, len(names))
 	for _, name := range names {
 		edge := relationshipEdge{table: name}
@@ -264,22 +267,123 @@ func relationshipEdgesForLevel(names []string, hub string, foreignKeys map[strin
 			edges = append(edges, edge)
 			continue
 		}
+		unique, uniqueOK := true, false
+		appendFK := func(foreignKey sharedsql.ForeignKeyInfo) {
+			edge.pairs = appendUnique(edge.pairs, []string{relationshipPairLabel(foreignKey)})
+			u, ok := fkCardinality(indexes, foreignKeyTable(foreignKey, name, hub, incoming), foreignKey.Columns)
+			uniqueOK = uniqueOK || ok
+			unique = unique && u
+		}
 		if incoming {
 			for _, foreignKey := range foreignKeys[name] {
 				if strings.EqualFold(foreignKey.ReferenceTable, hub) {
-					edge.pairs = appendUnique(edge.pairs, []string{relationshipPairLabel(foreignKey)})
+					appendFK(foreignKey)
 				}
 			}
 		} else if key := diagramTableKey(foreignKeys, hub); key != "" {
 			for _, foreignKey := range foreignKeys[key] {
 				if strings.EqualFold(foreignKey.ReferenceTable, name) {
-					edge.pairs = appendUnique(edge.pairs, []string{relationshipPairLabel(foreignKey)})
+					appendFK(foreignKey)
 				}
 			}
 		}
+		edge.unique, edge.uniqueOK = unique, uniqueOK
 		edges = append(edges, edge)
 	}
 	return edges
+}
+
+// foreignKeyTable returns the FK holder for a cardinality lookup: the
+// card on incoming edges (it declares the FK), the hub on outgoing edges.
+func foreignKeyTable(foreignKey sharedsql.ForeignKeyInfo, name, hub string, incoming bool) string {
+	if incoming {
+		return name
+	}
+	return hub
+}
+
+// connectorLabels are the level-0 edge labels of one side: the child-end
+// ("(N)" unless the FK columns are unique, then "(1)") and parent-end
+// ("(1)") labels per edge. The arrow glyph between them always points
+// from the parent (the referenced table) to the child (the FK holder) —
+// "(1)---->(N)" — and the parent is always the lower of the two tables,
+// so the arrow reads upward. Both ends stay per edge so fan-outs with
+// mixed uniqueness never mislabel a shared hub column.
+//
+// Placement differs per side: top sides (child = cards) render the child
+// labels at the stub columns beside the cards and the parent label at
+// the hub column beside the hub; bottom sides (child = hub, parent =
+// cards) render both rows at the stub columns — the child row on the hub
+// side of the arrow, the parent row beside the cards.
+type connectorLabels struct {
+	child  []string
+	parent []string
+}
+
+// relationshipLaneLabels builds the per-edge endpoint labels for one
+// side. It returns nil when the index cache cannot answer any edge, so
+// no label rows are rendered.
+func relationshipLaneLabels(edges []relationshipEdge) *connectorLabels {
+	labels := &connectorLabels{
+		child:  make([]string, len(edges)),
+		parent: make([]string, len(edges)),
+	}
+	for index, edge := range edges {
+		if !edge.uniqueOK {
+			return nil
+		}
+		if edge.unique {
+			labels.child[index] = "(1)"
+		} else {
+			labels.child[index] = "(N)"
+		}
+		labels.parent[index] = "(1)"
+	}
+	return labels
+}
+
+// fkCardinality reports whether the referencing table's foreign-key
+// columns are unique — a unique or primary index over exactly those
+// columns — which turns the N:1 edge into 1:1. ok is false only when the
+// index cache is not loaded; a loaded cache keys every table (SQLite) or
+// every indexed table (MySQL/PostgreSQL), so a missing key means the
+// table has no indexes and its FK columns cannot be unique.
+func fkCardinality(indexes map[string][]sharedsql.IndexInfo, table string, columns []string) (unique, ok bool) {
+	if len(indexes) == 0 {
+		return false, false
+	}
+	key := diagramIndexKey(indexes, table)
+	if key == "" {
+		return false, true
+	}
+	for _, index := range indexes[key] {
+		if (index.Unique || index.PrimaryKey) && sameColumnSet(index.Columns, columns) {
+			return true, true
+		}
+	}
+	return false, true
+}
+
+// sameColumnSet reports whether two column lists cover the same set,
+// case-insensitively and order-insensitively (a composite unique index on
+// (a, b) still guarantees uniqueness of the (b, a) key).
+func sameColumnSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, column := range got {
+		found := false
+		for _, other := range want {
+			if strings.EqualFold(column, other) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // ringsFromMap computes the focus rings around hub in the whole-schema
@@ -457,8 +561,9 @@ func diagramIndexKey(indexes map[string][]sharedsql.IndexInfo, table string) str
 
 // focusDiagramArt emits the hub-and-rings diagram: top lanes above the
 // hub, bottom lanes below, every lane's stubs merging into the centers of
-// the next-inner lane (the hub column for the innermost ring).
-func focusDiagramArt(top, bottom []diagramLane, hub []string, hubTable string) diagramArt {
+// the next-inner lane (the hub column for the innermost ring). The
+// innermost rings carry per-edge cardinality labels beside their cards.
+func focusDiagramArt(top, bottom []diagramLane, hub []string, topLabels, bottomLabels []*connectorLabels) diagramArt {
 	centerWidth := ansi.StringWidth(hub[0])
 	left, right := -centerWidth/2, centerWidth-centerWidth/2
 	for _, lane := range top {
@@ -486,11 +591,13 @@ func focusDiagramArt(top, bottom []diagramLane, hub []string, hubTable string) d
 			inner := top[level-1]
 			centers = shiftStubs(inner.stubs, centerCol-laneMid(inner))
 		}
-		appendLane(&art, top[level], centers, centerCol, width, true)
+		labels := (*connectorLabels)(nil)
+		if len(topLabels) > level {
+			labels = topLabels[level]
+		}
+		appendLane(&art, top[level], centers, centerCol, width, true, labels)
 	}
 	hubShift := centerCol - centerWidth/2
-	y := len(art.lines)
-	art.cards = append(art.cards, diagramCard{table: hubTable, x: hubShift, y: y, w: centerWidth, h: len(hub)})
 	art.lines = append(art.lines, shiftRows(hub, hubShift, width)...)
 	// Bottom side, innermost ring first: each lane merges from the ring
 	// above, the innermost ring from the hub column.
@@ -500,36 +607,88 @@ func focusDiagramArt(top, bottom []diagramLane, hub []string, hubTable string) d
 			inner := bottom[level-1]
 			centers = shiftStubs(inner.stubs, centerCol-laneMid(inner))
 		}
-		appendLane(&art, bottom[level], centers, centerCol, width, false)
+		labels := (*connectorLabels)(nil)
+		if len(bottomLabels) > level {
+			labels = bottomLabels[level]
+		}
+		appendLane(&art, bottom[level], centers, centerCol, width, false, labels)
 	}
 	return art
 }
 
-// appendLane shifts one ring lane into the diagram, records its cards, and
-// emits its merge row: after the lane rows on the top side (stubs reach
-// down into the ring below), before them on the bottom side.
-func appendLane(art *diagramArt, lane diagramLane, centers []int, centerCol, width int, top bool) {
+// appendLane shifts one ring lane into the diagram and emits its merge
+// row: after the lane rows on the top side (stubs reach down into the
+// ring below), before them on the bottom side. labels, when non-nil,
+// renders the level-0 cardinality rows: the child-end labels at the stub
+// columns, an upward arrow glyph on the connector path, and the
+// parent-end labels at the hub column (top) or the stub columns (bottom)
+// — the parent (1) is always the lower table, so the arrow always points
+// from (1) to (N).
+func appendLane(art *diagramArt, lane diagramLane, centers []int, centerCol, width int, top bool, labels *connectorLabels) {
 	shift := centerCol - laneMid(lane)
 	stubs := shiftStubs(lane.stubs, shift)
 	merge := func() {
 		if len(stubs) > 1 {
 			art.lines = append(art.lines, mergeRow(stubs, centers, width, top))
-		} else {
+		} else if labels == nil {
 			art.lines = append(art.lines, stubRow(stubs, width))
 		}
 	}
+	childRow := func() {
+		if labels != nil {
+			art.lines = append(art.lines, connectorLabelRow(labels.child, stubs, width))
+		}
+	}
+	arrowAndParent := func(columns []int) {
+		if labels == nil {
+			return
+		}
+		glyphRow := func(glyph rune) {
+			line := []rune(strings.Repeat(" ", width))
+			for _, column := range columns {
+				if column >= 0 && column < width {
+					line[column] = glyph
+				}
+			}
+			art.lines = append(art.lines, string(line))
+		}
+		// Upward arrow from the parent (1) to the child (N): head at the
+		// top, shaft running down to the parent-end labels.
+		glyphRow('▲')
+		glyphRow('│')
+		art.lines = append(art.lines, connectorLabelRow(labels.parent, columns, width))
+	}
 	if !top {
 		merge()
+		childRow()
+		arrowAndParent(stubs)
 	}
-	rows := shiftRows(lane.rows, shift, width)
-	y := len(art.lines)
-	for _, card := range lane.cards {
-		art.cards = append(art.cards, diagramCard{table: card.table, x: card.x + shift, y: y, w: card.w, h: card.h})
-	}
-	art.lines = append(art.lines, rows...)
+	art.lines = append(art.lines, shiftRows(lane.rows, shift, width)...)
 	if top {
+		childRow()
 		merge()
+		arrowAndParent([]int{centerCol})
 	}
+}
+
+// connectorLabelRow centers one cardinality label on each of the lane's
+// stub columns, between the lane and its connector.
+func connectorLabelRow(labels []string, stubs []int, width int) string {
+	line := []rune(strings.Repeat(" ", width))
+	for index, label := range labels {
+		if label == "" || index >= len(stubs) {
+			continue
+		}
+		runes := []rune(label)
+		start := stubs[index] - len(runes)/2
+		start = min(max(start, 0), width-len(runes))
+		for offset, character := range runes {
+			if start+offset >= 0 && start+offset < width {
+				line[start+offset] = character
+			}
+		}
+	}
+	return string(line)
 }
 
 // laneMid returns the lane's midpoint column: the average of the
@@ -539,20 +698,18 @@ func laneMid(lane diagramLane) int {
 }
 
 // diagramLaneFor lays one ring level's cards out side by side and returns
-// the rendered rows, each card's center column, and its rectangle.
+// the rendered rows and each card's center column.
 func diagramLaneFor(nodes []diagramNode) diagramLane {
 	if len(nodes) == 0 {
 		return diagramLane{}
 	}
 	cards := make([][]string, len(nodes))
 	stubs := make([]int, len(nodes))
-	positions := make([]diagramCard, len(nodes))
 	width := 0
 	for index, node := range nodes {
 		cards[index] = boxCard(node.table, node.rows, false, 0, false)
 		cardWidth := ansi.StringWidth(cards[index][0])
 		stubs[index] = width + cardWidth/2
-		positions[index] = diagramCard{table: node.table, x: width, y: 0, w: cardWidth, h: len(cards[index])}
 		width += cardWidth + 2
 	}
 	height := 0
@@ -575,7 +732,7 @@ func diagramLaneFor(nodes []diagramNode) diagramLane {
 		}
 		rows[row] = line.String()
 	}
-	return diagramLane{rows: rows, stubs: stubs, cards: positions}
+	return diagramLane{rows: rows, stubs: stubs}
 }
 
 // relationshipNodes converts one ring level's edges into card nodes; the
@@ -835,7 +992,7 @@ func (m Model) indexDiagramArt(snapshot Snapshot) diagramArt {
 	for level, edges := range bottom {
 		bottomLanes[level] = diagramLaneFor(m.indexNodes(edges, snapshot))
 	}
-	return focusDiagramArt(topLanes, bottomLanes, boxCard(hub, hubRows, true, 0, len(bottomLanes) > 0), hub)
+	return focusDiagramArt(topLanes, bottomLanes, boxCard(hub, hubRows, true, 0, len(bottomLanes) > 0), nil, nil)
 }
 
 // IndexDiagramView renders the indexes-tab focus diagram, falling back to
@@ -909,35 +1066,4 @@ func indexCardRows(indexes []sharedsql.IndexInfo) []string {
 		rows = append(rows, row)
 	}
 	return rows
-}
-
-// DiagramCardAt returns the table name rendered at the given diagram-local
-// coordinate (0,0 = the first diagram line) in the active diagram mode, or
-// "" when no card is under the point. MySQL card names are bare, so the
-// returned name is qualified with the connected database.
-func (m Model) DiagramCardAt(x, y int, layout uikit.Layout, snapshot Snapshot) string {
-	var art diagramArt
-	switch {
-	case m.Structure.RelationshipDiagram:
-		art = m.relationshipDiagramArt(snapshot)
-	case m.Structure.IndexDiagram:
-		art = m.indexDiagramArt(snapshot)
-	default:
-		return ""
-	}
-	if !diagramFits(art, layout) {
-		return "" // the fallback list is not the diagram; no hit-testing
-	}
-	for _, card := range art.cards {
-		if x >= card.x && x < card.x+card.w && y >= card.y && y < card.y+card.h {
-			table := card.table
-			if snapshot.Database.Product == "MySQL" && !strings.Contains(table, ".") {
-				if database := m.mysqlDatabase(snapshot); database != "" {
-					table = database + "." + table
-				}
-			}
-			return table
-		}
-	}
-	return ""
 }

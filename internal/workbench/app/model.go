@@ -693,32 +693,6 @@ func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
 	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
 }
 
-// selectSchemaTableFromDiagram switches the focused table from a diagram
-// card click: the current tab and the diagram mode stay active, so the
-// focus follows the click (Truss-style) instead of bouncing to the landing
-// tab.
-func (m *Model) selectSchemaTableFromDiagram(table string) tea.Cmd {
-	if strings.EqualFold(table, m.SelectedTable) {
-		return nil
-	}
-	tab := m.Tab
-	diagramFK := m.schema.component.Structure.RelationshipDiagram
-	diagramIndexes := m.schema.component.Structure.IndexDiagram
-	m.SelectTable(table)
-	m.Tab = tab
-	m.browse.component.Settings = browse.Settings{}
-	m.schema.component.Structure.Columns = nil
-	m.browse.component.Structure = nil
-	m.browse.component.Page = 0
-	m.schema.component.Structure.ForeignKeyInfo = nil
-	m.schema.component.Structure.ReferencingForeignKeyInfo = nil
-	m.schema.component.Structure.RelationshipDiagram = diagramFK
-	m.schema.component.Structure.IndexDiagram = diagramIndexes
-	m.browse.component.Pending = true
-	m.focusActiveTable()
-	return tea.Batch(m.rebuildSchemaTree(), m.loadTableInfo(), m.loadIndexes(), m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadPendingBrowse())
-}
-
 // selectSchemaTable opens the table of the given sidebar item.
 func (m *Model) selectSchemaTable(item schema.Item) tea.Cmd {
 	return m.selectSchemaTableBy(m.schemaTable(item))

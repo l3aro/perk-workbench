@@ -148,3 +148,50 @@ func TestMergeRow_singleStubJogsToNearestCenter(t *testing.T) {
 		t.Fatalf("mergeRow = %q, want %q", got, want)
 	}
 }
+
+func TestFkCardinality_readsUniqueIndexes(t *testing.T) {
+	indexes := map[string][]sharedsql.IndexInfo{
+		"orders": {
+			{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}},
+			{Name: "orders_billing_key", Unique: true, Columns: []string{"billing_id"}},
+			{Name: "orders_composite", Unique: true, Columns: []string{"a", "b"}},
+		},
+		"invoices": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+	}
+	unique, ok := fkCardinality(indexes, "orders", []string{"billing_id"})
+	if !unique || !ok {
+		t.Fatalf("billing_id = unique %v ok %v, want unique", unique, ok)
+	}
+	unique, ok = fkCardinality(indexes, "orders", []string{"customer_id"})
+	if unique || !ok {
+		t.Fatalf("customer_id = unique %v ok %v, want non-unique", unique, ok)
+	}
+	// A composite unique index guarantees uniqueness regardless of column
+	// order (and case).
+	unique, ok = fkCardinality(indexes, "orders", []string{"B", "A"})
+	if !unique || !ok {
+		t.Fatalf("(b, a) = unique %v ok %v, want unique via (a, b)", unique, ok)
+	}
+	unique, ok = fkCardinality(indexes, "invoices", []string{"order_id"})
+	if unique || !ok {
+		t.Fatalf("invoices.order_id = unique %v ok %v, want non-unique", unique, ok)
+	}
+	// Unknown tables: a loaded cache keys every indexed table, so a
+	// missing key means the table has no indexes — its FK columns cannot
+	// be unique, and the edge is N─▶1 (not unanswered).
+	unique, ok = fkCardinality(indexes, "unknown", []string{"id"})
+	if unique || !ok {
+		t.Fatalf("unknown table = unique %v ok %v, want non-unique and answered", unique, ok)
+	}
+	// A table with an empty index list is equally non-unique.
+	indexes["plain"] = []sharedsql.IndexInfo{}
+	unique, ok = fkCardinality(indexes, "plain", []string{"id"})
+	if unique || !ok {
+		t.Fatalf("index-less table = unique %v ok %v, want non-unique and answered", unique, ok)
+	}
+	// A nil cache is not loaded: the answer is unknown.
+	unique, ok = fkCardinality(nil, "orders", []string{"id"})
+	if ok {
+		t.Fatalf("nil cache = unique %v ok %v, want unanswered", unique, ok)
+	}
+}
