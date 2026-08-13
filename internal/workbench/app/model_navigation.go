@@ -101,7 +101,7 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 }
 
 func (m *Model) toggleTab(forward bool) tea.Cmd {
-	m.Workflow.ToggleTab(forward)
+	m.Tab = cycleWorkspaceTab(m.workspaceTabs(), m.Tab, forward)
 	m.focusActiveTable()
 	return m.loadPendingBrowse()
 }
@@ -137,6 +137,8 @@ func (m *Model) focusActiveTable() {
 		m.schema.component.Structure.Indexes.Focus()
 	case tabForeignKeys:
 		m.schema.component.Structure.ForeignKeys.Focus()
+	case tabDiagram:
+		// The full-ERD pane owns no table; every table is blurred.
 	}
 }
 

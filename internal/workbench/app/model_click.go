@@ -244,19 +244,19 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	// The workspace pane has a RoundedBorder (top border at contentY=0).
 	// Tab row is inside the border at contentY=1.
 	if y == 1 {
-		tabNames := []workspaceTab{tabSQL, tabBrowse, tabStructure, tabIndexes, tabForeignKeys}
-		tabWidths := []int{5, 8, 9, 9, 15}
+		tabs := m.workspaceTabs()
+		_, widths := workspaceTabMeta(tabs)
 		cx := 2 // pane left border (1) + left padding (1)
-		for i, w := range tabWidths {
-			if x >= cx && x < cx+w {
-				if m.Tab != tabNames[i] {
-					m.Tab = tabNames[i]
+		for i, tab := range tabs {
+			if x >= cx && x < cx+widths[i] {
+				if m.Tab != tab {
+					m.Tab = tab
 					m.focusActiveTable()
 					return m, m.loadPendingBrowse()
 				}
 				return m, nil
 			}
-			cx += w
+			cx += widths[i]
 		}
 	}
 	return m, nil

@@ -443,12 +443,13 @@ func (m Model) chatContentView() string {
 }
 
 func (m Model) workspaceView() string {
-	tabs := []string{"SQL", "Browse", "Columns", "Indexes", "Foreign Keys"}
-	for index := range tabs {
-		if workspaceTab(index) == m.Tab {
-			tabs[index] = connectionActionSelectedStyle.Render(tabs[index])
+	tabs := m.workspaceTabs()
+	labels, _ := workspaceTabMeta(tabs)
+	for index, tab := range tabs {
+		if tab == m.Tab {
+			labels[index] = connectionActionSelectedStyle.Render(labels[index])
 		} else {
-			tabs[index] = statusStyle.Render(tabs[index])
+			labels[index] = statusStyle.Render(labels[index])
 		}
 	}
 	var content string
@@ -463,6 +464,8 @@ func (m Model) workspaceView() string {
 		content = m.indexesView()
 	case tabForeignKeys:
 		content = m.foreignKeysView()
+	case tabDiagram:
+		content = m.diagramView()
 	}
 	modeLine := m.modeBadge()
 	if m.layout.compact && m.SelectedTable != "" {
@@ -470,12 +473,12 @@ func (m Model) workspaceView() string {
 	}
 	footer := modeLine + " " + statusStyle.Render("L/H tabs")
 	if m.formTabActive() {
-		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, formButtonsBar(m.overlay.formMode.ButtonsFocused, m.overlay.formMode.ButtonChoice), "", footer)
+		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, labels...), "", content, formButtonsBar(m.overlay.formMode.ButtonsFocused, m.overlay.formMode.ButtonChoice), "", footer)
 	}
 	// A blank line separates the tab's status line from the mode/tab-hint
 	// footer; the browse tab renders that gap again between its status
 	// line and the pager button row (see browseView).
-	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, tabs...), "", content, "", footer)
+	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, labels...), "", content, "", footer)
 }
 
 func (m Model) sqlPaneView() string {
@@ -524,6 +527,13 @@ func (m Model) structureView() string {
 func (m Model) browseView() string {
 	m.browse.component.SetPage(m.BrowsePage)
 	return m.browse.component.View(browseLayout(m))
+}
+
+// diagramView renders the full-scope relationship diagram for database and
+// schema targets. The scope renderer lands in a later change; until then
+// the tab shows the empty state that renderer replaces.
+func (m Model) diagramView() string {
+	return chrome.PaneStatus("", statusStyle.Render("Diagram"), m.layout.tableViewportWidth)
 }
 
 // browseStatusSplit reports whether the browse status line renders on two

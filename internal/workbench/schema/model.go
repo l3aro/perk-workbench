@@ -49,6 +49,19 @@ type Event = any
 // in the workflow and load its structure, index, and foreign-key data.
 type TableSelected struct{ Table string }
 
+// DatabaseSelected asks the root to open the database scope of the sidebar
+// root: clear the table workspace and target the database. SQLite roots
+// never emit it (their workspace stays SQL-only until a table opens), and
+// PostgreSQL roots only when they are the connected database.
+type DatabaseSelected struct{ Database string }
+
+// SchemaSelected asks the root to open the PostgreSQL schema scope of the
+// sidebar: clear the table workspace and target the schema.
+type SchemaSelected struct {
+	Database string
+	Schema   string
+}
+
 // QueryRequested asks the root to run a statement through its query
 // lifecycle; ReadOnly marks a schema mutation whose success refreshes the
 // sidebar.

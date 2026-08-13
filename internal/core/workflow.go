@@ -36,7 +36,29 @@ const (
 	TabStructure
 	TabIndexes
 	TabForeignKeys
+	TabDiagram
 )
+
+// WorkspaceTargetKind is the sidebar scope the workspace tabs serve.
+type WorkspaceTargetKind uint8
+
+const (
+	WorkspaceNone WorkspaceTargetKind = iota
+	WorkspaceDatabase
+	WorkspaceSchema
+	WorkspaceTable
+)
+
+// WorkspaceTarget is the workspace's active scope: no selection, a
+// database, a PostgreSQL schema, or a qualified table/collection. The tab
+// policy derives the visible tabs from it; SelectedTable mirrors the table
+// kind for the existing table features.
+type WorkspaceTarget struct {
+	Kind     WorkspaceTargetKind
+	Database string
+	Schema   string
+	Table    string
+}
 
 type Query struct {
 	RequestID uint64
@@ -46,15 +68,16 @@ type Query struct {
 }
 
 type Workflow struct {
-	State         State
-	Focus         Focus
-	Tab           Tab
-	Target        string
-	Status        string
-	ReadOnly      bool
-	Database      sharedsql.Service
-	SelectedTable string
-	BrowsePage    int
+	State           State
+	Focus           Focus
+	Tab             Tab
+	Target          string
+	Status          string
+	ReadOnly        bool
+	Database        sharedsql.Service
+	SelectedTable   string
+	WorkspaceTarget WorkspaceTarget
+	BrowsePage      int
 
 	requestID       uint64
 	activeRequestID uint64
@@ -150,8 +173,26 @@ func (w *Workflow) RecoverToPicker(status string) {
 	w.statusRevision++
 }
 
+// SelectTable opens the qualified table in the workspace: the table target
+// is set, SelectedTable retained for the existing table features, the
+// browse page reset, and the workspace focused on the structure tab.
 func (w *Workflow) SelectTable(table string) {
 	w.SelectedTable, w.BrowsePage, w.Tab, w.Focus = table, 0, TabStructure, FocusWorkspace
+	w.WorkspaceTarget = WorkspaceTarget{Kind: WorkspaceTable, Table: table}
+}
+
+// SelectDatabase opens a database scope: the table selection is cleared,
+// the target set, and the workspace lands on the Browse tab.
+func (w *Workflow) SelectDatabase(database string) {
+	w.SelectedTable, w.BrowsePage, w.Tab, w.Focus = "", 0, TabBrowse, FocusWorkspace
+	w.WorkspaceTarget = WorkspaceTarget{Kind: WorkspaceDatabase, Database: database}
+}
+
+// SelectSchema opens a schema scope: the table selection is cleared, the
+// target set, and the workspace lands on the Browse tab.
+func (w *Workflow) SelectSchema(database, schema string) {
+	w.SelectedTable, w.BrowsePage, w.Tab, w.Focus = "", 0, TabBrowse, FocusWorkspace
+	w.WorkspaceTarget = WorkspaceTarget{Kind: WorkspaceSchema, Database: database, Schema: schema}
 }
 
 func (w *Workflow) ChangeBrowsePage(delta int) bool {
@@ -161,12 +202,4 @@ func (w *Workflow) ChangeBrowsePage(delta int) bool {
 	}
 	w.BrowsePage = next
 	return true
-}
-
-func (w *Workflow) ToggleTab(forward bool) {
-	if forward {
-		w.Tab = (w.Tab + 1) % 5
-		return
-	}
-	w.Tab = (w.Tab + 4) % 5
 }

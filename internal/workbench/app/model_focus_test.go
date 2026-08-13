@@ -44,6 +44,7 @@ func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
 func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
+	model.SelectTable("projects")
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 	model.queryLog.editor.setValue("select ")
 
@@ -125,6 +126,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 func TestWorkspace_HLNavigateTabs(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
+	model.SelectTable("projects")
 	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
 
 	// When

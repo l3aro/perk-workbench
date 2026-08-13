@@ -281,22 +281,43 @@ func (m Model) contextMenuKey(layout uikit.Layout, snapshot Snapshot) (Model, Ev
 
 // SchemaSelect runs the schema.select_table binding: toggling a schema or
 // root (with the accordion), reconnecting to a non-connected PostgreSQL
-// root, or selecting a table.
+// root, or selecting a table. Root and schema toggles also emit the scope
+// selection event so the workspace targets the database or schema.
 func (m Model) SchemaSelect(snapshot Snapshot) (Model, Event, tea.Cmd) {
 	item, ok := m.List.SelectedItem().(Item)
 	if !ok {
 		return m, nil, nil
 	}
 	if item.Kind == "schema" {
-		return m, nil, treeToggleCmd(m.ToggleSchema(item.Database, item.Schema, snapshot), m.RebuildTree(snapshot))
+		cmd := treeToggleCmd(m.ToggleSchema(item.Database, item.Schema, snapshot), m.RebuildTree(snapshot))
+		return m, SchemaSelected{Database: item.Database, Schema: item.Schema}, cmd
 	}
 	if item.Root {
 		if snapshot.Database.Product == "PostgreSQL" && !m.databaseRootConnected(item.Database, snapshot) {
 			return m, ReconnectRequested{Database: item.Database}, nil
 		}
-		return m, nil, treeToggleCmd(m.ToggleDatabase(item.Database, snapshot), m.RebuildTree(snapshot))
+		cmd := treeToggleCmd(m.ToggleDatabase(item.Database, snapshot), m.RebuildTree(snapshot))
+		if !m.databaseRootSelectable(item.Database, snapshot) {
+			return m, nil, cmd
+		}
+		return m, DatabaseSelected{Database: item.Database}, cmd
 	}
 	return m, TableSelected{Table: m.TableName(item, snapshot)}, nil
+}
+
+// databaseRootSelectable reports whether a database root can become the
+// workspace target: SQLite (and unknown) roots never do — their workspace
+// stays SQL-only until a table opens — and PostgreSQL roots only when they
+// are the connected database.
+func (m Model) databaseRootSelectable(database string, snapshot Snapshot) bool {
+	switch snapshot.Database.Product {
+	case "MySQL", "MongoDB":
+		return true
+	case "PostgreSQL":
+		return m.databaseRootConnected(database, snapshot)
+	default: // SQLite and unknown products: no scope targets
+		return false
+	}
 }
 
 // SchemaExpand expands the selected node when collapsed (with the accordion
@@ -395,9 +416,9 @@ func (m Model) schemaSelectParent(item Item, snapshot Snapshot) (Model, tea.Cmd)
 // HandleSchemaClick maps a schema-pane click to its item. A double-click on
 // a PostgreSQL root that is not the connected database reconnects to it
 // (matching the recent list's double-click-to-load); any other root or
-// schema click toggles the subtree, and a table click selects it.
-// recordFormClick is the root's double-click detector, consulted only for
-// root items like the original click path.
+// schema click toggles the subtree and emits the scope selection event, and
+// a table click selects it. recordFormClick is the root's double-click
+// detector, consulted only for root items like the original click path.
 func (m Model) HandleSchemaClick(x, contentY int, layout uikit.Layout, snapshot Snapshot, recordFormClick func(x, y int) bool) (Model, Event, tea.Cmd) {
 	// The filter box is the first body rows; clicking it focuses the
 	// input for typing.
@@ -413,13 +434,18 @@ func (m Model) HandleSchemaClick(x, contentY int, layout uikit.Layout, snapshot 
 	// Item clicks leave filter editing so navigation keys work again.
 	m.Filter.Blur()
 	if item.Kind == "schema" {
-		return m, nil, treeToggleCmd(m.ToggleSchema(item.Database, item.Schema, snapshot), m.RebuildTree(snapshot))
+		cmd := treeToggleCmd(m.ToggleSchema(item.Database, item.Schema, snapshot), m.RebuildTree(snapshot))
+		return m, SchemaSelected{Database: item.Database, Schema: item.Schema}, cmd
 	}
 	if item.Root {
 		if recordFormClick(x, contentY+1) && snapshot.Database.Product == "PostgreSQL" && !m.databaseRootConnected(item.Database, snapshot) {
 			return m, ReconnectRequested{Database: item.Database}, nil
 		}
-		return m, nil, treeToggleCmd(m.ToggleDatabase(item.Database, snapshot), m.RebuildTree(snapshot))
+		cmd := treeToggleCmd(m.ToggleDatabase(item.Database, snapshot), m.RebuildTree(snapshot))
+		if !m.databaseRootSelectable(item.Database, snapshot) {
+			return m, nil, cmd
+		}
+		return m, DatabaseSelected{Database: item.Database}, cmd
 	}
 	return m, TableSelected{Table: m.TableName(item, snapshot)}, nil
 }

@@ -756,7 +756,9 @@ func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
 		t.Fatalf("collapsed postgres sidebar = %q, want ▤ public without tables", view)
 	}
 
-	// Enter on the selected schema node expands it again.
+	// Enter on the selected schema node expands it again. The scope
+	// selection focused the workspace, so the sidebar takes focus back.
+	model.Focus = focusSchema
 	model.schema.component.List.Select(1)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)

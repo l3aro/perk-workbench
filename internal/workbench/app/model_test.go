@@ -205,7 +205,9 @@ func TestSchemaTree_mysqlExpandsOneDatabaseAtATime(t *testing.T) {
 	}
 
 	// When — Enter again on the analytics root (the rebuild moved the
-	// selection; the root now sits at index 1).
+	// selection; the root now sits at index 1). Selecting the root
+	// focused the workspace, so the sidebar takes focus back first.
+	model.Focus = focusSchema
 	model.schema.component.List.Select(1)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)

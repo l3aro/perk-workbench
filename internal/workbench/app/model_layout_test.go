@@ -20,7 +20,8 @@ import (
 func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.State = stateReady
+	model.SelectTable("projects")
+	model.State, model.Tab = stateReady, tabSQL
 
 	// When
 	model = resizeModel(model, 100, 24)
@@ -748,6 +749,7 @@ func TestCompactClick_schemaRowSelectsRenderedTable(t *testing.T) {
 
 func TestCompactClick_workspaceTabSwitchesOnRenderedRow(t *testing.T) {
 	model := readyModel(t)
+	model.SelectTable("projects")
 	model.Focus = focusWorkspace
 	model = resizeModel(model, 80, 24)
 	if !model.layout.compact {

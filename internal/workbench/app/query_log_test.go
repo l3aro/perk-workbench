@@ -109,6 +109,7 @@ func TestQueryLogDetail_prettyPrintsJSON(t *testing.T) {
 func TestWorkspaceTabs_labelSchemaInspectionViews(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
+	model.SelectTable("projects")
 
 	// When
 	view := ansi.Strip(model.workspaceView())

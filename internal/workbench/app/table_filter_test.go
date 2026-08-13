@@ -93,7 +93,8 @@ func TestTableFilters_filterAndResetEachWorkspaceTable(t *testing.T) {
 
 func TestTableFilters_mouseTabSwitchClosesSession(t *testing.T) {
 	model := readyModel(t)
-	model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
+	model.SelectTable("items")
+	model.Tab, model.Focus = tabStructure, focusWorkspace
 	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{
 		{Name: "id", Type: "INTEGER"},
 		{Name: "name", Type: "TEXT"},

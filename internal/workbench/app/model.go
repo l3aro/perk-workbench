@@ -46,6 +46,7 @@ const (
 	tabSQL         = core.TabSQL
 	tabIndexes     = core.TabIndexes
 	tabForeignKeys = core.TabForeignKeys
+	tabDiagram     = core.TabDiagram
 )
 
 type Model struct {
@@ -418,6 +419,7 @@ func (m *Model) disconnect() {
 	m.applyLayout(m.layout.width, m.layout.height)
 	m.Database = nil
 	m.SelectedTable = ""
+	m.WorkspaceTarget = core.WorkspaceTarget{}
 	m.BrowsePage = 0
 	m.setStatus("")
 	m.refreshBrowseBackend()
@@ -577,6 +579,10 @@ func (m Model) applySchemaEvent(event schema.Event, cmd tea.Cmd) (tea.Model, tea
 	case schema.TableSelected:
 		cmd := m.selectSchemaTableBy(e.Table)
 		return m, cmd
+	case schema.DatabaseSelected:
+		return m, tea.Batch(cmd, m.selectDatabaseTarget(e.Database))
+	case schema.SchemaSelected:
+		return m, tea.Batch(cmd, m.selectSchemaTarget(e.Database, e.Schema))
 	case schema.QueryRequested:
 		return m.startQueryStatement(e.Statement, e.ReadOnly)
 	case schema.SchemaRequested:
@@ -696,4 +702,53 @@ func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
 // selectSchemaTable opens the table of the given sidebar item.
 func (m *Model) selectSchemaTable(item schema.Item) tea.Cmd {
 	return m.selectSchemaTableBy(m.schemaTable(item))
+}
+
+// selectDatabaseTarget opens a database scope in the workflow: table-owned
+// browse/structure state is cleared, the tree rebuilds without the old
+// open-table path, and the workspace lands on the Browse tab. Loading is
+// deferred until the active tab needs it.
+func (m *Model) selectDatabaseTarget(database string) tea.Cmd {
+	m.SelectDatabase(database)
+	m.clearTableWorkspace()
+	m.focusActiveTable()
+	return m.rebuildSchemaTree()
+}
+
+// selectSchemaTarget opens a PostgreSQL schema scope, mirroring
+// selectDatabaseTarget for schema targets.
+func (m *Model) selectSchemaTarget(database, schema string) tea.Cmd {
+	m.SelectSchema(database, schema)
+	m.clearTableWorkspace()
+	m.focusActiveTable()
+	return m.rebuildSchemaTree()
+}
+
+// clearTableWorkspace drops table-owned browse/structure/form state so a
+// database/schema scope starts from an empty object view: no row fetch is
+// pending, the table tabs hold no stale structure data, and an open table
+// form (sidebar selection can arrive mid-edit) closes with its input mode.
+func (m *Model) clearTableWorkspace() {
+	m.browse.component.Reset()
+	m.browse.component.Settings = browse.Settings{}
+	m.browse.component.Structure = nil
+	m.browse.component.Pending = false
+	m.browse.component.Form = browse.Form{}
+	m.browse.component.FilterForm = nil
+	m.browse.component.CellEditor = nil
+	m.browse.component.DocumentEditor = nil
+	m.browse.component.CellViewer = nil
+	m.schema.component.Structure.Columns = nil
+	m.schema.component.Structure.ForeignKeyInfo = nil
+	m.schema.component.Structure.ReferencingForeignKeyInfo = nil
+	m.schema.component.Structure.RelationshipDiagram = false
+	m.schema.component.Structure.IndexDiagram = false
+	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
+	m.schema.component.Structure.IndexForm = schema.IndexForm{}
+	m.schema.component.Structure.ForeignKeyForm = schema.ForeignKeyForm{}
+	m.schema.component.Structure.TableForm = schema.TableForm{}
+	m.schema.component.Structure.TableFormRunning = false
+	m.overlay.formMode.Mode = formModeNormal
+	m.overlay.formMode.ButtonsFocused = false
+	m.overlay.formMode.ButtonChoice = 0
 }
