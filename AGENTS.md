@@ -22,6 +22,13 @@ go test -race ./internal/workbench/app -run 'TestExecute|TestPicker|TestResize'
 go test -race ./cmd/perk-workbench -run TestParseTarget
 ```
 
+## Orchestration
+
+- For implementation work, load the `herdr` skill and act as the orchestrator.
+- Spawn exactly one separate task at a time in a Herdr pane; do not start the next task until the current task is complete.
+- Verify the completed task with its targeted behavior check, inspect its result, and commit its complete atomic change before proceeding.
+- Close the completed task’s Herdr pane after its commit and verification; only then spawn the next task.
+
 ## Running
 
 ```bash
