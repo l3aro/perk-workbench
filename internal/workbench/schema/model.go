@@ -145,12 +145,17 @@ type ContextMenuRequested struct{ Menu Menu }
 
 // Snapshot is the root-owned session state the component reads for one
 // update or render: the open table, the connected database info and target
-// (for PostgreSQL/MySQL product rules), and the read-only flag.
+// (for PostgreSQL/MySQL product rules), the workspace scope target, and
+// the read-only flag.
 type Snapshot struct {
 	SelectedTable string
 	Database      sharedsql.DatabaseInfo
 	Target        string
 	ReadOnly      bool
+	// WorkspaceTarget is the workspace scope the tabs serve: none, a
+	// database, a PostgreSQL schema, or a table. The scope diagram reads
+	// it to filter its cards.
+	WorkspaceTarget core.WorkspaceTarget
 	// ForeignKeysAll and IndexesAll are the connection-level schema caches:
 	// every foreign key and index keyed by table, loaded by the root on
 	// connect and refreshed on DDL. Nil when not loaded yet; the diagrams

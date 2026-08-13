@@ -103,7 +103,20 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 func (m *Model) toggleTab(forward bool) tea.Cmd {
 	m.Tab = cycleWorkspaceTab(m.workspaceTabs(), m.Tab, forward)
 	m.focusActiveTable()
-	return m.loadPendingBrowse()
+	return tea.Batch(m.loadPendingBrowse(), m.loadPendingDiagram())
+}
+
+// loadPendingDiagram starts the connection-level schema caches when the
+// Diagram tab is active and they are not loaded yet: the scope diagram
+// needs both maps, and loading is deferred until the tab actually shows.
+func (m *Model) loadPendingDiagram() tea.Cmd {
+	if m.Tab != tabDiagram {
+		return nil
+	}
+	if m.schema.foreignKeysAll != nil && m.schema.indexesAll != nil {
+		return nil
+	}
+	return tea.Batch(m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }
 
 func (m *Model) loadPendingBrowse() tea.Cmd {

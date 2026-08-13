@@ -527,12 +527,13 @@ func (m Model) schemaTable(item schema.Item) string {
 // component for one update or render.
 func (m Model) schemaSnapshot() schema.Snapshot {
 	return schema.Snapshot{
-		SelectedTable:  m.SelectedTable,
-		Database:       m.databaseInfo,
-		Target:         m.Target,
-		ReadOnly:       m.ReadOnly,
-		ForeignKeysAll: m.schema.foreignKeysAll,
-		IndexesAll:     m.schema.indexesAll,
+		SelectedTable:   m.SelectedTable,
+		Database:        m.databaseInfo,
+		Target:          m.Target,
+		ReadOnly:        m.ReadOnly,
+		WorkspaceTarget: m.WorkspaceTarget,
+		ForeignKeysAll:  m.schema.foreignKeysAll,
+		IndexesAll:      m.schema.indexesAll,
 	}
 }
 

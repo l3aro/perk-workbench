@@ -529,11 +529,12 @@ func (m Model) browseView() string {
 	return m.browse.component.View(browseLayout(m))
 }
 
-// diagramView renders the full-scope relationship diagram for database and
-// schema targets. The scope renderer lands in a later change; until then
-// the tab shows the empty state that renderer replaces.
+// diagramView renders the full-scope relationship diagram for database
+// and schema targets: the schema component's scope renderer, which shows
+// the loading state while the connection-level caches are absent and the
+// empty state when the scope holds no tables.
 func (m Model) diagramView() string {
-	return chrome.PaneStatus("", statusStyle.Render("Diagram"), m.layout.tableViewportWidth)
+	return m.schema.component.ScopeDiagramView(m.workspaceLayout(), m.schemaSnapshot())
 }
 
 // browseStatusSplit reports whether the browse status line renders on two

@@ -252,7 +252,7 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 				if m.Tab != tab {
 					m.Tab = tab
 					m.focusActiveTable()
-					return m, m.loadPendingBrowse()
+					return m, tea.Batch(m.loadPendingBrowse(), m.loadPendingDiagram())
 				}
 				return m, nil
 			}
