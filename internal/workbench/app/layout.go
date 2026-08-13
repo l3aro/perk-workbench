@@ -104,8 +104,13 @@ func (m *Model) applyLayout(width, height int) {
 	resizeResultsTable(&m.schema.component.Structure.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
 	// The browse table yields the footer rows below its data rows
 	// (browseFooterRows: the status line, the footer gap, and the pager
-	// button row, plus pane chrome), keeping the pane exactly full.
-	resizeResultsTable(&m.browse.component.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-m.browseFooterRows(), 2))
+	// button row, plus pane chrome), keeping the pane exactly full. The
+	// scope object list has no pager and yields two rows back.
+	if m.browse.component.ObjectListMode() {
+		resizeResultsTable(&m.browse.component.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-scopeObjectsFooterRows(), 2))
+	} else {
+		resizeResultsTable(&m.browse.component.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-m.browseFooterRows(), 2))
+	}
 	resizeResultsTable(&m.schema.component.Structure.Indexes, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
 	resizeResultsTable(&m.schema.component.Structure.ForeignKeys, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
 	m.layout.structureOffset = tableOffset(m.schema.component.Structure.Table, m.layout.structureOffset, m.layout.tableViewportWidth)

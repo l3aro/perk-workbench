@@ -550,6 +550,13 @@ func (m Model) browseFooterRows() int {
 	return m.browse.component.FooterRows(browseLayout(m))
 }
 
+// scopeObjectsFooterRows is the number of workspace rows the scope
+// object list reserves below its data rows: the status line plus the
+// workspace chrome rows (tab row, gap, mode footer, pane borders).
+// browseFooterRows also reserves the pager button row (8); the object
+// list has no pager, so it yields two rows back.
+func scopeObjectsFooterRows() int { return 6 }
+
 func (m Model) browseStatusLine() string {
 	return m.browse.component.StatusLine(browseLayout(m))
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -189,6 +190,12 @@ func (m Model) updateSchemaLoaded(message schemaLoadedMsg) (tea.Model, tea.Cmd) 
 		// Keep the previous sidebar; report the refresh failure.
 		m.setStatus(safeText("refreshing schema: " + message.err.Error()))
 		return m, nil
+	}
+	// An active database/schema scope re-filters its object list from the
+	// refreshed listing; the sidebar applies the same objects async.
+	if m.WorkspaceTarget.Kind == core.WorkspaceDatabase || m.WorkspaceTarget.Kind == core.WorkspaceSchema {
+		m.browse.component.SetObjects(m.scopeObjects(message.objects))
+		m.resizeScopeObjectsTable()
 	}
 	return m, tea.Batch(m.setSchemaObjects(message.objects), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }

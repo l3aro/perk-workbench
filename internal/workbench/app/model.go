@@ -687,6 +687,7 @@ func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
 	// The landing tab is configurable; SelectTable defaults to the
 	// Structure (columns) tab.
 	m.Tab = tableOpenTargetTab()
+	m.browse.component.SetObjects(nil)
 	m.browse.component.Settings = browse.Settings{}
 	m.schema.component.Structure.Columns = nil
 	m.browse.component.Structure = nil
@@ -705,12 +706,15 @@ func (m *Model) selectSchemaTable(item schema.Item) tea.Cmd {
 }
 
 // selectDatabaseTarget opens a database scope in the workflow: table-owned
-// browse/structure state is cleared, the tree rebuilds without the old
-// open-table path, and the workspace lands on the Browse tab. Loading is
-// deferred until the active tab needs it.
+// browse/structure state is cleared, the object list filters to the
+// scope, the tree rebuilds without the old open-table path, and the
+// workspace lands on the Browse tab. Loading is deferred until the
+// active tab needs it.
 func (m *Model) selectDatabaseTarget(database string) tea.Cmd {
 	m.SelectDatabase(database)
 	m.clearTableWorkspace()
+	m.browse.component.SetObjects(m.scopeObjects(m.schema.component.Objects))
+	m.resizeScopeObjectsTable()
 	m.focusActiveTable()
 	return m.rebuildSchemaTree()
 }
@@ -720,8 +724,75 @@ func (m *Model) selectDatabaseTarget(database string) tea.Cmd {
 func (m *Model) selectSchemaTarget(database, schema string) tea.Cmd {
 	m.SelectSchema(database, schema)
 	m.clearTableWorkspace()
+	m.browse.component.SetObjects(m.scopeObjects(m.schema.component.Objects))
+	m.resizeScopeObjectsTable()
 	m.focusActiveTable()
 	return m.rebuildSchemaTree()
+}
+
+// selectScopeObject opens a scope-listed table/view through the existing
+// table-selection path, loading its structure, index, and foreign-key
+// data like any other table open.
+func (m *Model) selectScopeObject(object sharedsql.SchemaObject) tea.Cmd {
+	return m.selectSchemaTableBy(m.scopeObjectTable(object))
+}
+
+// scopeObjectTable returns the qualified table name of a scope object:
+// MySQL qualifies with the database (the sidebar tables are bare names
+// under database roots), every other product's objects already carry
+// their qualifier (PostgreSQL schema.table, MongoDB collection names).
+func (m Model) scopeObjectTable(object sharedsql.SchemaObject) string {
+	if m.databaseInfo.Product == "MySQL" {
+		return object.Database + "." + object.Name
+	}
+	return object.Name
+}
+
+// scopeObjects returns the schema objects visible in the active
+// database/schema target, in sidebar order; nil keeps the table-row
+// browse (table targets and SQLite have no scope). MySQL scopes take
+// the database's own objects, MongoDB the sole root's collections,
+// PostgreSQL database scopes every loaded table/view (all belong to the
+// connected database), and PostgreSQL schema scopes the
+// schema-prefixed names.
+func (m Model) scopeObjects(objects []sharedsql.SchemaObject) []sharedsql.SchemaObject {
+	switch m.WorkspaceTarget.Kind {
+	case core.WorkspaceDatabase:
+		switch m.databaseInfo.Product {
+		case "MySQL":
+			return filterSchemaObjects(objects, func(object sharedsql.SchemaObject) bool {
+				return object.Database == m.WorkspaceTarget.Database && object.Type != "database"
+			})
+		case "MongoDB":
+			return filterSchemaObjects(objects, func(object sharedsql.SchemaObject) bool {
+				return object.Database == m.WorkspaceTarget.Database && object.Type == "collection"
+			})
+		case "PostgreSQL":
+			return filterSchemaObjects(objects, func(object sharedsql.SchemaObject) bool {
+				return object.Type == "table" || object.Type == "view"
+			})
+		}
+	case core.WorkspaceSchema:
+		if m.databaseInfo.Product == "PostgreSQL" {
+			prefix := m.WorkspaceTarget.Schema + "."
+			return filterSchemaObjects(objects, func(object sharedsql.SchemaObject) bool {
+				return (object.Type == "table" || object.Type == "view") && strings.HasPrefix(object.Name, prefix)
+			})
+		}
+	}
+	return nil
+}
+
+// filterSchemaObjects returns the loaded schema objects that keep
+// accepts, preserving their order.
+func filterSchemaObjects(objects []sharedsql.SchemaObject, keep func(sharedsql.SchemaObject) bool) []sharedsql.SchemaObject {
+	filtered := make([]sharedsql.SchemaObject, 0, len(objects))
+	for _, object := range objects {
+		if keep(object) {
+			filtered = append(filtered, object)
+		}
+	}
+	return filtered
 }
 
 // clearTableWorkspace drops table-owned browse/structure/form state so a

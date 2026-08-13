@@ -478,10 +478,14 @@ func (m Model) handleSchemaTableClick(absX, absY int) (tea.Model, tea.Cmd) {
 // handleBrowseClick handles left-click on the browse or results table.
 // A click on the browse header sorts by that column (like the s
 // keybinding); a click on a data row selects the cell and detects
-// double-click for inline editing.
+// double-click for inline editing. The scope object list selects rows
+// and opens a double-clicked object instead.
 func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State != stateReady || m.Focus != focusWorkspace || m.overlay.contextMenu != nil {
 		return m, nil
+	}
+	if m.browse.component.ObjectListMode() {
+		return m.handleObjectListClick(absX, absY)
 	}
 
 	contentY := absY - 1
@@ -630,6 +634,60 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleObjectListClick maps a click on the scope object list: a click
+// selects the row, a double-click opens the table workspace (matching
+// the Enter keybinding). The workspace pane starts its content at
+// contentY=3 (tab row, blank line, then the table header at 3), so data
+// rows begin at browseLine 1. Empty scopes ignore clicks.
+func (m Model) handleObjectListClick(absX, absY int) (tea.Model, tea.Cmd) {
+	contentY := absY - 1
+	if contentY < 0 {
+		return m, nil
+	}
+	rows := m.browse.component.Table.Rows()
+	if len(rows) == 0 {
+		return m, nil
+	}
+	browseLine := contentY - 3 // 0=header, 1..N=data rows
+	if browseLine < 1 {
+		return m, nil
+	}
+	rowHeight := m.browse.component.Table.Height()
+	start := min(max(m.browse.component.Table.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	dataRow := start + browseLine - 1
+	if dataRow < 0 || dataRow >= len(rows) {
+		return m, nil
+	}
+
+	// Non-vim mode: the clicked table owns focus, so leave any text editing.
+	if !m.vimMode {
+		m.overlay.formMode.Mode = formModeNormal
+		m.queryLog.editor.text.Blur()
+		m.browse.component.Table.Focus()
+	}
+
+	// Check for double-click at the same position: open the object. Only
+	// tables and views open a table workspace; collection rows keep their
+	// menu actions but are not openable.
+	now := time.Now()
+	if !m.layout.lastClickTime.IsZero() && now.Sub(m.layout.lastClickTime) < doubleClickTimeout &&
+		m.layout.lastClickX == absX && m.layout.lastClickY == absY {
+		m.layout.lastClickTime = time.Time{}
+		m.browse.component.Table.SetCursor(dataRow)
+		if object, ok := m.browse.component.SelectedObject(); ok && (object.Type == "table" || object.Type == "view") {
+			return m, m.selectScopeObject(object)
+		}
+		return m, nil
+	}
+
+	// Single click: select the row.
+	m.layout.lastClickTime = now
+	m.layout.lastClickX = absX
+	m.layout.lastClickY = absY
+	m.browse.component.Table.SetCursor(dataRow)
+	return m, nil
+}
+
 func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if m.State == stateConnection {
 		// Profiles pane: the left pane in the wide layout, the focused
@@ -670,6 +728,9 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 	if !(m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active()) {
 		return m, nil
 	}
+	if m.browse.component.ObjectListMode() {
+		return m.handleObjectListRightClick(absX, absY)
+	}
 	rows := m.browse.component.Table.Rows()
 	if len(rows) == 0 {
 		return m, nil
@@ -699,5 +760,32 @@ func (m Model) handleRightClick(absX, absY int) (tea.Model, tea.Cmd) {
 		y:        absY + 1,
 	}
 
+	return m, nil
+}
+
+// handleObjectListRightClick maps a right-click on the scope object list
+// to the clicked object's menu: the row is selected first so the actions
+// act on it. An empty scope has no menu.
+func (m Model) handleObjectListRightClick(absX, absY int) (tea.Model, tea.Cmd) {
+	contentY := absY - 1
+	if contentY < 0 {
+		return m, nil
+	}
+	rows := m.browse.component.Table.Rows()
+	if len(rows) == 0 {
+		return m, nil
+	}
+	browseLine := contentY - 3 // 0=header, 1..N=data rows
+	if browseLine < 1 {
+		return m, nil
+	}
+	rowHeight := m.browse.component.Table.Height()
+	start := min(max(m.browse.component.Table.Cursor()-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+	dataRow := start + browseLine - 1
+	if dataRow < 0 || dataRow >= len(rows) {
+		return m, nil
+	}
+	m.browse.component.Table.SetCursor(dataRow)
+	m.openObjectContextMenu(absX, absY+1)
 	return m, nil
 }

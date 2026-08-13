@@ -40,6 +40,17 @@ func (m Model) browseBackend() browse.Backend {
 	return m.browse.backend
 }
 
+// resizeScopeObjectsTable fits the object-list table to the workspace
+// body: the scope view reserves its status line plus the workspace
+// chrome below the data rows, mirroring the browse table sizing. Table
+// targets keep the row-browse sizing (browseFooterRows).
+func (m *Model) resizeScopeObjectsTable() {
+	if !m.browse.component.ObjectListMode() {
+		return
+	}
+	uikit.ResizeResultsTable(&m.browse.component.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-scopeObjectsFooterRows(), 2))
+}
+
 // applyBrowseEvent applies one browse component event: status transitions,
 // clipboard copies, browse reloads, page ticks, and schema refreshes stay
 // root-owned.
@@ -74,6 +85,17 @@ func (m Model) applyBrowseEvent(event browse.Event, cmd tea.Cmd) (tea.Model, tea
 			return m, m.loadSchema()
 		}
 		return m, tea.Batch(cmd, m.loadSchema())
+	case browse.ObjectOpenRequested:
+		return m, m.selectScopeObject(e.Object)
+	case browse.ObjectContextMenuRequested:
+		// Place the menu on the cursor row at the workspace pane's left
+		// edge, mirroring the browse row menu's geometry.
+		rows := m.browse.component.Table.Rows()
+		row := m.browse.component.Table.Cursor()
+		rowHeight := m.browse.component.Table.Height()
+		start := min(max(row-rowHeight+1, 0), max(len(rows)-rowHeight, 0))
+		m.openObjectContextMenu(m.layout.schemaWidth+1, row-start+6)
+		return m, cmd
 	}
 	return m, cmd
 }

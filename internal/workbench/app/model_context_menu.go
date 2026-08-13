@@ -1,7 +1,10 @@
 package app
 
 import (
+	"strings"
+
 	tea "charm.land/bubbletea/v2"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
@@ -111,6 +114,51 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.overlay.contextMenu = nil
 	}
 	return m, nil
+}
+
+// openObjectContextMenu opens the scope object-list context menu at the
+// given screen position: Add/Edit/Delete table mapped to the existing
+// root handlers, with the scope qualification from the object. The
+// dispatch in updateContextMenu already routes these actions through the
+// existing table form and delete confirmation; nothing here invents a
+// new DDL path. An empty scope or a non-object product opens nothing.
+func (m *Model) openObjectContextMenu(x, y int) {
+	object, ok := m.browse.component.SelectedObject()
+	if !ok {
+		return
+	}
+	options, database := m.objectMenuOptions(object)
+	if len(options) == 0 {
+		return
+	}
+	m.overlay.contextMenu = &contextMenuModel{
+		options:  options,
+		selected: 0,
+		visible:  true,
+		x:        x,
+		y:        y,
+		database: database,
+		table:    object.Name,
+	}
+}
+
+// objectMenuOptions returns the context-menu actions for a scope-listed
+// object: Add/Edit/Delete table for every product, mirroring the schema
+// sidebar's table-row menu. database carries the create qualifier: the
+// object's database for MySQL/MongoDB, its schema for PostgreSQL.
+func (m Model) objectMenuOptions(object sharedsql.SchemaObject) ([]menuOption, string) {
+	options := []menuOption{
+		{label: "Add new table", action: "add_table", keys: "a"},
+		{label: "Edit table", action: "rename_table", keys: "r"},
+		{label: "Delete table", action: "delete_table", keys: "d"},
+	}
+	database := object.Database
+	if m.databaseInfo.Product == "PostgreSQL" {
+		if schema, _, found := strings.Cut(object.Name, "."); found {
+			database = schema
+		}
+	}
+	return options, database
 }
 
 // confirmTableDelete opens the Delete table? confirmation for the given

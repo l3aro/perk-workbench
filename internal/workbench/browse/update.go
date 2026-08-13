@@ -15,6 +15,9 @@ import (
 func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, backend Backend) (Model, Event, tea.Cmd) {
 	keyPress, ok := msg.(tea.KeyPressMsg)
 	if ok {
+		if m.Objects != nil {
+			return m.updateObjectList(keyPress, layout, keys)
+		}
 		switch {
 		case keys.Match(keyPress, "browse.sort", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			if m.CycleSort() {
@@ -48,6 +51,36 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, b
 	}
 	var command tea.Cmd
 	m.Table, command = m.Table.Update(msg)
+	return m, nil, command
+}
+
+// updateObjectList handles object-list pane keys: Enter opens the
+// selected table/view through the root, the context-menu key asks for
+// the object menu, and navigation moves the cursor (object rows have no
+// columns to select). Table-row actions (sort, filter, paging, row CRUD,
+// cell copy) have no meaning on an object list and stay inert.
+func (m Model) updateObjectList(keyPress tea.KeyPressMsg, layout uikit.Layout, keys uikit.KeyMatcher) (Model, Event, tea.Cmd) {
+	switch {
+	case keyPress.Key().Code == tea.KeyEnter:
+		// Only tables and views open a table workspace; collection rows
+		// keep their menu actions but are not openable.
+		if object, ok := m.SelectedObject(); ok && (object.Type == "table" || object.Type == "view") {
+			return m, ObjectOpenRequested{Object: object}, nil
+		}
+		return m, nil, nil
+	case keys.Match(keyPress, "browse.context_menu", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		if _, ok := m.SelectedObject(); ok {
+			return m, ObjectContextMenuRequested{}, nil
+		}
+		return m, nil, nil
+	case keys.Match(keyPress, "cell.yank", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		return m, nil, nil
+	}
+	if uikit.MoveTableRow(&m.Table, &m.Offset, layout.ViewportWidth, keyPress) {
+		return m, nil, nil
+	}
+	var command tea.Cmd
+	m.Table, command = m.Table.Update(keyPress)
 	return m, nil, command
 }
 

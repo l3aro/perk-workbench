@@ -7,7 +7,9 @@
 package browse
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"charm.land/bubbles/v2/table"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -49,6 +51,17 @@ type SchemaRequested struct{}
 // its debounced paging command.
 type PageRequested struct{ Delta int }
 
+// ObjectOpenRequested asks the root to open the selected scope object as
+// a table workspace through the existing table-selection path.
+type ObjectOpenRequested struct {
+	Object sharedsql.SchemaObject
+}
+
+// ObjectContextMenuRequested asks the root to open the object-list
+// context menu for the selected object (add/rename/delete table). The
+// root owns the menu overlay and its geometry.
+type ObjectContextMenuRequested struct{}
+
 // Sort is one active browse sort: the column title and direction.
 type Sort struct {
 	Column string
@@ -75,9 +88,9 @@ func (s Settings) PageSize(fallback int) int {
 // Model is the browse feature component: the result table, the loaded
 // result and its status summary, the numeric-column alignment mask, the
 // filter/sort settings, the row/document/cell editors and the cell
-// viewer, and the paging state. The root reads and writes the exported
-// state fields and mirrors the global page (core.Workflow.BrowsePage) in
-// Page for the pager rendering.
+// viewer, the paging state, and the scope object list. The root reads
+// and writes the exported state fields and mirrors the global page
+// (core.Workflow.BrowsePage) in Page for the pager rendering.
 type Model struct {
 	Table          table.Model
 	Result         sharedsql.Result
@@ -104,6 +117,12 @@ type Model struct {
 	// Structure mirrors the root's loaded table structure; the root keeps
 	// it current so the component can build forms and locate primary keys.
 	Structure []sharedsql.ColumnInfo
+	// Objects is the schema-object list of the active database/schema
+	// scope, in sidebar order, when the pane is in object-list mode; nil
+	// keeps the table-row browse mode. The root filters the loaded schema
+	// objects to the workspace target and feeds them here; object lists
+	// never fetch table rows.
+	Objects []sharedsql.SchemaObject
 }
 
 // New builds the browse component with a fresh results table.
@@ -114,11 +133,72 @@ func New() Model {
 	}
 }
 
-// Reset clears the browse result table and result data.
+// Reset clears the browse result table, result data, and any scope
+// object list.
 func (m *Model) Reset() {
 	m.Table.SetRows(nil)
 	m.Result = sharedsql.Result{}
 	m.Page = 0
+	m.Objects = nil
+}
+
+// ObjectListMode reports whether the pane renders the scope object list
+// instead of table rows: database/schema targets list their objects,
+// table targets browse rows.
+func (m Model) ObjectListMode() bool { return m.Objects != nil }
+
+// SetObjects switches the pane to object-list mode with the given scope
+// objects, or back to table-row mode when objects is nil. Rows show the
+// object name, kind, and abbreviated estimated row count; the root sizes
+// the table to the pane after calling this.
+func (m *Model) SetObjects(objects []sharedsql.SchemaObject) {
+	m.Objects = objects
+	rows := make([]table.Row, len(objects))
+	for index, object := range objects {
+		count := ""
+		if object.RowCount != nil {
+			count = abbreviateCount(*object.RowCount)
+		}
+		rows[index] = table.Row{object.Name, object.Type, count}
+	}
+	m.Table.SetColumns(uikit.TableColumns([]string{"Name", "Kind", "Rows"}, rows))
+	m.Table.SetRows(rows)
+	m.Table.SetCursor(0)
+	m.SelectedColumn = 0
+	m.Offset = 0
+}
+
+// SelectedObject returns the scope object under the table cursor, or
+// false when the pane is not in object-list mode or the list is empty.
+func (m Model) SelectedObject() (sharedsql.SchemaObject, bool) {
+	if m.Objects == nil {
+		return sharedsql.SchemaObject{}, false
+	}
+	row := m.Table.Cursor()
+	if row < 0 || row >= len(m.Objects) {
+		return sharedsql.SchemaObject{}, false
+	}
+	return m.Objects[row], true
+}
+
+// abbreviateCount renders a compact human-readable count: 10k, 490k,
+// 1.23M; up to two decimals with trailing zeros trimmed, raw below 1k.
+// It mirrors the schema sidebar's count formatting; the sibling packages
+// keep their own copy so neither imports the other.
+func abbreviateCount(n int64) string {
+	trim := func(s string) string { return strings.TrimRight(strings.TrimRight(s, "0"), ".") }
+	switch {
+	case n >= 1_000_000_000_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000_000_000)) + "T"
+	case n >= 1_000_000_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000_000)) + "B"
+	case n >= 1_000_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000_000)) + "M"
+	case n >= 1_000:
+		return trim(fmt.Sprintf("%.2f", float64(n)/1_000)) + "k"
+	default:
+		return strconv.FormatInt(n, 10)
+	}
 }
 
 // CycleSort toggles the sort on the selected column, cycling exactly like

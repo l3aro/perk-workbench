@@ -1,6 +1,7 @@
 package browse
 
 import (
+	"fmt"
 	"strings"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -9,9 +10,9 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
-// View renders the browse pane body: the filter/row forms or the result
-// table with its status line and pager row. The root frames the pane and
-// routes overlay rendering.
+// View renders the browse pane body: the filter/row forms, the scope
+// object list, or the result table with its status line and pager row.
+// The root frames the pane and routes overlay rendering.
 func (m Model) View(layout uikit.Layout) string {
 	if m.FilterForm != nil {
 		// The filter view is already windowed at its scroll offset (it
@@ -25,8 +26,56 @@ func (m Model) View(layout uikit.Layout) string {
 	if m.Form.Active() {
 		return viewportSlice(m.Form.View(), m.Form.ScrollOffset, layout)
 	}
+	if m.Objects != nil {
+		return m.objectsView(layout)
+	}
 	view := uikit.TableViewportViewWithAlignment(m.Table, m.NumericColumns, m.Offset, layout.ViewportWidth, m.SelectedColumn) + "\n" + m.StatusLine(layout) + "\n\n" + m.PagerLine(layout)
 	return view
+}
+
+// objectsView renders the scope object list: the name/kind/rows table
+// with a status line and no pager (object lists are not paged).
+func (m Model) objectsView(layout uikit.Layout) string {
+	view := uikit.TableViewportViewWithAlignment(m.Table, nil, m.Offset, layout.ViewportWidth, m.SelectedColumn)
+	return view + "\n" + m.ObjectsStatusLine(layout)
+}
+
+// ObjectsStatusHints is the keyboard-hint segment of the object-list
+// status line; the object count is the other segment.
+const ObjectsStatusHints = "enter open | , context menu"
+
+// ObjectsStatusLine renders the object-list status line: the keyboard
+// hints on the left, the object count on the right. Both segments are
+// truncated so the line always fits the viewport width, mirroring the
+// browse status line.
+func (m Model) ObjectsStatusLine(layout uikit.Layout) string {
+	width := layout.ViewportWidth
+	left, right := ObjectsStatusHints, m.ObjectsStatus()
+	if ansi.StringWidth(left)+2 > width {
+		left = ansi.Truncate(left, max(width-2, 0), "…")
+	}
+	remaining := width - ansi.StringWidth(left) - 2
+	if remaining < 2 {
+		// Fewer than two cells left: drop the count entirely.
+		return uikit.StatusStyle.Render(left)
+	}
+	if ansi.StringWidth(right)+2 > remaining {
+		right = ansi.Truncate(right, remaining-2, "…")
+	}
+	return chrome.PaneStatus(uikit.StatusStyle.Render(left), uikit.StatusStyle.Render(right), width)
+}
+
+// ObjectsStatus is the right segment of the object-list status line: the
+// number of objects in the scope.
+func (m Model) ObjectsStatus() string {
+	switch len(m.Objects) {
+	case 0:
+		return "no objects"
+	case 1:
+		return "1 object"
+	default:
+		return fmt.Sprintf("%d objects", len(m.Objects))
+	}
 }
 
 // Draw renders nothing: the browse pane is a lipgloss pane; its canvas

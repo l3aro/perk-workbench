@@ -104,25 +104,29 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, cmd
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
+				// Row actions (filter/edit/insert/view/context menu) apply
+				// to table rows only; the object-list mode routes its own
+				// keys (Enter opens, "," asks for the object menu) through
+				// the component below.
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseFilterForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
 					if m.writeCapabilities().RowWriter {
 						return m, m.openCellEditor()
 					}
 					return m, m.openEditDocument()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
 					if m.writeCapabilities().RowWriter {
 						return m, m.openBrowseForm()
 					}
 					return m, m.openEditDocument()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.insert_row", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.insert_row", []scope{scopeView, scopeGlobal}) {
 					return m, m.openInsertRowForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.browse.component.Table.Cursor()
 					col := m.browse.component.SelectedColumn
 					display := ""
@@ -132,7 +136,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					raw := m.rawCellValue("browse", row, col, display)
 					return m, m.openCellViewer(m.browse.component.Table, col, raw)
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}) {
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}) {
 					row := m.browse.component.Table.Cursor()
 					if row < 0 || row >= len(m.browse.component.Result.Rows) {
 						return m, nil
