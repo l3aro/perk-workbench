@@ -207,8 +207,11 @@ func TestWorkspaceTargets_selectionClearsTableState(t *testing.T) {
 	if model.SelectedTable != "" || model.WorkspaceTarget.Kind != core.WorkspaceDatabase {
 		t.Fatalf("target = %#v with table %q, want a cleared database target", model.WorkspaceTarget, model.SelectedTable)
 	}
-	if len(model.browse.component.Result.Rows) != 0 || len(model.browse.component.Table.Rows()) != 0 {
-		t.Fatalf("browse kept prior table rows: result %#v table %#v", model.browse.component.Result.Rows, model.browse.component.Table.Rows())
+	if len(model.browse.component.Result.Rows) != 0 {
+		t.Fatalf("browse kept prior table result rows: %#v", model.browse.component.Result.Rows)
+	}
+	if !model.browse.component.ObjectListMode() || len(model.browse.component.Table.Rows()) != 1 {
+		t.Fatalf("browse did not replace prior rows with the scoped object list: mode %t rows %#v", model.browse.component.ObjectListMode(), model.browse.component.Table.Rows())
 	}
 	if model.browse.component.Pending || model.browse.component.FilterForm != nil || model.browse.component.Form.Active() {
 		t.Fatalf("browse kept prior table state: pending %t filter %t form %t", model.browse.component.Pending, model.browse.component.FilterForm != nil, model.browse.component.Form.Active())
