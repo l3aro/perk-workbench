@@ -138,7 +138,7 @@ func TestScopeDiagram_mysqlDatabaseScope_showsEveryInScopeCard(t *testing.T) {
 			t.Fatalf("scope diagram view leaks %q: %q", absent, view)
 		}
 	}
-	if got := strings.Count(view, "┌"); got != 4 {
+	if got := strings.Count(view, "┌─ "); got != 4 {
 		t.Fatalf("card count = %d, want 4 in %q", got, view)
 	}
 	// The orders card carries its FK mappings.
@@ -148,7 +148,7 @@ func TestScopeDiagram_mysqlDatabaseScope_showsEveryInScopeCard(t *testing.T) {
 	// The internal edge renders with the known cardinality labels: the
 	// merged orders→customers edge is N:1 (one of its two FKs is
 	// non-unique), the passports→customers edge 1:1.
-	for _, label := range []string{"(N)", "(1)", "▲"} {
+	for _, label := range []string{"(N)", "(1)", "▼"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("scope diagram view misses %q: %q", label, view)
 		}
@@ -156,10 +156,10 @@ func TestScopeDiagram_mysqlDatabaseScope_showsEveryInScopeCard(t *testing.T) {
 	// Only edge-receiving parents connect: the edge-less vip_customers
 	// card sits beside customers on the same lane but draws no stem,
 	// arrow, or label — the merge has exactly one parent center.
-	if got := strings.Count(view, "▲"); got != 1 {
+	if got := strings.Count(view, "▼"); got != 1 {
 		t.Fatalf("arrow count = %d, want 1 (customers only) in %q", got, view)
 	}
-	if got := strings.Count(view, "┬"); got != 1 {
+	if got := strings.Count(view, "┴"); got != 1 {
 		t.Fatalf("parent stem count = %d, want 1 (customers only) in %q", got, view)
 	}
 }
@@ -183,7 +183,7 @@ func TestScopeDiagram_externalEdgesDrawNoConnectors(t *testing.T) {
 	if got := strings.Count(view, "┌"); got != 4 {
 		t.Fatalf("card count = %d, want 4 in %q", got, view)
 	}
-	for _, glyph := range []string{"┬", "┴", "▲", "(1)", "(N)"} {
+	for _, glyph := range []string{"┬", "┴", "▲", "▼", "(1)", "(N)"} {
 		if strings.Contains(view, glyph) {
 			t.Fatalf("outside reference drew %q: %q", glyph, view)
 		}
@@ -219,7 +219,7 @@ func TestScopeDiagram_postgresSchemaAndDatabaseScopes(t *testing.T) {
 			t.Fatalf("schema scope card count = %d, want 2 in %q", got, view)
 		}
 		// The internal orders→accounts edge renders with its label.
-		if !strings.Contains(view, "(N)") || !strings.Contains(view, "▲") {
+		if !strings.Contains(view, "(N)") || !strings.Contains(view, "▼") {
 			t.Fatalf("schema scope view misses the internal edge labels: %q", view)
 		}
 	})
@@ -245,7 +245,7 @@ func TestScopeDiagram_postgresSchemaAndDatabaseScopes(t *testing.T) {
 			t.Fatalf("database scope card count = %d, want 3 in %q", got, view)
 		}
 		// The accounts→audit edge is internal at database scope.
-		if !strings.Contains(view, "▲") {
+		if !strings.Contains(view, "▼") {
 			t.Fatalf("database scope view misses the archive edge: %q", view)
 		}
 	})

@@ -261,12 +261,14 @@ func scopeLaneLabels(edges map[string][]scopeEdge, children, parents []string) (
 }
 
 // scopeDiagramArt lays the scope lanes out top-down: level 0 at the top,
-// every deeper level merging into the lane above it. The merge rows and
-// cardinality labels mirror the focus-diagram rendering (appendLane's
-// top-side placement): the child labels between the child lane and the
-// merge bar, the upward arrow and parent labels at the parent centers.
-// Only parents an edge actually reaches connect: an edge-less neighbor
-// card in the parent lane gets no stub, arrow, or label.
+// every deeper level merging into the lane above it, so referenced
+// parents render above the children that reference them. The merge rows
+// and cardinality labels keep the focus-diagram structure: the parent
+// labels at the parent centers with a downward arrow (parent (1) above,
+// child (N) below), then the merge bar, and the child labels between the
+// merge bar and the child lane. Only parents an edge actually reaches
+// connect: an edge-less neighbor card in the parent lane gets no stub,
+// arrow, or label.
 func scopeDiagramArt(lanes []diagramLane, labels []*connectorLabels, parentEdges [][]bool) diagramArt {
 	left, right := 0, 0
 	for _, lane := range lanes {
@@ -278,19 +280,21 @@ func scopeDiagramArt(lanes []diagramLane, labels []*connectorLabels, parentEdges
 	width := right - left
 	centerCol := -left
 	art := diagramArt{}
-	for level := len(lanes) - 1; level >= 0; level-- {
+	for level := 0; level < len(lanes); level++ {
 		shift := centerCol - laneMid(lanes[level])
 		stubs := shiftStubs(lanes[level].stubs, shift)
 		art.lines = append(art.lines, shiftRows(lanes[level].rows, shift, width)...)
-		if level == 0 {
+		if level == len(lanes)-1 {
 			continue
 		}
-		laneLabels := labels[level]
-		parentStubs := shiftStubs(lanes[level-1].stubs, centerCol-laneMid(lanes[level-1]))
-		centers := make([]int, 0, len(parentStubs))
-		parentLabelRow := make([]string, 0, len(parentStubs))
-		for index, stub := range parentStubs {
-			if index >= len(parentEdges[level]) || !parentEdges[level][index] {
+		// Connector from this parent lane (level) down to the child lane
+		// (level+1): parent centers above, child stubs below.
+		laneLabels := labels[level+1]
+		childStubs := shiftStubs(lanes[level+1].stubs, centerCol-laneMid(lanes[level+1]))
+		centers := make([]int, 0, len(stubs))
+		parentLabelRow := make([]string, 0, len(stubs))
+		for index, stub := range stubs {
+			if index >= len(parentEdges[level+1]) || !parentEdges[level+1][index] {
 				continue
 			}
 			centers = append(centers, stub)
@@ -302,17 +306,11 @@ func scopeDiagramArt(lanes []diagramLane, labels []*connectorLabels, parentEdges
 			continue // no edge between these lanes: no connector
 		}
 		if laneLabels != nil {
-			art.lines = append(art.lines, connectorLabelRow(laneLabels.child, stubs, width))
-		}
-		if len(stubs) > 1 {
-			art.lines = append(art.lines, mergeRow(stubs, centers, width, true))
-		} else if laneLabels == nil {
-			art.lines = append(art.lines, stubRow(stubs, width))
-		}
-		if laneLabels != nil {
-			// Upward arrow from the parent (1) to the child (N) at the
-			// parent centers, mirroring the focus diagram's label rows.
-			for _, glyph := range []rune{'▲', '│'} {
+			// Parent (1) label, then a downward arrow from the parent (1)
+			// at the top to the child (N) at the bottom: shaft descending
+			// from the parent center, head terminating toward the child.
+			art.lines = append(art.lines, connectorLabelRow(parentLabelRow, centers, width))
+			for _, glyph := range []rune{'│', '▼'} {
 				line := []rune(strings.Repeat(" ", width))
 				for _, column := range centers {
 					if column >= 0 && column < width {
@@ -321,7 +319,14 @@ func scopeDiagramArt(lanes []diagramLane, labels []*connectorLabels, parentEdges
 				}
 				art.lines = append(art.lines, string(line))
 			}
-			art.lines = append(art.lines, connectorLabelRow(parentLabelRow, centers, width))
+		}
+		if len(childStubs) > 1 {
+			art.lines = append(art.lines, mergeRow(childStubs, centers, width, false))
+		} else if laneLabels == nil {
+			art.lines = append(art.lines, stubRow(childStubs, width))
+		}
+		if laneLabels != nil {
+			art.lines = append(art.lines, connectorLabelRow(laneLabels.child, childStubs, width))
 		}
 	}
 	return art

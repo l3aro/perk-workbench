@@ -90,10 +90,10 @@ func TestScopeDiagram_tabRendersScopeCards(t *testing.T) {
 			t.Fatalf("diagram tab view leaks %q: %q", absent, view)
 		}
 	}
-	if got := strings.Count(view, "┌"); got != 4 {
+	if got := strings.Count(view, "┌─ "); got != 4 {
 		t.Fatalf("card count = %d, want 4 in %q", got, view)
 	}
-	for _, label := range []string{"(N)", "(1)", "▲"} {
+	for _, label := range []string{"(N)", "(1)", "▼"} {
 		if !strings.Contains(view, label) {
 			t.Fatalf("diagram tab view misses %q: %q", label, view)
 		}
@@ -126,10 +126,10 @@ func TestScopeDiagram_postgresDatabaseScopeRendersAllTables(t *testing.T) {
 			t.Fatalf("database scope diagram view misses %q: %q", present, view)
 		}
 	}
-	if got := strings.Count(view, "┌"); got != 3 {
+	if got := strings.Count(view, "┌─ "); got != 3 {
 		t.Fatalf("database scope card count = %d, want 3 in %q", got, view)
 	}
-	if !strings.Contains(view, "▲") {
+	if !strings.Contains(view, "▼") {
 		t.Fatalf("database scope diagram view misses the internal edges: %q", view)
 	}
 }
