@@ -104,6 +104,18 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, cmd
 				}
+				// Object-list mode: a/e/d run the selected object's
+				// add/edit/delete table actions directly, mirroring the
+				// "," object menu. Row actions apply to table rows only.
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.add_table", []scope{scopeView, scopeGlobal}) {
+					return m, m.browseObjectAction("add_table")
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.rename_table", []scope{scopeView, scopeGlobal}) {
+					return m, m.browseObjectAction("rename_table")
+				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.delete_table", []scope{scopeView, scopeGlobal}) {
+					return m, m.browseObjectAction("delete_table")
+				}
 				// Row actions (filter/edit/insert/view/context menu) apply
 				// to table rows only; the object-list mode routes its own
 				// keys (Enter opens, "," asks for the object menu) through

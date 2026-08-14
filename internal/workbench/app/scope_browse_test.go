@@ -292,6 +292,48 @@ func scopeModelWithOffice(t *testing.T) Model {
 	return model
 }
 
+// TestScopeBrowse_directKeys guards the a/e/d row shortcuts on the browse
+// object list: they run the same add/edit/delete table actions as the ","
+// menu without opening it first.
+func TestScopeBrowse_directKeys(t *testing.T) {
+	t.Run("a opens the add form", func(t *testing.T) {
+		model := scopeModelWithOffice(t)
+		updated, command := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+		model = updated.(Model)
+		model = runTableCommand(model, command)
+		form := model.schema.component.Structure.TableForm
+		if !form.Active() || form.Database != "office" || form.Name != "" {
+			t.Fatalf("add form = %+v, want active create form in office", form)
+		}
+	})
+	t.Run("e opens the edit form", func(t *testing.T) {
+		model := scopeModelWithOffice(t)
+		updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+		model = updated.(Model)
+		model = runTableCommand(model, command)
+		form := model.schema.component.Structure.TableForm
+		if !form.Active() || form.Database != "office" || form.OriginalName != "customers" {
+			t.Fatalf("edit form = %+v, want customers in office", form)
+		}
+	})
+	t.Run("d opens the delete confirmation", func(t *testing.T) {
+		model := scopeModelWithOffice(t)
+		updated, _ := model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+		model = updated.(Model)
+		if model.overlay.deleteConfirm == nil || model.overlay.deleteConfirm.Description != "DROP TABLE `office`.`customers`" {
+			t.Fatalf("delete confirmation = %+v, want DROP TABLE `office`.`customers`", model.overlay.deleteConfirm)
+		}
+	})
+	t.Run("row keys stay inert in object mode", func(t *testing.T) {
+		model := scopeModelWithOffice(t)
+		updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
+		model = updated.(Model)
+		if model.browse.component.CellEditor != nil {
+			t.Fatal("i opened a cell editor on the object list")
+		}
+	})
+}
+
 // TestScopeBrowse_objectCrudActions drives the object-list context menu:
 // right-click and the "," key offer Add/Edit/Delete with the scope
 // qualification, and the existing handlers (table form, delete
@@ -322,7 +364,7 @@ func TestScopeBrowse_objectCrudActions(t *testing.T) {
 		model := scopeModelWithOffice(t)
 		updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 5, Y: 5, Button: tea.MouseRight})
 		model = updated.(Model)
-		updated, command := model.Update(tea.KeyPressMsg{Code: 'r', Text: "r"})
+		updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
 		model = updated.(Model)
 		model = runTableCommand(model, command)
 		form := model.schema.component.Structure.TableForm

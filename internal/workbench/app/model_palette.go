@@ -215,6 +215,40 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			m.resetTableFilter()
 		}
 		return m, nil
+	case "browse.edit":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable() {
+			if m.writeCapabilities().RowWriter {
+				return m, m.openBrowseForm()
+			}
+			return m, m.openEditDocument()
+		}
+		return m, nil
+	case "browse.insert_row":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable() {
+			return m, m.openInsertRowForm()
+		}
+		return m, nil
+	case "browse.delete_row":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable() {
+			m.confirmBrowseRowDelete()
+			return m, nil
+		}
+		return m, nil
+	case "browse.add_table":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && m.browse.component.ObjectListMode() {
+			return m, m.browseObjectAction("add_table")
+		}
+		return m, nil
+	case "browse.rename_table":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && m.browse.component.ObjectListMode() {
+			return m, m.browseObjectAction("rename_table")
+		}
+		return m, nil
+	case "browse.delete_table":
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && m.browse.component.ObjectListMode() {
+			return m, m.browseObjectAction("delete_table")
+		}
+		return m, nil
 	case "browse.refine":
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 			return m, m.openBrowseFilterForm()

@@ -311,6 +311,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable()
 	case "browse.delete_row":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable()
+	case "browse.add_table", "browse.rename_table", "browse.delete_table":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil
 	case "cell.view":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
 			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())

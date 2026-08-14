@@ -146,7 +146,7 @@ func (m *Model) openObjectContextMenu(x, y int) {
 func (m Model) objectMenuOptions(object sharedsql.SchemaObject) ([]menuOption, string) {
 	options := []menuOption{
 		{label: "Add new table", action: "add_table", keys: "a"},
-		{label: "Edit table", action: "rename_table", keys: "r"},
+		{label: "Edit table", action: "rename_table", keys: "e"},
 		{label: "Delete table", action: "delete_table", keys: "d"},
 	}
 	database := object.Database
@@ -184,6 +184,26 @@ func (m *Model) confirmDatabaseDelete(database string) {
 	m.overlay.deletePending = "database"
 	m.overlay.deletePendingDatabase = database
 	m.overlay.deleteConfirm = yesNoConfirmation("Delete database?", "DROP DATABASE "+m.quoteIdentifier(database), "delete")
+}
+
+// browseObjectAction runs one object-list table action (add/edit/delete)
+// on the selected object, mirroring the object context menu's dispatch so
+// the direct a/e/d keys and the "," menu share one path.
+func (m *Model) browseObjectAction(action string) tea.Cmd {
+	object, ok := m.browse.component.SelectedObject()
+	if !ok {
+		return nil
+	}
+	_, database := m.objectMenuOptions(object)
+	switch action {
+	case "add_table":
+		return m.openTableForm(database, "")
+	case "rename_table":
+		return m.openTableForm(database, object.Name)
+	case "delete_table":
+		m.confirmTableDelete(database, object.Name)
+	}
+	return nil
 }
 
 // confirmBrowseRowDelete opens the Delete this row? confirmation for the
