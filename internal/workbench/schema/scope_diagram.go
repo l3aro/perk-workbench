@@ -268,7 +268,8 @@ func scopeLaneLabels(edges map[string][]scopeEdge, children, parents []string) (
 // child (N) below), then the merge bar, and the child labels between the
 // merge bar and the child lane. Only parents an edge actually reaches
 // connect: an edge-less neighbor card in the parent lane gets no stub,
-// arrow, or label.
+// arrow, or label. A lane pair with a single child still draws its
+// connector elbow, so the (1)/(N) labels never float unconnected.
 func scopeDiagramArt(lanes []diagramLane, labels []*connectorLabels, parentEdges [][]bool) diagramArt {
 	left, right := 0, 0
 	for _, lane := range lanes {
@@ -320,11 +321,11 @@ func scopeDiagramArt(lanes []diagramLane, labels []*connectorLabels, parentEdges
 				art.lines = append(art.lines, string(line))
 			}
 		}
-		if len(childStubs) > 1 {
-			art.lines = append(art.lines, mergeRow(childStubs, centers, width, false))
-		} else if laneLabels == nil {
-			art.lines = append(art.lines, stubRow(childStubs, width))
-		}
+		// Always emit the connector for an edge-bearing lane pair, even a
+		// single child: mergeRow draws the elbow (┌───┴ / ┴───┐) joining
+		// the parent center to the child stub, or a single stem when they
+		// share a column.
+		art.lines = append(art.lines, mergeRow(childStubs, centers, width, false))
 		if laneLabels != nil {
 			art.lines = append(art.lines, connectorLabelRow(laneLabels.child, childStubs, width))
 		}

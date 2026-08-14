@@ -14,6 +14,65 @@ import (
 // diagrams; the fallback tests narrow it.
 var scopeDiagramLayout = uikit.Layout{ViewportWidth: 100, Height: 40}
 
+// scopeDiagramOffsetObjects is a minimal offset-edge fixture: accounts and
+// sessions share the parent lane (two cards, so accounts sits left of the
+// diagram center), while orders is the lone child (centered). The single
+// child's stub column therefore differs from its parent's center column.
+func scopeDiagramOffsetObjects() []sharedsql.SchemaObject {
+	return []sharedsql.SchemaObject{
+		{Database: "office", Type: "database", Name: "office"},
+		{Database: "office", Type: "table", Name: "accounts"},
+		{Database: "office", Type: "table", Name: "sessions"},
+		{Database: "office", Type: "table", Name: "orders"},
+	}
+}
+
+func scopeDiagramOffsetSnapshot() Snapshot {
+	return Snapshot{
+		Database:        sharedsql.DatabaseInfo{Product: "MySQL"},
+		WorkspaceTarget: core.WorkspaceTarget{Kind: core.WorkspaceDatabase, Database: "office"},
+		ForeignKeysAll: map[string][]sharedsql.ForeignKeyInfo{
+			"office.orders": {{ID: "orders_account_id_fkey", Columns: []string{"account_id"}, ReferenceTable: "office.accounts", ReferenceColumns: []string{"id"}}},
+		},
+		IndexesAll: map[string][]sharedsql.IndexInfo{
+			"office.accounts": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+			"office.sessions": {{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}}},
+			"office.orders": {
+				{Name: "PRIMARY", PrimaryKey: true, Columns: []string{"id"}},
+				{Name: "orders_account_id_idx", Columns: []string{"account_id"}},
+			},
+		},
+	}
+}
+
+// TestScopeDiagram_singleChildOffsetDrawsElbow pins the single-child
+// connector: when the lone child sits at a different column than its
+// parent center (accounts left of center, orders centered), the elbow row
+// (┴───┐) must join them. Without it the (1) arrow hangs over empty space
+// and the (N) label floats unconnected beside the child.
+func TestScopeDiagram_singleChildOffsetDrawsElbow(t *testing.T) {
+	model := scopeDiagramModel(scopeDiagramOffsetObjects())
+	view := ansiStrip(model.ScopeDiagramView(scopeDiagramLayout, scopeDiagramOffsetSnapshot()))
+
+	// The connector row carries the parent stem ┴ and the child corner ┐
+	// on the same line, spanning the offset columns.
+	elbow := false
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "┴") && strings.Contains(line, "┐") {
+			elbow = true
+			break
+		}
+	}
+	if !elbow {
+		t.Fatalf("single-child offset edge drew no elbow row (┴…┐): %q", view)
+	}
+	for _, label := range []string{"(1)", "(N)", "▼"} {
+		if !strings.Contains(view, label) {
+			t.Fatalf("single-child offset view misses %q: %q", label, view)
+		}
+	}
+}
+
 // scopeDiagramMySQLObjects is a mixed MySQL sidebar fixture: the office
 // database with three tables and a view, plus an analytics database whose
 // events table references office.customers (an outside reference for the
@@ -221,6 +280,14 @@ func TestScopeDiagram_postgresSchemaAndDatabaseScopes(t *testing.T) {
 		// The internal orders→accounts edge renders with its label.
 		if !strings.Contains(view, "(N)") || !strings.Contains(view, "▼") {
 			t.Fatalf("schema scope view misses the internal edge labels: %q", view)
+		}
+		// orders→accounts is a single-child edge: the connector elbow
+		// still joins the parent center to the child stub, so the labels
+		// do not float unconnected. Both cards are centered single-card
+		// lanes, so the elbow collapses to a single ┴ stem (card borders
+		// also contain ┌/┐, hence the exact glyph).
+		if !strings.Contains(view, "┴") {
+			t.Fatalf("schema scope single-child edge drew no connector stem: %q", view)
 		}
 	})
 
