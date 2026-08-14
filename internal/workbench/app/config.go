@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
@@ -57,6 +58,11 @@ type Config struct {
 	// in the schema tree: structure (columns), browse, sql, indexes, or
 	// foreign_keys. Omitted keeps the built-in default (structure).
 	TableOpenTarget string `json:"table_open_target"`
+	// Plugins lists external database driver plugin executables to load at
+	// startup. Each entry is a bare executable name resolved through PATH
+	// or a path relative to the config file's directory. Nil or empty
+	// disables plugins.
+	Plugins []string `json:"plugins"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -121,7 +127,20 @@ func LoadConfig(path string) (Config, error) {
 	if err := json.Unmarshal(contents, &config); err != nil {
 		return Config{}, fmt.Errorf("parsing config %q: %w", path, err)
 	}
+	var pluginsErr error
+	for i, item := range config.Plugins {
+		if strings.TrimSpace(item) == "" {
+			pluginsErr = fmt.Errorf("config %q: plugins[%d] must not be blank", path, i)
+			break
+		}
+		if strings.ContainsRune(item, '\x00') {
+			pluginsErr = fmt.Errorf("config %q: plugins[%d] must not contain a NUL byte", path, i)
+			break
+		}
+	}
 	switch {
+	case pluginsErr != nil:
+		return Config{}, pluginsErr
 	case config.BrowsePageSize != 0 && (config.BrowsePageSize < 1 || config.BrowsePageSize > sharedsql.MaxRows):
 		return Config{}, fmt.Errorf("config %q: browse_page_size must be between 1 and %d, got %d", path, sharedsql.MaxRows, config.BrowsePageSize)
 	case config.QueryLogPageSize != 0 && (config.QueryLogPageSize < 1 || config.QueryLogPageSize > queryLogLimit):
@@ -339,6 +358,7 @@ func defaultConfigValues() map[string]json.RawMessage {
 		NerdFont:                   boolPtr(true),
 		LogLevel:                   "info",
 		TableOpenTarget:            tableTargetKey(tabStructure),
+		Plugins:                    []string{},
 	})
 	if err != nil {
 		panic(err) // plain struct: cannot fail

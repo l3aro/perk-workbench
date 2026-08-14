@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -18,14 +19,14 @@ func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig = %v, want nil error", err)
 	}
-	if config != (Config{}) {
+	if !reflect.DeepEqual(config, Config{}) {
 		t.Fatalf("LoadConfig = %#v, want zero config (built-in defaults)", config)
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("default config file not written: %v", err)
 	}
-	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`} {
+	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`, `"plugins": []`} {
 		if !strings.Contains(string(contents), want) {
 			t.Fatalf("default config = %q, want it to contain %q", contents, want)
 		}
@@ -44,7 +45,7 @@ func TestLoadConfig_reads_values(t *testing.T) {
 		t.Fatalf("LoadConfig = %v, want nil error", err)
 	}
 	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, Theme: "nord", LogLevel: "warn"}
-	if config != want {
+	if !reflect.DeepEqual(config, want) {
 		t.Fatalf("LoadConfig = %#v, want %#v", config, want)
 	}
 }
@@ -61,6 +62,9 @@ func TestLoadConfig_rejects_invalid(t *testing.T) {
 		`{"theme": "vaporwave"}`,
 		`{"log_level": "verbose"}`,
 		`{"table_open_target": "columns"}`,
+		`{"plugins": ["  "]}`,
+		`{"plugins": ["ok", ""]}`,
+		`{"plugins": ["bad\u0000item"]}`,
 		`not json`,
 	} {
 		path := filepath.Join(t.TempDir(), "config.json")
@@ -325,5 +329,38 @@ func TestQueryLogConfig_uses_config_then_env_wins(t *testing.T) {
 	}
 	if got, want := queryLogRetentionDays(), 0; got != want {
 		t.Fatalf("queryLogRetentionDays = %d, want env %d", got, want)
+	}
+}
+
+func TestLoadConfig_plugins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"plugins": ["./tools/redis", "redis-db"]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	want := []string{"./tools/redis", "redis-db"}
+	if len(config.Plugins) != len(want) {
+		t.Fatalf("Plugins = %v, want %v", config.Plugins, want)
+	}
+	for i := range want {
+		if config.Plugins[i] != want[i] {
+			t.Fatalf("Plugins = %v, want %v", config.Plugins, want)
+		}
+	}
+
+	// A null plugins value loads as nil — also disabled, no error.
+	if err := os.WriteFile(path, []byte(`{"plugins": null}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config, err = LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig(null plugins) = %v, want nil error", err)
+	}
+	if config.Plugins != nil {
+		t.Fatalf("Plugins = %v, want nil for null", config.Plugins)
 	}
 }

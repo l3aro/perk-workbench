@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/l3aro/perk-workbench/internal/database"
@@ -197,5 +198,86 @@ func TestCapabilities_surviveJSONRoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(caps, decoded) {
 		t.Fatalf("round trip = %+v, want %+v", decoded, caps)
+	}
+}
+
+func TestCapabilities_writeCapabilitiesRoundTrip(t *testing.T) {
+	caps := database.Capabilities{
+		Name:    "roundtrip",
+		Display: "RoundTrip",
+		Targets: []database.TargetPattern{{Prefix: "rt:"}},
+		WriteCapabilities: sharedsql.WriteCapabilities{
+			RowWriter: true,
+			Document: &sharedsql.DocumentWriteCapability{
+				Format: sharedsql.DocumentFormatMongoExtendedJSON,
+				Text:   true,
+			},
+		},
+	}
+	var decoded database.Capabilities
+	contents, err := json.Marshal(caps)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := json.Unmarshal(contents, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(caps, decoded) {
+		t.Fatalf("round trip = %+v, want %+v", decoded, caps)
+	}
+}
+
+// TestRegisterShim_rejectsCrossDriverOverlap registers drivers whose
+// target prefixes shadow or are shadowed by another driver's; matching is
+// registration-order based, so cross-driver overlap is ambiguous and must
+// be rejected. Overlaps declared within one driver stay legal.
+func TestRegisterShim_rejectsCrossDriverOverlap(t *testing.T) {
+	register := func(name string, targets []database.TargetPattern) error {
+		return database.RegisterShim(shimFunc(func() database.Capabilities {
+			return database.Capabilities{Name: name, Targets: targets}
+		}))
+	}
+
+	if err := register("olap", []database.TargetPattern{{Prefix: "olap:"}}); err != nil {
+		t.Fatalf("RegisterShim(olap) = %v, want success", err)
+	}
+
+	// A new pattern that extends an existing driver's prefix.
+	err := register("olapext", []database.TargetPattern{{Prefix: "olap:ext"}})
+	if err == nil {
+		t.Fatal("RegisterShim with a prefix extending another driver succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "olap:ext") || !strings.Contains(err.Error(), "olap:") {
+		t.Fatalf("overlap error = %v, want it to mention both prefixes", err)
+	}
+
+	// The reverse: a new pattern that is a prefix of an existing one.
+	err = register("olaprev", []database.TargetPattern{{Prefix: "olap"}})
+	if err == nil {
+		t.Fatal("RegisterShim with a prefix shadowed by another driver succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "olap") || (!strings.Contains(err.Error(), "olap:ext") && !strings.Contains(err.Error(), "olap:")) {
+		t.Fatalf("reverse overlap error = %v, want it to mention both prefixes", err)
+	}
+
+	// Exact-equal prefixes are overlap too, even with a fresh driver name.
+	if err := register("olapeq", []database.TargetPattern{{Prefix: "eq:"}}); err != nil {
+		t.Fatalf("RegisterShim(olapeq) = %v, want success", err)
+	}
+	err = register("olapeq2", []database.TargetPattern{{Prefix: "eq:"}})
+	if err == nil {
+		t.Fatal("RegisterShim with an exact-equal prefix succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "eq:") {
+		t.Fatalf("equal-prefix error = %v, want it to mention the prefix", err)
+	}
+
+	// Ordered overlap within one driver stays legal: the scheme form is
+	// declared before the label form it would otherwise shadow.
+	if err := register("kvshim", []database.TargetPattern{
+		{Prefix: "kv://", KeepTarget: true},
+		{Prefix: "kv:"},
+	}); err != nil {
+		t.Fatalf("RegisterShim(same-driver ordered overlap) = %v, want success", err)
 	}
 }

@@ -282,6 +282,10 @@ type Capabilities struct {
 	Display string          `json:"display"`
 	Targets []TargetPattern `json:"targets,omitempty"`
 	Form    *FormSpec       `json:"form,omitempty"`
+	// WriteCapabilities advertises the optional row/document write
+	// interfaces a plugin's sessions implement. A zero value means no
+	// write support: the workbench never attempts row or document writes.
+	WriteCapabilities sharedsql.WriteCapabilities `json:"write_capabilities"`
 }
 
 // Shim is the in-process face of one plugin-backed driver: the
@@ -315,6 +319,20 @@ func RegisterShim(shim Shim) error {
 	defer driversMu.Unlock()
 	if _, exists := byName[caps.Name]; exists {
 		return fmt.Errorf("database: driver %q registered twice", caps.Name)
+	}
+	// Reject cross-driver target overlap: a target form of this driver
+	// must never shadow or be shadowed by another driver's form, since
+	// Match resolves by registration order. Overlaps within one driver
+	// (postgres:// before postgres:; redis:// before redis:) stay legal —
+	// this driver is not registered yet, so only other drivers are seen.
+	for _, pattern := range caps.Targets {
+		for name, existing := range byName {
+			for _, other := range existing.Targets {
+				if strings.HasPrefix(pattern.Prefix, other.Prefix) || strings.HasPrefix(other.Prefix, pattern.Prefix) {
+					return fmt.Errorf("database: driver %q target prefix %q overlaps %q of driver %q", caps.Name, pattern.Prefix, other.Prefix, name)
+				}
+			}
+		}
 	}
 	// Install the target builder before the driver becomes visible, so a
 	// concurrent BuildTarget can never observe a partially registered

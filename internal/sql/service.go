@@ -41,10 +41,11 @@ type Service interface {
 	BrowseTable(context.Context, string, BrowseOptions) (Result, error)
 }
 type BrowseOptions struct {
-	Columns       []string
-	Filters       []BrowseFilter
-	Sorts         []BrowseSort
-	Offset, Limit int
+	Columns []string       `json:"columns"`
+	Filters []BrowseFilter `json:"filters"`
+	Sorts   []BrowseSort   `json:"sorts"`
+	Offset  int            `json:"offset"`
+	Limit   int            `json:"limit"`
 }
 
 type BrowseFilterOperator string
@@ -66,19 +67,19 @@ const (
 )
 
 type BrowseFilter struct {
-	Column   string
-	Operator BrowseFilterOperator
-	Value    string
+	Column   string               `json:"column"`
+	Operator BrowseFilterOperator `json:"operator"`
+	Value    string               `json:"value"`
 }
 
 type BrowseSort struct {
-	Column     string
-	Descending bool
+	Column     string `json:"column"`
+	Descending bool   `json:"descending"`
 }
 
 type DatabaseInfo struct {
-	Product string
-	Version string
+	Product string `json:"product"`
+	Version string `json:"version"`
 }
 
 type Opened struct {
@@ -89,61 +90,61 @@ type Opened struct {
 }
 
 type Result struct {
-	Columns         []string
-	ColumnTypes     []string
-	Rows            [][]*string
-	UntruncatedRows [][]*string
-	RowsAffected    int64
-	HasMore         bool
-	Duration        time.Duration
-	Truncated       bool
+	Columns         []string      `json:"columns"`
+	ColumnTypes     []string      `json:"column_types"`
+	Rows            [][]*string   `json:"rows"`
+	UntruncatedRows [][]*string   `json:"untruncated_rows"`
+	RowsAffected    int64         `json:"rows_affected"`
+	HasMore         bool          `json:"has_more"`
+	Duration        time.Duration `json:"duration_ns"`
+	Truncated       bool          `json:"truncated"`
 	// DocumentIDs carries one stable document identity per row, parallel to
 	// Rows, for document-capable browse results. Empty when the backend is
 	// not document-capable or a row has no identity.
-	DocumentIDs []DocumentPayload
+	DocumentIDs []DocumentPayload `json:"document_ids"`
 }
 
 type SchemaObject struct {
-	Database string
-	Type     string
-	Name     string
+	Database string `json:"database"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
 	// RowCount is the estimated row count where the engine exposes one
 	// (PostgreSQL pg_class.reltuples, MySQL information_schema.table_rows);
 	// nil when unknown or when only an exact count exists (SQLite, views).
-	RowCount *int64
+	RowCount *int64 `json:"row_count"`
 }
 
 type IndexKind uint8
 
 const (
-	IndexPrimaryKey IndexKind = iota + 1
-	IndexUnique
-	IndexRegular
+	IndexPrimaryKey IndexKind = 1
+	IndexUnique     IndexKind = 2
+	IndexRegular    IndexKind = 3
 )
 
 type ColumnInfo struct {
-	Name         string
-	Type         string
-	Attributes   string
-	Nullable     bool
-	DefaultValue *string
-	PrimaryKey   int
-	Indexes      []IndexKind
+	Name         string      `json:"name"`
+	Type         string      `json:"type"`
+	Attributes   string      `json:"attributes"`
+	Nullable     bool        `json:"nullable"`
+	DefaultValue *string     `json:"default_value"`
+	PrimaryKey   int         `json:"primary_key"`
+	Indexes      []IndexKind `json:"indexes"`
 }
 
 type ColumnDef struct {
-	Name         string
-	Type         string
-	Nullable     bool
-	DefaultValue *string
-	Attributes   *string
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	Nullable     bool    `json:"nullable"`
+	DefaultValue *string `json:"default_value"`
+	Attributes   *string `json:"attributes"`
 }
 
 type ColumnChange struct {
-	PreviousName string
-	Name         string
-	Type         string
-	Nullable     bool
-	DefaultValue *string
-	Attributes   *string
+	PreviousName string  `json:"previous_name"`
+	Name         string  `json:"name"`
+	Type         string  `json:"type"`
+	Nullable     bool    `json:"nullable"`
+	DefaultValue *string `json:"default_value"`
+	Attributes   *string `json:"attributes"`
 }

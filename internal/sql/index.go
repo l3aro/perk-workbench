@@ -7,17 +7,17 @@ import (
 )
 
 type IndexInfo struct {
-	Name       string
-	Unique     bool
-	PrimaryKey bool
-	Columns    []string
+	Name       string   `json:"name"`
+	Unique     bool     `json:"unique"`
+	PrimaryKey bool     `json:"primary_key"`
+	Columns    []string `json:"columns"`
 }
 
 type IndexChange struct {
-	Name       string
-	Unique     bool
-	PrimaryKey bool
-	Columns    []string
+	Name       string   `json:"name"`
+	Unique     bool     `json:"unique"`
+	PrimaryKey bool     `json:"primary_key"`
+	Columns    []string `json:"columns"`
 }
 
 func ValidateIndexChange(change IndexChange) error {

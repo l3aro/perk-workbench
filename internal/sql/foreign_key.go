@@ -6,26 +6,26 @@ import (
 )
 
 type ForeignKeyInfo struct {
-	ID               string
-	Columns          []string
-	ReferenceTable   string
-	ReferenceColumns []string
-	OnDelete         string
-	OnUpdate         string
+	ID               string   `json:"id"`
+	Columns          []string `json:"columns"`
+	ReferenceTable   string   `json:"reference_table"`
+	ReferenceColumns []string `json:"reference_columns"`
+	OnDelete         string   `json:"on_delete"`
+	OnUpdate         string   `json:"on_update"`
 }
 
 // ReferencingForeignKeyInfo identifies a foreign key declared by another table.
 type ReferencingForeignKeyInfo struct {
-	Table string
+	Table string `json:"table"`
 	ForeignKeyInfo
 }
 
 type ForeignKeyChange struct {
-	Columns          []string
-	ReferenceTable   string
-	ReferenceColumns []string
-	OnDelete         string
-	OnUpdate         string
+	Columns          []string `json:"columns"`
+	ReferenceTable   string   `json:"reference_table"`
+	ReferenceColumns []string `json:"reference_columns"`
+	OnDelete         string   `json:"on_delete"`
+	OnUpdate         string   `json:"on_update"`
 }
 
 func ValidateForeignKeyChange(change ForeignKeyChange) error {
