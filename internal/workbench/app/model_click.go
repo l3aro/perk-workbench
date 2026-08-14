@@ -14,7 +14,15 @@ import (
 
 const doubleClickTimeout = 500 * time.Millisecond
 
-func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
+func (m Model) handleLeftClick(x, y int, release bool) (tea.Model, tea.Cmd) {
+	// A release trailing a sidebar press must not re-activate the clicked
+	// item: the press already selected it (and moved focus to the
+	// workspace). Consume the one-shot flag here so a lone release (e.g.
+	// after a palette click) still focuses the sidebar pane below.
+	trailingSidebarPress := release && m.layout.sidebarPressPending
+	if release {
+		m.layout.sidebarPressPending = false
+	}
 	if y == 0 {
 		// Header row: the I/O button pinned to the right opens the quit
 		// confirmation dialog, the palette button left of it (separated by a
@@ -38,6 +46,14 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 	if m.hasOverlay() {
 		return m, nil
 	}
+	// A compact-mode release after a sidebar press must not route through
+	// the focused pane: the press's table selection moved focus to the
+	// workspace, so the release would enter the workspace branch (tab-row
+	// Y re-activates tabs, other Y still blurs the sidebar filter). The
+	// press already consumed the click.
+	if release && trailingSidebarPress && m.State == stateReady && m.layout.compact {
+		return m, nil
+	}
 	switch m.State {
 	case stateReady:
 		if m.layout.compact {
@@ -49,6 +65,10 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 			switch m.Focus {
 			case focusSchema:
+				if release {
+					return m, nil
+				}
+				m.layout.sidebarPressPending = true
 				return m.schemaClick(x, contentY)
 			case focusWorkspace:
 				return m.handleWorkspaceClick(x, contentY)
@@ -69,6 +89,23 @@ func (m Model) handleLeftClick(x, y int) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if x < m.layout.schemaWidth {
+			if release {
+				// A trailing release re-applies neither the sidebar focus
+				// (the press's table selection already moved focus to the
+				// workspace) nor the item activation. A lone release still
+				// focuses the sidebar pane.
+				if trailingSidebarPress {
+					return m, nil
+				}
+				if m.Focus != focusSchema {
+					m.Focus = focusSchema
+					m.queryLog.component.ClearPendingG()
+					m.queryLog.editor.text.Blur()
+					m.blurTables()
+				}
+				return m, nil
+			}
+			m.layout.sidebarPressPending = true
 			if m.Focus != focusSchema {
 				m.Focus = focusSchema
 				m.queryLog.component.ClearPendingG()

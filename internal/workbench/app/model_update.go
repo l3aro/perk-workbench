@@ -561,7 +561,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		cmds := []tea.Cmd{}
 		if m.overlay.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
-			model, cmd := m.handleLeftClick(message.X, message.Y)
+			model, cmd := m.handleLeftClick(message.X, message.Y, false)
 			m = model.(Model)
 			if cmd != nil {
 				cmds = append(cmds, cmd)
@@ -614,7 +614,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.overlay.contextMenu == nil && !m.hasOverlay() && message.Button == tea.MouseLeft {
-			return m.handleLeftClick(message.X, message.Y)
+			return m.handleLeftClick(message.X, message.Y, true)
 		}
 	}
 

@@ -199,6 +199,11 @@ type layoutState struct {
 	lastFormClickTime                                  time.Time
 	lastFormClickX, lastFormClickY                     int
 	formButtonHit                                      bool
+	// sidebarPressPending records that the last press landed on the schema
+	// sidebar: the trailing release must neither re-activate the item nor
+	// re-apply the sidebar focus transition (the press's table selection
+	// already moved focus to the workspace).
+	sidebarPressPending bool
 }
 
 type pickerItem struct{ raw, title, description string }
