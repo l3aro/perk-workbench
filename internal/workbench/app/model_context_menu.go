@@ -21,10 +21,7 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "edit_row":
 			return m, m.openBrowseForm()
 		case "delete_row":
-			m.overlay.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
-				{Label: "Yes, delete", Action: "delete"},
-				{Label: "Cancel", Action: "cancel"},
-			})
+			m.confirmBrowseRowDelete()
 		case "rename_table":
 			return m, m.openTableForm(menu.database, menu.table)
 		case "add_table":
@@ -187,6 +184,16 @@ func (m *Model) confirmDatabaseDelete(database string) {
 	m.overlay.deletePending = "database"
 	m.overlay.deletePendingDatabase = database
 	m.overlay.deleteConfirm = yesNoConfirmation("Delete database?", "DROP DATABASE "+m.quoteIdentifier(database), "delete")
+}
+
+// confirmBrowseRowDelete opens the Delete this row? confirmation for the
+// selected browse row, shared by the browse context menu and the direct
+// delete_row binding. Acceptance runs the row delete flow (deleteRow).
+func (m *Model) confirmBrowseRowDelete() {
+	m.overlay.deleteConfirm = newConfirmationDialog("Delete this row?", "", []confirmationOption{
+		{Label: "Yes, delete", Action: "delete"},
+		{Label: "Cancel", Action: "cancel"},
+	})
 }
 
 func (m *Model) copyBrowseCell() tea.Cmd {

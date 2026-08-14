@@ -47,8 +47,9 @@ var defaultDefs = []commandDef{
 	{id: "structure.delete", scope: scopeView, keys: []string{"d"}, label: "delete column"},
 
 	// ── Browse tab (view) ───────────────────────────────────────
-	{id: "browse.edit", scope: scopeView, keys: []string{"enter"}, label: "edit row"},
+	{id: "browse.edit", scope: scopeView, keys: []string{"enter", "e"}, label: "edit row"},
 	{id: "browse.insert_row", scope: scopeView, keys: []string{"a"}, label: "insert row"},
+	{id: "browse.delete_row", scope: scopeView, keys: []string{"d"}, label: "delete row"},
 	{id: "browse.edit_cell", scope: scopeView, keys: []string{"i"}, label: "edit cell"},
 	{id: "cell.view", scope: scopeView, keys: []string{"v"}, label: "view cell"},
 	{id: "browse.refine", scope: scopeView, keys: []string{"/"}, label: "filter and row limit"},

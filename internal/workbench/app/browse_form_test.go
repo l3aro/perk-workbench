@@ -26,6 +26,28 @@ func TestBrowseForm_enterOpensSelectedRow(t *testing.T) {
 	}
 }
 
+func TestBrowseForm_eOpensSelectedRow(t *testing.T) {
+	model := readyBrowseModel(t)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+
+	if !model.browse.component.Form.Active() || model.browse.component.Form.Form == nil || model.browse.component.Form.Values.Fields[1] != "first" {
+		t.Fatalf("browse form = %#v, status = %q, want selected row", model.browse.component.Form, model.Status)
+	}
+}
+
+func TestBrowse_dDirectOpensDeleteConfirmation(t *testing.T) {
+	model := readyBrowseModel(t)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+
+	if model.overlay.deleteConfirm == nil {
+		t.Fatal("d did not open delete confirmation")
+	}
+}
+
 func TestBrowseForm_iOpensCellEditor(t *testing.T) {
 	model := readyBrowseModel(t)
 	model.browse.component.SelectedColumn = 1 // select the "name" column

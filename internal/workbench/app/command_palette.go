@@ -141,6 +141,8 @@ func commandLabel(m Model, id CommandID, raw string) string {
 			return "edit document"
 		case "browse.insert_row":
 			return "insert document"
+		case "browse.delete_row":
+			return "delete document"
 		}
 	}
 	// These labels are unique across scopes — pass through unchanged.
@@ -306,6 +308,8 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "browse.refine", "browse.reset", "browse.sort", "browse.next_page", "browse.prev_page":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil
 	case "browse.insert_row":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable()
+	case "browse.delete_row":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil && m.browseWriteAvailable()
 	case "cell.view":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||

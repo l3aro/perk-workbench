@@ -126,6 +126,13 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.insert_row", []scope{scopeView, scopeGlobal}) {
 					return m, m.openInsertRowForm()
 				}
+				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.delete_row", []scope{scopeView, scopeGlobal}) {
+					if !m.browseWriteAvailable() {
+						return m, nil
+					}
+					m.confirmBrowseRowDelete()
+					return m, nil
+				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.browse.component.Table.Cursor()
 					col := m.browse.component.SelectedColumn

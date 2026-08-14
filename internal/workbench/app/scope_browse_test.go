@@ -162,6 +162,7 @@ func TestScopeBrowse_paletteHidesTableRowCommands(t *testing.T) {
 		"browse.next_page":  true,
 		"browse.prev_page":  true,
 		"browse.insert_row": true,
+		"browse.delete_row": true,
 		"cell.view":         true,
 		"cell.yank":         true,
 	}
