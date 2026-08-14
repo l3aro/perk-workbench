@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -8,8 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/l3aro/perk-workbench/internal/database"
+	"github.com/l3aro/perk-workbench/internal/log"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 )
 
 func TestUsage_includesWorkbenchCommand(t *testing.T) {
@@ -305,5 +312,130 @@ func TestParseTarget(t *testing.T) {
 				t.Fatalf("parseTarget() readOnly = %v, want %v", readOnly, test.wantRO)
 			}
 		})
+	}
+}
+
+// closeRecorder is a closer stub that records its call order and returns
+// a fixed error.
+type closeRecorder struct {
+	order *[]string
+	label string
+	err   error
+}
+
+func (c closeRecorder) Close() error {
+	*c.order = append(*c.order, c.label)
+	return c.err
+}
+
+func TestCloseProgram_closesServiceThenLoaderThenHistory(t *testing.T) {
+	var order []string
+	serviceErr := errors.New("service close failed")
+	loaderErr := errors.New("loader close failed")
+	historyErr := errors.New("history close failed")
+
+	err := closeProgram(
+		closeRecorder{order: &order, label: "service", err: serviceErr},
+		closeRecorder{order: &order, label: "loader", err: loaderErr},
+		closeRecorder{order: &order, label: "history", err: historyErr},
+	)
+
+	if got := strings.Join(order, ","); got != "service,loader,history" {
+		t.Fatalf("close order = %q, want service,loader,history", got)
+	}
+	for _, want := range []error{serviceErr, loaderErr, historyErr} {
+		if !errors.Is(err, want) {
+			t.Fatalf("closeProgram error = %v, want it to join %v", err, want)
+		}
+	}
+}
+
+func TestCloseProgram_skipsNilClosers(t *testing.T) {
+	if err := closeProgram(nil, nil, nil); err != nil {
+		t.Fatalf("closeProgram(nil, nil, nil) = %v, want nil", err)
+	}
+}
+
+func TestLoadPlugins_logsRejectedEntriesAndStaysClosable(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	log.SetLevel(log.LevelDebug)
+	defer log.SetLevel(log.LevelInfo)
+	var entries []log.Entry
+	log.SetNotifier(func(entry log.Entry) { entries = append(entries, entry) })
+	defer log.SetNotifier(nil)
+
+	registered := false
+	loader := loadPlugins(context.Background(), []string{"./no-such-plugin"}, func(database.Shim) error {
+		registered = true
+		return nil
+	})
+	if loader == nil {
+		t.Fatal("loadPlugins returned a nil loader, want a closable loader")
+	}
+	if err := closeProgram(nil, loader, nil); err != nil {
+		t.Fatalf("closing the loader after rejected entries = %v, want nil", err)
+	}
+	if registered {
+		t.Fatal("register was called for an entry that failed to resolve")
+	}
+	var logged bool
+	for _, entry := range entries {
+		if entry.Level == log.LevelError && strings.Contains(entry.Message, "loading plugin") && strings.Contains(entry.Message, "no-such-plugin") {
+			logged = true
+		}
+	}
+	if !logged {
+		t.Fatalf("log entries = %v, want an error entry naming the rejected plugin", entries)
+	}
+}
+
+// fakePluginShim is a minimal database.Shim standing in for a plugin
+// child. run() registers real plugin shims through database.RegisterShim
+// before app.New builds the connection form, so a driver registered that
+// way must be selectable and drive the form layout.
+type fakePluginShim struct {
+	name string
+}
+
+func (s fakePluginShim) Capabilities() database.Capabilities {
+	return database.Capabilities{
+		Name:    s.name,
+		Display: "Reggie",
+		Targets: []database.TargetPattern{{Prefix: s.name + ":", KeepTarget: false}},
+		Form: &database.FormSpec{
+			Prefix: s.name + ":",
+			Fields: []database.FormField{{Key: "reggie_key", Title: "Reggie Key", Kind: database.FormInput}},
+		},
+	}
+}
+
+func (s fakePluginShim) BuildTarget(values database.FormValues) (string, bool) {
+	return s.name + ":" + values.Database, true
+}
+
+func (fakePluginShim) Open(context.Context, string) (sharedsql.Service, error) {
+	return nil, errors.New("not opened in test")
+}
+
+func TestPluginRegistration_isVisibleToConnectionForm(t *testing.T) {
+	// RegisterShim is exactly the callback run() passes to plugin.Load;
+	// a driver installed through it must be offered by the connection
+	// form built afterwards.
+	name := fmt.Sprintf("reggie%d", time.Now().UnixNano())
+	if err := database.RegisterShim(fakePluginShim{name: name}); err != nil {
+		t.Fatalf("RegisterShim: %v", err)
+	}
+
+	form := connection.NewForm()
+	form.Values.Driver = connection.Driver(name)
+	form.Rebuild()
+	var hasField bool
+	for _, title := range form.FieldTitles() {
+		if title == "Reggie Key" {
+			hasField = true
+		}
+	}
+	if !hasField {
+		t.Fatalf("form titles for %q = %v, want the shim's Reggie Key field", name, form.FieldTitles())
 	}
 }

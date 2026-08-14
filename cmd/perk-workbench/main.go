@@ -17,6 +17,8 @@ import (
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
 	"github.com/l3aro/perk-workbench/internal/database"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
+	"github.com/l3aro/perk-workbench/internal/log"
 	app "github.com/l3aro/perk-workbench/internal/workbench/app"
 )
 
@@ -242,9 +244,14 @@ func run(target string, readOnly bool) error {
 		return err
 	}
 	app.SetAppConfig(config)
+	// External driver plugins load after config resolution and before the
+	// model is built, because the connection form enumerates registered
+	// drivers during construction. Rejected entries are logged and startup
+	// continues with the built-in drivers.
+	loader := loadPlugins(ctx, config.Plugins, database.RegisterShim)
 	client, history, err := loadAI()
 	if err != nil {
-		return err
+		return errors.Join(err, loader.Close())
 	}
 
 	model := app.New(target, ctx, database.Open, readOnly)
@@ -263,17 +270,43 @@ func run(target string, readOnly bool) error {
 	final, runErr := program.Run()
 
 	stop()
-	var closeErr error
+	var service interface{ Close() error }
 	if finalModel, ok := final.(app.Model); ok {
-		if service := finalModel.Service(); service != nil {
-			closeErr = service.Close()
-		}
+		service = finalModel.Service()
 	}
-	if history != nil {
-		closeErr = errors.Join(closeErr, history.Close())
-	}
+	closeErr := closeProgram(service, loader, history)
 	if errors.Is(runErr, tea.ErrProgramKilled) {
 		runErr = nil
 	}
 	return errors.Join(runErr, closeErr)
+}
+
+// loadPlugins starts every plugin child listed in config. Rejected
+// entries are logged and skipped: a broken plugin must never block
+// startup, which continues with the built-in drivers. The returned
+// loader is never nil and must be closed after the program exits.
+func loadPlugins(ctx context.Context, entries []string, register func(database.Shim) error) *plugin.Loader {
+	loader, errs := plugin.Load(ctx, app.ConfigPath(), entries, register)
+	for _, err := range errs {
+		log.Error("loading plugin", err)
+	}
+	return loader
+}
+
+// closeProgram tears down the opened database service first — an active
+// plugin session receives its perk/v1/close before the child is
+// terminated — then the plugin loader, then the AI history. Cleanup
+// errors are joined into one error.
+func closeProgram(service, loader, history interface{ Close() error }) error {
+	var closeErr error
+	if service != nil {
+		closeErr = service.Close()
+	}
+	if loader != nil {
+		closeErr = errors.Join(closeErr, loader.Close())
+	}
+	if history != nil {
+		closeErr = errors.Join(closeErr, history.Close())
+	}
+	return closeErr
 }
