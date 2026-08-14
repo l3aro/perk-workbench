@@ -161,6 +161,11 @@ func (m *Model) SetObjects(objects []sharedsql.SchemaObject) {
 		}
 		rows[index] = table.Row{object.Name, object.Type, count}
 	}
+	// SetColumns re-renders immediately, so drop rows from the previous
+	// table view first: bubbles indexes columns by each row's cell count,
+	// and a stale row wider than the new columns panics with index out of
+	// range.
+	m.Table.SetRows(nil)
 	m.Table.SetColumns(uikit.TableColumns([]string{"Name", "Kind", "Rows"}, rows))
 	m.Table.SetRows(rows)
 	m.Table.SetCursor(0)

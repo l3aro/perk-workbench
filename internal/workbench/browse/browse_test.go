@@ -445,6 +445,46 @@ func TestCellEditor_noPrimaryKey(t *testing.T) {
 	}
 }
 
+func TestSetObjects_staleRowsDoNotPanicOnColumnChange(t *testing.T) {
+	// Given — a browse pane showing a wide table (4 result columns) with a
+	// sized viewport, as after browsing any real table.
+	m := New()
+	m.Table.SetColumns([]table.Column{
+		{Title: "id", Width: 4},
+		{Title: "name", Width: 8},
+		{Title: "state", Width: 8},
+		{Title: "city", Width: 8},
+	})
+	m.Table.SetRows([]table.Row{{"1", "first", "active", "Berlin"}})
+	m.Table.SetCursor(0)
+	uikit.ResizeResultsTable(&m.Table, 40, 3)
+
+	// When — selecting another table routes through SetObjects(nil): the
+	// stale 4-cell rows must be dropped before the column change, because
+	// bubbles renders columns indexed by row cell count and a wider stale
+	// row panics with index out of range otherwise.
+	m.SetObjects(nil)
+
+	// Then — back to table-row mode with no rows left behind.
+	if m.ObjectListMode() {
+		t.Fatal("pane is in object-list mode after SetObjects(nil)")
+	}
+	if got := m.Table.Rows(); len(got) != 0 {
+		t.Fatalf("table rows after SetObjects(nil) = %#v, want none", got)
+	}
+
+	// And — the object-list transition is equally safe: the 4-cell state
+	// above is replaced by 3-cell scope-object rows.
+	m.SetObjects([]sharedsql.SchemaObject{{Database: "office", Type: "table", Name: "orders"}})
+	rows := m.Table.Rows()
+	if len(rows) != 1 || len(rows[0]) != 3 || rows[0][0] != "orders" || rows[0][1] != "table" {
+		t.Fatalf("table rows = %#v, want one 3-cell orders/table row", rows)
+	}
+	if got, ok := m.SelectedObject(); !ok || got.Name != "orders" {
+		t.Fatalf("selected object = %#v, %v; want orders selected", got, ok)
+	}
+}
+
 func TestDocumentEditor_buildAndValidate(t *testing.T) {
 	capability := sharedsql.DocumentWriteCapability{Text: true, Format: sharedsql.DocumentFormatMongoExtendedJSON}
 	editor := NewDocumentEditor("things", true, capability, nil, "{}", 60)
