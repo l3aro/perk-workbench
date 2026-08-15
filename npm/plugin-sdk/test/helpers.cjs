@@ -68,6 +68,7 @@ class RpcClient {
         if (frame.error) {
           const error = new Error(frame.error.message);
           error.code = frame.error.code;
+          if (frame.error.data !== undefined) error.data = frame.error.data;
           reject(error);
         } else {
           resolve(frame.result);

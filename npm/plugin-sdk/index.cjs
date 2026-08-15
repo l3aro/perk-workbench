@@ -16,6 +16,40 @@ const MAX_FRAME_BYTES = 16 << 20;
 // RPCErrorCanceled is the perk/v1 error code for a canceled operation.
 const RPC_ERROR_CANCELED = -32800;
 
+// ErrorKind — stable operation-error kinds, the frozen mirror of the Go
+// host's plugin.Kind enum (internal/database/plugin/protocol.go). The
+// host treats its own method and plugin identity as authoritative and
+// normalizes unknown or blank kinds to operation.
+const ErrorKind = Object.freeze({
+  Validation: 'validation',
+  Authentication: 'authentication',
+  Connection: 'connection',
+  Operation: 'operation',
+  Unsupported: 'unsupported',
+  Cancelled: 'cancelled',
+  Protocol: 'protocol',
+  PluginCrash: 'plugin_crash',
+});
+
+const ERROR_KINDS = new Set(Object.values(ErrorKind));
+
+// PluginOperationError is a structured plugin operation error a handler
+// can throw: the server replies with its integer code (default -32000)
+// and message plus an optional data object carrying kind/plugin/method
+// provenance. A blank or unknown kind normalizes to operation, matching
+// the host. Generic thrown errors keep the legacy -32603 mapping and
+// carry no data.
+class PluginOperationError extends Error {
+  constructor(message, options = {}) {
+    super(message);
+    this.name = 'PluginOperationError';
+    this.code = Number.isInteger(options.code) ? options.code : -32000;
+    this.kind = ERROR_KINDS.has(options.kind) ? options.kind : ErrorKind.Operation;
+    if (typeof options.plugin === 'string' && options.plugin !== '') this.plugin = options.plugin;
+    if (typeof options.method === 'string' && options.method !== '') this.method = options.method;
+  }
+}
+
 // perk/v1 method names — mirror of internal/database/plugin/protocol.go.
 const METHOD = {
   initialize: 'perk/v1/initialize',
@@ -368,15 +402,25 @@ class PluginServer {
     const finish = (error, result) => {
       this.requests.delete(id);
       if (controller.signal.aborted) {
-        this._respondError(id, RPC_ERROR_CANCELED, 'canceled');
+        this._respondError(id, RPC_ERROR_CANCELED, 'canceled', { kind: ErrorKind.Cancelled });
         return;
       }
       if (error) {
         let code;
         let message;
+        let data;
         if (error instanceof RequestCancelledError) {
           code = RPC_ERROR_CANCELED;
           message = error.message || 'canceled';
+          data = { kind: ErrorKind.Cancelled };
+        } else if (error instanceof PluginOperationError) {
+          code = error.code;
+          message = error.message || 'internal error';
+          data = { kind: error.kind };
+          if (error.plugin !== undefined) data.plugin = error.plugin;
+          // The wire method is authoritative here; the host overrides
+          // data.method with its own request method anyway.
+          data.method = error.method !== undefined ? error.method : method;
         } else if (Number.isInteger(error && error.code)) {
           code = error.code;
           message = (error && error.message) || 'internal error';
@@ -384,7 +428,7 @@ class PluginServer {
           code = -32603;
           message = (error && error.message) || 'internal error';
         }
-        this._respondError(id, code, message);
+        this._respondError(id, code, message, data);
         return;
       }
       this._respondResult(id, result);
@@ -615,8 +659,10 @@ class PluginServer {
     this._respond(id, { result: result === undefined ? null : result });
   }
 
-  _respondError(id, code, message) {
-    this._respond(id, { error: { code, message } });
+  _respondError(id, code, message, data) {
+    const error = { code, message };
+    if (data !== undefined) error.data = data;
+    this._respond(id, { error });
   }
 
   _terminate() {
@@ -637,6 +683,8 @@ function createPluginServer(definition, options) {
 module.exports = {
   createPluginServer,
   RequestCancelledError,
+  PluginOperationError,
+  ErrorKind,
   FormFieldKind,
   FormValidation,
   DocumentFormat,

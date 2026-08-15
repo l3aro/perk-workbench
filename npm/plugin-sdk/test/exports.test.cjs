@@ -8,6 +8,7 @@ const sdk = require('../index.cjs');
 test('exports the public API surface', () => {
   assert.equal(typeof sdk.createPluginServer, 'function');
   assert.equal(typeof sdk.RequestCancelledError, 'function');
+  assert.equal(typeof sdk.PluginOperationError, 'function');
 });
 
 test('enum constants are frozen with the v1 values', () => {
@@ -38,6 +39,16 @@ test('enum constants are frozen with the v1 values', () => {
     sdk.DocumentFormat.MongoExtendedJSON,
     'application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed',
   );
+  assert.deepEqual(sdk.ErrorKind, {
+    Validation: 'validation',
+    Authentication: 'authentication',
+    Connection: 'connection',
+    Operation: 'operation',
+    Unsupported: 'unsupported',
+    Cancelled: 'cancelled',
+    Protocol: 'protocol',
+    PluginCrash: 'plugin_crash',
+  });
   for (const constant of [
     sdk.FormFieldKind,
     sdk.FormValidation,
@@ -46,6 +57,7 @@ test('enum constants are frozen with the v1 values', () => {
     sdk.ValueKind,
     sdk.RowWriteOperation,
     sdk.DocumentWriteOperation,
+    sdk.ErrorKind,
   ]) {
     assert.ok(Object.isFrozen(constant));
   }

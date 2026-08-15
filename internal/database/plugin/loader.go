@@ -64,6 +64,9 @@ func Load(ctx context.Context, configPath string, entries []string, register fun
 			_ = client.Close()
 			continue
 		}
+		// The plugin has identified itself; operation errors now carry
+		// this host-known identity, never the child's data claims.
+		client.SetPlugin(handshake.Capabilities.Name)
 		if handshake.ProtocolVersion != ProtocolVersion {
 			errs = append(errs, fmt.Errorf("plugin %q: protocol version %d, want %d", entry, handshake.ProtocolVersion, ProtocolVersion))
 			_ = client.Close()

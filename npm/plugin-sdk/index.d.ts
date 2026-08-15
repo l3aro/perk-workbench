@@ -475,7 +475,46 @@ export interface PluginServerOptions {
   output: NodeJS.WritableStream;
 }
 
-/** Error thrown for a request canceled by the host; replies with -32800. */
+/** Stable plugin operation-error kinds, mirroring the Go host's plugin.Kind enum. */
+export const ErrorKind: {
+  readonly Validation: 'validation';
+  readonly Authentication: 'authentication';
+  readonly Connection: 'connection';
+  readonly Operation: 'operation';
+  readonly Unsupported: 'unsupported';
+  readonly Cancelled: 'cancelled';
+  readonly Protocol: 'protocol';
+  readonly PluginCrash: 'plugin_crash';
+};
+export type ErrorKind = typeof ErrorKind[keyof typeof ErrorKind];
+
+export interface PluginOperationErrorOptions {
+  /** JSON-RPC error code; defaults to -32000 (server error). */
+  code?: number;
+  /** Stable failure kind; unknown or blank kinds normalize to operation. */
+  kind?: ErrorKind;
+  /** Advisory plugin identity; the host uses its own handshake identity. */
+  plugin?: string;
+  /** Advisory method name; the server fills in the wire method when absent. */
+  method?: string;
+}
+
+/**
+ * Structured plugin operation error a handler can throw. The server
+ * replies with its code and message plus an optional `data` object
+ * carrying kind/plugin/method provenance. Generic thrown errors keep
+ * the legacy -32603 mapping and carry no data.
+ */
+export class PluginOperationError extends Error {
+  readonly name: 'PluginOperationError';
+  readonly code: number;
+  readonly kind: ErrorKind;
+  readonly plugin?: string;
+  readonly method?: string;
+  constructor(message: string, options?: PluginOperationErrorOptions);
+}
+
+/** Error thrown for a request canceled by the host; replies with -32800 and `data.kind: "cancelled"`. */
 export class RequestCancelledError extends Error {
   readonly name: 'RequestCancelledError';
   readonly code: -32800;

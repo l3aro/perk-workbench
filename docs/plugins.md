@@ -114,7 +114,8 @@ below are the JSON field names):
 | Shared DTOs | `DatabaseInfo`, `SchemaObject`, `Result`, `ColumnInfo`, `ColumnDef`, `ColumnChange`, `IndexInfo`, `IndexChange`, `ForeignKeyInfo`, `ReferencingForeignKeyInfo`, `ForeignKeyChange`, `BrowseFilter`, `BrowseSort`, `BrowseOptions`, `DocumentPayload` |
 | Row & document writes | `Value`, `ValueKind`, `NamedValue`, `RowValue`, `RowWriteOperation`, `RowWriteRequest`, `RowWriteResponse`, `DocumentWriteOperation`, `DocumentWriteRequest`, `DocumentWriteResponse` |
 | Handler contracts | `HandlerContext`, `StatementRequest`, `TableRequest`, `IndexChangeRequest`, `ReplaceIndexRequest`, `DropRequest`, `ForeignKeyChangeRequest`, `ReplaceForeignKeyRequest`, `ColumnChangeRequest`, `AddColumnRequest`, `BrowseTableRequest`, `EmptyRequest`, `BuildTargetResult`, `OpenResult`, `SessionService` |
-| Entry points | `PluginDefinition`, `PluginServer`, `PluginServerOptions`, `RequestCancelledError`, `createPluginServer` |
+| Entry points | `PluginDefinition`, `PluginServer`, `PluginServerOptions`, `createPluginServer` |
+| Errors | `ErrorKind`, `PluginOperationError`, `RequestCancelledError` |
 
 Handlers receive `(request, context)` where `request` is the wire params
 minus `session_id` (the `*Request` types above) and `context.signal` is
@@ -521,18 +522,59 @@ cancellation code:
 | `-32601` | Method not found. |
 | `-32602` | Invalid params (non-object params, non-string `statement`/`table`/`name`, unknown `session_id`, missing `session_id`). |
 | `-32603` | Internal error: a handler threw (unless the error carries an integer `code`, which is used instead). |
-| `-32800` | **Canceled** (perk/v1). The host maps it to `context.Canceled`. |
+| `-32800` | **Canceled** (perk/v1). The host maps it exactly to `context.Canceled`. |
 
 Error responses have the JSON-RPC shape
-`{"jsonrpc":"2.0","id":<id>,"error":{"code":<number>,"message":<string>}}`.
-Exactly one of `result` or `error` is set per response.
+`{"jsonrpc":"2.0","id":<id>,"error":{"code":<number>,"message":<string>,"data":<object>}}`,
+where `data` is optional and carries provenance only, never control
+information. Exactly one of `result` or `error` is set per response.
+
+**Structured provenance.** An error's `data` object may carry three
+string fields:
+
+| Field | Meaning |
+|---|---|
+| `kind` | Stable failure kind (see below). Unknown or blank kinds are treated as `operation`; malformed non-object `data` is ignored entirely. |
+| `plugin` | Advisory plugin identity. The host never trusts it: the identity it retains from a successful `perk/v1/initialize` handshake is authoritative and overrides this field; before that handshake it is empty. |
+| `method` | Advisory method name. The host always uses the actual request method instead — the method renders exactly once, never duplicated. |
+
+Stable `kind` values (mirrored as the `ErrorKind` constants in the Node
+SDK and the `plugin.Kind` enum in the Go host):
+
+| Kind | Meaning |
+|---|---|
+| `validation` | The operation was rejected as invalid. |
+| `authentication` | Credentials were missing or rejected. |
+| `connection` | The backend connection failed or dropped. |
+| `operation` | Generic operation failure (the default). |
+| `unsupported` | The backend does not support the operation. |
+| `cancelled` | The operation was canceled. |
+| `protocol` | Protocol-level failure inside the plugin. |
+| `plugin_crash` | The plugin's own runtime crashed or was killed. |
 
 **Operation-error behavior:** any error other than `-32800` is an
 *operation error* naming the method — the workbench surfaces
-`perk/v1/<method>: <message> (code <code>)` as a failed operation (query
-log, status line), and the plugin child keeps running. Protocol
-violations are the only terminal failures. A result that does not decode
-into the expected DTO shape is also an operation error, never terminal.
+`perk/v1/<method>: <message> (code <code>)` (the method rendered exactly
+once) as a failed operation (query log, status line), and the plugin
+child keeps running. On the Go host the error is a `plugin.Error`
+(inspect with `errors.As`): `Code`, `Message`, the normalized `Kind`,
+the host-known `Plugin` (empty before initialize), and the host
+`Method`. Protocol violations are the only terminal failures. A result
+that does not decode into the expected DTO shape is also an operation
+error, never terminal.
+
+**SDK-side mapping.** The Node SDK's `PluginServer` maps handler errors
+onto this envelope:
+
+- A thrown `PluginOperationError(message, {code, kind, plugin, method})`
+  replies with its integer `code` (default `-32000`) and `message` plus
+  `data` carrying `kind`/`plugin`/`method` (an omitted `method` is
+  filled with the wire method; an unknown or blank `kind` normalizes to
+  `operation`).
+- A thrown `RequestCancelledError` replies `-32800` with
+  `data: {"kind": "cancelled"}` — the cancellation code is unchanged.
+- Any other thrown error keeps the legacy behavior: `-32603` (or the
+  error's own integer `code` when present) with no `data`.
 
 ## Sessions
 
@@ -566,6 +608,7 @@ into the expected DTO shape is also an operation error, never terminal.
   `await`-ing something that rejects on abort. It should then throw
   `RequestCancelledError` (code `-32800`); the SDK also answers `-32800`
   if the handler finishes (successfully or not) after the signal fired.
+  Both paths reply `-32800` with `data: {"kind": "cancelled"}`.
 - The host discards a response that arrives after cancellation, and maps
   `-32800` to `context.Canceled`, so the workbench treats the operation
   as canceled (the prior result table is preserved).
@@ -617,6 +660,8 @@ is a `bin` executable with a shebang; diagnostics go to stderr.
 const {
   createPluginServer,
   RequestCancelledError,
+  PluginOperationError,
+  ErrorKind,
   IndexKind,
 } = require('perk-workbench-plugin-sdk');
 
@@ -664,7 +709,9 @@ function makeService(store, name) {
     const [verb, key, ...rest] = statement.trim().split(/\s+/);
     switch ((verb || '').toUpperCase()) {
       case 'SET':
-        if (!writable) throw new Error('read-only: SET is not allowed');
+        if (!writable) {
+          throw new PluginOperationError('read-only: SET is not allowed', { kind: ErrorKind.Validation });
+        }
         if (key === undefined) throw new Error('SET requires a key');
         store.set(key, rest.join(' '));
         return result([], [], 1);
@@ -673,7 +720,9 @@ function makeService(store, name) {
         return result(['key', 'value'], value === undefined ? [] : [[key, value]]);
       }
       case 'DEL':
-        if (!writable) throw new Error('read-only: DEL is not allowed');
+        if (!writable) {
+          throw new PluginOperationError('read-only: DEL is not allowed', { kind: ErrorKind.Validation });
+        }
         if (key === undefined) throw new Error('DEL requires a key');
         return result([], [], store.delete(key) ? 1 : 0);
       case 'SLEEP': {
@@ -683,7 +732,7 @@ function makeService(store, name) {
         return result(['slept'], [[String(ms)]]);
       }
       default:
-        throw new Error(`unsupported statement: ${statement}`);
+        throw new PluginOperationError(`unsupported statement: ${statement}`, { kind: ErrorKind.Unsupported });
     }
   };
 
@@ -709,21 +758,39 @@ function makeService(store, name) {
     listIndexes() {
       return [{ name: 'PRIMARY', unique: true, primary_key: true, columns: ['key'] }];
     },
-    createIndex() { throw new Error('the demo store has a fixed primary index'); },
-    replaceIndex() { throw new Error('the demo store has a fixed primary index'); },
-    dropIndex() { throw new Error('the demo store has a fixed primary index'); },
+    createIndex() {
+      throw new PluginOperationError('the demo store has a fixed primary index', { kind: ErrorKind.Unsupported });
+    },
+    replaceIndex() {
+      throw new PluginOperationError('the demo store has a fixed primary index', { kind: ErrorKind.Unsupported });
+    },
+    dropIndex() {
+      throw new PluginOperationError('the demo store has a fixed primary index', { kind: ErrorKind.Unsupported });
+    },
     listForeignKeys() { return []; },
     listReferencingForeignKeys() { return []; },
     listForeignKeysAll() { return {}; },
     listIndexesAll() {
       return { kv: [{ name: 'PRIMARY', unique: true, primary_key: true, columns: ['key'] }] };
     },
-    createForeignKey() { throw new Error('the demo store has no foreign keys'); },
-    replaceForeignKey() { throw new Error('the demo store has no foreign keys'); },
-    dropForeignKey() { throw new Error('the demo store has no foreign keys'); },
-    alterColumn() { throw new Error('the demo store has a fixed schema'); },
-    dropColumn() { throw new Error('the demo store has a fixed schema'); },
-    addColumn() { throw new Error('the demo store has a fixed schema'); },
+    createForeignKey() {
+      throw new PluginOperationError('the demo store has no foreign keys', { kind: ErrorKind.Unsupported });
+    },
+    replaceForeignKey() {
+      throw new PluginOperationError('the demo store has no foreign keys', { kind: ErrorKind.Unsupported });
+    },
+    dropForeignKey() {
+      throw new PluginOperationError('the demo store has no foreign keys', { kind: ErrorKind.Unsupported });
+    },
+    alterColumn() {
+      throw new PluginOperationError('the demo store has a fixed schema', { kind: ErrorKind.Unsupported });
+    },
+    dropColumn() {
+      throw new PluginOperationError('the demo store has a fixed schema', { kind: ErrorKind.Unsupported });
+    },
+    addColumn() {
+      throw new PluginOperationError('the demo store has a fixed schema', { kind: ErrorKind.Unsupported });
+    },
     browseTable(request) {
       const entries = [...store.entries()];
       const offset = request.options.offset || 0;
@@ -803,6 +870,11 @@ What the example demonstrates:
 - `execute` runs statements and supports the blocking `SLEEP` statement,
   canceled through `context.signal` by throwing `RequestCancelledError`
   (or by observing `signal.aborted` directly).
+- Failures are thrown as `PluginOperationError` with a stable
+  `ErrorKind` (validation for read-only writes, unsupported for the
+  fixed-schema handlers), so the host surfaces the operation with its
+  kind while the generic `Error`s keep the plain internal-error
+  mapping.
 - stderr carries diagnostics; stdout carries protocol frames only.
 - `server.closed` resolves at input EOF or termination, after which the
   process exits.

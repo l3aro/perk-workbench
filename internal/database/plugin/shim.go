@@ -239,7 +239,7 @@ func (p *sessionProxy) BrowseTable(ctx context.Context, table string, options sh
 // result-shape violation — an operation error, never terminal.
 func checkStatementMetadata(method, statement string, metadata *sharedsql.StatementMetadata) error {
 	if metadata != nil && strings.TrimSpace(statement) == "" {
-		return fmt.Errorf("perk/v1/%s: statement_metadata requires a nonblank statement", method)
+		return fmt.Errorf("%s: statement_metadata requires a nonblank statement", method)
 	}
 	return nil
 }

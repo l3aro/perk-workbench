@@ -43,6 +43,9 @@ func TestPluginHelperChild(t *testing.T) {
 		writeMetadata:   os.Getenv("PERK_PLUGIN_WRITE_METADATA"),
 		executeMetadata: os.Getenv("PERK_PLUGIN_EXECUTE_METADATA"),
 		queryLanguage:   os.Getenv("PERK_PLUGIN_QUERY_LANGUAGE"),
+		rpcErrorCode:    envInt("PERK_PLUGIN_RPC_ERROR_CODE", -32000),
+		rpcErrorMessage: os.Getenv("PERK_PLUGIN_RPC_ERROR_MESSAGE"),
+		rpcErrorData:    os.Getenv("PERK_PLUGIN_RPC_ERROR_DATA"),
 	}
 	if raw := os.Getenv("PERK_PLUGIN_SCHEMA"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &helper.schemaObjects); err != nil {
@@ -76,6 +79,9 @@ type pluginHelper struct {
 	writeMetadata   string
 	executeMetadata string
 	queryLanguage   string
+	rpcErrorCode    int
+	rpcErrorMessage string
+	rpcErrorData    string
 	schemaObjects   []sharedsql.SchemaObject
 	schemaSet       bool
 }
@@ -182,7 +188,11 @@ func (h *pluginHelper) handleRequest(id uint64, method string, params json.RawMe
 					_ = json.Unmarshal(incoming.Params, &canceled)
 					if canceled.ID == id {
 						h.markerLine(fmt.Sprintf("cancel %d", id))
-						h.respond(id, nil, &rpcError{Code: RPCErrorCanceled, Message: "canceled"})
+						h.respond(id, nil, &rpcError{
+							Code:    RPCErrorCanceled,
+							Message: "canceled",
+							Data:    json.RawMessage(`{"kind":"cancelled"}`),
+						})
 						return true
 					}
 				}
@@ -191,6 +201,20 @@ func (h *pluginHelper) handleRequest(id uint64, method string, params json.RawMe
 	case "schema_error":
 		if method == methodListSchema {
 			h.respond(id, nil, &rpcError{Code: -32000, Message: "schema exploded"})
+			return true
+		}
+	case "rpc_error":
+		// Structured operation error on execute (initialize succeeds so
+		// the host retains the identity; open still works).
+		if method == methodExecute || method == methodExecuteReadOnly {
+			h.respond(id, nil, h.rpcError())
+			return true
+		}
+	case "rpc_error_initialize":
+		// Structured operation error on initialize itself: the host
+		// cannot know the plugin identity yet.
+		if method == methodInitialize {
+			h.respond(id, nil, h.rpcError())
 			return true
 		}
 	case "out_of_order":
@@ -269,6 +293,18 @@ func (h *pluginHelper) resultFor(method string, params json.RawMessage) any {
 		return response
 	}
 	return struct{}{}
+}
+
+// rpcError builds the canned structured operation error from env.
+func (h *pluginHelper) rpcError() *rpcError {
+	rpcErr := &rpcError{Code: h.rpcErrorCode, Message: h.rpcErrorMessage}
+	if rpcErr.Message == "" {
+		rpcErr.Message = "boom"
+	}
+	if h.rpcErrorData != "" {
+		rpcErr.Data = json.RawMessage(h.rpcErrorData)
+	}
+	return rpcErr
 }
 
 // metadata decodes one PERK_PLUGIN_*_METADATA env payload; an empty value

@@ -32,6 +32,7 @@ type Client struct {
 	err      error // terminal error delivered to callers
 	waitErr  error // cmd.Wait error, joined into err after the reap
 	done     chan struct{}
+	plugin   string // host-known identity, set after initialize
 
 	closeOnce sync.Once
 }
@@ -176,7 +177,7 @@ func (c *Client) dispatch(frame []byte) error {
 		entry.stop()
 	}
 	if resp.Error != nil {
-		entry.result = callResult{err: rpcErrorToGoError(entry.method, resp.Error)}
+		entry.result = callResult{err: rpcErrorToGoError(entry.method, c.plugin, resp.Error)}
 	} else {
 		entry.result = callResult{result: resp.Result}
 	}
@@ -194,6 +195,16 @@ func (c *Client) flushDeliveries() {
 			entry.ch <- entry.result // nonblocking: buffered 1
 		}
 	}
+}
+
+// SetPlugin records the plugin's self-claimed identity once the
+// initialize handshake succeeds. The Loader calls it so operation errors
+// carry host-known provenance; protocol behavior never depends on it.
+// Safe to call any time; the last write wins.
+func (c *Client) SetPlugin(name string) {
+	c.mu.Lock()
+	c.plugin = name
+	c.mu.Unlock()
 }
 
 // Call performs one request and unmarshals the result into result. The
@@ -230,14 +241,14 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 	frame, err := c.marshalRequest(id, method, params)
 	if err != nil {
 		c.dropPending(id, stop)
-		return fmt.Errorf("perk/v1/%s: %w", method, err)
+		return fmt.Errorf("%s: %w", method, err)
 	}
 	c.writeMu.Lock()
 	_, err = c.stdin.Write(frame)
 	c.writeMu.Unlock()
 	if err != nil {
 		c.dropPending(id, stop)
-		return fmt.Errorf("perk/v1/%s: writing request: %w", method, err)
+		return fmt.Errorf("%s: writing request: %w", method, err)
 	}
 
 	select {
@@ -246,7 +257,7 @@ func (c *Client) Call(ctx context.Context, method string, params any, result any
 			return delivered.err
 		}
 		if err := json.Unmarshal(delivered.result, result); err != nil {
-			return fmt.Errorf("perk/v1/%s: decoding result: %w", method, err)
+			return fmt.Errorf("%s: decoding result: %w", method, err)
 		}
 		return nil
 	case <-ctx.Done():
