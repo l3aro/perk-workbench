@@ -39,6 +39,7 @@ func TestPluginHelperChild(t *testing.T) {
 		marker:          os.Getenv("PERK_PLUGIN_MARKER"),
 		rowWriter:       os.Getenv("PERK_PLUGIN_ROW_WRITER") == "1",
 		document:        os.Getenv("PERK_PLUGIN_DOCUMENT") == "1",
+		writeStatement:  os.Getenv("PERK_PLUGIN_WRITE_STATEMENT"),
 	}
 	if raw := os.Getenv("PERK_PLUGIN_SCHEMA"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &helper.schemaObjects); err != nil {
@@ -68,6 +69,7 @@ type pluginHelper struct {
 	marker          string
 	rowWriter       bool
 	document        bool
+	writeStatement  string
 	schemaObjects   []sharedsql.SchemaObject
 	schemaSet       bool
 }
@@ -249,11 +251,11 @@ func (h *pluginHelper) resultFor(method string, params json.RawMessage) any {
 	case methodListIndexesAll:
 		return map[string][]sharedsql.IndexInfo{}
 	case methodRowWrite:
-		return sharedsql.RowWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1}}
+		return sharedsql.RowWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1, Statement: h.writeStatement}}
 	case methodDocumentWrite:
 		var request documentWriteParams
 		_ = json.Unmarshal(params, &request)
-		response := sharedsql.DocumentWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1}}
+		response := sharedsql.DocumentWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1, Statement: h.writeStatement}}
 		if request.Request.Operation == sharedsql.DocumentWriteRead {
 			response.Document = request.Request.ID
 		}

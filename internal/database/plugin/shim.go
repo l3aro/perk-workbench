@@ -280,7 +280,7 @@ func (w *rowWriter) InsertRow(ctx context.Context, table string, values []shared
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 func (w *rowWriter) UpdateRow(ctx context.Context, table string, key, values []sharedsql.RowValue) (sharedsql.Result, error) {
@@ -292,7 +292,7 @@ func (w *rowWriter) UpdateRow(ctx context.Context, table string, key, values []s
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 func (w *rowWriter) DeleteRow(ctx context.Context, table string, key []sharedsql.RowValue) (sharedsql.Result, error) {
@@ -304,7 +304,7 @@ func (w *rowWriter) DeleteRow(ctx context.Context, table string, key []sharedsql
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 // documentWriter layers sql.DocumentReader and sql.DocumentWriter over a
@@ -343,7 +343,7 @@ func (w *documentWriter) InsertDocument(ctx context.Context, collection string, 
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 func (w *documentWriter) ReplaceDocument(ctx context.Context, collection string, id, document sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -355,7 +355,7 @@ func (w *documentWriter) ReplaceDocument(ctx context.Context, collection string,
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 func (w *documentWriter) DeleteDocument(ctx context.Context, collection string, id sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -367,7 +367,7 @@ func (w *documentWriter) DeleteDocument(ctx context.Context, collection string, 
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 // documentRowWriter is the combined wrapper for plugins advertising both
@@ -403,7 +403,7 @@ func (w *documentRowWriter) InsertDocument(ctx context.Context, collection strin
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 func (w *documentRowWriter) ReplaceDocument(ctx context.Context, collection string, id, document sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -415,7 +415,7 @@ func (w *documentRowWriter) ReplaceDocument(ctx context.Context, collection stri
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }
 
 func (w *documentRowWriter) DeleteDocument(ctx context.Context, collection string, id sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -427,5 +427,5 @@ func (w *documentRowWriter) DeleteDocument(ctx context.Context, collection strin
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected}, nil
+	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
 }

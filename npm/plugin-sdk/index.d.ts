@@ -122,6 +122,12 @@ export interface Result {
   truncated: boolean;
   /** One stable document identity per row; empty when not document-capable. */
   document_ids?: DocumentPayload[];
+  /**
+   * Optional backend-native, replayable statement for the operation that
+   * produced this result; empty/omitted for compiled-in drivers. The host
+   * logs it in place of the generic write preview when non-blank.
+   */
+  statement?: string;
 }
 
 /** Index kinds: 1 primary key, 2 unique, 3 regular. */
@@ -274,6 +280,8 @@ export interface RowWriteRequest {
 export interface RowWriteResponse {
   result: {
     rows_affected: number;
+    /** Optional backend-native, replayable statement for the write. */
+    statement?: string;
   };
 }
 
@@ -295,6 +303,8 @@ export interface DocumentWriteRequest {
 export interface DocumentWriteResponse {
   result: {
     rows_affected: number;
+    /** Optional backend-native, replayable statement for the write. */
+    statement?: string;
   };
   /** Set for read operations. */
   document?: DocumentPayload | null;

@@ -318,6 +318,130 @@ func TestBrowseForm_staleRowActionReportsCapabilityError(t *testing.T) {
 	}
 }
 
+// TestBrowseForm_writeLogsPreferNativeStatement proves successful row
+// writes log the service's returned native statement when one is present
+// and keep the generic preview when it is empty (compiled-in drivers and
+// older plugins). The preview is never replayable for non-SQL backends,
+// so the plugin's exact command must win whenever the service returns
+// one.
+func TestBrowseForm_writeLogsPreferNativeStatement(t *testing.T) {
+	const native = "RENAME key user:2 user:3"
+	for _, test := range []struct {
+		name string
+		want string
+		run  func(t *testing.T) (Model, tea.Msg)
+	}{
+		{
+			name: "update logs the native statement",
+			want: native,
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := openBrowseRow(t, 1)
+				model.browse.component.Form.Values.Fields[1] = "edited"
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1, Statement: native}}
+				return model, model.updateBrowseRow()()
+			},
+		},
+		{
+			name: "update keeps the preview without a statement",
+			want: "Table: items\nKey:\n  id = \"2\"\nChanges:\n  name = \"edited\"",
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := openBrowseRow(t, 1)
+				model.browse.component.Form.Values.Fields[1] = "edited"
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1}}
+				return model, model.updateBrowseRow()()
+			},
+		},
+		{
+			name: "insert logs the native statement",
+			want: native,
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := readyBrowseModel(t)
+				model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
+				model.browse.component.Form.Values.Defaults[1] = false
+				model.browse.component.Form.Values.Fields[1] = "third"
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1, Statement: native}}
+				return model, model.insertBrowseRow()()
+			},
+		},
+		{
+			name: "insert keeps the preview without a statement",
+			want: "Table: items\nValues:\n  name = \"third\"",
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := readyBrowseModel(t)
+				model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'a', Text: "a"})
+				model.browse.component.Form.Values.Defaults[1] = false
+				model.browse.component.Form.Values.Fields[1] = "third"
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1}}
+				return model, model.insertBrowseRow()()
+			},
+		},
+		{
+			name: "delete logs the native statement",
+			want: native,
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := readyBrowseModel(t)
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1, Statement: native}}
+				return model, model.deleteRow()()
+			},
+		},
+		{
+			name: "delete keeps the preview without a statement",
+			want: "Table: items\nKey:\n  id = \"1\"",
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := readyBrowseModel(t)
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1}}
+				return model, model.deleteRow()()
+			},
+		},
+		{
+			name: "cell update logs the native statement",
+			want: native,
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := readyBrowseModel(t)
+				model.browse.component.SelectedColumn = 1
+				model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+				model.browse.component.CellEditor.EditedVal = "changed"
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1, Statement: native}}
+				message := model.executeCellUpdate()()
+				// The save flow closes the editor before the async result
+				// lands, so the result message routes to the root handler.
+				model.browse.component.CloseCellEditor()
+				return model, message
+			},
+		},
+		{
+			name: "cell update keeps the preview without a statement",
+			want: "Table: items\nKey:\n  id = \"1\"\nChanges:\n  name = \"changed\"",
+			run: func(t *testing.T) (Model, tea.Msg) {
+				model := readyBrowseModel(t)
+				model.browse.component.SelectedColumn = 1
+				model = updateBrowseForm(model, tea.KeyPressMsg{Code: 'i', Text: "i"})
+				model.browse.component.CellEditor.EditedVal = "changed"
+				model.Database = browseWriteService{result: sharedsql.Result{RowsAffected: 1}}
+				message := model.executeCellUpdate()()
+				// The save flow closes the editor before the async result
+				// lands, so the result message routes to the root handler.
+				model.browse.component.CloseCellEditor()
+				return model, message
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model, message := test.run(t)
+			updated, _ := model.Update(message)
+			model = updated.(Model)
+			entries := model.queryLog.component.Entries
+			if len(entries) == 0 {
+				t.Fatalf("query log = %#v, want a write entry", model.queryLog.component.Entries)
+			}
+			// The query log is newest-first: the write entry is the head.
+			if got, want := entries[0].Statement, test.want; got != want {
+				t.Fatalf("query log statement = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 // TestBrowseForm_tabReachesButtonsFromInsertMode guards the vim-off flow
 // for the row editor: Tab on the last field focuses the Save/Cancel bar
 

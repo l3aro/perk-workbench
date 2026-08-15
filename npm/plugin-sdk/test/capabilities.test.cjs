@@ -122,6 +122,7 @@ test('rowWrite round trips through the session service', async () => {
     table: 'kv',
     values: [{ name: 'k', value: { kind: 'string', string: 'v' } }],
   };
+  const native = 'SET kv:v 1';
   let sawContext = null;
   const { server, client } = createServer(
     minimalDefinition({
@@ -137,7 +138,7 @@ test('rowWrite round trips through the session service', async () => {
           rowWrite: async (request, context) => {
             assert.deepEqual(request, writeRequest);
             sawContext = context;
-            return { result: { rows_affected: 1 } };
+            return { result: { rows_affected: 1, statement: native } };
           },
         }),
       }),
@@ -149,8 +150,34 @@ test('rowWrite round trips through the session service', async () => {
     session_id: 1,
     request: writeRequest,
   });
-  assert.deepEqual(response, { result: { rows_affected: 1 } });
+  assert.deepEqual(response, { result: { rows_affected: 1, statement: native } });
   assert.ok(sawContext.signal instanceof AbortSignal);
+  await server.close();
+});
+
+test('rowWrite result without a statement stays without one on the wire', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'kv',
+        display: 'KV',
+        targets: [{ prefix: 'kv:' }],
+        write_capabilities: { row_writer: true },
+      },
+      open: async () => ({
+        info: { product: 'KV', version: '1' },
+        service: serviceStub({ rowWrite: async () => ({ result: { rows_affected: 1 } }) }),
+      }),
+    }),
+  );
+  await client.initialize();
+  await client.request('perk/v1/open', { target: 'kv:x' });
+  const response = await client.request('perk/v1/row_write', {
+    session_id: 1,
+    request: { operation: 'delete', table: 'kv', key: [{ name: 'k', value: { kind: 'string', string: 'v' } }] },
+  });
+  assert.deepEqual(response, { result: { rows_affected: 1 } });
+  assert.ok(!('statement' in response.result));
   await server.close();
 });
 
@@ -197,7 +224,7 @@ test('documentWrite round trips with base64 byte payloads', async () => {
         service: serviceStub({
           documentWrite: async (request) => {
             assert.deepEqual(request, documentRequest);
-            return { result: { rows_affected: 1 }, document: documentRequest.id };
+            return { result: { rows_affected: 1, statement: 'db.restaurants.replaceOne({_id: ObjectId("1")}, {})' }, document: documentRequest.id };
           },
         }),
       }),
@@ -209,6 +236,9 @@ test('documentWrite round trips with base64 byte payloads', async () => {
     session_id: 1,
     request: documentRequest,
   });
-  assert.deepEqual(response, { result: { rows_affected: 1 }, document: documentRequest.id });
+  assert.deepEqual(response, {
+    result: { rows_affected: 1, statement: 'db.restaurants.replaceOne({_id: ObjectId("1")}, {})' },
+    document: documentRequest.id,
+  });
   await server.close();
 });

@@ -102,6 +102,12 @@ type Result struct {
 	// Rows, for document-capable browse results. Empty when the backend is
 	// not document-capable or a row has no identity.
 	DocumentIDs []DocumentPayload `json:"document_ids"`
+	// Statement is an optional backend-native, replayable statement for
+	// the operation that produced this result (external plugins return the
+	// exact command they executed; compiled-in drivers leave it empty).
+	// The workbench logs it in place of the generic write preview when
+	// non-blank. Omitted from the wire when empty.
+	Statement string `json:"statement,omitempty"`
 }
 
 type SchemaObject struct {

@@ -203,6 +203,19 @@ func (m Model) deleteColumn() tea.Cmd {
 	}
 }
 
+// writeLogStatement prefers the backend's native replayable statement
+// returned by a row/document write over the generic UI preview: the
+// preview is display-only (never executable for non-SQL backends such as
+// Redis), while external plugins may return the exact command they ran.
+// The preview stays the fallback for compiled-in drivers and older
+// plugins.
+func writeLogStatement(preview string, result sharedsql.Result) string {
+	if result.Statement != "" {
+		return result.Statement
+	}
+	return preview
+}
+
 func (m Model) updateBrowseRow() tea.Cmd {
 	if m.ReadOnly {
 		return func() tea.Msg { return browseRowUpdatedMsg{err: fmt.Errorf("connection is read-only")} }
@@ -226,7 +239,7 @@ func (m Model) updateBrowseRow() tea.Cmd {
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return browseRowUpdatedMsg{statement: preview, startedAt: startedAt, err: err}
+		return browseRowUpdatedMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
 	}
 }
 
@@ -343,7 +356,7 @@ func (m Model) insertBrowseRow() tea.Cmd {
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("inserted %d rows, want 1", result.RowsAffected)
 		}
-		return insertRowMsg{statement: preview, startedAt: startedAt, err: err}
+		return insertRowMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
 	}
 }
 
@@ -384,7 +397,7 @@ func (m Model) deleteRow() tea.Cmd {
 			if err == nil && result.RowsAffected != 1 {
 				err = fmt.Errorf("deleted %d rows, want 1", result.RowsAffected)
 			}
-			return deleteRowMsg{statement: preview, startedAt: startedAt, err: err}
+			return deleteRowMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
 		}
 	}
 	if identity := m.browseDocumentIdentity(); identity != nil {
@@ -398,7 +411,7 @@ func (m Model) deleteRow() tea.Cmd {
 			if err == nil && result.RowsAffected != 1 {
 				err = fmt.Errorf("deleted %d rows, want 1", result.RowsAffected)
 			}
-			return deleteRowMsg{statement: preview, startedAt: startedAt, err: err}
+			return deleteRowMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
 		}
 	}
 	return func() tea.Msg { return deleteRowMsg{err: m.rowWriteUnsupportedError()} }

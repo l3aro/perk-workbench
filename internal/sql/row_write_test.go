@@ -144,6 +144,76 @@ func TestRowWriteWireDTOs_roundTrip(t *testing.T) {
 	}
 }
 
+// TestWriteStatement_wireCompatibility proves the optional statement
+// field is backward compatible on the wire: Result and WriteResult
+// serialize the statement key exactly when non-empty — including nested
+// under the write response `result` — and omit it entirely when empty,
+// so compiled-in drivers and older plugins keep the identical prior JSON.
+func TestWriteStatement_wireCompatibility(t *testing.T) {
+	const native = "RENAME key user:2 user:3"
+
+	// Exact prior wire shapes: an empty statement changes nothing.
+	for _, test := range []struct {
+		name string
+		any  any
+		want string
+	}{
+		{name: "result", any: Result{RowsAffected: 1}, want: `{"columns":null,"column_types":null,"rows":null,"untruncated_rows":null,"rows_affected":1,"has_more":false,"duration_ns":0,"truncated":false,"document_ids":null}`},
+		{name: "write result", any: WriteResult{RowsAffected: 1}, want: `{"rows_affected":1}`},
+		{name: "row write response", any: RowWriteResponse{Result: WriteResult{RowsAffected: 1}}, want: `{"result":{"rows_affected":1}}`},
+		{name: "document write response", any: DocumentWriteResponse{Result: WriteResult{RowsAffected: 1}}, want: `{"result":{"rows_affected":1}}`},
+	} {
+		t.Run(test.name+" empty", func(t *testing.T) {
+			data, err := json.Marshal(test.any)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if string(data) != test.want {
+				t.Fatalf("wire = %s, want the exact prior shape %s", data, test.want)
+			}
+		})
+	}
+
+	// Non-empty statements are serialized and survive a round trip.
+	for _, test := range []struct {
+		name string
+		any  any
+		want string
+	}{
+		{name: "result", any: Result{RowsAffected: 1, Statement: native}, want: `{"columns":null,"column_types":null,"rows":null,"untruncated_rows":null,"rows_affected":1,"has_more":false,"duration_ns":0,"truncated":false,"document_ids":null,"statement":"RENAME key user:2 user:3"}`},
+		{name: "write result", any: WriteResult{RowsAffected: 1, Statement: native}, want: `{"rows_affected":1,"statement":"RENAME key user:2 user:3"}`},
+		{name: "row write response", any: RowWriteResponse{Result: WriteResult{RowsAffected: 1, Statement: native}}, want: `{"result":{"rows_affected":1,"statement":"RENAME key user:2 user:3"}}`},
+		{name: "document write response", any: DocumentWriteResponse{Result: WriteResult{RowsAffected: 1, Statement: native}}, want: `{"result":{"rows_affected":1,"statement":"RENAME key user:2 user:3"}}`},
+	} {
+		t.Run(test.name+" present", func(t *testing.T) {
+			data, err := json.Marshal(test.any)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			if string(data) != test.want {
+				t.Fatalf("wire = %s, want %s", data, test.want)
+			}
+			back := reflect.New(reflect.TypeOf(test.any)).Interface()
+			if err := json.Unmarshal(data, back); err != nil {
+				t.Fatalf("unmarshal %s: %v", data, err)
+			}
+			if !reflect.DeepEqual(reflect.ValueOf(back).Elem().Interface(), test.any) {
+				t.Fatalf("round trip = %#v, want %#v", reflect.ValueOf(back).Elem().Interface(), test.any)
+			}
+		})
+	}
+
+	// A response from an older plugin (no statement key) decodes with an
+	// empty statement and keeps the prior rows_affected.
+	var legacy RowWriteResponse
+	if err := json.Unmarshal([]byte(`{"result":{"rows_affected":2}}`), &legacy); err != nil {
+		t.Fatalf("unmarshal legacy response: %v", err)
+	}
+	if legacy.Result.RowsAffected != 2 || legacy.Result.Statement != "" {
+		t.Fatalf("legacy decode = %+v, want rows_affected 2 and no statement", legacy.Result)
+	}
+}
+
 // TestDocumentFormatMongoExtendedJSON_identity guards the wire-visible
 // format constant: it is a stable media type, not a display string.
 func TestDocumentFormatMongoExtendedJSON_identity(t *testing.T) {

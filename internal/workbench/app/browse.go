@@ -321,7 +321,7 @@ func (m Model) executeCellUpdate() tea.Cmd {
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return cellEditorUpdatedMsg{statement: preview, startedAt: startedAt, err: err}
+		return cellEditorUpdatedMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
 	}
 }
 
@@ -369,7 +369,7 @@ func (m Model) executeDocumentSave() tea.Cmd {
 			if err == nil && result.RowsAffected != 1 {
 				err = fmt.Errorf("inserted %d rows, want 1", result.RowsAffected)
 			}
-			return documentEditorSavedMsg{statement: preview, inserting: true, startedAt: startedAt, err: err}
+			return documentEditorSavedMsg{statement: writeLogStatement(preview, result), inserting: true, startedAt: startedAt, err: err}
 		}
 	}
 	identity := *e.Identity
@@ -378,7 +378,7 @@ func (m Model) executeDocumentSave() tea.Cmd {
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return documentEditorSavedMsg{statement: preview, startedAt: startedAt, err: err}
+		return documentEditorSavedMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
 	}
 }
 

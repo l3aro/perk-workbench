@@ -348,6 +348,7 @@ database order; plugins need not emit UI-only roots.
 | `duration_ns` | number | Execution time, **integer nanoseconds**. |
 | `truncated` | boolean | True when `rows` was cut at the row cap. |
 | `document_ids` | `DocumentPayload[]` | Optional; one stable document identity per row, parallel to `rows`. `null` (or absent) when the backend is not document-capable or a row has no identity. |
+| `statement` | string | Optional; a backend-native, replayable statement for the operation that produced this result. Row/document writes return it so the host logs the exact command (e.g. `RENAME key user:2 user:3`) instead of the generic UI preview; empty (or absent) keeps the preview. The host never executes this text itself. |
 
 Display conventions (follow the built-in drivers): at most 500 rows with
 `truncated`/`has_more` signaling, display cells sanitized and capped at
@@ -418,7 +419,10 @@ payload matching `kind` is meaningful; the others are omitted.
 **`RowWriteRequest`** — `{operation: "insert" | "update" | "delete",
 table: string, key?: RowValue[], values?: RowValue[]}`.
 
-**`RowWriteResponse`** — `{result: {rows_affected: number}}`.
+**`RowWriteResponse`** — `{result: {rows_affected: number, statement?: string}}`.
+`statement` is the optional backend-native, replayable command the driver
+executed for the write; the host logs it in place of the generic UI
+preview when non-blank and omits it from the wire when empty.
 
 **`DocumentPayload`** — `{format: string, data: string}`. `data` is the
 document bytes as a **base64** JSON string; `format` is the driver's
@@ -429,9 +433,11 @@ declared format.
 document?: DocumentPayload | null}`. `id` carries the document identity
 for read/replace/delete; `document` the body for insert/replace.
 
-**`DocumentWriteResponse`** — `{result: {rows_affected: number},
-document?: DocumentPayload | null}`. `document` is set for read
-operations; a read that returns no document is an error.
+**`DocumentWriteResponse`** — `{result: {rows_affected: number,
+statement?: string}, document?: DocumentPayload | null}`. `document` is
+set for read operations; a read that returns no document is an error.
+`statement` is the optional backend-native, replayable command the driver
+executed for the write (same convention as `RowWriteResponse`).
 
 ### Nullability and encoding conventions
 
@@ -442,7 +448,8 @@ operations; a read that returns no document is an error.
 - **Optional fields are omitted, not nulled**, when empty: `targets`,
   `form`, `keep_target` (false), `extras`, `document` (null), payload
   fields on `Value`, `key`/`values` on `RowWriteRequest`, `document_ids`
-  (null when not document-capable).
+  (null when not document-capable), `statement` (empty on `Result` and
+  write results).
 - **Bytes are base64 JSON strings**: `DocumentPayload.data`,
   `Value.bytes`.
 - **`duration_ns` is an integer** — nanoseconds, not a float or string.

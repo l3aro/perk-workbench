@@ -21,6 +21,7 @@ type fakeDocumentService struct {
 	replaced     []sharedsql.DocumentPayload
 	deleted      []sharedsql.DocumentPayload
 	readIdentity sharedsql.DocumentPayload
+	statement    string // native statement echoed by write results
 }
 
 func (s *fakeDocumentService) WriteCapabilities() sharedsql.WriteCapabilities { return s.capabilities }
@@ -32,18 +33,18 @@ func (s *fakeDocumentService) ReadDocument(context.Context, string, sharedsql.Do
 
 func (s *fakeDocumentService) InsertDocument(_ context.Context, _ string, doc sharedsql.DocumentPayload) (sharedsql.Result, error) {
 	s.inserted = append(s.inserted, doc)
-	return sharedsql.Result{RowsAffected: 1}, nil
+	return sharedsql.Result{RowsAffected: 1, Statement: s.statement}, nil
 }
 
 func (s *fakeDocumentService) ReplaceDocument(_ context.Context, _ string, id, doc sharedsql.DocumentPayload) (sharedsql.Result, error) {
 	s.replaced = append(s.replaced, doc)
 	s.readIdentity = id
-	return sharedsql.Result{RowsAffected: 1}, nil
+	return sharedsql.Result{RowsAffected: 1, Statement: s.statement}, nil
 }
 
 func (s *fakeDocumentService) DeleteDocument(_ context.Context, _ string, id sharedsql.DocumentPayload) (sharedsql.Result, error) {
 	s.deleted = append(s.deleted, id)
-	return sharedsql.Result{RowsAffected: 1}, nil
+	return sharedsql.Result{RowsAffected: 1, Statement: s.statement}, nil
 }
 
 func (s *fakeDocumentService) BrowseTable(context.Context, string, sharedsql.BrowseOptions) (sharedsql.Result, error) {
@@ -142,6 +143,71 @@ func TestDocumentEditor_insertConfirmsAndSaves(t *testing.T) {
 	if got, want := insertEntry.Statement, "Table: things\nDocument:\n{\"name\": \"widget\"}"; got != want {
 		t.Fatalf("query log statement = %q, want preview %q", got, want)
 	}
+}
+
+// TestDocumentEditor_saveLogsNativeStatement proves the document editor
+// logs the service's returned native statement when one is present and
+// keeps the generic preview when it is empty (compiled-in drivers and
+// older plugins).
+func TestDocumentEditor_saveLogsNativeStatement(t *testing.T) {
+	const native = "SET user:3 name widget"
+	capabilities := sharedsql.WriteCapabilities{
+		Document: &sharedsql.DocumentWriteCapability{Format: sharedsql.DocumentFormatMongoExtendedJSON, Text: true},
+	}
+	lastEntry := func(model Model, message string) *queryLogEntry {
+		entries := model.queryLog.component.Entries
+		// The query log is newest-first; the save entry is the one
+		// carrying the write message (a reload entry may follow it).
+		for index := range min(len(entries), 3) {
+			if entries[index].Message == message {
+				return &entries[index]
+			}
+		}
+		t.Fatalf("query log = %#v, want a %q entry", model.queryLog.component.Entries, message)
+		return nil
+	}
+	t.Run("insert logs the native statement", func(t *testing.T) {
+		model, service := readyDocumentModel(t, capabilities)
+		service.statement = native
+		model = openInsertDocument(t, model)
+		model.browse.component.DocumentEditor.Edited = `{"name": "widget"}`
+		model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
+		model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
+		if got, want := lastEntry(model, "inserted 1 row").Statement, native; got != want {
+			t.Fatalf("query log statement = %q, want %q", got, want)
+		}
+	})
+	t.Run("replace logs the native statement", func(t *testing.T) {
+		model, service := readyDocumentModel(t, capabilities)
+		service.statement = native
+		service.loaded = sharedsql.DocumentPayload{Format: sharedsql.DocumentFormatMongoExtendedJSON, Data: []byte(`{"_id": {"$oid":"` + testObjectID + `"}, "name": "first"}`)}
+		model = openEditDocument(t, model)
+		updated, _ := model.Update(documentEditorLoadedMsg{payload: service.loaded})
+		model = updated.(Model)
+		model.browse.component.DocumentEditor.Edited = `{"name": "edited"}`
+		model = updateBrowseForm(model, tea.KeyPressMsg{Code: tea.KeyF5})
+		model = resolveBrowseCommand(model, tea.KeyPressMsg{Code: 'y', Text: "y"})
+		if got, want := lastEntry(model, "updated 1 row").Statement, native; got != want {
+			t.Fatalf("query log statement = %q, want %q", got, want)
+		}
+	})
+	t.Run("delete logs the native statement", func(t *testing.T) {
+		model, service := readyDocumentModel(t, capabilities)
+		service.statement = native
+		updated, _ := model.Update(model.deleteRow()())
+		model = updated.(Model)
+		if got, want := lastEntry(model, "deleted 1 row").Statement, native; got != want {
+			t.Fatalf("query log statement = %q, want %q", got, want)
+		}
+	})
+	t.Run("delete keeps the preview without a statement", func(t *testing.T) {
+		model, _ := readyDocumentModel(t, capabilities)
+		updated, _ := model.Update(model.deleteRow()())
+		model = updated.(Model)
+		if got, want := lastEntry(model, "deleted 1 row").Statement, "Table: things\nKey:\n  _id = "+string(mongoIdentity().Data); got != want {
+			t.Fatalf("query log statement = %q, want preview %q", got, want)
+		}
+	})
 }
 
 // TestDocumentEditor_unknownFormatPassesExactBytes proves a raw textual
