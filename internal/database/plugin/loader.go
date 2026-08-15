@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/l3aro/perk-workbench/internal/database"
 )
@@ -56,22 +57,25 @@ func Load(ctx context.Context, configPath string, entries []string, register fun
 		loader.trackClient(client)
 
 		var handshake initializeResult
+		initStart := time.Now()
 		if err := client.Call(ctx, methodInitialize, initializeParams{
 			ProtocolVersion:  ProtocolVersion,
 			WorkbenchVersion: workbenchVersion,
 		}, &handshake); err != nil {
+			client.setInitDuration(time.Since(initStart))
 			errs = append(errs, fmt.Errorf("plugin %q: initialize: %w", entry, err))
+			_ = client.Close()
+			continue
+		}
+		client.setInitDuration(time.Since(initStart))
+		if handshake.ProtocolVersion != ProtocolVersion {
+			errs = append(errs, fmt.Errorf("plugin %q: protocol version %d, want %d", entry, handshake.ProtocolVersion, ProtocolVersion))
 			_ = client.Close()
 			continue
 		}
 		// The plugin has identified itself; operation errors now carry
 		// this host-known identity, never the child's data claims.
 		client.SetPlugin(handshake.Capabilities.Name)
-		if handshake.ProtocolVersion != ProtocolVersion {
-			errs = append(errs, fmt.Errorf("plugin %q: protocol version %d, want %d", entry, handshake.ProtocolVersion, ProtocolVersion))
-			_ = client.Close()
-			continue
-		}
 		if err := register(&shim{client: client, caps: handshake.Capabilities, loader: loader}); err != nil {
 			errs = append(errs, fmt.Errorf("plugin %q: %w", entry, err))
 			_ = client.Close()

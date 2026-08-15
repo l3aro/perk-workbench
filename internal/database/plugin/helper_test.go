@@ -88,6 +88,12 @@ type pluginHelper struct {
 
 // serve reads request frames and answers until stdin closes.
 func (h *pluginHelper) serve() {
+	if flood := envInt("PERK_PLUGIN_STDERR_FLOOD", 0); flood > 0 {
+		noise := []byte(strings.Repeat("stderr noise\n", 64)) // 1536 bytes
+		for written := 0; written < flood; written += len(noise) {
+			_, _ = os.Stderr.Write(noise)
+		}
+	}
 	h.reader = bufio.NewReaderSize(os.Stdin, MaxFrameBytes)
 	for {
 		frame, err := readFrame(h.reader)

@@ -22,6 +22,7 @@ type Client struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
 	stdout io.Reader
+	drain  *stderrDrain // bounded stderr retention for diagnostics
 
 	writeMu sync.Mutex // serializes all writes to stdin
 
@@ -33,6 +34,12 @@ type Client struct {
 	waitErr  error // cmd.Wait error, joined into err after the reap
 	done     chan struct{}
 	plugin   string // host-known identity, set after initialize
+
+	path         string        // canonical executable path
+	pid          int           // child pid; 0 once reaped
+	initDuration time.Duration // initialize RPC duration once Load completes
+	running      bool          // child not yet reaped
+	exitStatus   int           // exit code once reaped; -1 while running or signal-killed
 
 	closeOnce sync.Once
 }
@@ -53,8 +60,9 @@ type callResult struct {
 	err    error
 }
 
-// spawn launches a plugin child. stderr is drained so the child can never
-// block on a full stderr pipe; one reader goroutine serves responses.
+// spawn launches a plugin child. stderr is drained so the child can
+// never block on a full stderr pipe, retaining a bounded newest tail
+// for diagnostics; one reader goroutine serves responses.
 func spawn(path string, args ...string) (*Client, error) {
 	cmd := exec.Command(path, args...)
 	stdin, err := cmd.StdinPipe()
@@ -73,13 +81,18 @@ func spawn(path string, args ...string) (*Client, error) {
 		return nil, err
 	}
 	client := &Client{
-		cmd:     cmd,
-		stdin:   stdin,
-		stdout:  stdout,
-		pending: map[uint64]*pendingCall{},
-		done:    make(chan struct{}),
+		cmd:        cmd,
+		stdin:      stdin,
+		stdout:     stdout,
+		drain:      &stderrDrain{},
+		pending:    map[uint64]*pendingCall{},
+		done:       make(chan struct{}),
+		path:       path,
+		pid:        cmd.Process.Pid,
+		running:    true,
+		exitStatus: -1,
 	}
-	go func() { _, _ = io.Copy(io.Discard, stderr) }()
+	go client.drain.run(stderr)
 	go client.readLoop()
 	return client, nil
 }
@@ -138,7 +151,24 @@ func (c *Client) readLoop() {
 	if waitErr != nil || !errors.Is(readErr, io.EOF) {
 		c.err = errors.Join(readErr, waitErr)
 	}
+	c.pid = 0
+	c.running = false
+	c.exitStatus = exitStatus(waitErr)
 	c.mu.Unlock()
+}
+
+// exitStatus maps a cmd.Wait error to the child's exit status: the exit
+// code for a normal exit (0 for a clean one), -1 while unknown (not yet
+// reaped) or when the child was killed by a signal.
+func exitStatus(waitErr error) int {
+	if waitErr == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 // dispatch routes one response frame to its pending call, stashing the

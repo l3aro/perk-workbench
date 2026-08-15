@@ -169,8 +169,11 @@ promise resolving at termination) and `close()` (idempotent).
   the plugin writes responses to its **stdout**. stdout carries protocol
   frames **only** — the host parses every stdout line as a frame.
 - **stderr is for diagnostics.** The host drains the plugin's stderr so a
-  verbose plugin can never block on a full pipe; the host otherwise
-  ignores it.
+  verbose plugin can never block on a full pipe, and retains only the
+  newest bounded tail — at most 64 KiB and 100 logical lines per plugin —
+  for later inspection. Treat stderr as retained, inspectable output:
+  never write protocol frames, connection targets, form values,
+  credentials, or statements to it.
 - Request IDs are **unsigned numeric** JSON integers assigned by the host,
   starting at 1 and increasing per child. Responses must echo the request
   id. `perk/v1/cancel` is a JSON-RPC notification: it has no `id` member.
