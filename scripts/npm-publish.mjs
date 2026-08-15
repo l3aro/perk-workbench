@@ -33,7 +33,7 @@ function assertCleanWorktree() {
 }
 
 export function publishPackages(archives, distTag, publish = run) {
-  const publishArchives = [...platformPackages, 'perk-workbench'].map((name) => {
+  const publishArchives = [...platformPackages, 'perk-workbench-plugin-sdk', 'perk-workbench'].map((name) => {
     const versionPrefix = new RegExp(`^${name}-(?:0|[1-9]\\d*)\\.`);
     const matches = archives.filter((archive) => versionPrefix.test(archive) && archive.endsWith('.tgz'));
     if (matches.length !== 1) throw new Error(`Expected one archive for ${name}, found ${matches.length}`);
@@ -59,7 +59,16 @@ async function main() {
   run('go', ['vet', './cmd/...', './internal/...']);
   run('go', ['build', './cmd/perk-workbench']);
   if (run('gofmt', ['-l', 'cmd', 'internal']).trim()) throw new Error('gofmt reported unformatted Go files');
-  run('node', ['--test', 'npm/launcher/test/child-exit.test.cjs', 'npm/launcher/test/mapping.test.cjs']);
+  run('node', [
+    '--test',
+    'npm/launcher/test/child-exit.test.cjs',
+    'npm/launcher/test/mapping.test.cjs',
+    'npm/plugin-sdk/test/protocol.test.cjs',
+    'npm/plugin-sdk/test/session.test.cjs',
+    'npm/plugin-sdk/test/cancel.test.cjs',
+    'npm/plugin-sdk/test/capabilities.test.cjs',
+    'npm/plugin-sdk/test/exports.test.cjs',
+  ]);
   const archives = await packageArchives(release.version);
   publishPackages(archives, release.distTag);
 }

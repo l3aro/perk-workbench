@@ -41,7 +41,8 @@ async function manifest(template, destination, version) {
 
 async function stagePackage(name, version) {
   const isLauncher = name === 'perk-workbench';
-  const source = join(root, 'npm', isLauncher ? 'launcher' : 'platforms', isLauncher ? '' : name);
+  const isSdk = name === 'perk-workbench-plugin-sdk';
+  const source = join(root, 'npm', isLauncher ? 'launcher' : isSdk ? 'plugin-sdk' : 'platforms', isLauncher || isSdk ? '' : name);
   const destination = join(output, name);
   await cp(source, destination, { recursive: true });
   await cp(join(root, 'LICENSE'), join(destination, 'LICENSE'));
@@ -70,7 +71,10 @@ async function main() {
   const version = parseVersion(process.argv.slice(2));
   await rm(output, { recursive: true, force: true });
   await mkdir(output, { recursive: true });
-  const packages = [await stagePackage('perk-workbench', version)];
+  const packages = [
+    await stagePackage('perk-workbench', version),
+    await stagePackage('perk-workbench-plugin-sdk', version),
+  ];
   for (const target of targets) packages.push(await buildTarget(...target, version));
   for (const directory of packages) await pack(directory);
   const files = await inspectPackages(output, version);

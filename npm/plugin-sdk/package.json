@@ -1,0 +1,21 @@
+{
+  "name": "perk-workbench-plugin-sdk",
+  "version": "0.0.0",
+  "description": "Author SDK for building external perk/v1 database plugins for perk-workbench",
+  "license": "MIT",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "files": [
+    "index.cjs",
+    "index.d.ts"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "perk-workbench",
+    "database",
+    "plugin",
+    "sdk"
+  ]
+}

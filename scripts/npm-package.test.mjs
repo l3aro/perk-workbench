@@ -33,13 +33,16 @@ test('injects repository metadata into generated manifests', async () => {
     await execFileAsync('node', [join(root, 'scripts', 'npm-package.mjs'), '--version', '1.2.3'], {
       cwd: root,
     });
-    for (const name of ['perk-workbench', 'perk-workbench-linux-x64']) {
+    for (const name of ['perk-workbench', 'perk-workbench-linux-x64', 'perk-workbench-plugin-sdk']) {
       const manifest = JSON.parse(await readFile(join(dist, name, 'package.json'), 'utf8'));
       assert.deepEqual(manifest.repository, {
         type: 'git',
         url: 'https://github.com/l3aro/perk-workbench',
       });
     }
+    const sdkManifest = JSON.parse(await readFile(join(dist, 'perk-workbench-plugin-sdk', 'package.json'), 'utf8'));
+    assert.deepEqual(sdkManifest.engines, { node: '>=18' });
+    assert.equal(sdkManifest.dependencies, undefined);
   } finally {
     await rm(dist, { recursive: true, force: true });
   }

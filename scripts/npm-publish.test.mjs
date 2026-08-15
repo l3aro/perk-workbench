@@ -17,6 +17,7 @@ const platformArchives = [
   'perk-workbench-linux-x64-1.2.3.tgz',
   'perk-workbench-win32-x64-1.2.3.tgz',
 ];
+const sdkArchive = 'perk-workbench-plugin-sdk-1.2.3.tgz';
 
 async function fakeReleaseFixture(archives) {
   const directory = await mkdtemp(join(tmpdir(), 'perk-npm-publish-'));
@@ -74,6 +75,7 @@ test('publishes all platform archives before the launcher', () => {
   const invocations = [];
   const archives = [
     'perk-workbench-1.2.3.tgz',
+    'perk-workbench-plugin-sdk-1.2.3.tgz',
     'perk-workbench-darwin-arm64-1.2.3.tgz',
     'perk-workbench-darwin-x64-1.2.3.tgz',
     'perk-workbench-linux-arm64-1.2.3.tgz',
@@ -86,11 +88,12 @@ test('publishes all platform archives before the launcher', () => {
   publishPackages(archives, 'latest', (command, args) => invocations.push([command, ...args]));
 
   // Then
-  assert.equal(invocations.length, 6);
+  assert.equal(invocations.length, 7);
   assert.deepEqual(
     invocations.map((invocation) => invocation[2]),
     [
       ...platformArchives.map((archive) => join(root, 'dist', 'npm', archive)),
+      join(root, 'dist', 'npm', sdkArchive),
       join(root, 'dist', 'npm', 'perk-workbench-1.2.3.tgz'),
     ],
   );
@@ -110,14 +113,29 @@ test('publishes all platform archives before the launcher', () => {
 
 test('publishes platform archives before the launcher when the CLI runs against fake npm', async () => {
   // Given
-  const fixture = await fakeReleaseFixture([...platformArchives, 'perk-workbench-1.2.3.tgz']);
+  const fixture = await fakeReleaseFixture([...platformArchives, sdkArchive, 'perk-workbench-1.2.3.tgz']);
   try {
     // When
     await runFakeRelease(fixture);
 
     // Then
     const log = await readFile(fixture.log, 'utf8');
-    assert.deepEqual(log.trim().split('\n').map((line) => line.split(' ')[1]), [...platformArchives, 'perk-workbench-1.2.3.tgz'].map((archive) => join(fixture.output, archive)));
+    assert.deepEqual(
+      log.trim().split('\n').map((line) => line.split(' ')[1]),
+      [...platformArchives, sdkArchive, 'perk-workbench-1.2.3.tgz'].map((archive) => join(fixture.output, archive)),
+    );
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test('does not invoke fake npm when the sdk archive is missing', async () => {
+  // Given
+  const fixture = await fakeReleaseFixture([...platformArchives, 'perk-workbench-1.2.3.tgz']);
+  try {
+    // When / Then
+    await assert.rejects(runFakeRelease(fixture), /Expected one archive for perk-workbench-plugin-sdk, found 0/);
+    await assert.rejects(readFile(fixture.log), { code: 'ENOENT' });
   } finally {
     await rm(fixture.directory, { recursive: true, force: true });
   }

@@ -1,9 +1,9 @@
 name: Publish npm packages
 # Manual preflight: configure npm trusted publishers, each bound to
 # l3aro/perk-workbench and .github/workflows/npm-publish.yml, for:
-# perk-workbench, perk-workbench-darwin-x64, perk-workbench-darwin-arm64,
-# perk-workbench-linux-x64, perk-workbench-linux-arm64, and
-# perk-workbench-win32-x64.
+# perk-workbench, perk-workbench-plugin-sdk, perk-workbench-darwin-x64,
+# perk-workbench-darwin-arm64, perk-workbench-linux-x64,
+# perk-workbench-linux-arm64, and perk-workbench-win32-x64.
 
 on:
   push:

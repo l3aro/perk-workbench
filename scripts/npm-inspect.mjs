@@ -55,6 +55,19 @@ async function inspectArchive(path, version) {
     return;
   }
 
+  if (manifest.name === 'perk-workbench-plugin-sdk') {
+    assert.ok(entries.has('package/index.cjs'), `${path}: missing CommonJS implementation`);
+    assert.ok(entries.has('package/index.d.ts'), `${path}: missing type declarations`);
+    assert.equal(manifest.main, 'index.cjs', `${path}: main entry`);
+    assert.equal(manifest.types, 'index.d.ts', `${path}: types entry`);
+    assert.deepEqual(manifest.engines, { node: '>=18' }, `${path}: node floor`);
+    assert.equal(manifest.dependencies, undefined, `${path}: sdk must be dependency-free`);
+    assert.equal(manifest.bin, undefined, `${path}: sdk must not expose a bin`);
+    const entryNames = [...entries.keys()];
+    assert.ok(!entryNames.some((name) => name.startsWith('package/test/')), `${path}: sdk tests must not ship`);
+    return;
+  }
+
   const target = targets.find(([platform, arch]) => manifest.name === packageName(platform, arch));
   assert.ok(target, `${path}: unexpected package ${manifest.name}`);
   const [platform, arch] = target;
@@ -68,7 +81,7 @@ async function inspectArchive(path, version) {
 
 export async function inspectPackages(directory, version) {
   const files = (await readdir(directory)).filter((file) => file.endsWith('.tgz')).sort();
-  assert.equal(files.length, 6, `${directory}: expected six tarballs`);
+  assert.equal(files.length, 7, `${directory}: expected seven tarballs`);
   await Promise.all(files.map((file) => inspectArchive(join(directory, file), version)));
   return files;
 }
