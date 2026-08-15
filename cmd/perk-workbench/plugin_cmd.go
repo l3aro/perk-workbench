@@ -36,6 +36,11 @@ Commands:
       every configured entry, or exactly the given executables. Each
       item runs independently and failures never stop later items. Exit
       status 1 when any item fails.
+  test [--json] EXECUTABLE
+      Run the perk/v1 conformance suite against one executable:
+      fixture-driven protocol cases and generated transport cases, each
+      in a fresh child that is terminated when the case ends. Exit
+      status 1 when any case fails.
 
 Options:
   --json       Machine-readable JSON on stdout; diagnostics for the
@@ -102,7 +107,7 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 	}
 	command := args[0]
 	switch command {
-	case "list", "inspect", "doctor":
+	case "list", "inspect", "doctor", "test":
 	case "--help", "-h":
 		fmt.Fprint(stdout, pluginUsage)
 		return 0
@@ -142,6 +147,12 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return runPluginInspect(jsonOut, operands[0], stdout, stderr)
+	case "test":
+		if len(operands) != 1 {
+			fmt.Fprintln(stderr, "perk-workbench plugin test: expected exactly one executable")
+			return 2
+		}
+		return runPluginTest(jsonOut, operands[0], stdout, stderr)
 	default: // doctor
 		return runPluginDoctor(jsonOut, operands, stdout, stderr)
 	}

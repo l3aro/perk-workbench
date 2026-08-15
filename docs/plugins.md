@@ -161,6 +161,13 @@ success, 1 plugin or operational failure, 2 usage error.
     shutdown: ok
   ```
 
+- `plugin test [--json] EXECUTABLE` — resolves the executable and runs
+  the perk/v1 conformance suite against it (see
+  [Conformance testing](#conformance-testing-plugin-test)): each case
+  runs in a fresh child and the child is terminated and reaped before
+  the next case starts. Exit status 1 when any case fails; 2 on usage
+  errors.
+
 **Secret-safe diagnostics.** The plugin commands never exchange target
 or form values, credentials, or statements with the plugin: the
 lifecycle sends only the `perk/v1/initialize` handshake and then closes
@@ -173,9 +180,106 @@ tail). stderr is the plugin's own diagnostic stream, retained with the
 same bounds as the TUI (newest 64 KiB / 100 lines) and shown only when
 non-empty; stdout protocol frames are never reported. Resolution bases
 differ by origin: config entries resolve relative to the config file's
-directory (bare names through PATH), while explicit `inspect`/`doctor`
-operands resolve against the working directory (bare names through
-PATH).
+directory (bare names through PATH), while explicit
+`inspect`/`doctor`/`test` operands resolve against the working
+directory (bare names through PATH).
+
+## Conformance testing (`plugin test`)
+
+`plugin test [--json] EXECUTABLE` runs the perk/v1 conformance suite
+against one plugin executable, outside Go's unit-test harness, to
+validate its transport and lifecycle behavior against the canonical
+protocol assets (`protocol/perk-v1/schema.json`, `fixtures/`, and
+`manifest.json`, embedded into the binary — never copied).
+
+Guarantees:
+
+- **Fixture-driven cases** read the manifest and send its named
+  request/notification frames (derived frames keep their fixture
+  origin), asserting the manifest-declared methods, error codes, and
+  rejections: a valid initialize (exact protocol version `1` and
+  capabilities passing the side-effect-free registration invariants),
+  a parseable wrong `jsonrpc`, string and float request ids, an unknown
+  method (`-32601`), and the id-less `perk/v1/cancel` notification
+  (no response, child stays usable).
+- **Generated transport cases**: a request before initialize gets a
+  JSON-RPC error and the child remains usable; two requests in one
+  write get correct ids and responses in processing order; an unknown
+  cancel id never kills the child; malformed JSON, non-object JSON,
+  invalid UTF-8, EOF input, and frames over 16 MiB are terminal with no
+  protocol response; an exact 16 MiB frame (newline included) is
+  accepted and answered; a clean EOF shutdown exits 0 within the case
+  bound.
+- **Raw NDJSON-RPC, strictly parsed.** The runner speaks directly to
+  the child's stdio — frames never pass through the production client,
+  so deliberately invalid frames can be sent. Every response must be
+  valid UTF-8, a single JSON object in one LF-terminated frame of at
+  most 16 MiB including the newline, `jsonrpc: "2.0"`, with exactly one
+  `result` or `error`, an unsigned numeric id answering an outstanding
+  request exactly once, and no stdout noise; any violation terminates
+  the child and fails the case.
+- **Isolation and cleanup.** Every case spawns a fresh child; stderr is
+  drained concurrently with the same bounded intent as the host (newest
+  64 KiB / 100 lines), so a chatty child can never deadlock or grow
+  diagnostics without limit. Each case and its shutdown are time-bounded
+  (30 seconds per case; a child that ignores EOF is killed after a 5
+  second grace), every child is reaped before the next case starts, and
+  independent failures never stop later cases.
+- **No backend required.** The suite never invokes `build_target`,
+  `open`, or any session RPC, so a transport-only plugin such as
+  perk-redis can be tested without a Redis server.
+- **Drift fails coherently.** The manifest, every named fixture, and
+  the schema are loaded and cross-checked when the command starts; a
+  missing or renamed fixture, a manifest entry whose method or expected
+  error code is missing or disagrees with its frame, or a `$ref` that
+  no longer resolves in the schema fails the whole run with a coherent
+  error instead of misbehaving per case.
+
+Limits:
+
+- The suite verifies transport and handshake behavior, not backend or
+  session semantics. Because no session handler is ever in flight, the
+  canceled-code (`-32800`) response is not verified; cancellation is
+  exercised at the transport level only (id-less cancel notifications
+  produce no response, and unknown cancel ids never kill the child).
+- The schema is a contract reference, not a validator: the runner
+  checks the manifest's `$ref`s against it, but frames are judged by
+  the strict parsing rules above, exactly as the production host does.
+- Deliberately invalid input frames (malformed JSON, non-object JSON,
+  invalid UTF-8, oversized frames) are constructed by the runner —
+  they cannot exist as canonical fixtures.
+- `--json` emits exactly one document on stdout, pass or fail, and
+  nothing else; diagnostics for the invocation itself go to stderr only
+  when no document can be produced. Raw protocol frames and request
+  data are never reported. Each case result carries a stable name,
+  pass/fail, duration, failure category (`spawn`, `protocol`,
+  `behavior`, `timeout`, `shutdown`) with message, and the bounded
+  sanitized stderr tail.
+
+Examples:
+
+```console
+$ perk-workbench plugin test --json ./perk-redis
+{
+  "entry": "./perk-redis",
+  "path": "/home/alice/.local/bin/perk-redis",
+  "cases": [
+    {"name": "initialize", "ok": true, "duration": 12345678, "stderr": []},
+    {"name": "wrong_jsonrpc", "ok": true, "duration": 2234567, "stderr": []},
+    ...
+  ],
+  "passed": 16,
+  "failed": 0,
+  "ok": true
+}
+$ perk-workbench plugin test ./perk-redis
+plugin test ./perk-redis:
+  path: /home/alice/.local/bin/perk-redis
+  initialize               PASS  12ms
+  wrong_jsonrpc            PASS   2ms
+  ...
+  16 passed, 0 failed
+```
 
 ## Writing a plugin with the Node SDK
 

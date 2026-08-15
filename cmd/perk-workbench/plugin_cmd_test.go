@@ -312,6 +312,10 @@ func TestDispatch_pluginGrammar(t *testing.T) {
 		{name: "inspect extra operand", args: []string{"plugin", "inspect", "a", "b"}, wantStatus: 2, wantStderr: "expected exactly one executable"},
 		{name: "inspect unknown flag", args: []string{"plugin", "inspect", "--json", "--bogus", "x"}, wantStatus: 2, wantStderr: "unknown flag"},
 		{name: "doctor unknown flag", args: []string{"plugin", "doctor", "x", "-y"}, wantStatus: 2, wantStderr: "unknown flag"},
+		{name: "test missing operand", args: []string{"plugin", "test"}, wantStatus: 2, wantStderr: "expected exactly one executable"},
+		{name: "test --json missing operand", args: []string{"plugin", "test", "--json"}, wantStatus: 2, wantStderr: "expected exactly one executable"},
+		{name: "test extra operand", args: []string{"plugin", "test", "a", "b"}, wantStatus: 2, wantStderr: "expected exactly one executable"},
+		{name: "test unknown flag", args: []string{"plugin", "test", "--json", "--bogus", "x"}, wantStatus: 2, wantStderr: "unknown flag"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

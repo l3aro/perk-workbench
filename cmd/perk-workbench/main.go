@@ -36,6 +36,7 @@ Commands:
   plugin list [--json]                    List configured plugin executables
   plugin inspect [--json] EXECUTABLE      Inspect one plugin over perk/v1
   plugin doctor [--json] [EXECUTABLE...]  Check configured plugins or given executables
+  plugin test [--json] EXECUTABLE        Conformance-test one plugin over perk/v1
 
 Run "perk-workbench plugin --help" for plugin command help.
 `
