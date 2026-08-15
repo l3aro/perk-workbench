@@ -85,6 +85,18 @@ func Load(ctx context.Context, configPath string, entries []string, register fun
 	return loader, errs
 }
 
+// ResolveExecutable maps a plugin entry to its canonical executable
+// path with the exact startup resolution and allowlist, without
+// spawning anything: bare names resolve through PATH, entries with a
+// path separator resolve relative to the config file's directory (or
+// the working directory when configPath is empty, for explicit
+// operands), and the result must be a regular file with at least one
+// executable permission bit. It is the narrow exported face of the
+// loader's resolver so CLI tooling never duplicates the rules.
+func ResolveExecutable(entry, configPath string) (string, error) {
+	return resolvePluginExecutable(entry, configPath)
+}
+
 // resolvePluginExecutable maps a config entry to its canonical plugin
 // path: entries without a path separator resolve through PATH; entries
 // with one resolve relative to the config file's directory. The result
@@ -145,10 +157,31 @@ func (l *Loader) unregisterSession(proxy *sessionProxy) {
 	delete(l.sessions, proxy)
 }
 
+// Snapshots returns one immutable diagnostic snapshot per spawned
+// child, in load order. Safe to call at any time, including after
+// Close: the loader retains every client reference solely so final
+// diagnostics stay inspectable. Each snapshot is a fresh copy — mutating
+// a returned Snapshot or its Stderr slice never affects the loader or
+// its children.
+func (l *Loader) Snapshots() []Snapshot {
+	l.mu.Lock()
+	clients := make([]*Client, len(l.clients))
+	copy(clients, l.clients)
+	l.mu.Unlock()
+	snapshots := make([]Snapshot, 0, len(clients))
+	for _, client := range clients {
+		snapshots = append(snapshots, client.Snapshot())
+	}
+	return snapshots
+}
+
 // Close shuts down every live session (their idempotent Close sends the
 // close RPC), then closes every plugin child. Idempotent: the second call
 // returns nil. Safe after children have exited and while calls are still
-// pending — pending calls fail with the terminal error.
+// pending — pending calls fail with the terminal error. The client
+// references are retained after Close so Snapshots keeps reporting final
+// diagnostics; Client.Close is idempotent, so a later Close never
+// touches them again.
 func (l *Loader) Close() error {
 	l.mu.Lock()
 	if l.closed {
@@ -159,7 +192,6 @@ func (l *Loader) Close() error {
 	sessions := l.sessions
 	l.sessions = map[*sessionProxy]struct{}{}
 	clients := l.clients
-	l.clients = nil
 	l.mu.Unlock()
 
 	var errs []error

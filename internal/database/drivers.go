@@ -365,12 +365,57 @@ type Shim interface {
 	Open(ctx context.Context, target string) (sharedsql.Service, error)
 }
 
+// checkShimConflictsLocked rejects a shim whose identity or target
+// forms collide with the drivers visible under driversMu (held read or
+// write by the caller): duplicate names, and cross-driver target
+// prefixes that would shadow or be shadowed by another driver's forms.
+// Overlaps within one shim's own patterns stay legal.
+func checkShimConflictsLocked(caps Capabilities) error {
+	if _, exists := byName[caps.Name]; exists {
+		return fmt.Errorf("database: driver %q registered twice", caps.Name)
+	}
+	for _, pattern := range caps.Targets {
+		for name, existing := range byName {
+			for _, other := range existing.Targets {
+				if strings.HasPrefix(pattern.Prefix, other.Prefix) || strings.HasPrefix(other.Prefix, pattern.Prefix) {
+					return fmt.Errorf("database: driver %q target prefix %q overlaps %q of driver %q", caps.Name, pattern.Prefix, other.Prefix, name)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateShim checks the registration invariants RegisterShim enforces
+// — a valid capability advertisement, a name unique against the
+// registered drivers, and no cross-driver target-prefix overlap —
+// without installing anything. It is the read-only face of shim
+// registration for diagnostic tooling: validating the same shim any
+// number of times, including duplicate identities and overlapping
+// target prefixes across items, never mutates the driver group.
+func ValidateShim(shim Shim) error {
+	if shim == nil {
+		return errors.New("database: nil shim")
+	}
+	caps := shim.Capabilities()
+	if err := validateSpec(Spec{
+		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
+	}); err != nil {
+		return err
+	}
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	return checkShimConflictsLocked(caps)
+}
+
 // RegisterShim installs a plugin-backed driver into the group, deriving
 // the spec from the shim's declarative capabilities. Unlike Register, a
 // misconfigured shim returns an error: a broken plugin must not take the
 // app down. Formless drivers never register a target builder; the
 // connection form then falls back to the raw target field, like a
-// target-only driver.
+// target-only driver. ValidateShim is the side-effect-free face of the
+// same checks.
 func RegisterShim(shim Shim) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
@@ -385,22 +430,8 @@ func RegisterShim(shim Shim) error {
 	}
 	driversMu.Lock()
 	defer driversMu.Unlock()
-	if _, exists := byName[caps.Name]; exists {
-		return fmt.Errorf("database: driver %q registered twice", caps.Name)
-	}
-	// Reject cross-driver target overlap: a target form of this driver
-	// must never shadow or be shadowed by another driver's form, since
-	// Match resolves by registration order. Overlaps within one driver
-	// (postgres:// before postgres:; redis:// before redis:) stay legal —
-	// this driver is not registered yet, so only other drivers are seen.
-	for _, pattern := range caps.Targets {
-		for name, existing := range byName {
-			for _, other := range existing.Targets {
-				if strings.HasPrefix(pattern.Prefix, other.Prefix) || strings.HasPrefix(other.Prefix, pattern.Prefix) {
-					return fmt.Errorf("database: driver %q target prefix %q overlaps %q of driver %q", caps.Name, pattern.Prefix, other.Prefix, name)
-				}
-			}
-		}
+	if err := checkShimConflictsLocked(caps); err != nil {
+		return err
 	}
 	// Install the target builder before the driver becomes visible, so a
 	// concurrent BuildTarget can never observe a partially registered

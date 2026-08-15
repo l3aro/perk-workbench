@@ -107,6 +107,76 @@ protocol version) or registration (invalid capabilities, duplicate name,
 target-prefix overlap) is terminated immediately and contributes one
 logged error.
 
+## Inspecting plugins from the CLI
+
+`perk-workbench plugin` manages the configured plugin fleet without
+starting the TUI. Every command is scriptable: `--json` emits one
+machine-readable document on stdout, diagnostics for the invocation
+itself go to stderr only when no JSON document can be produced, and
+item-level failures are encoded in the document. Exit status: 0
+success, 1 plugin or operational failure, 2 usage error.
+
+- `plugin list [--json]` — reads the same config file and parser as
+  startup and lists the configured entries in config order, resolving
+  each with the exact startup resolution rules above **without spawning
+  anything**. An entry that cannot be resolved is reported per entry
+  (its `error` field / an `invalid:` line) and makes the exit status 1;
+  an empty config is successful and explicit (`[]` / `no plugins
+  configured`).
+
+  ```console
+  $ perk-workbench plugin list
+  perk-redis -> /home/alice/.local/bin/perk-redis
+  ./clickhouse-driver -> invalid: exec: "clickhouse-driver": executable file not found in $PATH
+  ```
+
+- `plugin inspect [--json] EXECUTABLE` — resolves the executable, runs
+  it through the real loader lifecycle (spawn → `perk/v1/initialize`
+  handshake → registration-invariant validation, without installing a
+  global driver), closes it cleanly, and reports the advertised
+  capabilities plus the final diagnostic snapshot: canonical path, init
+  duration, exit/running state, and the bounded stderr tail. It works
+  for executables not listed in config; a bare name resolves through
+  PATH, a relative path against the working directory.
+
+- `plugin doctor [--json] [EXECUTABLE...]` — with no arguments checks
+  every configured entry in order; with arguments checks exactly those
+  executables. Each item runs the full
+  resolve/initialize/register/shutdown lifecycle independently — with
+  its own loader and validation-only registration, so duplicate
+  identities or overlapping target prefixes across items never mutate
+  or contaminate the global driver registry — and a failing item never
+  stops later ones. An interrupt (Ctrl-C) stops the check between items;
+  items already checked are still reported. The report marks the failing
+  phase per item
+  (`resolve`, `initialize`, `protocol`, `register`, or `shutdown`); the
+  overall exit status is 1 when any item fails.
+
+  ```console
+  $ perk-workbench plugin doctor
+  plugin perk-redis:
+    path: /home/alice/.local/bin/perk-redis
+    initialize: ok (12ms)
+    capabilities: name=perk-redis display="Redis (plugin)" targets=[redis:] query_language=sql writes=none
+    shutdown: ok
+  ```
+
+**Secret-safe diagnostics.** The plugin commands never exchange target
+or form values, credentials, or statements with the plugin: the
+lifecycle sends only the `perk/v1/initialize` handshake and then closes
+the child — `build_target`, `open`, and every session RPC are never
+invoked, so user-supplied values cannot appear in reports by
+construction. Reports carry declarative data only (the advertised
+capabilities, including the form *description* — never values) plus
+process diagnostics (canonical path, pid/exit state, bounded stderr
+tail). stderr is the plugin's own diagnostic stream, retained with the
+same bounds as the TUI (newest 64 KiB / 100 lines) and shown only when
+non-empty; stdout protocol frames are never reported. Resolution bases
+differ by origin: config entries resolve relative to the config file's
+directory (bare names through PATH), while explicit `inspect`/`doctor`
+operands resolve against the working directory (bare names through
+PATH).
+
 ## Writing a plugin with the Node SDK
 
 The SDK (`perk-workbench-plugin-sdk`, CommonJS, dependency-free,

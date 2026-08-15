@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -27,7 +28,17 @@ import (
 // A bare build reports "devel".
 var version = "devel"
 
-const usage = "Usage: perk-workbench [--read-only] [database]\n"
+const usage = `Usage: perk-workbench [--read-only] [database]
+
+Connect to a database and browse, query, and edit it.
+
+Commands:
+  plugin list [--json]                    List configured plugin executables
+  plugin inspect [--json] EXECUTABLE      Inspect one plugin over perk/v1
+  plugin doctor [--json] [EXECUTABLE...]  Check configured plugins or given executables
+
+Run "perk-workbench plugin --help" for plugin command help.
+`
 
 func versionOutput() string {
 	return "perk-workbench " + version + "\n"
@@ -200,19 +211,26 @@ func loadAI() (*ai.Client, *ai.History, error) {
 	return client, history, nil
 }
 
-func main() {
-	if len(os.Args) == 2 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
-		fmt.Print(usage)
-		return
+// dispatch runs one CLI invocation and returns its exit status: 0
+// success, 1 operational or plugin failure, 2 usage error. It is the
+// testable face of main, which stays a thin os.Exit wrapper. Command
+// helpers never call os.Exit themselves.
+func dispatch(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprint(stdout, usage)
+		return 0
 	}
-	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		fmt.Print(versionOutput())
-		return
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "-v") {
+		fmt.Fprint(stdout, versionOutput())
+		return 0
 	}
-	target, readOnly, err := parseTarget(os.Args[1:])
+	if len(args) > 0 && args[0] == "plugin" {
+		return dispatchPlugin(args[1:], stdout, stderr)
+	}
+	target, readOnly, err := parseTarget(args)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, err)
+		return 2
 	}
 	if target == "" {
 		// .env in the working directory is a fallback for unset variables;
@@ -223,9 +241,14 @@ func main() {
 		}
 	}
 	if err := run(target, readOnly); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, err)
+		return 1
 	}
+	return 0
+}
+
+func main() {
+	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func run(target string, readOnly bool) error {
