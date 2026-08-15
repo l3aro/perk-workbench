@@ -103,7 +103,46 @@ func (p *sessionProxy) Validate(ctx context.Context, statement string) error {
 func (p *sessionProxy) ListSchema(ctx context.Context) ([]sharedsql.SchemaObject, error) {
 	var result []sharedsql.SchemaObject
 	err := p.call(ctx, methodListSchema, sessionParams{SessionID: p.sessionID}, &result)
-	return result, err
+	if err != nil {
+		return nil, err
+	}
+	return normalizeSchema(result), nil
+}
+
+// normalizeSchema adapts a perk/v1 list_schema response to the stricter
+// internal representation: the sidebar tree renders roots only from
+// Type == "database", while plugins may return flat objects (the wire
+// shape docs/plugins.md permits). For every distinct non-empty Database
+// without an explicit Type == "database" object for that same Database,
+// one root {Database: database, Type: "database", Name: database,
+// RowCount: nil} is synthesized. Synthetic roots are prepended in
+// first-seen database order; every plugin-provided object is preserved
+// with its relative order, explicit roots never duplicated or replaced,
+// and objects with an empty Database left untouched.
+func normalizeSchema(objects []sharedsql.SchemaObject) []sharedsql.SchemaObject {
+	explicitRoot := make(map[string]bool)
+	for _, object := range objects {
+		if object.Database != "" && object.Type == "database" {
+			explicitRoot[object.Database] = true
+		}
+	}
+	var roots []sharedsql.SchemaObject
+	seen := make(map[string]bool)
+	for _, object := range objects {
+		database := object.Database
+		if database == "" || explicitRoot[database] || seen[database] {
+			continue
+		}
+		seen[database] = true
+		roots = append(roots, sharedsql.SchemaObject{Database: database, Type: "database", Name: database})
+	}
+	if len(roots) == 0 {
+		return objects
+	}
+	normalized := make([]sharedsql.SchemaObject, 0, len(roots)+len(objects))
+	normalized = append(normalized, roots...)
+	normalized = append(normalized, objects...)
+	return normalized
 }
 
 func (p *sessionProxy) TableInfo(ctx context.Context, table string) ([]sharedsql.ColumnInfo, error) {

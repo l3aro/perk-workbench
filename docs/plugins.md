@@ -329,7 +329,11 @@ are display-only; the workbench does not branch driver behavior on them.
 
 **`SchemaObject`** — `{database: string, type: string, name: string,
 row_count?: number | null}`. `row_count` is an estimate where the engine
-exposes one; `null` (or absent) when unknown.
+exposes one; `null` (or absent) when unknown. Plugins may return flat
+objects — every database's tables and views without a database root. The
+host synthesizes one missing `type: 'database'` root per distinct
+non-empty `database` for its internal rendering, prepended in first-seen
+database order; plugins need not emit UI-only roots.
 
 **`Result`** — the execution and browse result:
 
@@ -733,7 +737,9 @@ What the example demonstrates:
 - `buildTarget` serializes the form values into `demo-kv:<database>`,
   which the host routes back and strips before `open`.
 - `open` returns `{info, service}`; the SDK assigns the `session_id` and
-  owns the session lifecycle. `listSchema` serves schema objects.
+  owns the session lifecycle. `listSchema` serves schema objects; the
+  flat list here is fine — the host synthesizes the missing `database`
+  root for internal rendering.
 - `execute` runs statements and supports the blocking `SLEEP` statement,
   canceled through `context.signal` by throwing `RequestCancelledError`
   (or by observing `signal.aborted` directly).

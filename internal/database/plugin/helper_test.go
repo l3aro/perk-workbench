@@ -40,6 +40,12 @@ func TestPluginHelperChild(t *testing.T) {
 		rowWriter:       os.Getenv("PERK_PLUGIN_ROW_WRITER") == "1",
 		document:        os.Getenv("PERK_PLUGIN_DOCUMENT") == "1",
 	}
+	if raw := os.Getenv("PERK_PLUGIN_SCHEMA"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &helper.schemaObjects); err != nil {
+			os.Exit(2)
+		}
+		helper.schemaSet = true
+	}
 	if helper.name == "" {
 		helper.name = "pluginkv"
 	}
@@ -62,6 +68,8 @@ type pluginHelper struct {
 	marker          string
 	rowWriter       bool
 	document        bool
+	schemaObjects   []sharedsql.SchemaObject
+	schemaSet       bool
 }
 
 // serve reads request frames and answers until stdin closes.
@@ -172,6 +180,11 @@ func (h *pluginHelper) handleRequest(id uint64, method string, params json.RawMe
 				}
 			}
 		}
+	case "schema_error":
+		if method == methodListSchema {
+			h.respond(id, nil, &rpcError{Code: -32000, Message: "schema exploded"})
+			return true
+		}
 	case "out_of_order":
 		if method == methodExecute || method == methodExecuteReadOnly {
 			// Respond late, from another goroutine, so the immediate
@@ -219,6 +232,9 @@ func (h *pluginHelper) resultFor(method string, params json.RawMessage) any {
 			Duration:     time.Millisecond,
 		}
 	case methodListSchema:
+		if h.schemaSet {
+			return h.schemaObjects
+		}
 		return []sharedsql.SchemaObject{{Database: "pluginkv", Type: "collection", Name: "widgets"}}
 	case methodTableInfo:
 		return []sharedsql.ColumnInfo{{Name: "name", Type: "string", Nullable: true}}

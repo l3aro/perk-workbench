@@ -282,8 +282,10 @@ func TestLoad_databaseOpenSemantics(t *testing.T) {
 	if opened.Info.Product != "PluginKV" {
 		t.Fatalf("opened.Info.Product = %q, want PluginKV", opened.Info.Product)
 	}
-	if len(opened.Objects) != 1 || opened.Objects[0].Name != "widgets" {
-		t.Fatalf("opened.Objects = %+v, want the widgets collection", opened.Objects)
+	if len(opened.Objects) != 2 ||
+		opened.Objects[0] != (sharedsql.SchemaObject{Database: "pluginkv", Type: "database", Name: "pluginkv"}) ||
+		opened.Objects[1].Name != "widgets" {
+		t.Fatalf("opened.Objects = %+v, want the synthesized pluginkv root then the widgets collection", opened.Objects)
 	}
 
 	service := opened.Service
@@ -531,8 +533,10 @@ func TestProxy_concurrentOutOfOrder(t *testing.T) {
 	if schemaErr != nil {
 		t.Fatalf("ListSchema error = %v", schemaErr)
 	}
-	if len(objects) != 1 || objects[0].Name != "LISTS" {
-		t.Fatalf("ListSchema = %+v, want the immediate distinctive LISTS object", objects)
+	if len(objects) != 2 ||
+		objects[0] != (sharedsql.SchemaObject{Database: "pluginkv", Type: "database", Name: "pluginkv"}) ||
+		objects[1].Name != "LISTS" {
+		t.Fatalf("ListSchema = %+v, want the synthesized pluginkv root then the immediate distinctive LISTS object", objects)
 	}
 }
 
