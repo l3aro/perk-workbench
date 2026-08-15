@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "result": {
+    "result": {
+      "rows_affected": 1
+    },
+    "document": {
+      "format": "application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed",
+      "data": "eyJuYW1lIjoiQ2FmZSJ9"
+    }
+  }
+}

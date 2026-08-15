@@ -1,0 +1,48 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "perk/v1/row_write",
+  "params": {
+    "session_id": 7,
+    "request": {
+      "operation": "insert",
+      "table": "kv",
+      "values": [
+        {
+          "name": "key",
+          "value": {
+            "kind": "string",
+            "string": "user:2"
+          }
+        },
+        {
+          "name": "n",
+          "value": {
+            "kind": "integer",
+            "integer": 42
+          }
+        },
+        {
+          "name": "ok",
+          "value": {
+            "kind": "bool",
+            "bool": true
+          }
+        },
+        {
+          "name": "note",
+          "value": {
+            "kind": "null"
+          }
+        },
+        {
+          "name": "blob",
+          "value": {
+            "kind": "bytes",
+            "bytes": "AAEC"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 19,
+  "method": "perk/v1/create_index",
+  "params": {
+    "session_id": 7,
+    "table": "kv",
+    "change": {
+      "name": "idx_a",
+      "unique": false,
+      "primary_key": false,
+      "columns": [
+        "a",
+        "a"
+      ]
+    }
+  }
+}

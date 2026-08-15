@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "result": {
+    "result": {
+      "rows_affected": 1,
+      "statement": "RENAME key user:2 user:3",
+      "statement_metadata": {
+        "language": "redis",
+        "replayable": true,
+        "sensitive": false
+      }
+    }
+  }
+}

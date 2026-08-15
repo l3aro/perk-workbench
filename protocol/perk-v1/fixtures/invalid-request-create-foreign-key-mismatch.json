@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": 20,
+  "method": "perk/v1/create_foreign_key",
+  "params": {
+    "session_id": 7,
+    "table": "users",
+    "change": {
+      "columns": [
+        "a",
+        "b"
+      ],
+      "reference_table": "orgs",
+      "reference_columns": [
+        "id"
+      ],
+      "on_delete": "CASCADE",
+      "on_update": "NO ACTION"
+    }
+  }
+}

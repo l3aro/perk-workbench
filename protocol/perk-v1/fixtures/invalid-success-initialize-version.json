@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 18,
+  "result": {
+    "protocol_version": 2,
+    "capabilities": {
+      "name": "perk-redis",
+      "display": "Redis (plugin)",
+      "write_capabilities": {
+        "row_writer": false
+      }
+    }
+  }
+}

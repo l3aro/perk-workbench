@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "error": {
+    "code": -32000,
+    "message": "connection refused",
+    "data": {
+      "kind": "connection",
+      "plugin": "perk-redis",
+      "method": "perk/v1/execute"
+    }
+  }
+}

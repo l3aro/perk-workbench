@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "perk/v1/initialize",
+  "params": {
+    "protocol_version": 1,
+    "workbench_version": "perk-workbench 0.1.0"
+  }
+}

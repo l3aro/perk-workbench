@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "session_id": 7,
+    "info": {
+      "product": "Redis (plugin)",
+      "version": "7.2.0"
+    }
+  }
+}

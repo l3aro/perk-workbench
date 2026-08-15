@@ -1,0 +1,50 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "columns": [
+      "key",
+      "value"
+    ],
+    "column_types": [
+      "string",
+      "string"
+    ],
+    "rows": [
+      [
+        "user:2",
+        "alice"
+      ],
+      [
+        "user:3",
+        null
+      ]
+    ],
+    "untruncated_rows": [
+      [
+        "user:2",
+        "alice"
+      ],
+      [
+        "user:3",
+        null
+      ]
+    ],
+    "rows_affected": 0,
+    "has_more": false,
+    "duration_ns": 1250,
+    "truncated": false,
+    "document_ids": [
+      {
+        "format": "application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed",
+        "data": "eyJfaWQiOiIxIn0="
+      }
+    ],
+    "statement": "RENAME key user:2 user:3",
+    "statement_metadata": {
+      "language": "redis",
+      "replayable": true,
+      "sensitive": false
+    }
+  }
+}

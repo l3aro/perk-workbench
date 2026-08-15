@@ -17,6 +17,43 @@ implementations are:
 - Node SDK: `npm/plugin-sdk/index.cjs` and `npm/plugin-sdk/index.d.ts`
   (package `perk-workbench-plugin-sdk`).
 
+## Machine-readable contract
+
+The contract has a canonical machine-readable companion:
+
+- `protocol/perk-v1/schema.json` — JSON Schema draft 2020-12 describing
+  the v1 wire shapes: the JSON-RPC request/notification/success/error
+  envelopes (numeric integer ids, `jsonrpc: "2.0"`, exact method
+  names), error data and the stable kinds, initialize capabilities
+  (including `query_language`), forms and targets, every shared SQL DTO,
+  the row/document write DTOs, and a `$defs/methods` registry mapping
+  each `perk/v1/<method>` constant to its params and result schema.
+- `protocol/perk-v1/fixtures/` — canonical frames: representative valid
+  request/notification/success/error frames plus parseable invalid
+  semantic frames, each described by `manifest.json` (file, validity,
+  schema `$ref` target, expected method/error). The Go host and Node
+  SDK test suites load these exact files; there are no copies.
+  Boundary-sized (16 MiB) frames are deliberately not stored; conformance
+  tests generate them.
+
+Compatibility rules for v1:
+
+- **Optional additive fields.** Every JSON object tolerates unknown
+  fields — the schema marks `additionalProperties: true` throughout — so
+  either side may add optional fields without a protocol version bump. A
+  receiver must ignore unknown fields.
+- **Stable enums and method names.** Enum values and the `perk/v1/<name>`
+  method constants are frozen for v1. Adding, renaming, or renumbering
+  them is a protocol change that requires a new version.
+- **`protocol_version`.** The initialize result must echo the requested
+  version (currently `1`); a different value rejects the plugin before
+  registration. `workbench_version` is informational — plugins must not
+  gate on its exact value.
+- **Descriptive, not enforced.** The host never loads or evaluates the
+  schema at runtime; it is a contract reference for tools and tests. The
+  authoritative implementations remain the Go host and the Node SDK,
+  and both test suites exercise the shared fixtures.
+
 ## Trust model
 
 A configured plugin is **trusted code**. It is an executable the workbench

@@ -1,0 +1,35 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "perk/v1/browse_table",
+  "params": {
+    "session_id": 7,
+    "table": "kv",
+    "options": {
+      "columns": [
+        "key",
+        "value"
+      ],
+      "filters": [
+        {
+          "column": "key",
+          "operator": "LIKE",
+          "value": "user:%"
+        },
+        {
+          "column": "value",
+          "operator": "IS NULL",
+          "value": ""
+        }
+      ],
+      "sorts": [
+        {
+          "column": "key",
+          "descending": false
+        }
+      ],
+      "offset": 0,
+      "limit": 100
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "kv": [
+      {
+        "name": "PRIMARY",
+        "unique": true,
+        "primary_key": true,
+        "columns": [
+          "key"
+        ]
+      }
+    ]
+  }
+}

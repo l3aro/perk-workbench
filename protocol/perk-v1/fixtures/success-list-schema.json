@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "result": [
+    {
+      "database": "kv",
+      "type": "table",
+      "name": "users",
+      "row_count": 3
+    },
+    {
+      "database": "kv",
+      "type": "table",
+      "name": "sessions",
+      "row_count": null
+    }
+  ]
+}

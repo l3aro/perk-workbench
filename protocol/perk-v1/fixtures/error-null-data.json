@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": 13,
+  "error": {
+    "code": -32000,
+    "message": "boom",
+    "data": null
+  }
+}

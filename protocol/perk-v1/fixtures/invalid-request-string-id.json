@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": "1",
+  "method": "perk/v1/execute",
+  "params": {
+    "session_id": 7,
+    "statement": "SELECT 1"
+  }
+}

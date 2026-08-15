@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": 17,
+  "result": {
+    "columns": [],
+    "column_types": [],
+    "rows": [],
+    "untruncated_rows": [],
+    "rows_affected": 0,
+    "has_more": false,
+    "duration_ns": 0,
+    "truncated": false,
+    "statement_metadata": {
+      "language": "redis",
+      "replayable": true,
+      "sensitive": false
+    }
+  }
+}

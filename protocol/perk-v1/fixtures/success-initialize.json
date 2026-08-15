@@ -1,0 +1,53 @@
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocol_version": 1,
+    "capabilities": {
+      "name": "perk-redis",
+      "display": "Redis (plugin)",
+      "targets": [
+        {
+          "prefix": "redis:"
+        }
+      ],
+      "form": {
+        "prefix": "redis:",
+        "fields": [
+          {
+            "key": "host",
+            "title": "Host",
+            "kind": 0,
+            "placeholder": "localhost",
+            "validate": 0
+          },
+          {
+            "key": "port",
+            "title": "Port",
+            "kind": 0,
+            "default": "6379",
+            "validate": 2,
+            "error": "port must be between 1 and 65535"
+          }
+        ]
+      },
+      "query_language": {
+        "name": "Redis",
+        "editor_label": "Command",
+        "placeholder": "Enter a command…",
+        "lexer": "redis",
+        "examples": [
+          "GET key",
+          "SET key value"
+        ]
+      },
+      "write_capabilities": {
+        "row_writer": true,
+        "document": {
+          "format": "application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed",
+          "text": true
+        }
+      }
+    }
+  }
+}

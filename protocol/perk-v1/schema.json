@@ -1,0 +1,2150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://perk-workbench.dev/perk-v1/schema.json",
+  "title": "perk/v1 JSON-RPC protocol contract",
+  "description": "Machine-readable contract for the perk/v1 external database plugin protocol: JSON-RPC 2.0 over newline-delimited UTF-8 JSON on stdio. The authoritative implementations are the Go host (internal/database/plugin, internal/database, internal/sql) and the Node SDK (npm/plugin-sdk); docs/plugins.md is the normative prose contract. This schema is descriptive of protocol version 1 — the host never evaluates it at runtime — and every object tolerates unknown additive fields (additionalProperties: true) so optional fields may be added without a version bump. The $defs/methods registry maps each perk/v1/<method> constant to its params and result schema.",
+  "version": 1,
+  "$defs": {
+    "uint64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "jsonrpc",
+        "id",
+        "method",
+        "params"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "method": {
+          "enum": [
+            "perk/v1/initialize",
+            "perk/v1/build_target",
+            "perk/v1/open",
+            "perk/v1/close",
+            "perk/v1/cancel",
+            "perk/v1/execute",
+            "perk/v1/execute_read_only",
+            "perk/v1/validate",
+            "perk/v1/list_schema",
+            "perk/v1/table_info",
+            "perk/v1/list_indexes",
+            "perk/v1/create_index",
+            "perk/v1/replace_index",
+            "perk/v1/drop_index",
+            "perk/v1/list_foreign_keys",
+            "perk/v1/list_referencing_foreign_keys",
+            "perk/v1/list_foreign_keys_all",
+            "perk/v1/list_indexes_all",
+            "perk/v1/create_foreign_key",
+            "perk/v1/replace_foreign_key",
+            "perk/v1/drop_foreign_key",
+            "perk/v1/alter_column",
+            "perk/v1/drop_column",
+            "perk/v1/add_column",
+            "perk/v1/browse_table",
+            "perk/v1/row_write",
+            "perk/v1/document_write"
+          ]
+        },
+        "params": true
+      }
+    },
+    "notification": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "jsonrpc",
+        "method",
+        "params"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "method": {
+          "const": "perk/v1/cancel"
+        },
+        "params": {
+          "$ref": "#/$defs/cancelParams"
+        }
+      }
+    },
+    "success": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "jsonrpc",
+        "id",
+        "result"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "result": true,
+        "error": false
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "jsonrpc",
+        "id",
+        "error"
+      ],
+      "properties": {
+        "jsonrpc": {
+          "const": "2.0"
+        },
+        "id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "error": {
+          "$ref": "#/$defs/rpcError"
+        },
+        "result": false
+      }
+    },
+    "rpcError": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/errorData"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "errorData": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        }
+      }
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "validation",
+        "authentication",
+        "connection",
+        "operation",
+        "unsupported",
+        "cancelled",
+        "protocol",
+        "plugin_crash"
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "display",
+        "write_capabilities"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "display": {
+          "type": "string"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/targetPattern"
+          }
+        },
+        "form": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/formSpec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "query_language": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/queryLanguage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "write_capabilities": {
+          "$ref": "#/$defs/writeCapabilities"
+        }
+      }
+    },
+    "targetPattern": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "prefix"
+      ],
+      "properties": {
+        "prefix": {
+          "type": "string"
+        },
+        "keep_target": {
+          "type": "boolean"
+        }
+      }
+    },
+    "formSpec": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/formField"
+          }
+        },
+        "prefix": {
+          "type": "string"
+        }
+      }
+    },
+    "formField": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "key",
+        "title",
+        "kind",
+        "validate"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/formFieldKind"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "default": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/formOption"
+          }
+        },
+        "validate": {
+          "$ref": "#/$defs/formValidation"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "formOption": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "label",
+        "value"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "formFieldKind": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "formValidation": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "formValues": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "pass": {
+          "type": "string"
+        },
+        "database": {
+          "type": "string"
+        },
+        "tls": {
+          "type": "string"
+        },
+        "extras": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "queryLanguage": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "editor_label",
+        "placeholder"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "editor_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "placeholder": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lexer": {
+          "type": "string"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "writeCapabilities": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "row_writer"
+      ],
+      "properties": {
+        "row_writer": {
+          "type": "boolean"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/documentWriteCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "documentWriteCapability": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "format",
+        "text"
+      ],
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/documentFormat"
+        },
+        "text": {
+          "type": "boolean"
+        }
+      }
+    },
+    "documentFormat": {
+      "type": "string",
+      "const": "application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed"
+    },
+    "initializeParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "protocol_version",
+        "workbench_version"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "workbench_version": {
+          "type": "string"
+        }
+      }
+    },
+    "initializeResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "protocol_version",
+        "capabilities"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        }
+      }
+    },
+    "buildTargetResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "target",
+        "ok"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    },
+    "databaseInfo": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "product",
+        "version"
+      ],
+      "properties": {
+        "product": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "openParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "target"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        }
+      }
+    },
+    "openResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "info"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "info": {
+          "$ref": "#/$defs/databaseInfo"
+        }
+      }
+    },
+    "sessionParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        }
+      }
+    },
+    "statementParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "statement"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "statement": {
+          "type": "string"
+        }
+      }
+    },
+    "tableParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        }
+      }
+    },
+    "indexChangeParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "change"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "change": {
+          "$ref": "#/$defs/indexChange"
+        }
+      }
+    },
+    "replaceIndexParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "old_name",
+        "change"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "old_name": {
+          "type": "string"
+        },
+        "change": {
+          "$ref": "#/$defs/indexChange"
+        }
+      }
+    },
+    "dropParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "name"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "foreignKeyChangeParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "change"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "change": {
+          "$ref": "#/$defs/foreignKeyChange"
+        }
+      }
+    },
+    "replaceForeignKeyParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "old_name",
+        "change"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "old_name": {
+          "type": "string"
+        },
+        "change": {
+          "$ref": "#/$defs/foreignKeyChange"
+        }
+      }
+    },
+    "columnChangeParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "change"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "change": {
+          "$ref": "#/$defs/columnChange"
+        }
+      }
+    },
+    "addColumnParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "def"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "def": {
+          "$ref": "#/$defs/columnDef"
+        }
+      }
+    },
+    "browseParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "table",
+        "options"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "table": {
+          "type": "string"
+        },
+        "options": {
+          "$ref": "#/$defs/browseOptions"
+        }
+      }
+    },
+    "rowWriteParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "request"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "request": {
+          "$ref": "#/$defs/rowWriteRequest"
+        }
+      }
+    },
+    "documentWriteParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "request"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "request": {
+          "$ref": "#/$defs/documentWriteRequest"
+        }
+      }
+    },
+    "cancelParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uint64"
+        }
+      }
+    },
+    "schemaObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "database",
+        "type",
+        "name"
+      ],
+      "properties": {
+        "database": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "row_count": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "columns",
+        "column_types",
+        "rows",
+        "untruncated_rows",
+        "rows_affected",
+        "has_more",
+        "duration_ns",
+        "truncated"
+      ],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "column_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "untruncated_rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "rows_affected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "duration_ns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "document_ids": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/documentPayload"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "statement": {
+          "type": "string"
+        },
+        "statement_metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/statementMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "statement_metadata"
+            ],
+            "properties": {
+              "statement_metadata": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "statement"
+            ],
+            "properties": {
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "statementMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "language",
+        "replayable",
+        "sensitive"
+      ],
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "replayable": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        }
+      }
+    },
+    "columnInfo": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "type",
+        "attributes",
+        "nullable",
+        "default_value",
+        "primary_key",
+        "indexes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "attributes": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "primary_key": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "indexes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/indexKind"
+          }
+        }
+      }
+    },
+    "indexKind": {
+      "type": "integer",
+      "enum": [
+        1,
+        2,
+        3
+      ]
+    },
+    "columnDef": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "type",
+        "nullable",
+        "default_value",
+        "attributes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attributes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "columnChange": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "previous_name",
+        "name",
+        "type",
+        "nullable",
+        "default_value",
+        "attributes"
+      ],
+      "properties": {
+        "previous_name": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "default_value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attributes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "indexInfo": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "unique",
+        "primary_key",
+        "columns"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        },
+        "primary_key": {
+          "type": "boolean"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "indexChange": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "unique",
+        "primary_key",
+        "columns"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "unique": {
+          "type": "boolean"
+        },
+        "primary_key": {
+          "type": "boolean"
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "foreignKeyInfo": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "columns",
+        "reference_table",
+        "reference_columns",
+        "on_delete",
+        "on_update"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reference_table": {
+          "type": "string"
+        },
+        "reference_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "on_delete": {
+          "type": "string"
+        },
+        "on_update": {
+          "type": "string"
+        }
+      }
+    },
+    "referencingForeignKeyInfo": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "columns",
+        "reference_table",
+        "reference_columns",
+        "on_delete",
+        "on_update",
+        "table"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reference_table": {
+          "type": "string"
+        },
+        "reference_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "on_delete": {
+          "type": "string"
+        },
+        "on_update": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        }
+      }
+    },
+    "foreignKeyChange": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "columns",
+        "reference_table",
+        "reference_columns",
+        "on_delete",
+        "on_update"
+      ],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reference_table": {
+          "type": "string"
+        },
+        "reference_columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "on_delete": {
+          "type": "string"
+        },
+        "on_update": {
+          "type": "string"
+        }
+      }
+    },
+    "browseOptions": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/browseFilter"
+          }
+        },
+        "sorts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/browseSort"
+          }
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "browseFilter": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "column",
+        "operator",
+        "value"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "operator": {
+          "$ref": "#/$defs/browseFilterOperator"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "browseFilterOperator": {
+      "type": "string",
+      "enum": [
+        "",
+        "LIKE",
+        "NOT LIKE",
+        "PATTERN",
+        "NOT PATTERN",
+        "=",
+        "!=",
+        "<",
+        "<=",
+        ">",
+        ">=",
+        "IS NULL",
+        "IS NOT NULL"
+      ]
+    },
+    "browseSort": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "column",
+        "descending"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "descending": {
+          "type": "boolean"
+        }
+      }
+    },
+    "documentPayload": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "format",
+        "data"
+      ],
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/documentFormat"
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64"
+        }
+      }
+    },
+    "value": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/valueKind"
+        },
+        "string": {
+          "type": "string"
+        },
+        "bool": {
+          "type": "boolean"
+        },
+        "integer": {
+          "type": "integer"
+        },
+        "float": {
+          "type": "number"
+        },
+        "bytes": {
+          "type": "string",
+          "contentEncoding": "base64"
+        },
+        "decimal": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "array": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/value"
+          }
+        },
+        "object": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/namedValue"
+          }
+        }
+      }
+    },
+    "valueKind": {
+      "type": "string",
+      "enum": [
+        "default",
+        "null",
+        "string",
+        "bool",
+        "integer",
+        "float",
+        "bytes",
+        "decimal",
+        "timestamp",
+        "array",
+        "object"
+      ]
+    },
+    "namedValue": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        }
+      }
+    },
+    "rowValue": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        }
+      }
+    },
+    "rowWriteOperation": {
+      "type": "string",
+      "enum": [
+        "insert",
+        "update",
+        "delete"
+      ]
+    },
+    "rowWriteRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "operation",
+        "table"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/rowWriteOperation"
+        },
+        "table": {
+          "type": "string"
+        },
+        "key": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rowValue"
+          }
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/rowValue"
+          }
+        }
+      }
+    },
+    "writeResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "rows_affected"
+      ],
+      "properties": {
+        "rows_affected": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "statement": {
+          "type": "string"
+        },
+        "statement_metadata": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/statementMetadata"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "statement_metadata"
+            ],
+            "properties": {
+              "statement_metadata": {
+                "type": "object"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "statement"
+            ],
+            "properties": {
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "rowWriteResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/writeResult"
+        }
+      }
+    },
+    "documentWriteOperation": {
+      "type": "string",
+      "enum": [
+        "read",
+        "insert",
+        "replace",
+        "delete"
+      ]
+    },
+    "documentWriteRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "operation",
+        "collection"
+      ],
+      "properties": {
+        "operation": {
+          "$ref": "#/$defs/documentWriteOperation"
+        },
+        "collection": {
+          "type": "string"
+        },
+        "id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/documentPayload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "document": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/documentPayload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "documentWriteResponse": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/writeResult"
+        },
+        "document": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/documentPayload"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "schemaObjectList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/schemaObject"
+      }
+    },
+    "columnInfoList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/columnInfo"
+      }
+    },
+    "indexInfoList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/indexInfo"
+      }
+    },
+    "foreignKeyInfoList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/foreignKeyInfo"
+      }
+    },
+    "referencingForeignKeyInfoList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/referencingForeignKeyInfo"
+      }
+    },
+    "foreignKeyInfoMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/foreignKeyInfo"
+        }
+      }
+    },
+    "indexInfoMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/indexInfo"
+        }
+      }
+    },
+    "methods": {
+      "type": "object",
+      "additionalProperties": false,
+      "propertyNames": {
+        "enum": [
+          "perk/v1/initialize",
+          "perk/v1/build_target",
+          "perk/v1/open",
+          "perk/v1/close",
+          "perk/v1/cancel",
+          "perk/v1/execute",
+          "perk/v1/execute_read_only",
+          "perk/v1/validate",
+          "perk/v1/list_schema",
+          "perk/v1/table_info",
+          "perk/v1/list_indexes",
+          "perk/v1/create_index",
+          "perk/v1/replace_index",
+          "perk/v1/drop_index",
+          "perk/v1/list_foreign_keys",
+          "perk/v1/list_referencing_foreign_keys",
+          "perk/v1/list_foreign_keys_all",
+          "perk/v1/list_indexes_all",
+          "perk/v1/create_foreign_key",
+          "perk/v1/replace_foreign_key",
+          "perk/v1/drop_foreign_key",
+          "perk/v1/alter_column",
+          "perk/v1/drop_column",
+          "perk/v1/add_column",
+          "perk/v1/browse_table",
+          "perk/v1/row_write",
+          "perk/v1/document_write"
+        ]
+      },
+      "properties": {
+        "perk/v1/initialize": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/initializeParams"
+            },
+            "result": {
+              "$ref": "#/$defs/initializeResult"
+            }
+          }
+        },
+        "perk/v1/build_target": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/formValues"
+            },
+            "result": {
+              "$ref": "#/$defs/buildTargetResult"
+            }
+          }
+        },
+        "perk/v1/open": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/openParams"
+            },
+            "result": {
+              "$ref": "#/$defs/openResult"
+            }
+          }
+        },
+        "perk/v1/close": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/sessionParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/cancel": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "notification"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/cancelParams"
+            },
+            "notification": {
+              "const": true
+            }
+          }
+        },
+        "perk/v1/execute": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/statementParams"
+            },
+            "result": {
+              "$ref": "#/$defs/result"
+            }
+          }
+        },
+        "perk/v1/execute_read_only": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/statementParams"
+            },
+            "result": {
+              "$ref": "#/$defs/result"
+            }
+          }
+        },
+        "perk/v1/validate": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/statementParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/list_schema": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/sessionParams"
+            },
+            "result": {
+              "$ref": "#/$defs/schemaObjectList"
+            }
+          }
+        },
+        "perk/v1/table_info": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/tableParams"
+            },
+            "result": {
+              "$ref": "#/$defs/columnInfoList"
+            }
+          }
+        },
+        "perk/v1/list_indexes": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/tableParams"
+            },
+            "result": {
+              "$ref": "#/$defs/indexInfoList"
+            }
+          }
+        },
+        "perk/v1/create_index": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/indexChangeParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/replace_index": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/replaceIndexParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/drop_index": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/dropParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/list_foreign_keys": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/tableParams"
+            },
+            "result": {
+              "$ref": "#/$defs/foreignKeyInfoList"
+            }
+          }
+        },
+        "perk/v1/list_referencing_foreign_keys": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/tableParams"
+            },
+            "result": {
+              "$ref": "#/$defs/referencingForeignKeyInfoList"
+            }
+          }
+        },
+        "perk/v1/list_foreign_keys_all": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/sessionParams"
+            },
+            "result": {
+              "$ref": "#/$defs/foreignKeyInfoMap"
+            }
+          }
+        },
+        "perk/v1/list_indexes_all": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/sessionParams"
+            },
+            "result": {
+              "$ref": "#/$defs/indexInfoMap"
+            }
+          }
+        },
+        "perk/v1/create_foreign_key": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/foreignKeyChangeParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/replace_foreign_key": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/replaceForeignKeyParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/drop_foreign_key": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/dropParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/alter_column": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/columnChangeParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/drop_column": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/dropParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/add_column": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/addColumnParams"
+            },
+            "result": {
+              "type": "null"
+            }
+          }
+        },
+        "perk/v1/browse_table": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/browseParams"
+            },
+            "result": {
+              "$ref": "#/$defs/result"
+            }
+          }
+        },
+        "perk/v1/row_write": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/rowWriteParams"
+            },
+            "result": {
+              "$ref": "#/$defs/rowWriteResponse"
+            }
+          }
+        },
+        "perk/v1/document_write": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/documentWriteParams"
+            },
+            "result": {
+              "$ref": "#/$defs/documentWriteResponse"
+            }
+          }
+        }
+      }
+    }
+  }
+}

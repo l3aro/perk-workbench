@@ -1,0 +1,202 @@
+{
+  "title": "perk/v1 fixture manifest",
+  "description": "Canonical perk/v1 frames, one file per entry, under protocol/perk-v1/fixtures. Each entry names the file, whether the frame is protocol-valid, the schema $def it targets (ref), and — where applicable — the expected method, JSON-RPC error code, normalized error kind, and the rejection a parseable invalid frame must provoke. Tests read this manifest; they never infer behavior from file names. Boundary-sized frames are not stored here; conformance tests generate them.",
+  "fixtures": [
+    {
+      "file": "request-initialize.json",
+      "valid": true,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/initialize"
+    },
+    {
+      "file": "request-execute.json",
+      "valid": true,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/execute"
+    },
+    {
+      "file": "request-browse-table.json",
+      "valid": true,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/browse_table"
+    },
+    {
+      "file": "request-row-write.json",
+      "valid": true,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/row_write"
+    },
+    {
+      "file": "request-document-write.json",
+      "valid": true,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/document_write"
+    },
+    {
+      "file": "notification-cancel.json",
+      "valid": true,
+      "ref": "#/$defs/notification",
+      "method": "perk/v1/cancel"
+    },
+    {
+      "file": "success-initialize.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/initialize"
+    },
+    {
+      "file": "success-open.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/open"
+    },
+    {
+      "file": "success-execute.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/execute"
+    },
+    {
+      "file": "success-validate.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/validate"
+    },
+    {
+      "file": "success-list-schema.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/list_schema"
+    },
+    {
+      "file": "success-list-foreign-keys-all.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/list_foreign_keys_all"
+    },
+    {
+      "file": "success-list-indexes-all.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/list_indexes_all"
+    },
+    {
+      "file": "success-row-write.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/row_write"
+    },
+    {
+      "file": "success-document-write.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/document_write"
+    },
+    {
+      "file": "error-operation.json",
+      "valid": true,
+      "ref": "#/$defs/error",
+      "code": -32000,
+      "kind": "connection"
+    },
+    {
+      "file": "error-canceled.json",
+      "valid": true,
+      "ref": "#/$defs/error",
+      "code": -32800
+    },
+    {
+      "file": "error-minimal.json",
+      "valid": true,
+      "ref": "#/$defs/error",
+      "code": -32603,
+      "kind": "operation"
+    },
+    {
+      "file": "error-null-data.json",
+      "valid": true,
+      "ref": "#/$defs/error",
+      "code": -32000,
+      "kind": "operation"
+    },
+    {
+      "file": "invalid-request-jsonrpc.json",
+      "valid": false,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/initialize",
+      "code": -32600,
+      "reject": "jsonrpc must be \"2.0\""
+    },
+    {
+      "file": "invalid-request-string-id.json",
+      "valid": false,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/execute",
+      "code": -32600,
+      "reject": "request.id"
+    },
+    {
+      "file": "invalid-request-float-id.json",
+      "valid": false,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/execute",
+      "code": -32600,
+      "reject": "request.id"
+    },
+    {
+      "file": "invalid-request-unknown-method.json",
+      "valid": false,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/frobnicate",
+      "code": -32601,
+      "reject": "unknown method \"perk/v1/frobnicate\""
+    },
+    {
+      "file": "invalid-error-wrong-jsonrpc.json",
+      "valid": false,
+      "ref": "#/$defs/error",
+      "reject": "jsonrpc must be \"2.0\""
+    },
+    {
+      "file": "invalid-error-string-code.json",
+      "valid": false,
+      "ref": "#/$defs/error",
+      "reject": "rpcError.error.code"
+    },
+    {
+      "file": "invalid-success-orphan-metadata.json",
+      "valid": false,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/execute",
+      "reject": "statement_metadata requires a nonblank statement"
+    },
+    {
+      "file": "invalid-success-initialize-version.json",
+      "valid": false,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/initialize",
+      "reject": "protocol version 2, want 1"
+    },
+    {
+      "file": "invalid-request-create-index-duplicate-columns.json",
+      "valid": false,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/create_index",
+      "reject": "is repeated"
+    },
+    {
+      "file": "invalid-request-create-foreign-key-mismatch.json",
+      "valid": false,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/create_foreign_key",
+      "reject": "foreign-key and referenced column counts must match"
+    },
+    {
+      "file": "invalid-success-execute-malformed-rows.json",
+      "valid": false,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/execute",
+      "reject": "Result.rows"
+    }
+  ]
+}
