@@ -692,6 +692,11 @@ const definition = {
     name: 'demo-kv',
     display: 'Demo KV',
     targets: [{ prefix: 'demo-kv:' }],
+    form: {
+      fields: [
+        { key: 'database', title: 'Database', kind: 0, placeholder: 'default', default: 'default', validate: 0 },
+      ],
+    },
     write_capabilities: { row_writer: false },
   },
   buildTarget(values) {
@@ -722,7 +727,10 @@ What the example demonstrates:
   no overlap with the built-in drivers (`mysql:`, `postgres://`,
   `postgresql://`, `postgres:`, `mongo:`, `mongodb://`,
   `mongodb+srv://`).
-- `buildTarget` serializes a connection form into `demo-kv:<database>`,
+- `capabilities.form` declares the Database input; without it the
+  driver is target-only and never appears in the connection form's
+  driver select.
+- `buildTarget` serializes the form values into `demo-kv:<database>`,
   which the host routes back and strips before `open`.
 - `open` returns `{info, service}`; the SDK assigns the `session_id` and
   owns the session lifecycle. `listSchema` serves schema objects.
