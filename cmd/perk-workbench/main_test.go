@@ -356,6 +356,23 @@ func TestCloseProgram_skipsNilClosers(t *testing.T) {
 	}
 }
 
+// TestCloseProgram_skipsTypedNilClosers guards the typed-nil trap: a
+// disabled AI provider returns a nil *ai.History that crosses into
+// closeProgram as a non-nil interface, so the interface equality check
+// alone would call Close on a nil receiver (a nil closeRecorder panics
+// dereferencing its order slice).
+func TestCloseProgram_skipsTypedNilClosers(t *testing.T) {
+	var history *closeRecorder
+	if err := closeProgram(nil, nil, history); err != nil {
+		t.Fatalf("closeProgram(nil, nil, typed nil) = %v, want nil", err)
+	}
+	var service *closeRecorder
+	var loader *closeRecorder
+	if err := closeProgram(service, loader, history); err != nil {
+		t.Fatalf("closeProgram(typed nils) = %v, want nil", err)
+	}
+}
+
 func TestLoadPlugins_logsRejectedEntriesAndStaysClosable(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	log.SetLevel(log.LevelDebug)

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -299,14 +300,27 @@ func loadPlugins(ctx context.Context, entries []string, register func(database.S
 // errors are joined into one error.
 func closeProgram(service, loader, history interface{ Close() error }) error {
 	var closeErr error
-	if service != nil {
-		closeErr = service.Close()
-	}
-	if loader != nil {
-		closeErr = errors.Join(closeErr, loader.Close())
-	}
-	if history != nil {
-		closeErr = errors.Join(closeErr, history.Close())
+	for _, closer := range []interface{ Close() error }{service, loader, history} {
+		if isNilCloser(closer) {
+			continue
+		}
+		closeErr = errors.Join(closeErr, closer.Close())
 	}
 	return closeErr
+}
+
+// isNilCloser reports whether closer is nil or a typed nil wrapped in the
+// interface — e.g. the (*ai.History)(nil) a disabled AI provider returns.
+// Comparing the interface against nil alone misses typed nils and would
+// call Close on a nil receiver.
+func isNilCloser(closer interface{ Close() error }) bool {
+	if closer == nil {
+		return true
+	}
+	value := reflect.ValueOf(closer)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	}
+	return false
 }
