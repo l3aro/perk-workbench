@@ -532,13 +532,13 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 
 	// The button row under the browse status line hosts the Prev/Next
 	// pager buttons. The browse view starts at contentY=3 (table header),
-	// so the status line sits at Height()+4, the gap at Height()+5, and
-	// the button row at Height()+6 — one row lower while the status line
-	// splits onto two rows on a narrow viewport. This runs before the
-	// table's rows-empty guard: on an empty page (e.g. the last page after
-	// deletions) Prev is still enabled and must page back. Disabled
-	// buttons share the row but ignore clicks.
-	pagerRow := m.browse.component.Table.Height() + 6
+	// so the status line sits at Height()+4 and the button row at
+	// Height()+5 — one row lower while the status line splits onto two
+	// rows on a narrow viewport. This runs before the table's rows-empty
+	// guard: on an empty page (e.g. the last page after deletions) Prev
+	// is still enabled and must page back. Disabled buttons share the row
+	// but ignore clicks.
+	pagerRow := m.browse.component.Table.Height() + 5
 	if m.browseStatusSplit() {
 		pagerRow++
 	}

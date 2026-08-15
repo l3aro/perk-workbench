@@ -22,10 +22,10 @@ func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
 	}
 
 	// When — click the Next button on the button row (screen row
-	// Height()+7: contentY = Height()+6 plus the header row).
+	// Height()+6: contentY = Height()+5 plus the header row).
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.NextStart,
-		Y:      model.browse.component.Table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 6,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -58,7 +58,7 @@ func TestBrowsePager_clickPrevLoadsPreviousPage(t *testing.T) {
 	// When — click the Prev button on the button row.
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.PrevStart,
-		Y:      model.browse.component.Table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 6,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -101,7 +101,7 @@ func TestBrowsePager_clickDisabledButtonDoesNothing(t *testing.T) {
 			}
 			updated, command := model.Update(tea.MouseClickMsg{
 				X:      model.layout.schemaWidth + 1 + start,
-				Y:      model.browse.component.Table.Height() + 7,
+				Y:      model.browse.component.Table.Height() + 6,
 				Button: tea.MouseLeft,
 			})
 			model = updated.(Model)
@@ -138,7 +138,7 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	// When — click Prev.
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.PrevStart,
-		Y:      model.browse.component.Table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 6,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -170,7 +170,7 @@ func TestBrowsePager_clickOnRowGapDoesNothing(t *testing.T) {
 	}
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.NextStart - 1,
-		Y:      model.browse.component.Table.Height() + 7,
+		Y:      model.browse.component.Table.Height() + 6,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)
@@ -202,10 +202,10 @@ func TestBrowsePager_clickNextWorksWithSplitStatus(t *testing.T) {
 	}
 
 	// Two status rows push the button row down one: screen row
-	// Height()+8 (contentY = Height()+7).
+	// Height()+7 (contentY = Height()+6).
 	updated, command := model.Update(tea.MouseClickMsg{
 		X:      model.layout.schemaWidth + 1 + pager.NextStart,
-		Y:      model.browse.component.Table.Height() + 8,
+		Y:      model.browse.component.Table.Height() + 7,
 		Button: tea.MouseLeft,
 	})
 	model = updated.(Model)

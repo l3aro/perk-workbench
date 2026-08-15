@@ -29,7 +29,7 @@ func (m Model) View(layout uikit.Layout) string {
 	if m.Objects != nil {
 		return m.objectsView(layout)
 	}
-	view := uikit.TableViewportViewWithAlignment(m.Table, m.NumericColumns, m.Offset, layout.ViewportWidth, m.SelectedColumn) + "\n" + m.StatusLine(layout) + "\n\n" + m.PagerLine(layout)
+	view := uikit.TableViewportViewWithAlignment(m.Table, m.NumericColumns, m.Offset, layout.ViewportWidth, m.SelectedColumn) + "\n" + m.StatusLine(layout) + "\n" + m.PagerLine(layout)
 	return view
 }
 
@@ -111,14 +111,14 @@ func (m Model) StatusSplit(layout uikit.Layout) bool {
 }
 
 // FooterRows is the number of workspace rows the browse view reserves
-// below its data rows: the status line, the footer gap, the pager button
-// row, plus the pane chrome. A narrow viewport splits the status line
-// onto two rows (StatusSplit), reserving one more.
+// below its data rows: the status line, the pager button row, and the
+// pane chrome, stacked flush without a footer gap. A narrow viewport
+// splits the status line onto two rows (StatusSplit), reserving one more.
 func (m Model) FooterRows(layout uikit.Layout) int {
 	if m.StatusSplit(layout) {
-		return 9
+		return 7
 	}
-	return 8
+	return 6
 }
 
 // StatusLine renders the browse status line: the keyboard hints on the

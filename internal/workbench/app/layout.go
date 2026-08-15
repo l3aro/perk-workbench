@@ -103,9 +103,10 @@ func (m *Model) applyLayout(width, height int) {
 	// status line from the mode/tab-hint footer.
 	resizeResultsTable(&m.schema.component.Structure.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-6, 2))
 	// The browse table yields the footer rows below its data rows
-	// (browseFooterRows: the status line, the footer gap, and the pager
-	// button row, plus pane chrome), keeping the pane exactly full. The
-	// scope object list has no pager and yields two rows back.
+	// (browseFooterRows: the status line and the pager button row,
+	// stacked flush without a footer gap, plus pane chrome), keeping the
+	// pane exactly full. The scope object list has no pager and yields
+	// one row back.
 	if m.browse.component.ObjectListMode() {
 		resizeResultsTable(&m.browse.component.Table, m.layout.tableViewportWidth, max(m.layout.workspaceHeight-scopeObjectsFooterRows(), 2))
 	} else {

@@ -418,7 +418,7 @@ func TestSchemaTable_mouseClickUsesRenderedRow(t *testing.T) {
 
 func TestBrowse_mouseClickUsesRenderedRow(t *testing.T) {
 	// Tall enough that the two fixture rows fit in the browse viewport,
-	// which yields two rows to the footer gap and pager button row.
+	// which yields a row to the pager button row.
 	model := resizeModel(readyModel(t), 100, 30)
 	model.SelectedTable, model.Tab, model.Focus = "items", tabBrowse, focusWorkspace
 	updated, _ := model.Update(browseTableMsg{

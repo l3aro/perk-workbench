@@ -552,8 +552,8 @@ func TestStatusSplitAndFooterRows(t *testing.T) {
 	if !m.StatusSplit(narrow) {
 		t.Fatal("narrow layout should split the status line")
 	}
-	if m.FooterRows(wide) != 8 || m.FooterRows(narrow) != 9 {
-		t.Fatalf("footer rows = %d/%d, want 8/9", m.FooterRows(wide), m.FooterRows(narrow))
+	if m.FooterRows(wide) != 6 || m.FooterRows(narrow) != 7 {
+		t.Fatalf("footer rows = %d/%d, want 6/7", m.FooterRows(wide), m.FooterRows(narrow))
 	}
 	line := m.StatusLine(wide)
 	if strings.Contains(line, "\n") {

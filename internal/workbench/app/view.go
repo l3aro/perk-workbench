@@ -475,9 +475,12 @@ func (m Model) workspaceView() string {
 	if m.formTabActive() {
 		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, labels...), "", content, formButtonsBar(m.overlay.formMode.ButtonsFocused, m.overlay.formMode.ButtonChoice), "", footer)
 	}
-	// A blank line separates the tab's status line from the mode/tab-hint
-	// footer; the browse tab renders that gap again between its status
-	// line and the pager button row (see browseView).
+	// A blank line separates each tab's content from the mode/tab-hint
+	// footer; the browse tab omits it so its status line, pager button
+	// row, and the mode footer stack flush (see browseView).
+	if m.Tab == tabBrowse {
+		return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, labels...), "", content, footer)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, labels...), "", content, "", footer)
 }
 
@@ -554,9 +557,9 @@ func (m Model) browseFooterRows() int {
 // scopeObjectsFooterRows is the number of workspace rows the scope
 // object list reserves below its data rows: the status line plus the
 // workspace chrome rows (tab row, gap, mode footer, pane borders).
-// browseFooterRows also reserves the pager button row (8); the object
-// list has no pager, so it yields two rows back.
-func scopeObjectsFooterRows() int { return 6 }
+// browseFooterRows also reserves the pager button row (6); the object
+// list has no pager, so it yields one row back.
+func scopeObjectsFooterRows() int { return 5 }
 
 func (m Model) browseStatusLine() string {
 	return m.browse.component.StatusLine(browseLayout(m))
