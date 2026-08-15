@@ -19,7 +19,7 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 	t.Setenv("EDITOR", editor)
 	t.Setenv("TMPDIR", t.TempDir())
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 
@@ -29,7 +29,7 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 	if command == nil {
 		t.Fatal("SQL Huh Text Ctrl+E returned no editor command")
 	}
-	process, complete, err := sqlEditorProcess(model.queryLog.editor.value, model.queryLog.editorEditTag)
+	process, complete, err := queryEditorProcess(model.queryLog.editor.value, model.queryLog.editorEditTag)
 	if err != nil {
 		t.Fatalf("creating SQL editor process: %v", err)
 	}
@@ -45,12 +45,12 @@ func TestModel_ctrlEEditsFocusedText(t *testing.T) {
 func TestModel_sqlEditorCompletionReportsError(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	model.queryLog.editorEditTag = 1
 
 	// When
-	updated, _ := model.Update(sqlEditorFinishedMsg{tag: 1, err: errors.New("editor failed")})
+	updated, _ := model.Update(externalEditorFinishedMsg{tag: 1, err: errors.New("editor failed")})
 	model = updated.(Model)
 
 	// Then
@@ -62,13 +62,13 @@ func TestModel_sqlEditorCompletionReportsError(t *testing.T) {
 func TestModel_sqlEditorCompletionReportsStaleTarget(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	model.queryLog.editorEditTag = 1
 	model.Focus = focusSchema
 
 	// When
-	updated, _ := model.Update(sqlEditorFinishedMsg{tag: 1, value: "SELECT 2"})
+	updated, _ := model.Update(externalEditorFinishedMsg{tag: 1, value: "SELECT 2"})
 	model = updated.(Model)
 
 	// Then

@@ -243,8 +243,8 @@ func tableOpenTargetTab() workspaceTab {
 	switch appConfig.TableOpenTarget {
 	case tableTargetKey(tabBrowse):
 		return tabBrowse
-	case tableTargetKey(tabSQL):
-		return tabSQL
+	case tableTargetKey(tabQuery):
+		return tabQuery
 	case tableTargetKey(tabIndexes):
 		return tabIndexes
 	case tableTargetKey(tabForeignKeys):
@@ -332,7 +332,7 @@ func (m *Model) toggleVimMode() tea.Cmd {
 // config.json so it survives the next launch. Persistence is best-effort: a
 // failure is shown in the status line without reverting the choice.
 func (m *Model) commitTableOpenTarget(tab workspaceTab) {
-	display := tableTargetName(tab)
+	display := m.tableTargetName(tab)
 	if m.configPath == "" {
 		m.setStatus("open table → " + display)
 		return

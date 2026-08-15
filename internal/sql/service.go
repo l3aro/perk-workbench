@@ -87,6 +87,10 @@ type Opened struct {
 	Service Service
 	Info    DatabaseInfo
 	Objects []SchemaObject
+	// QueryLanguage advertises how the query editor presents this
+	// connection's statements; a zero value (no advertisement) falls
+	// back to the legacy SQL defaults in the UI.
+	QueryLanguage QueryLanguage
 }
 
 type Result struct {

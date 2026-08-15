@@ -282,34 +282,19 @@ func BuildTarget(spec Spec, values FormValues) (string, bool) {
 	return build(values)
 }
 
-// QueryLanguage is the serializable advertisement of how the query
-// editor presents one driver's statements: the language name, the
-// editor tab label, the input placeholder, an optional lexer hint, and
-// optional example statements the driver's parser already accepts. It
-// crosses the plugin DTO boundary unchanged.
-type QueryLanguage struct {
-	Name        string   `json:"name"`
-	EditorLabel string   `json:"editor_label"`
-	Placeholder string   `json:"placeholder"`
-	Lexer       string   `json:"lexer,omitempty"`
-	Examples    []string `json:"examples,omitempty"`
-}
+// QueryLanguage is the query editor presentation of a driver's
+// language; the canonical type and the legacy SQL default live in the
+// shared contract package and cross the plugin DTO boundary unchanged.
+type QueryLanguage = sharedsql.QueryLanguage
 
 // SQLQueryLanguage is the legacy SQL default every driver without an
-// explicit query language advertisement gets: the query editor presents
-// SQL with the conventional placeholder and lexer.
-var SQLQueryLanguage = QueryLanguage{
-	Name:        "SQL",
-	EditorLabel: "SQL",
-	Placeholder: "Enter a query…",
-	Lexer:       "sql",
-}
+// explicit query language advertisement gets.
+var SQLQueryLanguage = sharedsql.SQLQueryLanguage
 
 // isZeroQueryLanguage reports whether ql carries no advertisement at
 // all — every field blank and no examples.
 func isZeroQueryLanguage(ql QueryLanguage) bool {
-	return ql.Name == "" && ql.EditorLabel == "" && ql.Placeholder == "" &&
-		ql.Lexer == "" && len(ql.Examples) == 0
+	return sharedsql.IsZeroQueryLanguage(ql)
 }
 
 // validateQueryLanguage checks the invariant set every nonzero query

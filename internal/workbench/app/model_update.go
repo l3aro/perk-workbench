@@ -345,7 +345,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.queryLog.editor.setValue(m.overlay.explainPicker.query())
 		m.overlay.explainPicker = nil
-		m.Focus, m.Tab = focusWorkspace, tabSQL
+		m.Focus, m.Tab = focusWorkspace, tabQuery
 		m.blurTables()
 		m.queryLog.editorValidity = sqlValidityPending
 		return m, tea.Batch(beginInsert(m.overlay.formMode, m.queryLog.editor), m.scheduleSQLValidation())
@@ -392,8 +392,8 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
-			!(m.sqlEditorActive() && m.overlay.formMode.Editing()) &&
-			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabSQL || m.queryLog.editor.value == "") {
+			!(m.queryEditorActive() && m.overlay.formMode.Editing()) &&
+			(m.Running() || m.State != stateReady || m.Focus != focusWorkspace || m.Tab != tabQuery || m.queryLog.editor.value == "") {
 			if m.Running() {
 				m.RequestQuit()
 				m.cancelQuery()
@@ -413,7 +413,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateChat(message)
 		}
 
-		if m.State == stateReady && !m.formActive() && !m.schema.component.Filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabSQL && m.overlay.formMode.Editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
+		if m.State == stateReady && !m.formActive() && !m.schema.component.Filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabQuery && m.overlay.formMode.Editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
 			switch {
 			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
@@ -464,7 +464,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL &&
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery &&
 			m.keybindings.Match(message, "query.execute", []scope{scopeGlobal}) {
 			return m.executeQuery()
 		}
@@ -473,11 +473,11 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory(1) {
-			m.Focus, m.Tab = focusWorkspace, tabSQL
+			m.Focus, m.Tab = focusWorkspace, tabQuery
 			m.blurTables()
 			return m, beginInsert(m.overlay.formMode, m.queryLog.editor)
 		}
-		if m.sqlEditorActive() && !m.tableFormOpen() {
+		if m.queryEditorActive() && !m.tableFormOpen() {
 			if m.queryLog.editor.completionVisible() {
 				key := message.Key()
 				completionHandled := true
@@ -755,7 +755,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateInsertRowMsg(message)
 	case cellEditorUpdatedMsg:
 		return m.updateCellEditorUpdated(message)
-	case sqlEditorFinishedMsg:
+	case externalEditorFinishedMsg:
 		return m.updateExternalEditor(message)
 
 	case schema.TreeAnimTickMsg:
@@ -783,7 +783,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, command
 	}
-	if m.sqlEditorActive() && m.overlay.formMode.Editing() {
+	if m.queryEditorActive() && m.overlay.formMode.Editing() {
 		previous := m.queryLog.editor.value
 		command := m.queryLog.editor.update(message)
 		if m.queryLog.editor.value != previous {
@@ -915,6 +915,6 @@ func (m Model) executeQuery() (tea.Model, tea.Cmd) {
 	return m.startQuery()
 }
 
-func (m Model) sqlEditorActive() bool {
-	return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
+func (m Model) queryEditorActive() bool {
+	return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery
 }

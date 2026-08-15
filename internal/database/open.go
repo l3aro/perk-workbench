@@ -13,9 +13,11 @@ import (
 // Open connects to target and returns its schema for the initial workbench view.
 // The driver group routes the target form to a registered driver; anything
 // without a registered target form opens as SQLite after path resolution.
+// The returned Opened carries the matched driver's query language (the
+// SQLite fallback carries the legacy SQL default).
 func Open(ctx context.Context, target string) (sharedsql.Opened, error) {
 	if spec, dsn, ok := Match(target); ok {
-		return open(ctx, dsn, spec.Open)
+		return open(ctx, dsn, spec.Open, spec.QueryLanguage)
 	}
 
 	resolved, err := resolveSQLiteTarget(target)
@@ -26,10 +28,10 @@ func Open(ctx context.Context, target string) (sharedsql.Opened, error) {
 	if !ok {
 		return sharedsql.Opened{}, errors.New("sqlite driver not registered")
 	}
-	return open(ctx, resolved, sqliteSpec.Open)
+	return open(ctx, resolved, sqliteSpec.Open, sqliteSpec.QueryLanguage)
 }
 
-func open(ctx context.Context, target string, openService func(context.Context, string) (sharedsql.Service, error)) (sharedsql.Opened, error) {
+func open(ctx context.Context, target string, openService func(context.Context, string) (sharedsql.Service, error), language sharedsql.QueryLanguage) (sharedsql.Opened, error) {
 	service, err := openService(ctx, target)
 	if err != nil {
 		return sharedsql.Opened{}, fmt.Errorf("opening database: %w", err)
@@ -43,7 +45,7 @@ func open(ctx context.Context, target string, openService func(context.Context, 
 		return sharedsql.Opened{}, fmt.Errorf("listing schema: %w", err)
 	}
 
-	return sharedsql.Opened{Target: target, Service: service, Info: service.Info(), Objects: objects}, nil
+	return sharedsql.Opened{Target: target, Service: service, Info: service.Info(), Objects: objects, QueryLanguage: language}, nil
 }
 
 func resolveSQLiteTarget(target string) (string, error) {

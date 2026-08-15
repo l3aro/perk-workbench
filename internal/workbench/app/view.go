@@ -31,7 +31,7 @@ func (m Model) View() tea.View {
 		if m.overlay.themePicker != nil {
 			m.drawConfirmDialog(canvas, m.overlay.themePicker.content())
 		} else if m.overlay.tableTargetPicker != nil {
-			m.drawConfirmDialog(canvas, m.overlay.tableTargetPicker.content())
+			m.drawConfirmDialog(canvas, m.overlay.tableTargetPicker.content(m))
 		} else {
 			m.overlay.commandPalette.paletteDraw(canvas, m.layout.width, m.layout.height)
 		}
@@ -444,7 +444,7 @@ func (m Model) chatContentView() string {
 
 func (m Model) workspaceView() string {
 	tabs := m.workspaceTabs()
-	labels, _ := workspaceTabMeta(tabs)
+	labels, _ := m.workspaceTabMeta(tabs)
 	for index, tab := range tabs {
 		if tab == m.Tab {
 			labels[index] = connectionActionSelectedStyle.Render(labels[index])
@@ -458,8 +458,8 @@ func (m Model) workspaceView() string {
 		content = m.structureView()
 	case tabBrowse:
 		content = m.browseView()
-	case tabSQL:
-		content = m.sqlPaneView()
+	case tabQuery:
+		content = m.queryPaneView()
 	case tabIndexes:
 		content = m.indexesView()
 	case tabForeignKeys:
@@ -484,9 +484,9 @@ func (m Model) workspaceView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, lipgloss.JoinHorizontal(lipgloss.Top, labels...), "", content, "", footer)
 }
 
-func (m Model) sqlPaneView() string {
+func (m Model) queryPaneView() string {
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		sqlEditorBox(m.queryLog.editor.View(), m.editorBorderColor()),
+		queryEditorBox(m.queryLog.editor.View(), m.editorBorderColor()),
 		tableViewportViewWithAlignment(m.queryLog.results, m.queryLog.resultsNumericColumns, m.layout.resultsOffset, m.layout.tableViewportWidth, m.layout.resultsColumn),
 	)
 
@@ -506,9 +506,9 @@ func (m Model) sqlPaneView() string {
 	return content + "\n" + chrome.PaneStatus("", m.queryLog.resultsStatus, m.layout.tableViewportWidth)
 }
 
-// sqlEditorBox frames the SQL input; its border color mirrors the live
-// validity of the current statement.
-func sqlEditorBox(view, borderColor string) string {
+// queryEditorBox frames the query editor; its border color mirrors the
+// live validity of the current statement.
+func queryEditorBox(view, borderColor string) string {
 	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(borderColor)).Render(view)
 }
 

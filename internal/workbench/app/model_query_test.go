@@ -438,7 +438,7 @@ func TestExecute_history_arrow_recall_and_edit_exit(t *testing.T) {
 		model = driveCommand(model, command)
 	}
 	model.queryLog.editor.setValue("")
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"}) // enter insert
 	model = updated.(Model)
 	press := func(code rune) {
@@ -568,7 +568,7 @@ func TestExecute_destructive_fromInsertMode_Enter_confirms(t *testing.T) {
 	// Given — SQL tab in insert mode with destructive query
 	model := readyModel(t)
 	model = resizeModel(model, 80, 24)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 	model.queryLog.editor.setValue("CREATE TABLE projects (id INTEGER PRIMARY KEY)")
@@ -751,7 +751,7 @@ func TestSQL_y_yanks_focused_cell_value(t *testing.T) {
 	}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 	model.layout.resultsColumn = 1
 	model.queryLog.results.Focus()
 
@@ -790,7 +790,7 @@ func TestSQL_y_ignored_without_focus_or_during_edit(t *testing.T) {
 	}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 
 	// When — results not focused
 	model.queryLog.results.Blur()

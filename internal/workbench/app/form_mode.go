@@ -36,8 +36,8 @@ const (
 
 type formModeController = uikit.FormModeController
 
-// formModeRoute routes a message for the SQL editor (the one form that is
-// not huh-backed) through the shared controller's modal modes.
+// formModeRoute routes a message for the query editor (the one form that
+// is not huh-backed) through the shared controller's modal modes.
 func formModeRoute(c *formModeController, message tea.Msg, editor *editor) formMessageRoute {
 	keyPress, ok := message.(tea.KeyPressMsg)
 	if ok && keyPress.Key().Code == tea.KeyEscape {
@@ -98,7 +98,7 @@ func (m *Model) beginInsertForCurrentFocus() tea.Cmd {
 	switch {
 	case m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Huh != nil && m.connection.component.Form.Confirmation == nil:
 		return m.overlay.formMode.BeginHuh(m.connection.component.Form.FocusForm())
-	case m.sqlEditorActive() && !m.tableFormOpen():
+	case m.queryEditorActive() && !m.tableFormOpen():
 		return beginInsert(m.overlay.formMode, m.queryLog.editor)
 	case m.schema.component.Structure.ColumnForm.Active():
 		return m.overlay.formMode.BeginHuh(m.schema.component.Structure.ColumnForm.Focus())

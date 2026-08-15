@@ -16,7 +16,7 @@ import (
 func TestNonVim_singleClickEntersInsertOnEditor(t *testing.T) {
 	model := readyModel(t)
 	model.vimMode = false
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	model = resizeModel(model, 100, 24)
 
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
@@ -600,7 +600,7 @@ func TestConnectionForm_compactClickExecutesActionButtons(t *testing.T) {
 
 func TestSQLTab_doubleClickEditorEntersInsertMode(t *testing.T) {
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	model = resizeModel(model, 100, 24)
 	// Editor box occupies the first editorHeight lines of the pane (y=4..).
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
@@ -614,7 +614,7 @@ func TestSQLTab_doubleClickEditorEntersInsertMode(t *testing.T) {
 
 func TestSQLTab_singleClickEditorStaysNormal(t *testing.T) {
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	model = resizeModel(model, 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)
@@ -625,7 +625,7 @@ func TestSQLTab_singleClickEditorStaysNormal(t *testing.T) {
 
 func TestSQLTab_singleClickFocusesEditor(t *testing.T) {
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	model = resizeModel(model, 100, 24)
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 5, Button: tea.MouseLeft})
 	model = updated.(Model)

@@ -4,7 +4,7 @@ import "strings"
 
 // tableTargetChoices are the workspace tabs a table selection can land on,
 // in picker display order.
-var tableTargetChoices = []workspaceTab{tabStructure, tabBrowse, tabSQL, tabIndexes, tabForeignKeys}
+var tableTargetChoices = []workspaceTab{tabStructure, tabBrowse, tabQuery, tabIndexes, tabForeignKeys}
 
 // tableTargetKey returns the config.json value for a workspace tab.
 func tableTargetKey(tab workspaceTab) string {
@@ -13,7 +13,7 @@ func tableTargetKey(tab workspaceTab) string {
 		return "structure"
 	case tabBrowse:
 		return "browse"
-	case tabSQL:
+	case tabQuery:
 		return "sql"
 	case tabIndexes:
 		return "indexes"
@@ -26,10 +26,10 @@ func tableTargetKey(tab workspaceTab) string {
 // tableTargetName returns the display label for a workspace tab. The
 // labels mirror the workspace tab row (workspaceTabLabel); the picker
 // offers only table tabs, so other tabs resolve to "".
-func tableTargetName(tab workspaceTab) string {
+func (m Model) tableTargetName(tab workspaceTab) string {
 	switch tab {
-	case tabStructure, tabBrowse, tabSQL, tabIndexes, tabForeignKeys:
-		return workspaceTabLabel(tab)
+	case tabStructure, tabBrowse, tabQuery, tabIndexes, tabForeignKeys:
+		return m.workspaceTabLabel(tab)
 	}
 	return ""
 }
@@ -58,13 +58,13 @@ func (p *tableTargetPicker) move(delta int) {
 	p.selected = max(0, min(p.selected+delta, len(tableTargetChoices)-1))
 }
 
-func (p *tableTargetPicker) content() string {
+func (p *tableTargetPicker) content(m Model) string {
 	var content strings.Builder
 	content.WriteString(headerStyle.Render(" Open Table → "))
 	content.WriteString("\n\n")
 	for i, tab := range tableTargetChoices {
 		prefix := "  "
-		label := tableTargetName(tab)
+		label := m.tableTargetName(tab)
 		if i == p.selected {
 			prefix = "> "
 			label = selectedItemStyle.Render(label)

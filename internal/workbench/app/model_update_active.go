@@ -48,7 +48,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.schema.component = component
 			return m.applySchemaEvent(event, cmd)
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabSQL && m.overlay.formMode.Editing()) &&
+			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabQuery && m.overlay.formMode.Editing()) &&
 				m.keybindings.Match(keyPress, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
 				m.Focus = focusSchema
 				m.queryLog.editor.text.Blur()
@@ -185,7 +185,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				m = model.(Model)
 				m.refreshBrowseStatus()
 				return m, cmd
-			case tabSQL:
+			case tabQuery:
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.queryLog.results.Cursor()
 					col := m.layout.resultsColumn

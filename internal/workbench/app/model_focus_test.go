@@ -26,7 +26,7 @@ func TestView_sql_renders_huh_text_at_wide_and_compact_sizes(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Given
 			model := New("", context.Background(), testOpen, false)
-			model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+			model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 			model.queryLog.editor.setValue("SELECT 1")
 
 			// When
@@ -45,7 +45,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.SelectTable("projects")
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 	model.queryLog.editor.setValue("select ")
 
 	// When
@@ -99,7 +99,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabSQL)
+	assertTab(t, model, tabQuery)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
@@ -113,7 +113,7 @@ func TestWorkspace_tabs_route_input_to_the_active_view(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabSQL)
+	assertTab(t, model, tabQuery)
 
 	// When
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
@@ -127,7 +127,7 @@ func TestWorkspace_HLNavigateTabs(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.SelectTable("projects")
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
@@ -141,13 +141,13 @@ func TestWorkspace_HLNavigateTabs(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	assertTab(t, model, tabSQL)
+	assertTab(t, model, tabQuery)
 }
 
 func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 	model.queryLog.editor.setValue("select ")
 
 	// When
@@ -165,7 +165,7 @@ func TestFocus_sql_keeps_q_as_text_after_input_starts(t *testing.T) {
 func TestFocus_sql_insertModeKeepsPaneShortcutsAsText(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 	model.queryLog.editor.setValue("select ")
 
 	// When
@@ -190,7 +190,7 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 		{name: "normal", value: formModeNormal, label: "NORMAL", badge: modeNormalStyle.Render("NORMAL")},
 		{name: "insert", value: formModeInsert, label: "INSERT", badge: modeInsertStyle.Render("INSERT")},
 	} {
-		for _, tab := range []workspaceTab{tabStructure, tabBrowse, tabSQL, tabIndexes, tabForeignKeys} {
+		for _, tab := range []workspaceTab{tabStructure, tabBrowse, tabQuery, tabIndexes, tabForeignKeys} {
 			t.Run(mode.name+"/"+string(rune('0'+tab)), func(t *testing.T) {
 				// Given
 				model := New("", context.Background(), testOpen, false)
@@ -220,7 +220,7 @@ func TestView_workspaceTabsShowModeBadge(t *testing.T) {
 func TestView_vimOffHidesModeBadges(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.vimMode = false
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 	model.overlay.formMode.Mode = formModeInsert
 	model.ReadOnly = true
 	model.applyLayout(100, 24)
@@ -243,7 +243,7 @@ func TestView_vimOffHidesModeBadges(t *testing.T) {
 func TestView_contextualHintsRenderInTheirPanes(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 	model.applyLayout(100, 24)
 
 	// When
@@ -890,7 +890,7 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	model = updated.(Model)
 
 	// Then
-	if got, want := model.Tab, tabSQL; got != want {
+	if got, want := model.Tab, tabQuery; got != want {
 		t.Fatalf("tab = %v, want %v", got, want)
 	}
 	if got, want := model.layout.resultsColumn, 1; got != want {

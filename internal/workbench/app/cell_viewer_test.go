@@ -31,7 +31,7 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 	model.queryLog.results.Focus()
 
 	// When — press v to view the cell
@@ -137,7 +137,7 @@ func TestCellViewer_not_opened_during_SQL_edit(t *testing.T) {
 	}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 	model.queryLog.editor.setValue("SELECT 1")
 	beginInsert(model.overlay.formMode, model.queryLog.editor)
 
@@ -164,7 +164,7 @@ func TestCellViewer_resizes_on_window_size(t *testing.T) {
 	}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 	model.queryLog.results.Focus()
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	model = updated.(Model)
@@ -203,7 +203,7 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 	model.queryLog.results.Focus()
 
 	// Then — palette includes cell.view
@@ -295,7 +295,7 @@ func TestCellViewer_not_in_palette_when_inactive(t *testing.T) {
 			name: "SQL without focused results",
 			setup: func(t *testing.T) Model {
 				model := resizeModel(readyModel(t), 100, 24)
-				model.Tab = tabSQL
+				model.Tab = tabQuery
 				model.Focus = focusWorkspace
 				model.queryLog.results.Blur()
 				return model
@@ -305,7 +305,7 @@ func TestCellViewer_not_in_palette_when_inactive(t *testing.T) {
 			name: "SQL with editor editing",
 			setup: func(t *testing.T) Model {
 				model := resizeModel(readyModel(t), 100, 24)
-				model.Tab = tabSQL
+				model.Tab = tabQuery
 				model.queryLog.results.Focus()
 				model.queryLog.results.SetColumns(tableColumns([]string{"x"}, nil))
 				model.queryLog.results.SetRows(nil)

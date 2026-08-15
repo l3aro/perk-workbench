@@ -43,7 +43,7 @@ const (
 
 	tabStructure   = core.TabStructure
 	tabBrowse      = core.TabBrowse
-	tabSQL         = core.TabSQL
+	tabQuery       = core.TabSQL
 	tabIndexes     = core.TabIndexes
 	tabForeignKeys = core.TabForeignKeys
 	tabDiagram     = core.TabDiagram
@@ -61,6 +61,7 @@ type Model struct {
 	openTag          uint64
 	connectionID     string
 	databaseInfo     sharedsql.DatabaseInfo
+	queryLanguage    sharedsql.QueryLanguage
 	keybindings      Keybindings
 	vimMode          bool
 	configPath       string
@@ -72,6 +73,19 @@ type Model struct {
 	overlay          overlayState
 	layout           layoutState
 	chat             chatState
+}
+
+// editorLanguage returns the active query editor language. A zero value
+// (no advertisement, e.g. before any successful open) falls back to the
+// legacy SQL default so a fresh session presents SQL exactly as before.
+func (m Model) editorLanguage() sharedsql.QueryLanguage {
+	return sharedsql.NormalizeQueryLanguage(m.queryLanguage)
+}
+
+// isSQLLanguage reports whether the active query editor language is
+// SQL — the only language with relational completion and validation.
+func (m Model) isSQLLanguage() bool {
+	return m.editorLanguage().Lexer == "sql"
 }
 
 // chatState owns the assistant pane's root half: the chat component
@@ -117,7 +131,7 @@ type schemaState struct {
 	indexesRev     uint64
 }
 
-// queryState owns the SQL workspace: the editor, result table and raw
+// queryState owns the query workspace: the editor, result table and raw
 // result, completion, validation, editor history, and the query-log
 // component (pane, paging, detail).
 type queryState struct {
@@ -230,13 +244,14 @@ type contextMenuModel struct {
 }
 
 type databaseOpenedMsg struct {
-	target    string
-	service   sharedsql.Service
-	info      sharedsql.DatabaseInfo
-	objects   []sharedsql.SchemaObject
-	reconnect bool // sidebar database switch: no new connection profile
-	openTag   uint64
-	err       error
+	target        string
+	service       sharedsql.Service
+	info          sharedsql.DatabaseInfo
+	objects       []sharedsql.SchemaObject
+	queryLanguage sharedsql.QueryLanguage
+	reconnect     bool // sidebar database switch: no new connection profile
+	openTag       uint64
+	err           error
 }
 
 type directoryReadMsg struct {
@@ -326,12 +341,13 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 			return databaseOpenedMsg{err: err, reconnect: reconnect, openTag: tag}
 		}
 		return databaseOpenedMsg{
-			target:    opened.Target,
-			service:   opened.Service,
-			info:      opened.Info,
-			objects:   opened.Objects,
-			reconnect: reconnect,
-			openTag:   tag,
+			target:        opened.Target,
+			service:       opened.Service,
+			info:          opened.Info,
+			objects:       opened.Objects,
+			queryLanguage: opened.QueryLanguage,
+			reconnect:     reconnect,
+			openTag:       tag,
 		}
 	}
 }

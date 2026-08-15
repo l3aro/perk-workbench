@@ -70,7 +70,7 @@ func newCommandPalette(m Model) *commandPalette {
 		vimLabel = "vim mode: on"
 	}
 	items = append(items, commandPaletteItem{id: "vim.toggle", label: vimLabel, scope: scopeGlobal})
-	items = append(items, commandPaletteItem{id: "table.open_target", label: "open table → " + tableTargetName(tableOpenTargetTab()), scope: scopeGlobal})
+	items = append(items, commandPaletteItem{id: "table.open_target", label: "open table → " + m.tableTargetName(tableOpenTargetTab()), scope: scopeGlobal})
 
 	// Compute context title from current model state
 	contextTitle := contextLabel(m)
@@ -112,8 +112,8 @@ func contextLabel(m Model) string {
 				return "Columns"
 			case tabBrowse:
 				return "Browse"
-			case tabSQL:
-				return "SQL"
+			case tabQuery:
+				return m.editorLanguage().EditorLabel
 			case tabIndexes:
 				return "Indexes"
 			case tabForeignKeys:
@@ -271,7 +271,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	case "app.quit":
 		return !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
-			!(m.sqlEditorActive() && m.overlay.formMode.Editing())
+			!(m.queryEditorActive() && m.overlay.formMode.Editing())
 	case "editor.external":
 		return m.State == stateConnection && m.connection.component.Form.Focus == connectionFocusForm && m.connection.component.Form.Confirmation == nil
 	case "query.cancel":
@@ -284,7 +284,7 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		"focus.toggle_fullscreen", "focus.cycle_forward", "focus.cycle_backward":
 		return m.State == stateReady && !m.formActive() && !m.schema.component.Filter.Focused()
 	case "query.execute":
-		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery
 	case "query.history", "app.quit_dialog":
 		return false
 	}
@@ -315,10 +315,10 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil
 	case "cell.view":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
 	case "cell.yank":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
 	case "indexes.filter", "indexes.reset", "indexes.toggle_diagram", "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.schema.component.Structure.IndexForm.Active()
 	case "diagram.depth_up", "diagram.depth_down":

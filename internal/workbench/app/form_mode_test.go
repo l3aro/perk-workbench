@@ -10,7 +10,7 @@ import (
 func TestFormMode_normalSQLTextDoesNotMutateHuhValue(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 
 	// When
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
@@ -25,7 +25,7 @@ func TestFormMode_normalSQLTextDoesNotMutateHuhValue(t *testing.T) {
 func TestFormMode_iRoutesSQLTextToHuhUntilEscape(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	bindings, err := NewKeybindings(map[string][]string{"form.edit": {"z"}})
 	if err != nil {
 		t.Fatalf("NewKeybindings: %v", err)
@@ -69,7 +69,7 @@ func TestFormMode_confirmEscapeReturnsToNormal(t *testing.T) {
 func TestFormMode_confirmModeDoesNotMutateSQLText(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	model.queryLog.editor.setValue("SELECT ")
 	model.queryLog.editor.text.Focus()
 	model.overlay.formMode.BeginConfirm()
@@ -107,7 +107,7 @@ func TestFormMode_normalEscapeOpensExistingDiscard(t *testing.T) {
 func TestFormMode_runningQueryEscapePrecedesSQLInsert(t *testing.T) {
 	// Given
 	model := readyModel(t)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'i', Text: "i"})
 	model = updated.(Model)
 	requestID := startQuery(t, &model)
@@ -206,7 +206,7 @@ func TestFormMode_quitDialogFromSQLTab_EnterCancelStaysNormal(t *testing.T) {
 	// Given — SQL tab in normal mode
 	model := readyModel(t)
 	model = resizeModel(model, 80, 24)
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 
 	// When — Ctrl+Q opens quitDialog
 	updated, _ := model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})

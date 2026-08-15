@@ -135,9 +135,9 @@ func (m *Model) focusActiveTable() {
 		m.schema.component.Structure.Table.Focus()
 	case tabBrowse:
 		m.browse.component.Table.Focus()
-	case tabSQL:
+	case tabQuery:
 		if !m.vimMode {
-			// No modal modes: the editor is the SQL tab's text target, so
+			// No modal modes: the editor is the query tab's text target, so
 			// typing works the moment the tab gains focus. The focus cmd is
 			// dropped by design; Focused is set synchronously.
 			beginInsert(m.overlay.formMode, m.queryLog.editor)
@@ -212,7 +212,7 @@ func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
 		moveTableColumn(&m.browse.component.Table, &m.browse.component.SelectedColumn, &m.browse.component.Offset, m.layout.tableViewportWidth, step)
 		m.refreshBrowseStatus()
 		return
-	case tabSQL:
+	case tabQuery:
 		moveTableColumn(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, step)
 		return
 	}
@@ -242,7 +242,7 @@ func (m *Model) scrollActiveWorkspaceTable(step int) {
 		newCursor := clamp(m.browse.component.Table.Cursor()+step, 0, max(len(rows)-1, 0))
 		m.browse.component.Table.SetCursor(newCursor)
 		m.refreshBrowseStatus()
-	case tabSQL:
+	case tabQuery:
 		rows := m.queryLog.results.Rows()
 		newCursor := clamp(m.queryLog.results.Cursor()+step, 0, max(len(rows)-1, 0))
 		m.queryLog.results.SetCursor(newCursor)

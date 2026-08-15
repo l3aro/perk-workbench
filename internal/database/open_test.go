@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -38,5 +40,24 @@ func TestOpenRoutesMongoTarget(t *testing.T) {
 		if err := opened.Service.Close(); err != nil {
 			t.Fatalf("Close() error = %v", err)
 		}
+	}
+}
+
+// TestOpen_sqliteFallbackCarriesSQLQueryLanguage: an unmatched target
+// opens through the SQLite fallback, and the returned Opened carries the
+// legacy SQL query language so the editor never sees a zero
+// advertisement for a compiled-in SQL backend.
+func TestOpen_sqliteFallbackCarriesSQLQueryLanguage(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "fallback.db")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatalf("creating fixture database: %v", err)
+	}
+	opened, err := Open(context.Background(), target)
+	if err != nil {
+		t.Fatalf("Open(%q) error = %v", target, err)
+	}
+	defer opened.Service.Close()
+	if !reflect.DeepEqual(opened.QueryLanguage, SQLQueryLanguage) {
+		t.Fatalf("Open(%q) query language = %+v, want the SQL default", target, opened.QueryLanguage)
 	}
 }

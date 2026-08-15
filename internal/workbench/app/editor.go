@@ -10,19 +10,30 @@ import (
 
 type editor struct {
 	value         string
-	text          *sqlTextarea
+	text          *queryTextarea
 	completion    completion
+	language      sharedsql.QueryLanguage
 	width, height int
 }
 
 func newEditor() *editor {
-	editor := &editor{}
+	editor := &editor{language: sharedsql.SQLQueryLanguage}
 	editor.resetText()
 	return editor
 }
 
+// setLanguage switches the editor's query language: the placeholder and
+// the syntax lexer follow the advertisement. The textarea is rebuilt so
+// the resolved lexer and placeholder apply atomically, and any visible
+// completion overlay (SQL-only) is dropped.
+func (e *editor) setLanguage(language sharedsql.QueryLanguage) {
+	e.language = sharedsql.NormalizeQueryLanguage(language)
+	e.completion = completion{}
+	e.resetText()
+}
+
 func (e *editor) resetText() {
-	e.text = newSQLTextarea(max(e.width, 1), max(e.height, 1))
+	e.text = newQueryTextarea(max(e.width, 1), max(e.height, 1), e.language)
 	e.text.SetValue(e.value)
 }
 

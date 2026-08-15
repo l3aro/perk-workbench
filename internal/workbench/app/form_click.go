@@ -228,7 +228,7 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 					return m.overlay.formMode.BeginHuh(m.browse.component.Form.Focus())
 				})
 			}
-		case tabSQL:
+		case tabQuery:
 			// The editor box fills the first editorHeight lines of the pane:
 			// a single click focuses it, and without vim mode the click
 			// also enters insert mode so typing works immediately. With vim

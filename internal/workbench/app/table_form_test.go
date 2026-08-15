@@ -168,7 +168,7 @@ func TestSchemaAddTable_viaA_createsAndRefreshesSidebar(t *testing.T) {
 				t.Fatalf("create popup = %+v, want empty in main", model.schema.component.Structure.TableForm)
 			}
 			model.Focus = focusWorkspace
-			model.Tab = tabSQL
+			model.Tab = tabQuery
 			model.overlay.formMode.Mode = formModeInsert
 			for _, key := range "created" {
 				updated, _ = model.Update(tea.KeyPressMsg{Code: key, Text: string(key)})

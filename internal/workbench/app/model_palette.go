@@ -50,7 +50,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "query.execute":
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery {
 			return m.executeQuery()
 		}
 		return m, nil
@@ -275,7 +275,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			raw := m.rawCellValue("browse", row, col, display)
 			return m, m.openCellViewer(m.browse.component.Table, col, raw)
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() {
 			row := m.queryLog.results.Cursor()
 			col := m.layout.resultsColumn
 			display := ""
@@ -290,7 +290,7 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil {
 			return m, m.copyBrowseCell()
 		}
-		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabSQL && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() {
+		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() {
 			return m, m.copySQLCell()
 		}
 		return m, nil

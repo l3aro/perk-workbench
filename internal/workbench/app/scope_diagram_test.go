@@ -201,7 +201,7 @@ func TestScopeDiagram_clickSelectsDiagramAndLoads(t *testing.T) {
 	model = resizeModel(model, 120, 40)
 
 	tabs := model.workspaceTabs()
-	_, widths := workspaceTabMeta(tabs)
+	_, widths := model.workspaceTabMeta(tabs)
 	cx := 2 // pane left border (1) + left padding (1)
 	for i, tab := range tabs {
 		if tab == tabDiagram {

@@ -21,7 +21,7 @@ func TestResize_wide_and_compact_focus_layout(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
 	model.SelectTable("projects")
-	model.State, model.Tab = stateReady, tabSQL
+	model.State, model.Tab = stateReady, tabQuery
 
 	// When
 	model = resizeModel(model, 100, 24)
@@ -575,7 +575,7 @@ func TestSQLPane_borderRightCornersStayAligned(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model = resizeModel(model, 100, 24)
-	model.Tab = tabSQL
+	model.Tab = tabQuery
 	model.queryLog.editor.setValue("SELECT 1")
 	border := lipgloss.RoundedBorder()
 	lines := strings.Split(ansi.Strip(model.rightView()), "\n")
@@ -595,7 +595,7 @@ func TestSQLPane_borderRightCornersStayAligned(t *testing.T) {
 	// Then — both right corners share their rows with the SQL frame's left
 	// corners, rather than being wrapped into the next line.
 	left := sqlColumn - 1
-	width := lipgloss.Width(sqlEditorBox(model.queryLog.editor.View(), colorSuccess))
+	width := lipgloss.Width(queryEditorBox(model.queryLog.editor.View(), colorSuccess))
 	for _, corner := range []struct {
 		line  int
 		left  string

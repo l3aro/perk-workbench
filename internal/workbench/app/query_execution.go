@@ -220,7 +220,12 @@ type sqlValidationMsg struct {
 }
 
 // scheduleSQLValidation debounces validation after the editor value changes.
+// SQL is the only language with a statement validator; other query
+// languages never schedule validation.
 func (m *Model) scheduleSQLValidation() tea.Cmd {
+	if !m.isSQLLanguage() {
+		return nil
+	}
 	m.queryLog.validationTag++
 	tag := m.queryLog.validationTag
 	return tea.Tick(sqlValidationDebounce, func(time.Time) tea.Msg {
@@ -238,7 +243,7 @@ func (m Model) validateSQL(statement string) tea.Cmd {
 }
 
 func (m Model) updateSQLValidationTick(message sqlValidationTickMsg) (tea.Model, tea.Cmd) {
-	if message.tag != m.queryLog.validationTag || m.Database == nil {
+	if message.tag != m.queryLog.validationTag || m.Database == nil || !m.isSQLLanguage() {
 		return m, nil
 	}
 	statement := strings.TrimSpace(m.queryLog.editor.value)
@@ -250,8 +255,8 @@ func (m Model) updateSQLValidationTick(message sqlValidationTickMsg) (tea.Model,
 }
 
 func (m Model) updateSQLValidation(message sqlValidationMsg) (tea.Model, tea.Cmd) {
-	if m.queryLog.editor.value != message.statement {
-		return m, nil // stale result for an older revision
+	if m.queryLog.editor.value != message.statement || !m.isSQLLanguage() {
+		return m, nil // stale result for an older revision or language
 	}
 	if message.err != nil {
 		m.queryLog.editorValidity = sqlValidityInvalid

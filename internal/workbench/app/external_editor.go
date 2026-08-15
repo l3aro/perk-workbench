@@ -13,7 +13,7 @@ import (
 type externalEditorTargetKind uint8
 
 const (
-	externalEditorTargetSQL externalEditorTargetKind = iota
+	externalEditorTargetQuery externalEditorTargetKind = iota
 	externalEditorTargetConnection
 	externalEditorTargetColumn
 	externalEditorTargetBrowse
@@ -33,7 +33,7 @@ type externalEditorTarget interface {
 	Focus() tea.Cmd
 }
 
-type sqlEditorFinishedMsg struct {
+type externalEditorFinishedMsg struct {
 	tag      uint64
 	location externalEditorLocation
 	value    string
@@ -55,8 +55,8 @@ func (m *Model) openExternalEditor() (tea.Cmd, bool) {
 }
 
 func (m *Model) focusedExternalEditor() (externalEditorTarget, externalEditorLocation, bool) {
-	if m.sqlEditorActive() && m.overlay.formMode.Editing() {
-		return m.queryLog.editor, externalEditorLocation{kind: externalEditorTargetSQL}, true
+	if m.queryEditorActive() && m.overlay.formMode.Editing() {
+		return m.queryLog.editor, externalEditorLocation{kind: externalEditorTargetQuery}, true
 	}
 	if !m.overlay.formMode.Editing() {
 		return nil, externalEditorLocation{}, false
@@ -103,8 +103,8 @@ func externalEditorCommand(value string, tag uint64, location externalEditorLoca
 	return tea.ExecProcess(command, complete), nil
 }
 
-func sqlEditorProcess(value string, tag uint64) (*exec.Cmd, tea.ExecCallback, error) {
-	return externalEditorProcess(value, tag, externalEditorLocation{kind: externalEditorTargetSQL})
+func queryEditorProcess(value string, tag uint64) (*exec.Cmd, tea.ExecCallback, error) {
+	return externalEditorProcess(value, tag, externalEditorLocation{kind: externalEditorTargetQuery})
 }
 
 func externalEditorProcess(value string, tag uint64, location externalEditorLocation) (*exec.Cmd, tea.ExecCallback, error) {
@@ -113,7 +113,7 @@ func externalEditorProcess(value string, tag uint64, location externalEditorLoca
 		return nil, nil, fmt.Errorf("$EDITOR is not set")
 	}
 	extension := "txt"
-	if location.kind == externalEditorTargetSQL {
+	if location.kind == externalEditorTargetQuery {
 		extension = "sql"
 	}
 	file, err := os.CreateTemp("", "perk-workbench-editor-*."+extension)
@@ -134,19 +134,19 @@ func externalEditorProcess(value string, tag uint64, location externalEditorLoca
 		updated, readErr := os.ReadFile(name)
 		removeErr := os.Remove(name)
 		if runErr != nil {
-			return sqlEditorFinishedMsg{tag: tag, location: location, err: runErr}
+			return externalEditorFinishedMsg{tag: tag, location: location, err: runErr}
 		}
 		if readErr != nil {
-			return sqlEditorFinishedMsg{tag: tag, location: location, err: fmt.Errorf("reading editor file: %w", readErr)}
+			return externalEditorFinishedMsg{tag: tag, location: location, err: fmt.Errorf("reading editor file: %w", readErr)}
 		}
 		if removeErr != nil {
-			return sqlEditorFinishedMsg{tag: tag, location: location, err: fmt.Errorf("removing editor file: %w", removeErr)}
+			return externalEditorFinishedMsg{tag: tag, location: location, err: fmt.Errorf("removing editor file: %w", removeErr)}
 		}
-		return sqlEditorFinishedMsg{tag: tag, location: location, value: string(updated)}
+		return externalEditorFinishedMsg{tag: tag, location: location, value: string(updated)}
 	}, nil
 }
 
-func (m Model) updateExternalEditor(message sqlEditorFinishedMsg) (tea.Model, tea.Cmd) {
+func (m Model) updateExternalEditor(message externalEditorFinishedMsg) (tea.Model, tea.Cmd) {
 	target, location, ok := m.focusedExternalEditor()
 	if message.tag != m.queryLog.editorEditTag || !ok || message.location != location {
 		m.setStatus("editor target is no longer focused")

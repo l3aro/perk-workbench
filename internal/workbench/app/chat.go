@@ -81,7 +81,7 @@ func (m Model) applyChatSQL() tea.Cmd {
 		return nil
 	}
 	m.queryLog.editor.setValue(statement)
-	m.Focus, m.Tab = focusWorkspace, tabSQL
+	m.Focus, m.Tab = focusWorkspace, tabQuery
 	m.setStatus("AI SQL added to editor")
 	m.queryLog.editorValidity = sqlValidityPending
 	return m.scheduleSQLValidation()
@@ -141,7 +141,7 @@ func (m Model) applyChatEvent(event chat.Event, cmd tea.Cmd) (tea.Model, tea.Cmd
 		if e.Source == "editor" {
 			// applyChatSQL: put the assistant's statement in the editor.
 			m.queryLog.editor.setValue(e.Statement)
-			m.Focus, m.Tab = focusWorkspace, tabSQL
+			m.Focus, m.Tab = focusWorkspace, tabQuery
 			m.setStatus("AI SQL added to editor")
 			m.queryLog.editorValidity = sqlValidityPending
 			if cmd == nil {

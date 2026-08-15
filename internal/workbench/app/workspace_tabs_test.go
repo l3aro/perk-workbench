@@ -62,7 +62,7 @@ func TestWorkspaceTabs_targetPolicy(t *testing.T) {
 		t.Run(tc.name+"/tab set", func(t *testing.T) {
 			model := tc.setup(t)
 			tabs := model.workspaceTabs()
-			labels, _ := workspaceTabMeta(tabs)
+			labels, _ := model.workspaceTabMeta(tabs)
 			if !slices.Equal(labels, tc.labels) {
 				t.Fatalf("workspace tab labels = %#v, want %#v", labels, tc.labels)
 			}
@@ -92,7 +92,7 @@ func TestWorkspaceTabs_targetPolicy(t *testing.T) {
 				t.Fatal("test setup did not produce the compact layout")
 			}
 			tabs := model.workspaceTabs()
-			_, widths := workspaceTabMeta(tabs)
+			_, widths := model.workspaceTabMeta(tabs)
 			tabY := renderedRowY(t, model, tc.labels[0])
 			cx := 2 // pane left border (1) + left padding (1)
 			for i, tab := range tabs {
@@ -271,7 +271,7 @@ func TestWorkspaceTargets_unconnectedPostgresRootReconnects(t *testing.T) {
 	if model.WorkspaceTarget.Kind != core.WorkspaceNone {
 		t.Fatalf("workspace target = %#v, want none before reconnection completes", model.WorkspaceTarget)
 	}
-	if model.Tab != tabSQL || model.SelectedTable != "" {
+	if model.Tab != tabQuery || model.SelectedTable != "" {
 		t.Fatalf("workspace = tab %v table %q, want SQL with no table", model.Tab, model.SelectedTable)
 	}
 }

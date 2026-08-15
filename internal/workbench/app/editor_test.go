@@ -78,7 +78,7 @@ func TestEditor_completionAfterQualifiedTableInsertsColumn(t *testing.T) {
 func TestModel_completionKeyShowsKeywordAndTableSuggestions(t *testing.T) {
 	// Given
 	model := New("", context.Background(), testOpen, false)
-	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabSQL
+	model.State, model.Focus, model.Tab = stateReady, focusWorkspace, tabQuery
 	model.schema.component.Objects = []sharedsql.SchemaObject{{Name: "sessions", Type: "table"}}
 	model.queryLog.editor.setValue("S")
 	// Enter insert mode first (pressing 'i' in normal mode does this).

@@ -187,7 +187,7 @@ func TestVimMode_paletteToggleTransitionsAndPersists(t *testing.T) {
 
 	model := readyModel(t)
 	model.configPath = filepath.Join(dir, "perk-workbench", "config.json")
-	model.Focus, model.Tab = focusWorkspace, tabSQL
+	model.Focus, model.Tab = focusWorkspace, tabQuery
 	model = resizeModel(model, 100, 24)
 	if !model.vimMode {
 		t.Fatal("test setup: vim mode should default on")

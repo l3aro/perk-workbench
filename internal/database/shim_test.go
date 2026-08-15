@@ -256,6 +256,37 @@ func TestRegisterShim_queryLanguage(t *testing.T) {
 	}
 }
 
+// TestOpen_carriesMatchedDriverQueryLanguage: database.Open carries the
+// matched driver's registered query language into the returned Opened,
+// so the workbench can present the connection's editor language without
+// re-matching the target itself.
+func TestOpen_carriesMatchedDriverQueryLanguage(t *testing.T) {
+	language := database.QueryLanguage{
+		Name:        "KV",
+		EditorLabel: "Command",
+		Placeholder: "Enter a command…",
+		Lexer:       "kv",
+		Examples:    []string{"GET user:2"},
+	}
+	caps := database.Capabilities{
+		Name:          "langkv",
+		Display:       "KV",
+		Targets:       []database.TargetPattern{{Prefix: "langkv:"}},
+		QueryLanguage: &language,
+	}
+	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return caps })); err != nil {
+		t.Fatalf("RegisterShim: %v", err)
+	}
+	opened, err := database.Open(context.Background(), "langkv:svc:6379")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer opened.Service.Close()
+	if !reflect.DeepEqual(opened.QueryLanguage, language) {
+		t.Fatalf("Open query language = %+v, want %+v", opened.QueryLanguage, language)
+	}
+}
+
 func TestCapabilities_surviveJSONRoundTrip(t *testing.T) {
 	caps := fakeRedisShim{}.Capabilities()
 	var decoded database.Capabilities

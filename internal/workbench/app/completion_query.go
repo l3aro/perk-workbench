@@ -24,8 +24,13 @@ func (m Model) loadCompletionColumns(table string, tag uint64) tea.Cmd {
 	}
 }
 
-// startCompletion triggers context-aware completion suggestions.
+// startCompletion triggers context-aware completion suggestions. Only
+// SQL offers relational table/column completion; other query languages
+// leave the editor without completion.
 func (m *Model) startCompletion() tea.Cmd {
+	if !m.isSQLLanguage() {
+		return nil
+	}
 	row := m.queryLog.editor.text.input.Line()
 	col := m.queryLog.editor.text.input.Column()
 	analysis := sharedsql.AnalyzeSQL(m.queryLog.editor.value, row, col)
@@ -259,7 +264,7 @@ func (m Model) completionObjectName(object sharedsql.SchemaObject) string {
 }
 
 func (m Model) updateCompletionColumns(message completionColumnsMsg) (tea.Model, tea.Cmd) {
-	if message.tag != m.queryLog.completionRequestTag || message.table != m.queryLog.completionTable {
+	if message.tag != m.queryLog.completionRequestTag || message.table != m.queryLog.completionTable || !m.isSQLLanguage() {
 		return m, nil
 	}
 	if message.err != nil {

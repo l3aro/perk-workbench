@@ -47,6 +47,8 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.databaseInfo = message.info
+	m.queryLanguage = message.queryLanguage
+	m.queryLog.editor.setLanguage(message.queryLanguage)
 	m.refreshBrowseBackend()
 	m.chat.component.Executor = chatExecutor{service: message.service}
 	m.chat.component.Target = message.target

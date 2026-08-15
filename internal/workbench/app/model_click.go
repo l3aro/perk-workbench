@@ -282,7 +282,7 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 	// Tab row is inside the border at contentY=1.
 	if y == 1 {
 		tabs := m.workspaceTabs()
-		_, widths := workspaceTabMeta(tabs)
+		_, widths := m.workspaceTabMeta(tabs)
 		cx := 2 // pane left border (1) + left padding (1)
 		for i, tab := range tabs {
 			if x >= cx && x < cx+widths[i] {
@@ -562,7 +562,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		if m.browse.component.Form.Active() || m.browse.component.FilterForm != nil || len(m.browse.component.Table.Rows()) == 0 {
 			return m, nil
 		}
-	case tabSQL:
+	case tabQuery:
 		if len(m.queryLog.results.Rows()) == 0 {
 			return m, nil
 		}
@@ -584,7 +584,7 @@ func (m Model) handleBrowseClick(absX, absY int) (tea.Model, tea.Cmd) {
 		targetCol = &m.browse.component.SelectedColumn
 		targetOffset = &m.browse.component.Offset
 		rows = m.browse.component.Table.Rows()
-	case tabSQL:
+	case tabQuery:
 		targetTable = &m.queryLog.results
 		targetCol = &m.layout.resultsColumn
 		targetOffset = &m.layout.resultsOffset
