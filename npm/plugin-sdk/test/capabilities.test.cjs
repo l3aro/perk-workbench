@@ -102,6 +102,124 @@ test('initialize result includes write_capabilities even when empty', async () =
   await server.close();
 });
 
+test('initialize result includes a normalized query_language when advertised', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'kv',
+        display: 'KV',
+        targets: [{ prefix: 'kv:' }],
+        query_language: {
+          name: 'KV',
+          editor_label: 'Command',
+          placeholder: 'Enter a statement…',
+          lexer: 'plaintext',
+          examples: ['GET key', 'SET key value'],
+        },
+        write_capabilities: { row_writer: false },
+      },
+    }),
+  );
+  const result = await client.initialize();
+  assert.deepEqual(result.capabilities.query_language, {
+    name: 'KV',
+    editor_label: 'Command',
+    placeholder: 'Enter a statement…',
+    lexer: 'plaintext',
+    examples: ['GET key', 'SET key value'],
+  });
+  await server.close();
+});
+
+test('query_language without lexer or examples is accepted as-is', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'kv',
+        display: 'KV',
+        targets: [{ prefix: 'kv:' }],
+        query_language: { name: 'SQL', editor_label: 'SQL', placeholder: 'Enter a query…' },
+        write_capabilities: { row_writer: false },
+      },
+    }),
+  );
+  const result = await client.initialize();
+  assert.deepEqual(result.capabilities.query_language, {
+    name: 'SQL',
+    editor_label: 'SQL',
+    placeholder: 'Enter a query…',
+  });
+  assert.ok(!('lexer' in result.capabilities.query_language));
+  assert.ok(!('examples' in result.capabilities.query_language));
+  await server.close();
+});
+
+test('initialize omits query_language when absent or null', async () => {
+  const { server, client } = createServer(minimalDefinition());
+  const result = await client.initialize();
+  assert.ok(!('query_language' in result.capabilities));
+  await server.close();
+
+  const { server: nullServer, client: nullClient } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'kv',
+        display: 'KV',
+        targets: [{ prefix: 'kv:' }],
+        query_language: null,
+        write_capabilities: { row_writer: false },
+      },
+    }),
+  );
+  const nullResult = await nullClient.initialize();
+  assert.ok(!('query_language' in nullResult.capabilities));
+  await nullServer.close();
+});
+
+test('initialize omits an all-empty query_language like the host defaults it', async () => {
+  for (const queryLanguage of [{}, { name: '', editor_label: '', placeholder: '', lexer: '', examples: [] }]) {
+    const { server, client } = createServer(
+      minimalDefinition({
+        capabilities: {
+          name: 'kv',
+          display: 'KV',
+          targets: [{ prefix: 'kv:' }],
+          query_language: queryLanguage,
+          write_capabilities: { row_writer: false },
+        },
+      }),
+    );
+    const result = await client.initialize();
+    assert.ok(!('query_language' in result.capabilities), `query_language ${JSON.stringify(queryLanguage)} should stay absent`);
+    await server.close();
+  }
+});
+
+test('create rejects invalid query_language metadata', () => {
+  const base = {
+    name: 'kv',
+    display: 'KV',
+    targets: [{ prefix: 'kv:' }],
+    write_capabilities: { row_writer: false },
+  };
+  for (const [label, queryLanguage] of [
+    ['not an object', 'sql'],
+    ['blank name', { name: '  ', editor_label: 'SQL', placeholder: 'Enter a query…' }],
+    ['missing editor_label', { name: 'SQL', placeholder: 'Enter a query…' }],
+    ['blank placeholder', { name: 'SQL', editor_label: 'SQL', placeholder: '  ' }],
+    ['non-string lexer', { name: 'SQL', editor_label: 'SQL', placeholder: 'Enter a query…', lexer: 1 }],
+    ['examples not an array', { name: 'SQL', editor_label: 'SQL', placeholder: 'Enter a query…', examples: 'GET key' }],
+    ['examples empty string', { name: 'SQL', editor_label: 'SQL', placeholder: 'Enter a query…', examples: '' }],
+    ['blank example', { name: 'SQL', editor_label: 'SQL', placeholder: 'Enter a query…', examples: ['GET key', '  '] }],
+  ]) {
+    assert.throws(
+      () => createServer(minimalDefinition({ capabilities: { ...base, query_language: queryLanguage } })),
+      (error) => /query_language/.test(error && error.message),
+      `query_language ${label} should be rejected`,
+    );
+  }
+});
+
 test('unadvertised write methods are not implemented', async () => {
   const { server, client } = createServer(minimalDefinition());
   await client.initialize();

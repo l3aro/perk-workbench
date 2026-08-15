@@ -40,6 +40,7 @@ func TestPluginHelperChild(t *testing.T) {
 		rowWriter:       os.Getenv("PERK_PLUGIN_ROW_WRITER") == "1",
 		document:        os.Getenv("PERK_PLUGIN_DOCUMENT") == "1",
 		writeStatement:  os.Getenv("PERK_PLUGIN_WRITE_STATEMENT"),
+		queryLanguage:   os.Getenv("PERK_PLUGIN_QUERY_LANGUAGE"),
 	}
 	if raw := os.Getenv("PERK_PLUGIN_SCHEMA"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &helper.schemaObjects); err != nil {
@@ -70,6 +71,7 @@ type pluginHelper struct {
 	rowWriter       bool
 	document        bool
 	writeStatement  string
+	queryLanguage   string
 	schemaObjects   []sharedsql.SchemaObject
 	schemaSet       bool
 }
@@ -281,6 +283,13 @@ func (h *pluginHelper) capabilities() database.Capabilities {
 			Format: sharedsql.DocumentFormatMongoExtendedJSON,
 			Text:   true,
 		}
+	}
+	if h.queryLanguage != "" {
+		var ql database.QueryLanguage
+		if err := json.Unmarshal([]byte(h.queryLanguage), &ql); err != nil {
+			os.Exit(2)
+		}
+		caps.QueryLanguage = &ql
 	}
 	return caps
 }

@@ -89,9 +89,63 @@ function requireString(value, label) {
   return value;
 }
 
+// normalizeQueryLanguage makes the optional query_language shape
+// explicit: absent, null, or all-empty advertisements stay absent (the
+// host applies its legacy SQL default), while a present advertisement
+// must carry nonblank name/editor_label/placeholder and only nonblank
+// examples — mirroring the host's validation in
+// internal/database/drivers.go.
+function normalizeQueryLanguage(queryLanguage) {
+  if (queryLanguage === undefined || queryLanguage === null) {
+    return undefined;
+  }
+  requireObject(queryLanguage, 'capabilities.query_language');
+  const name = queryLanguage.name;
+  const editorLabel = queryLanguage.editor_label;
+  const placeholder = queryLanguage.placeholder;
+  const lexer = queryLanguage.lexer;
+  const examples = queryLanguage.examples;
+  if (
+    (name === undefined || name === '') &&
+    (editorLabel === undefined || editorLabel === '') &&
+    (placeholder === undefined || placeholder === '') &&
+    (lexer === undefined || lexer === '') &&
+    (examples === undefined || (Array.isArray(examples) && examples.length === 0))
+  ) {
+    return undefined;
+  }
+  if (typeof name !== 'string' || name.trim() === '') {
+    throw new TypeError('capabilities.query_language.name must be a nonblank string');
+  }
+  if (typeof editorLabel !== 'string' || editorLabel.trim() === '') {
+    throw new TypeError('capabilities.query_language.editor_label must be a nonblank string');
+  }
+  if (typeof placeholder !== 'string' || placeholder.trim() === '') {
+    throw new TypeError('capabilities.query_language.placeholder must be a nonblank string');
+  }
+  if (lexer !== undefined && typeof lexer !== 'string') {
+    throw new TypeError('capabilities.query_language.lexer must be a string');
+  }
+  if (examples !== undefined) {
+    if (!Array.isArray(examples)) {
+      throw new TypeError('capabilities.query_language.examples must be an array');
+    }
+    for (const example of examples) {
+      if (typeof example !== 'string' || example.trim() === '') {
+        throw new TypeError('capabilities.query_language.examples must contain only nonblank strings');
+      }
+    }
+  }
+  const normalized = { name, editor_label: editorLabel, placeholder };
+  if (lexer !== undefined) normalized.lexer = lexer;
+  if (examples !== undefined) normalized.examples = [...examples];
+  return normalized;
+}
+
 // normalizeCapabilities makes the wire shape explicit: write_capabilities
-// is always present, and document is omitted when null — matching the Go
-// host DTOs (database.Capabilities, sharedsql.WriteCapabilities).
+// is always present, document is omitted when null, and query_language is
+// omitted when absent or null — matching the Go host DTOs
+// (database.Capabilities, sharedsql.WriteCapabilities).
 function normalizeCapabilities(capabilities) {
   requireObject(capabilities, 'capabilities');
   const write = capabilities.write_capabilities;
@@ -102,7 +156,14 @@ function normalizeCapabilities(capabilities) {
   if (write && write.document != null) {
     writeCapabilities.document = write.document;
   }
-  return { ...capabilities, write_capabilities: writeCapabilities };
+  const queryLanguage = normalizeQueryLanguage(capabilities.query_language);
+  const normalized = { ...capabilities, write_capabilities: writeCapabilities };
+  if (queryLanguage === undefined) {
+    delete normalized.query_language;
+  } else {
+    normalized.query_language = queryLanguage;
+  }
+  return normalized;
 }
 
 // Public enum constants — frozen mirrors of the Go host's DTO enums,

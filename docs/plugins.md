@@ -110,7 +110,7 @@ below are the JSON field names):
 
 | Area | SDK types |
 |---|---|
-| Capabilities & forms | `Capabilities`, `TargetPattern`, `FormSpec`, `FormField`, `FormOption`, `FormFieldKind`, `FormValidation`, `FormValues`, `WriteCapabilities`, `DocumentWriteCapability`, `DocumentFormat` |
+| Capabilities & forms | `Capabilities`, `TargetPattern`, `FormSpec`, `FormField`, `FormOption`, `FormFieldKind`, `FormValidation`, `FormValues`, `QueryLanguage`, `WriteCapabilities`, `DocumentWriteCapability`, `DocumentFormat` |
 | Shared DTOs | `DatabaseInfo`, `SchemaObject`, `Result`, `ColumnInfo`, `ColumnDef`, `ColumnChange`, `IndexInfo`, `IndexChange`, `ForeignKeyInfo`, `ReferencingForeignKeyInfo`, `ForeignKeyChange`, `BrowseFilter`, `BrowseSort`, `BrowseOptions`, `DocumentPayload` |
 | Row & document writes | `Value`, `ValueKind`, `NamedValue`, `RowValue`, `RowWriteOperation`, `RowWriteRequest`, `RowWriteResponse`, `DocumentWriteOperation`, `DocumentWriteRequest`, `DocumentWriteResponse` |
 | Handler contracts | `HandlerContext`, `StatementRequest`, `TableRequest`, `IndexChangeRequest`, `ReplaceIndexRequest`, `DropRequest`, `ForeignKeyChangeRequest`, `ReplaceForeignKeyRequest`, `ColumnChangeRequest`, `AddColumnRequest`, `BrowseTableRequest`, `EmptyRequest`, `BuildTargetResult`, `OpenResult`, `SessionService` |
@@ -190,6 +190,7 @@ Response (plugin → host):
 | `display` | string | Human-readable driver label shown in the UI. |
 | `targets` | `TargetPattern[]` | Optional; omitted for target-only drivers. A plugin must declare at least one target form (only the built-in SQLite fallback may have none). |
 | `form` | `FormSpec` or null | Optional; omitted for target-only drivers (MongoDB-style, opened by target URL only). |
+| `query_language` | `QueryLanguage` or null | Optional; how the query editor presents this driver's statements. Omitted, null, or all-empty advertisements are normalized by the host to the legacy SQL default, so plugins written before this field existed keep working unchanged; a present-but-invalid advertisement rejects registration. |
 | `write_capabilities` | `WriteCapabilities` | Always present. Gates the optional `row_write`/`document_write` RPCs. |
 
 `protocol_version` in the result must equal the requested version (1) or
@@ -321,6 +322,22 @@ validate, error?}`:
 `format` is the only payload format the driver accepts, `text` reports
 whether whole-document text editing is safe. The single defined format:
 `"application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed"`.
+
+**`QueryLanguage`** — `{name: string, editor_label: string, placeholder:
+string, lexer?: string, examples?: string[]}`. Advertises how the query
+editor presents this driver's statements: `name` is the language name,
+`editor_label` the editor tab label, `placeholder` the input placeholder,
+`lexer` an optional lexer hint the UI falls back from when blank or
+unknown (`"sql"`, `"javascript"`, …), and `examples` optional statements
+the driver's parser already accepts. `name`, `editor_label`, and
+`placeholder` must be nonblank after trimming; every `examples` entry
+must be nonblank. The host normalizes an omitted, null, or all-empty
+`query_language` to the legacy SQL default — `name: "SQL"`,
+`editor_label: "SQL"`, `placeholder: "Enter a query…"`, `lexer: "sql"` —
+before registration; a present-but-invalid advertisement is **rejected**
+at registration, never silently defaulted. The protocol version is
+unchanged, so existing plugins (which omit the field) load exactly as
+before.
 
 ### Shared service DTOs
 
@@ -708,6 +725,12 @@ const definition = {
         { key: 'database', title: 'Database', kind: 0, placeholder: 'default', default: 'default', validate: 0 },
       ],
     },
+    query_language: {
+      name: 'KV',
+      editor_label: 'Command',
+      placeholder: 'Enter a statement…',
+      examples: ['GET key', 'SET key value', 'DEL key'],
+    },
     write_capabilities: { row_writer: false },
   },
   buildTarget(values) {
@@ -741,6 +764,9 @@ What the example demonstrates:
 - `capabilities.form` declares the Database input; without it the
   driver is target-only and never appears in the connection form's
   driver select.
+- `capabilities.query_language` advertises the KV statement language
+  for the query editor; a plugin that omits it (or sends an empty
+  object) gets the host's legacy SQL default instead.
 - `buildTarget` serializes the form values into `demo-kv:<database>`,
   which the host routes back and strips before `open`.
 - `open` returns `{info, service}`; the SDK assigns the `session_id` and

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	godrv "github.com/go-sql-driver/mysql"
@@ -85,6 +86,70 @@ func TestRegister_invalidSpecPanics(t *testing.T) {
 			Register(spec)
 		})
 	}
+}
+
+func TestQueryLanguage_builtinsAdvertise(t *testing.T) {
+	for _, name := range []string{"sqlite", "mysql", "postgres"} {
+		spec, ok := ByName(name)
+		if !ok {
+			t.Fatalf("%s not registered", name)
+		}
+		if !reflect.DeepEqual(spec.QueryLanguage, SQLQueryLanguage) {
+			t.Fatalf("%s query language = %+v, want the SQL default", name, spec.QueryLanguage)
+		}
+	}
+	mongo, ok := ByName("mongodb")
+	if !ok {
+		t.Fatal("mongodb not registered")
+	}
+	want := QueryLanguage{
+		Name:        "MongoDB",
+		EditorLabel: "Command",
+		Placeholder: "Enter a mongosh statement…",
+		Lexer:       "javascript",
+		Examples: []string{
+			`db.restaurants.find({"borough": "Bronx"}).limit(5)`,
+			`db.restaurants.countDocuments({"cuisine": "Chinese"})`,
+			`show collections`,
+		},
+	}
+	if !reflect.DeepEqual(mongo.QueryLanguage, want) {
+		t.Fatalf("mongodb query language = %+v, want %+v", mongo.QueryLanguage, want)
+	}
+}
+
+// TestRegister_invalidQueryLanguagePanics: a nonzero query language
+// advertisement violating the invariant set — blank name, editor label,
+// or placeholder after trimming, or a blank example — is rejected at
+// registration. A zero advertisement stays legal (no advertisement).
+func TestRegister_invalidQueryLanguagePanics(t *testing.T) {
+	open := func(context.Context, string) (sharedsql.Service, error) { return nil, nil }
+	for _, test := range []struct {
+		name string
+		ql   QueryLanguage
+	}{
+		{name: "blank name", ql: QueryLanguage{Name: "   ", EditorLabel: "SQL", Placeholder: "Enter a query…"}},
+		{name: "blank editor label", ql: QueryLanguage{Name: "SQL", Placeholder: "Enter a query…"}},
+		{name: "blank placeholder", ql: QueryLanguage{Name: "SQL", EditorLabel: "SQL"}},
+		{name: "blank example", ql: QueryLanguage{Name: "SQL", EditorLabel: "SQL", Placeholder: "Enter a query…", Examples: []string{"select 1", "  "}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("Register with invalid query language did not panic")
+				}
+			}()
+			Register(Spec{
+				Name: "qlpanic", Targets: []TargetPattern{{Prefix: "qlpanic:"}},
+				Open: open, QueryLanguage: test.ql,
+			})
+		})
+	}
+
+	// A zero advertisement passes validation without advertising.
+	Register(Spec{
+		Name: "qlzeroreg", Targets: []TargetPattern{{Prefix: "qlzeroreg:"}}, Open: open,
+	})
 }
 
 func TestOpenFallsBackToSQLite(t *testing.T) {

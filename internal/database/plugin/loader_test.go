@@ -540,6 +540,94 @@ func TestProxy_concurrentOutOfOrder(t *testing.T) {
 	}
 }
 
+// TestLoad_queryLanguageNormalization exercises the full wire path: an
+// omitted query_language becomes the legacy SQL default on the
+// registered spec, a valid advertisement passes through unchanged, and
+// invalid nonzero metadata rejects the entry.
+func TestLoad_queryLanguageNormalization(t *testing.T) {
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	registerRecorder := func(registered *[]database.Shim) func(database.Shim) error {
+		return func(shim database.Shim) error {
+			if err := database.RegisterShim(shim); err != nil {
+				return err
+			}
+			*registered = append(*registered, shim)
+			return nil
+		}
+	}
+
+	// Omitted advertisement: the wire carries no query_language, and the
+	// registered driver gets the legacy SQL default.
+	setEnv(t, "PERK_PLUGIN_NAME", "qlomit")
+	setEnv(t, "PERK_PLUGIN_TARGETS", "qlomit:")
+	var shims []database.Shim
+	loader, errs := Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	if len(errs) != 0 {
+		t.Fatalf("omitted-advertisement Load errors = %v, want none", errs)
+	}
+	if len(shims) != 1 {
+		t.Fatalf("registered %d shims, want 1", len(shims))
+	}
+	if got := shims[0].Capabilities().QueryLanguage; got != nil {
+		t.Fatalf("wire query_language = %+v, want nil (not advertised)", got)
+	}
+	spec, ok := database.ByName("qlomit")
+	if !ok {
+		t.Fatal("qlomit not registered")
+	}
+	if !reflect.DeepEqual(spec.QueryLanguage, database.SQLQueryLanguage) {
+		t.Fatalf("qlomit query language = %+v, want the SQL default", spec.QueryLanguage)
+	}
+	_ = loader.Close()
+
+	// A valid advertisement passes through to the registered spec.
+	setEnv(t, "PERK_PLUGIN_NAME", "qlpass")
+	setEnv(t, "PERK_PLUGIN_TARGETS", "qlpass:")
+	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE",
+		`{"name":"QL","editor_label":"Command","placeholder":"Enter a statement…","lexer":"plaintext","examples":["GET k","SET k v"]}`)
+	shims = nil
+	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	if len(errs) != 0 {
+		t.Fatalf("valid-advertisement Load errors = %v, want none", errs)
+	}
+	_ = loader.Close()
+	want := database.QueryLanguage{
+		Name:        "QL",
+		EditorLabel: "Command",
+		Placeholder: "Enter a statement…",
+		Lexer:       "plaintext",
+		Examples:    []string{"GET k", "SET k v"},
+	}
+	if spec, ok := database.ByName("qlpass"); !ok {
+		t.Fatal("qlpass not registered")
+	} else if !reflect.DeepEqual(spec.QueryLanguage, want) {
+		t.Fatalf("qlpass query language = %+v, want %+v", spec.QueryLanguage, want)
+	}
+
+	// Invalid nonzero metadata rejects the entry, never silently
+	// defaulting it.
+	setEnv(t, "PERK_PLUGIN_NAME", "qlbad")
+	setEnv(t, "PERK_PLUGIN_TARGETS", "qlbad:")
+	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE", `{"name":"QL","placeholder":"Enter a statement…"}`)
+	shims = nil
+	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	if len(errs) != 1 {
+		t.Fatalf("invalid-advertisement Load errors = %v, want exactly one", errs)
+	}
+	if len(shims) != 0 {
+		t.Fatalf("invalid-advertisement Load registered %d drivers, want none", len(shims))
+	}
+	if _, ok := database.ByName("qlbad"); ok {
+		t.Fatal("qlbad registered despite invalid query language")
+	}
+	_ = loader.Close()
+}
+
 // TestProxy_dynamicWrappers: capability-gated wrappers preserve
 // optional-interface discovery exactly as advertised.
 func TestProxy_dynamicWrappers(t *testing.T) {

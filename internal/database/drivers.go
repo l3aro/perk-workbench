@@ -42,6 +42,12 @@ type Spec struct {
 	// Target serialization is a registered in-process builder (see
 	// BuildTarget), not part of the spec.
 	Form *FormSpec
+
+	// QueryLanguage describes how the query editor presents this
+	// driver's language. A zero value carries no advertisement (the UI
+	// falls back to its defaults); built-ins and registered shims always
+	// carry an explicit one.
+	QueryLanguage QueryLanguage
 }
 
 // TargetPattern declaratively addresses one target form of a driver. A
@@ -186,6 +192,9 @@ func validateSpec(spec Spec) error {
 			return fmt.Errorf("database: driver %q form prefix %q must be one of its stripped target forms", spec.Name, spec.Form.Prefix)
 		}
 	}
+	if err := validateQueryLanguage(spec.QueryLanguage); err != nil {
+		return fmt.Errorf("database: driver %q: %w", spec.Name, err)
+	}
 	return nil
 }
 
@@ -273,15 +282,87 @@ func BuildTarget(spec Spec, values FormValues) (string, bool) {
 	return build(values)
 }
 
+// QueryLanguage is the serializable advertisement of how the query
+// editor presents one driver's statements: the language name, the
+// editor tab label, the input placeholder, an optional lexer hint, and
+// optional example statements the driver's parser already accepts. It
+// crosses the plugin DTO boundary unchanged.
+type QueryLanguage struct {
+	Name        string   `json:"name"`
+	EditorLabel string   `json:"editor_label"`
+	Placeholder string   `json:"placeholder"`
+	Lexer       string   `json:"lexer,omitempty"`
+	Examples    []string `json:"examples,omitempty"`
+}
+
+// SQLQueryLanguage is the legacy SQL default every driver without an
+// explicit query language advertisement gets: the query editor presents
+// SQL with the conventional placeholder and lexer.
+var SQLQueryLanguage = QueryLanguage{
+	Name:        "SQL",
+	EditorLabel: "SQL",
+	Placeholder: "Enter a query…",
+	Lexer:       "sql",
+}
+
+// isZeroQueryLanguage reports whether ql carries no advertisement at
+// all — every field blank and no examples.
+func isZeroQueryLanguage(ql QueryLanguage) bool {
+	return ql.Name == "" && ql.EditorLabel == "" && ql.Placeholder == "" &&
+		ql.Lexer == "" && len(ql.Examples) == 0
+}
+
+// validateQueryLanguage checks the invariant set every nonzero query
+// language advertisement must hold: name, editor label, and placeholder
+// must be nonblank after trimming, and every example must be nonblank.
+// A zero value is not an advertisement and passes.
+func validateQueryLanguage(ql QueryLanguage) error {
+	if isZeroQueryLanguage(ql) {
+		return nil
+	}
+	switch {
+	case strings.TrimSpace(ql.Name) == "":
+		return errors.New("query language needs a name")
+	case strings.TrimSpace(ql.EditorLabel) == "":
+		return fmt.Errorf("query language %q needs an editor label", ql.Name)
+	case strings.TrimSpace(ql.Placeholder) == "":
+		return fmt.Errorf("query language %q needs a placeholder", ql.Name)
+	}
+	for i, example := range ql.Examples {
+		if strings.TrimSpace(example) == "" {
+			return fmt.Errorf("query language %q example %d must not be blank", ql.Name, i)
+		}
+	}
+	return nil
+}
+
+// normalizeQueryLanguage resolves a plugin's query_language
+// advertisement: an absent or all-zero advertisement falls back to the
+// legacy SQL default; a present one is returned for validation by
+// validateSpec — invalid metadata is rejected, never silently defaulted.
+// This is the single normalization point for plugin capabilities.
+func normalizeQueryLanguage(ql *QueryLanguage) QueryLanguage {
+	if ql == nil || isZeroQueryLanguage(*ql) {
+		return SQLQueryLanguage
+	}
+	return *ql
+}
+
 // Capabilities is the serializable advertisement an external driver
 // serves over its transport: identity, the target forms it addresses,
-// and the connection form description — the DTO twin of Spec's data
-// fields. Compiled-in drivers never travel as capabilities.
+// the connection form description, and the query editor language — the
+// DTO twin of Spec's data fields. Compiled-in drivers never travel as
+// capabilities.
 type Capabilities struct {
 	Name    string          `json:"name"`
 	Display string          `json:"display"`
 	Targets []TargetPattern `json:"targets,omitempty"`
 	Form    *FormSpec       `json:"form,omitempty"`
+	// QueryLanguage advertises the query editor language for this
+	// driver, or nil when the plugin does not advertise one. The host
+	// normalizes nil and zero advertisements to the legacy SQL default
+	// at registration.
+	QueryLanguage *QueryLanguage `json:"query_language,omitempty"`
 	// WriteCapabilities advertises the optional row/document write
 	// interfaces a plugin's sessions implement. A zero value means no
 	// write support: the workbench never attempts row or document writes.
@@ -310,8 +391,10 @@ func RegisterShim(shim Shim) error {
 		return errors.New("database: nil shim")
 	}
 	caps := shim.Capabilities()
+	queryLanguage := normalizeQueryLanguage(caps.QueryLanguage)
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+		QueryLanguage: queryLanguage,
 	}); err != nil {
 		return err
 	}
@@ -344,11 +427,12 @@ func RegisterShim(shim Shim) error {
 		targetBuilders[caps.Name] = shim.BuildTarget
 	}
 	spec := Spec{
-		Name:    caps.Name,
-		Display: caps.Display,
-		Targets: caps.Targets,
-		Open:    shim.Open,
-		Form:    caps.Form,
+		Name:          caps.Name,
+		Display:       caps.Display,
+		Targets:       caps.Targets,
+		Open:          shim.Open,
+		Form:          caps.Form,
+		QueryLanguage: queryLanguage,
 	}
 	byName[caps.Name] = spec
 	order = append(order, caps.Name)
@@ -360,8 +444,9 @@ func init() {
 	// form's driver order; target forms are disjoint, so order is safe
 	// for matching.
 	Register(Spec{
-		Name:    string(profile.DriverSQLite),
-		Display: "SQLite",
+		Name:          string(profile.DriverSQLite),
+		Display:       "SQLite",
+		QueryLanguage: SQLQueryLanguage,
 		Open: func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return sqlite.Open(ctx, target)
 		},
@@ -375,9 +460,10 @@ func init() {
 		},
 	})
 	Register(Spec{
-		Name:    string(profile.DriverMySQL),
-		Display: "MySQL",
-		Targets: []TargetPattern{{Prefix: "mysql:"}},
+		Name:          string(profile.DriverMySQL),
+		Display:       "MySQL",
+		QueryLanguage: SQLQueryLanguage,
+		Targets:       []TargetPattern{{Prefix: "mysql:"}},
 		Open: func(ctx context.Context, target string) (sharedsql.Service, error) {
 			return mysql.Open(ctx, target)
 		},
@@ -398,8 +484,9 @@ func init() {
 		},
 	})
 	Register(Spec{
-		Name:    string(profile.DriverPostgreSQL),
-		Display: "PostgreSQL",
+		Name:          string(profile.DriverPostgreSQL),
+		Display:       "PostgreSQL",
+		QueryLanguage: SQLQueryLanguage,
 		Targets: []TargetPattern{
 			{Prefix: "postgres://", KeepTarget: true},
 			{Prefix: "postgresql://", KeepTarget: true},
@@ -429,6 +516,17 @@ func init() {
 	Register(Spec{
 		Name:    "mongodb",
 		Display: "MongoDB",
+		QueryLanguage: QueryLanguage{
+			Name:        "MongoDB",
+			EditorLabel: "Command",
+			Placeholder: "Enter a mongosh statement…",
+			Lexer:       "javascript",
+			Examples: []string{
+				`db.restaurants.find({"borough": "Bronx"}).limit(5)`,
+				`db.restaurants.countDocuments({"cuisine": "Chinese"})`,
+				`show collections`,
+			},
+		},
 		Targets: []TargetPattern{
 			{Prefix: "mongo:"},
 			{Prefix: "mongodb://", KeepTarget: true},

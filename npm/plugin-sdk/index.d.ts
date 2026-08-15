@@ -69,11 +69,28 @@ export interface WriteCapabilities {
   document?: DocumentWriteCapability | null;
 }
 
+/**
+ * Query editor language for one driver: name, editor tab label, input
+ * placeholder, optional lexer hint (the UI falls back when blank), and
+ * optional example statements the driver's parser already accepts.
+ * The host normalizes an omitted/null/all-empty advertisement to the
+ * legacy SQL default; a present advertisement must carry nonblank
+ * name/editor_label/placeholder and nonblank examples.
+ */
+export interface QueryLanguage {
+  name: string;
+  editor_label: string;
+  placeholder: string;
+  lexer?: string;
+  examples?: string[];
+}
+
 export interface Capabilities {
   name: string;
   display: string;
   targets?: TargetPattern[];
   form?: FormSpec | null;
+  query_language?: QueryLanguage | null;
   write_capabilities: WriteCapabilities;
 }
 

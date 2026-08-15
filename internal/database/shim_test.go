@@ -186,6 +186,76 @@ func (f shimFunc) Open(context.Context, string) (sharedsql.Service, error) {
 	return &stubService{}, nil
 }
 
+// TestRegisterShim_queryLanguage: the host normalizes an omitted or
+// all-zero query_language advertisement to the legacy SQL default before
+// registration, passes a valid advertisement through, and rejects
+// invalid nonzero metadata — never silently defaulting it.
+func TestRegisterShim_queryLanguage(t *testing.T) {
+	register := func(name string, ql *database.QueryLanguage) error {
+		caps := fakeRedisShim{}.Capabilities()
+		caps.Name = name
+		caps.Targets = []database.TargetPattern{{Prefix: name + ":"}}
+		caps.Form = nil
+		caps.QueryLanguage = ql
+		return database.RegisterShim(shimFunc(func() database.Capabilities { return caps }))
+	}
+
+	for _, test := range []struct {
+		name string
+		ql   *database.QueryLanguage
+		want database.QueryLanguage
+	}{
+		{name: "qldefault", want: database.SQLQueryLanguage},
+		{name: "qlzero", ql: &database.QueryLanguage{}, want: database.SQLQueryLanguage},
+		{
+			name: "qlcustom",
+			ql: &database.QueryLanguage{
+				Name:        "Redis",
+				EditorLabel: "Command",
+				Placeholder: "Enter a command…",
+				Lexer:       "redis",
+				Examples:    []string{"GET user:2", "SET user:2 alice"},
+			},
+			want: database.QueryLanguage{
+				Name:        "Redis",
+				EditorLabel: "Command",
+				Placeholder: "Enter a command…",
+				Lexer:       "redis",
+				Examples:    []string{"GET user:2", "SET user:2 alice"},
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := register(test.name, test.ql); err != nil {
+				t.Fatalf("RegisterShim(%s) = %v, want success", test.name, err)
+			}
+			spec, ok := database.ByName(test.name)
+			if !ok {
+				t.Fatalf("%s not registered", test.name)
+			}
+			if !reflect.DeepEqual(spec.QueryLanguage, test.want) {
+				t.Fatalf("%s query language = %+v, want %+v", test.name, spec.QueryLanguage, test.want)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name string
+		ql   *database.QueryLanguage
+	}{
+		{name: "qlbadname", ql: &database.QueryLanguage{Name: "  ", EditorLabel: "SQL", Placeholder: "Enter a query…"}},
+		{name: "qlbadeditor", ql: &database.QueryLanguage{Name: "SQL", Placeholder: "Enter a query…"}},
+		{name: "qlbadplaceholder", ql: &database.QueryLanguage{Name: "SQL", EditorLabel: "SQL"}},
+		{name: "qlbadexample", ql: &database.QueryLanguage{Name: "SQL", EditorLabel: "SQL", Placeholder: "Enter a query…", Examples: []string{"select 1", ""}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := register(test.name, test.ql); err == nil {
+				t.Fatalf("RegisterShim(%s) succeeded, want an error", test.name)
+			}
+		})
+	}
+}
+
 func TestCapabilities_surviveJSONRoundTrip(t *testing.T) {
 	caps := fakeRedisShim{}.Capabilities()
 	var decoded database.Capabilities
