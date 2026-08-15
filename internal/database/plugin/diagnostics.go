@@ -226,17 +226,37 @@ func (d *stderrDrain) sanitizeLocked(line []byte) []byte {
 }
 
 // snapshot returns a fresh copy of the retained stderr tail, oldest
-// first, including a trailing unterminated line when present. Every
-// returned line is valid UTF-8 and within the byte budget.
+// first, including a trailing unterminated line when present. The
+// returned tail is bounded as a whole, not per line: sanitizing the
+// stored open line can expand it past the raw byte budget, so the
+// oldest whole complete lines drop first and the open line's head is
+// trimmed at a rune boundary only once every complete line is gone.
+// Every returned line is valid UTF-8, and the tail never exceeds
+// maxStderrBytes in total or maxStderrLines logical lines.
 func (d *stderrDrain) snapshot() []string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	lines := make([]string, 0, d.count+1)
+	total := 0
 	for i := range d.count {
+		total += len(d.buf[(d.head+i)%maxStderrLines])
+	}
+	hasOpen := len(d.open) > 0
+	var open string
+	if hasOpen {
+		open = string(sanitizeTail(d.open)) // caps a single oversized line
+		total += len(open)
+	}
+	first := 0
+	for first < d.count && total > maxStderrBytes {
+		total -= len(d.buf[(d.head+first)%maxStderrLines])
+		first++
+	}
+	lines := make([]string, 0, d.count-first+1)
+	for i := first; i < d.count; i++ {
 		lines = append(lines, string(d.buf[(d.head+i)%maxStderrLines]))
 	}
-	if len(d.open) > 0 {
-		lines = append(lines, string(sanitizeTail(d.open)))
+	if hasOpen {
+		lines = append(lines, open)
 	}
 	return lines
 }

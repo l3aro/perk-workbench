@@ -317,6 +317,153 @@ func TestDiagnostics_snapshotIsACopy(t *testing.T) {
 	}
 }
 
+// drainState captures a drain's raw retention state, for asserting
+// that Snapshot never mutates it.
+type drainState struct {
+	count, head, total int
+	openLen, openCap   int
+	open               string
+	lines              []string
+}
+
+func captureDrainState(d *stderrDrain) drainState {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	state := drainState{
+		count:   d.count,
+		head:    d.head,
+		total:   d.total,
+		openLen: len(d.open),
+		openCap: cap(d.open),
+		open:    string(d.open),
+	}
+	for i := range d.count {
+		state.lines = append(state.lines, string(d.buf[(d.head+i)%maxStderrLines]))
+	}
+	return state
+}
+
+func equalDrainState(a, b drainState) bool {
+	if a.count != b.count || a.head != b.head || a.total != b.total ||
+		a.openLen != b.openLen || a.openCap != b.openCap || a.open != b.open ||
+		len(a.lines) != len(b.lines) {
+		return false
+	}
+	for i := range a.lines {
+		if a.lines[i] != b.lines[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// TestDiagnostics_snapshotTotalBounded: raw retention is bounded, but
+// sanitizing the stored unterminated open line can expand it past the
+// byte budget, so the whole returned tail — not each line — must be
+// bounded. Snapshot drops the oldest whole complete lines first, then
+// trims the open line's oldest bytes at a rune boundary when even that
+// is not enough, and never mutates the raw retained state.
+func TestDiagnostics_snapshotTotalBounded(t *testing.T) {
+	line := func(i int) string {
+		return fmt.Sprintf("%03d", i) + strings.Repeat("x", 4093) // 4096 bytes
+	}
+	build := func(t *testing.T, complete []string, open []byte) *stderrDrain {
+		t.Helper()
+		drain := &stderrDrain{}
+		for _, l := range complete {
+			drain.addLine([]byte(l + "\n"))
+		}
+		if len(open) > 0 {
+			drain.append(open)
+		}
+		checkDrainBounds(t, drain)
+		return drain
+	}
+	check := func(t *testing.T, drain *stderrDrain, want []string) {
+		t.Helper()
+		before := captureDrainState(drain)
+		first := drain.snapshot()
+		second := drain.snapshot()
+		if !equalDrainState(before, captureDrainState(drain)) {
+			t.Fatal("Snapshot mutated the raw retained state")
+		}
+		if len(first) != len(want) || len(second) != len(want) {
+			t.Fatalf("snapshot = %d/%d lines, want %d", len(first), len(second), len(want))
+		}
+		total := 0
+		for i := range want {
+			if first[i] != want[i] || second[i] != want[i] {
+				t.Fatalf("snapshot line %d = %q, want %q", i, first[i], want[i])
+			}
+			if len(first[i]) > maxStderrBytes {
+				t.Fatalf("snapshot line %d holds %d bytes, bound is %d", i, len(first[i]), maxStderrBytes)
+			}
+			if !utf8.ValidString(first[i]) {
+				t.Fatalf("snapshot line %d %q is not valid UTF-8", i, first[i])
+			}
+			total += len(first[i])
+		}
+		if total > maxStderrBytes {
+			t.Fatalf("snapshot totals %d bytes, bound is %d", total, maxStderrBytes)
+		}
+		if len(first) > maxStderrLines {
+			t.Fatalf("snapshot has %d lines, bound is %d", len(first), maxStderrLines)
+		}
+	}
+
+	t.Run("drop oldest complete lines for expanding open tail", func(t *testing.T) {
+		// "\xffa\xfeb" sanitizes to "\ufffda\ufffdb" (8 bytes per unit,
+		// valid bytes at both boundaries keep each run separate).
+		// 10 complete 4 KiB lines plus 6144 raw units (24 KiB): raw
+		// retention is exactly 64 KiB, but sanitizing expands the open
+		// tail to 48 KiB, so the exposed tail would be 88 KiB. The six
+		// oldest complete lines drop whole to reach exactly 64 KiB.
+		var complete []string
+		for i := range 10 {
+			complete = append(complete, line(i))
+		}
+		drain := build(t, complete, bytes.Repeat([]byte("\xffa\xfeb"), 6144))
+		var want []string
+		for i := 6; i < 10; i++ {
+			want = append(want, line(i))
+		}
+		want = append(want, strings.Repeat("\ufffda\ufffdb", 6144))
+		check(t, drain, want)
+	})
+
+	t.Run("open line alone past budget trims rune-aligned", func(t *testing.T) {
+		// 8192 units plus a trailing "é" sanitize to 65538 bytes: both
+		// complete lines drop, and the 64 KiB cap starts mid-rune
+		// (offset 2 is a continuation byte) so it advances one byte,
+		// keeping "a\ufffdb", units 1..8191, and the trailing "é":
+		// 65535 bytes.
+		drain := build(t, []string{line(0), line(1)},
+			append(bytes.Repeat([]byte("\xffa\xfeb"), 8192), []byte("é")...))
+		want := "a\ufffdb" + strings.Repeat("\ufffda\ufffdb", 8191) + "é"
+		check(t, drain, []string{want})
+	})
+
+	t.Run("cap lands exactly on a rune boundary", func(t *testing.T) {
+		// 10000 units sanitize to 80000 bytes; the 64 KiB cap lands
+		// exactly on a unit boundary (65536 = 8 x 8192) and needs no
+		// realignment: the retained tail is the newest 8192 units.
+		drain := build(t, []string{line(0)}, bytes.Repeat([]byte("\xffa\xfeb"), 10000))
+		check(t, drain, []string{strings.Repeat("\ufffda\ufffdb", 8192)})
+	})
+
+	t.Run("expansion inside a stored complete line", func(t *testing.T) {
+		// A stored complete line that expanded at sanitization time
+		// (48 KiB stored from 24 KiB raw) is already accounted for;
+		// the snapshot drops it whole before trimming anything newer.
+		drain := &stderrDrain{}
+		drain.addLine(append(bytes.Repeat([]byte("\xffa\xfeb"), 6000), '\n'))
+		drain.addLine([]byte("new\n"))
+		drain.append(bytes.Repeat([]byte("\xffa\xfeb"), 4096))
+		checkDrainBounds(t, drain)
+		check(t, drain, []string{"new", strings.Repeat("\ufffda\ufffdb", 4096)})
+	})
+}
+
 // TestDiagnostics_concurrentSnapshotUnderWrites: snapshots taken while
 // stderr streams in concurrently are race-free and always within both
 // bounds; the final tail is exactly the newest suffix that fits the
