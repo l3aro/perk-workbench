@@ -207,10 +207,11 @@ func (m Model) deleteColumn() tea.Cmd {
 // returned by a row/document write over the generic UI preview: the
 // preview is display-only (never executable for non-SQL backends such as
 // Redis), while external plugins may return the exact command they ran.
-// The preview stays the fallback for compiled-in drivers and older
-// plugins.
+// Only a nonblank statement wins — whitespace-only output must not
+// suppress the preview — and the original text is kept verbatim. The
+// preview stays the fallback for compiled-in drivers and older plugins.
 func writeLogStatement(preview string, result sharedsql.Result) string {
-	if result.Statement != "" {
+	if strings.TrimSpace(result.Statement) != "" {
 		return result.Statement
 	}
 	return preview

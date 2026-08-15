@@ -442,6 +442,30 @@ func TestBrowseForm_writeLogsPreferNativeStatement(t *testing.T) {
 	}
 }
 
+// TestWriteLogStatement_blankVsNonblank proves the native statement wins
+// only when nonblank: whitespace-only plugin output must not suppress the
+// preview, and a nonblank statement is kept verbatim (not trimmed).
+func TestWriteLogStatement_blankVsNonblank(t *testing.T) {
+	preview := "Table: keys\nKey:\n  key = \"user:2\"\nChanges:\n  key = \"user:3\""
+	tests := []struct {
+		name      string
+		statement string
+		want      string
+	}{
+		{name: "blank keeps the preview", statement: "", want: preview},
+		{name: "whitespace keeps the preview", statement: "  \n\t ", want: preview},
+		{name: "native statement wins", statement: "RENAME key user:2 user:3", want: "RENAME key user:2 user:3"},
+		{name: "native statement with padding stays verbatim", statement: "  RENAME key user:2 user:3  ", want: "  RENAME key user:2 user:3  "},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := writeLogStatement(preview, sharedsql.Result{Statement: test.statement}); got != test.want {
+				t.Fatalf("writeLogStatement = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 // TestBrowseForm_tabReachesButtonsFromInsertMode guards the vim-off flow
 // for the row editor: Tab on the last field focuses the Save/Cancel bar
 
