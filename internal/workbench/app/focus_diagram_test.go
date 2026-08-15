@@ -149,8 +149,6 @@ func TestDiagramDepth_keysWidenTheFocusRing(t *testing.T) {
 	}
 }
 
-
-
 func TestDiagramToggles_areMutuallyExclusive(t *testing.T) {
 	// Given — the FK diagram is on.
 	model := diagramFixture(t)
@@ -175,7 +173,6 @@ func TestDiagramToggles_areMutuallyExclusive(t *testing.T) {
 		t.Fatal("FK diagram stayed on with the indexes diagram")
 	}
 }
-
 
 func TestForeignKeysDiagram_showsCardinalityAndDirection(t *testing.T) {
 	// Given — orders references customers twice (customer_id non-unique,
