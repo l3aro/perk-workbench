@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
@@ -178,7 +179,7 @@ func TestQueryLogDetail_e_opens_explain_picker(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	model.databaseInfo.Product = "SQLite"
-	model.queryLog.component.Detail = &queryLogEntry{Statement: "SELECT 1"}
+	model.queryLog.component.Detail = &queryLogEntry{Statement: "SELECT 1", Replayable: true}
 
 	// When
 	updated, command := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
@@ -235,7 +236,7 @@ func TestQueryLog_contextMenuExposesAndExecutesShortcuts(t *testing.T) {
 			model := resizeModel(readyModel(t), 100, 24)
 			model.Focus = focusQueryLog
 			model.queryLog.component.Table.Focus()
-			model.appendQueryLog(queryLogEntry{Statement: "SELECT 1", Status: "success"})
+			model.appendQueryLog(queryLogEntry{Statement: "SELECT 1", Status: "success", Replayable: true})
 			model.queryLog.component.Table.SetCursor(0)
 			model.databaseInfo.Product = "SQLite"
 			updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
@@ -516,4 +517,200 @@ func equalTableRow(got, want table.Row) bool {
 		}
 	}
 	return true
+}
+
+// TestActionLogEntry_legacyMetadataDefaults proves a nonblank statement
+// without metadata keeps the current semantics: replayable, not
+// sensitive, no language.
+func TestActionLogEntry_legacyMetadataDefaults(t *testing.T) {
+	startedAt := time.Now()
+	entry := actionLogEntry("RENAME key user:2 user:3", nil, startedAt, nil, "updated 1 row")
+	if !entry.Replayable || entry.Sensitive || entry.Language != "" {
+		t.Fatalf("legacy entry = %#v, want replayable, not sensitive, no language", entry)
+	}
+	if entry.Status != "" || entry.Message != "updated 1 row" {
+		t.Fatalf("legacy entry = %#v, want empty status with the given message", entry)
+	}
+	// Failure entries keep the metadata defaults too.
+	failed := actionLogEntry("RENAME key user:2 user:3", nil, startedAt, errors.New("boom"), "updated 1 row")
+	if !failed.Replayable || failed.Status != "failed" || failed.Message != "boom" {
+		t.Fatalf("failed legacy entry = %#v, want replayable with the error message", failed)
+	}
+}
+
+// TestActionLogEntry_resolvesStatementMetadata proves a present metadata
+// object is authoritative for every field, including explicit
+// non-replayable and sensitive flags.
+func TestActionLogEntry_resolvesStatementMetadata(t *testing.T) {
+	metadata := &sharedsql.StatementMetadata{Language: "redis", Replayable: false, Sensitive: true}
+	entry := actionLogEntry("SET key 1", metadata, time.Now(), nil, "completed")
+	if entry.Language != "redis" || entry.Replayable || !entry.Sensitive {
+		t.Fatalf("metadata entry = %#v, want language redis, not replayable, sensitive", entry)
+	}
+	// A metadata object with only a language keeps the entry non-replayable:
+	// the object is authoritative, unlike an omitted object.
+	entry = actionLogEntry("SET key 1", &sharedsql.StatementMetadata{Language: "redis"}, time.Now(), nil, "completed")
+	if entry.Language != "redis" || entry.Replayable {
+		t.Fatalf("language-only metadata entry = %#v, want language redis and not replayable", entry)
+	}
+}
+
+// TestAppendQueryLog_sensitiveEntriesRedactedInMemoryAndAtRest proves the
+// decision point: a sensitive statement is never retained verbatim, in
+// the component or in the store, and the entry is forced non-replayable.
+func TestAppendQueryLog_sensitiveEntriesRedactedInMemoryAndAtRest(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
+	entry := actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Replayable: true, Sensitive: true}, time.Now(), nil, "completed")
+	model.appendQueryLog(entry)
+
+	// In memory: the component holds the marker, never the secret.
+	if got := model.queryLog.component.Entries[0].Statement; got != redactedStatement {
+		t.Fatalf("in-memory statement = %q, want redacted marker %q", got, redactedStatement)
+	}
+	if model.queryLog.component.Entries[0].Replayable {
+		t.Fatal("sensitive entry is replayable in memory, want forced non-replayable")
+	}
+	if model.queryLog.component.Entries[0].Sensitive != entry.Sensitive {
+		t.Fatalf("in-memory sensitive flag = %t, want preserved", model.queryLog.component.Entries[0].Sensitive)
+	}
+	if model.queryLog.component.Entries[0].Language != "redis" {
+		t.Fatalf("in-memory language = %q, want redis", model.queryLog.component.Entries[0].Language)
+	}
+
+	// At rest: the store row holds the marker, and the raw database never
+	// contains the secret text.
+	store := model.queryLogStore()
+	if store == nil {
+		t.Fatal("query log store not opened")
+	}
+	loaded, err := store.Load("conn-a", queryLogLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 || loaded[0].Statement != redactedStatement || loaded[0].Replayable || !loaded[0].Sensitive {
+		t.Fatalf("stored entry = %#v, want redacted marker, non-replayable, sensitive", loaded)
+	}
+	db, err := sql.Open("sqlite", model.queryLog.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var raw string
+	if err := db.QueryRow(`SELECT statement FROM query_log WHERE connection_id = 'conn-a'`).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw != redactedStatement {
+		t.Fatalf("raw statement = %q, want %q", raw, redactedStatement)
+	}
+	if strings.Contains(raw, "api_token") {
+		t.Fatal("raw query log row retains the secret")
+	}
+}
+
+// TestAppendQueryLog_metadataRoundTrip proves metadata flows from a
+// native row-write result through the message into the persisted entry
+// without changing the statement selection (the native statement wins).
+func TestAppendQueryLog_metadataRoundTrip(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	native := "RENAME key user:2 user:3"
+	metadata := &sharedsql.StatementMetadata{Language: "redis", Replayable: false, Sensitive: false}
+	updated, _ := model.Update(browseRowUpdatedMsg{statement: native, metadata: metadata, startedAt: time.Now()})
+	model = updated.(Model)
+	entry := model.queryLog.component.Entries[0]
+	if entry.Statement != native || entry.Language != "redis" || entry.Replayable || entry.Sensitive {
+		t.Fatalf("logged entry = %#v, want native statement with language redis, not replayable", entry)
+	}
+	loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 || loaded[0].Statement != native || loaded[0].Language != "redis" || loaded[0].Replayable || loaded[0].Sensitive {
+		t.Fatalf("persisted entry = %#v, want the metadata round trip", loaded)
+	}
+	// The chat context mirrors a failed statement; a sensitive failure
+	// must never leak the secret into it.
+	model = readyModel(t)
+	model.connectionID = "conn-a"
+	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
+	updated, _ = model.Update(browseRowUpdatedMsg{statement: secret, metadata: &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, startedAt: time.Now(), err: errors.New("boom")})
+	model = updated.(Model)
+	if model.chat.component.LastFailedQuery != redactedStatement {
+		t.Fatalf("chat context = %q, want the redacted marker %q", model.chat.component.LastFailedQuery, redactedStatement)
+	}
+}
+
+// TestQueryLog_gatesNonReplayableEntries proves copy and explain are
+// no-ops with an explicit safe status for non-replayable (including
+// sensitive) entries, while rendering still shows the entry.
+func TestQueryLog_gatesNonReplayableEntries(t *testing.T) {
+	build := func(t *testing.T, entry queryLogEntry) Model {
+		t.Helper()
+		model := resizeModel(readyModel(t), 100, 24)
+		model.Focus = focusQueryLog
+		model.queryLog.component.Table.Focus()
+		model.databaseInfo.Product = "SQLite"
+		model.appendQueryLog(entry)
+		model.queryLog.component.Table.SetCursor(0)
+		return model
+	}
+	nonReplayable := queryLogEntry{Statement: "SET key 1", Status: "success", Replayable: false}
+	sensitive := queryLogEntry{Statement: "SET key 1", Status: "success", Replayable: true, Sensitive: true}
+
+	t.Run("yank", func(t *testing.T) {
+		for name, entry := range map[string]queryLogEntry{"non-replayable": nonReplayable, "sensitive": sensitive} {
+			t.Run(name, func(t *testing.T) {
+				model := build(t, entry)
+				updated, _ := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+				model = updated.(Model)
+				if model.Status != "not replayable" {
+					t.Fatalf("yank status = %q, want %q", model.Status, "not replayable")
+				}
+			})
+		}
+	})
+	t.Run("explain", func(t *testing.T) {
+		model := build(t, nonReplayable)
+		updated, _ := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+		model = updated.(Model)
+		if model.overlay.explainPicker != nil {
+			t.Fatal("explain opened a picker, want no-op")
+		}
+		if model.Status != "not replayable" {
+			t.Fatalf("explain status = %q, want %q", model.Status, "not replayable")
+		}
+	})
+	t.Run("detail explain", func(t *testing.T) {
+		model := build(t, nonReplayable)
+		model.queryLog.component.Detail = &nonReplayable
+		updated, _ := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+		model = updated.(Model)
+		if model.overlay.explainPicker != nil || model.queryLog.component.Detail == nil {
+			t.Fatalf("detail explain: picker=%t detail=%t, want no-op with detail open", model.overlay.explainPicker != nil, model.queryLog.component.Detail == nil)
+		}
+		if model.Status != "not replayable" {
+			t.Fatalf("detail explain status = %q, want %q", model.Status, "not replayable")
+		}
+	})
+	t.Run("context menu", func(t *testing.T) {
+		model := build(t, nonReplayable)
+		updated, _ := model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+		model = updated.(Model)
+		if model.overlay.contextMenu == nil {
+			t.Fatal("comma did not open the query-log context menu")
+		}
+		updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+		model = updated.(Model)
+		if model.Status != "not replayable" {
+			t.Fatalf("context-menu yank status = %q, want %q", model.Status, "not replayable")
+		}
+	})
+	t.Run("renders", func(t *testing.T) {
+		model := build(t, nonReplayable)
+		if got := model.queryLog.component.Table.Rows()[0][2]; got != cellText("SET key 1") {
+			t.Fatalf("rendered statement = %q, want the entry rendered", got)
+		}
+	})
 }

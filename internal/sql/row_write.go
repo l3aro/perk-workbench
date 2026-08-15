@@ -153,12 +153,15 @@ type RowWriteRequest struct {
 
 // WriteResult is the wire-only result envelope; compiled-in adapters return
 // Result{RowsAffected: …} instead. Statement is optional: external plugins
-// may return the exact backend-native, replayable command they executed
-// for the write; the host maps it onto Result.Statement. Omitted from the
-// wire when empty, so older plugins keep the prior shape.
+// may return the exact backend-native command they executed for the
+// write; the host maps it onto Result.Statement. Omitted from the wire
+// when empty, so older plugins keep the prior shape. StatementMetadata
+// maps onto Result.StatementMetadata with the same rules: meaningful only
+// when Statement is nonblank.
 type WriteResult struct {
-	RowsAffected int64  `json:"rows_affected"`
-	Statement    string `json:"statement,omitempty"`
+	RowsAffected      int64              `json:"rows_affected"`
+	Statement         string             `json:"statement,omitempty"`
+	StatementMetadata *StatementMetadata `json:"statement_metadata,omitempty"`
 }
 
 // RowWriteResponse is the wire response to a RowWriteRequest.

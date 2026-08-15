@@ -126,6 +126,23 @@ export interface DocumentPayload {
   data: string;
 }
 
+/**
+ * Structured metadata for a backend-native statement. Meaningful only
+ * when the accompanying statement is nonblank; a handler result carrying
+ * `statement_metadata` without a nonblank statement is rejected before it
+ * reaches the wire. The object is authoritative: every field is required
+ * when the object is present. Omitted (or null) metadata keeps the legacy
+ * defaults — replayable, not sensitive, no language.
+ */
+export interface StatementMetadata {
+  /** Backend statement language (e.g. "redis"); empty when unknown. */
+  language: string;
+  /** Whether the statement may be copied/re-run/explained. */
+  replayable: boolean;
+  /** Whether the statement must never be stored verbatim. */
+  sensitive: boolean;
+}
+
 export interface Result {
   columns: string[];
   column_types: string[];
@@ -140,11 +157,14 @@ export interface Result {
   /** One stable document identity per row; empty when not document-capable. */
   document_ids?: DocumentPayload[];
   /**
-   * Optional backend-native, replayable statement for the operation that
-   * produced this result; empty/omitted for compiled-in drivers. The host
-   * logs it in place of the generic write preview when non-blank.
+   * Optional backend-native statement for the operation that produced
+   * this result; empty/omitted for compiled-in drivers. The host logs it
+   * in place of the generic write preview when non-blank. Replayability
+   * and sensitivity are described by `statement_metadata`.
    */
   statement?: string;
+  /** Optional structured metadata for `statement`; rejected when `statement` is blank. */
+  statement_metadata?: StatementMetadata | null;
 }
 
 /** Index kinds: 1 primary key, 2 unique, 3 regular. */
@@ -297,8 +317,10 @@ export interface RowWriteRequest {
 export interface RowWriteResponse {
   result: {
     rows_affected: number;
-    /** Optional backend-native, replayable statement for the write. */
+    /** Optional backend-native statement for the write. */
     statement?: string;
+    /** Optional structured metadata for `statement`; rejected when `statement` is blank. */
+    statement_metadata?: StatementMetadata | null;
   };
 }
 
@@ -320,8 +342,10 @@ export interface DocumentWriteRequest {
 export interface DocumentWriteResponse {
   result: {
     rows_affected: number;
-    /** Optional backend-native, replayable statement for the write. */
+    /** Optional backend-native statement for the write. */
     statement?: string;
+    /** Optional structured metadata for `statement`; rejected when `statement` is blank. */
+    statement_metadata?: StatementMetadata | null;
   };
   /** Set for read operations. */
   document?: DocumentPayload | null;

@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/l3aro/perk-workbench/internal/database"
@@ -87,13 +88,19 @@ func (p *sessionProxy) call(ctx context.Context, method string, params any, resu
 func (p *sessionProxy) Execute(ctx context.Context, statement string) (sharedsql.Result, error) {
 	var result sharedsql.Result
 	err := p.call(ctx, methodExecute, statementParams{SessionID: p.sessionID, Statement: statement}, &result)
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	return result, checkStatementMetadata(methodExecute, result.Statement, result.StatementMetadata)
 }
 
 func (p *sessionProxy) ExecuteReadOnly(ctx context.Context, statement string) (sharedsql.Result, error) {
 	var result sharedsql.Result
 	err := p.call(ctx, methodExecuteReadOnly, statementParams{SessionID: p.sessionID, Statement: statement}, &result)
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	return result, checkStatementMetadata(methodExecuteReadOnly, result.Statement, result.StatementMetadata)
 }
 
 func (p *sessionProxy) Validate(ctx context.Context, statement string) error {
@@ -220,7 +227,36 @@ func (p *sessionProxy) AddColumn(ctx context.Context, table string, def sharedsq
 func (p *sessionProxy) BrowseTable(ctx context.Context, table string, options sharedsql.BrowseOptions) (sharedsql.Result, error) {
 	var result sharedsql.Result
 	err := p.call(ctx, methodBrowseTable, browseParams{SessionID: p.sessionID, Table: table, Options: options}, &result)
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	return result, checkStatementMetadata(methodBrowseTable, result.Statement, result.StatementMetadata)
+}
+
+// checkStatementMetadata rejects orphan statement metadata at the plugin
+// boundary: metadata is meaningful only when the accompanying statement
+// is nonblank, so a result carrying metadata without a statement is a
+// result-shape violation — an operation error, never terminal.
+func checkStatementMetadata(method, statement string, metadata *sharedsql.StatementMetadata) error {
+	if metadata != nil && strings.TrimSpace(statement) == "" {
+		return fmt.Errorf("perk/v1/%s: statement_metadata requires a nonblank statement", method)
+	}
+	return nil
+}
+
+// resultFromWrite maps a wire WriteResult onto a shared Result, carrying
+// the optional native statement and its metadata. Orphan metadata
+// (metadata without a statement) is rejected like any other result-shape
+// violation.
+func resultFromWrite(method string, write sharedsql.WriteResult) (sharedsql.Result, error) {
+	if err := checkStatementMetadata(method, write.Statement, write.StatementMetadata); err != nil {
+		return sharedsql.Result{}, err
+	}
+	return sharedsql.Result{
+		RowsAffected:      write.RowsAffected,
+		Statement:         write.Statement,
+		StatementMetadata: write.StatementMetadata,
+	}, nil
 }
 
 // wrapService layers the capability wrappers over the session proxy so
@@ -280,7 +316,7 @@ func (w *rowWriter) InsertRow(ctx context.Context, table string, values []shared
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodRowWrite, response.Result)
 }
 
 func (w *rowWriter) UpdateRow(ctx context.Context, table string, key, values []sharedsql.RowValue) (sharedsql.Result, error) {
@@ -292,7 +328,7 @@ func (w *rowWriter) UpdateRow(ctx context.Context, table string, key, values []s
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodRowWrite, response.Result)
 }
 
 func (w *rowWriter) DeleteRow(ctx context.Context, table string, key []sharedsql.RowValue) (sharedsql.Result, error) {
@@ -304,7 +340,7 @@ func (w *rowWriter) DeleteRow(ctx context.Context, table string, key []sharedsql
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodRowWrite, response.Result)
 }
 
 // documentWriter layers sql.DocumentReader and sql.DocumentWriter over a
@@ -343,7 +379,7 @@ func (w *documentWriter) InsertDocument(ctx context.Context, collection string, 
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodDocumentWrite, response.Result)
 }
 
 func (w *documentWriter) ReplaceDocument(ctx context.Context, collection string, id, document sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -355,7 +391,7 @@ func (w *documentWriter) ReplaceDocument(ctx context.Context, collection string,
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodDocumentWrite, response.Result)
 }
 
 func (w *documentWriter) DeleteDocument(ctx context.Context, collection string, id sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -367,7 +403,7 @@ func (w *documentWriter) DeleteDocument(ctx context.Context, collection string, 
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodDocumentWrite, response.Result)
 }
 
 // documentRowWriter is the combined wrapper for plugins advertising both
@@ -403,7 +439,7 @@ func (w *documentRowWriter) InsertDocument(ctx context.Context, collection strin
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodDocumentWrite, response.Result)
 }
 
 func (w *documentRowWriter) ReplaceDocument(ctx context.Context, collection string, id, document sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -415,7 +451,7 @@ func (w *documentRowWriter) ReplaceDocument(ctx context.Context, collection stri
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodDocumentWrite, response.Result)
 }
 
 func (w *documentRowWriter) DeleteDocument(ctx context.Context, collection string, id sharedsql.DocumentPayload) (sharedsql.Result, error) {
@@ -427,5 +463,5 @@ func (w *documentRowWriter) DeleteDocument(ctx context.Context, collection strin
 	if err != nil {
 		return sharedsql.Result{}, err
 	}
-	return sharedsql.Result{RowsAffected: response.Result.RowsAffected, Statement: response.Result.Statement}, nil
+	return resultFromWrite(methodDocumentWrite, response.Result)
 }

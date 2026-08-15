@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
 
@@ -17,6 +18,11 @@ const queryLogLimit = querylog.Limit
 // queryLogEntry is the query-log record type shared with the query-log
 // component and its persistence store.
 type queryLogEntry = querylog.Entry
+
+// redactedStatement is the stable marker persisted and rendered in place
+// of a sensitive statement; the verbatim text is never retained after the
+// decision point.
+const redactedStatement = "[redacted]"
 
 // copyQueryLogStatement writes a statement through both OSC 52 and the
 // native system clipboard, covering terminals and desktop clipboard
@@ -32,23 +38,40 @@ func copyQueryLogStatement(statement string) tea.Cmd {
 	)
 }
 
-func actionLogEntry(statement string, startedAt time.Time, err error, message string) queryLogEntry {
+// withStatementMetadata resolves optional statement metadata onto an
+// entry. Omitted metadata keeps the legacy semantics: replayable, not
+// sensitive, no language. A present metadata object is authoritative for
+// language, replayable, and sensitive.
+func withStatementMetadata(entry queryLogEntry, metadata *sharedsql.StatementMetadata) queryLogEntry {
+	if metadata == nil {
+		entry.Replayable = true
+		return entry
+	}
+	entry.Language = metadata.Language
+	entry.Replayable = metadata.Replayable
+	entry.Sensitive = metadata.Sensitive
+	return entry
+}
+
+func actionLogEntry(statement string, metadata *sharedsql.StatementMetadata, startedAt time.Time, err error, text string) queryLogEntry {
 	entry := queryLogEntry{
 		StartedAt: startedAt,
 		Statement: statement,
 		Duration:  time.Since(startedAt),
-		Message:   message,
+		Message:   text,
 	}
 	if err != nil {
 		entry.Status = "failed"
 		entry.Message = err.Error()
 	}
-	return entry
+	return withStatementMetadata(entry, metadata)
 }
 
 // appendQueryLog records one executed statement: it fills the default
-// message, appends to the component (which caps and re-renders), and
-// persists through the lazy store when a profile scope exists.
+// message, applies the sensitive-entry policy — the verbatim statement is
+// never retained, in memory or at rest, and the entry is never replayable
+// — appends to the component (which caps and re-renders), and persists
+// through the lazy store when a profile scope exists.
 func (m *Model) appendQueryLog(entry queryLogEntry) {
 	if entry.Message == "" {
 		switch entry.Status {
@@ -59,6 +82,10 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 		default:
 			entry.Message = "completed"
 		}
+	}
+	if entry.Sensitive {
+		entry.Statement = redactedStatement
+		entry.Replayable = false
 	}
 	m.queryLog.component.Append(entry)
 	if store := m.queryLogStore(); store != nil {

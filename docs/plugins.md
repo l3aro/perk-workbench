@@ -365,12 +365,33 @@ database order; plugins need not emit UI-only roots.
 | `duration_ns` | number | Execution time, **integer nanoseconds**. |
 | `truncated` | boolean | True when `rows` was cut at the row cap. |
 | `document_ids` | `DocumentPayload[]` | Optional; one stable document identity per row, parallel to `rows`. `null` (or absent) when the backend is not document-capable or a row has no identity. |
-| `statement` | string | Optional; a backend-native, replayable statement for the operation that produced this result. Row/document writes return it so the host logs the exact command (e.g. `RENAME key user:2 user:3`) instead of the generic UI preview; empty (or absent) keeps the preview. The host never executes this text itself. |
+| `statement` | string | Optional; the backend-native statement for the operation that produced this result. Row/document writes return it so the host logs the exact command (e.g. `RENAME key user:2 user:3`) instead of the generic UI preview; empty (or absent) keeps the preview. The host never executes this text itself. Replayability and sensitivity are described by `statement_metadata`, which defaults to replayable/not sensitive when absent. |
+| `statement_metadata` | `StatementMetadata` | Optional; structured metadata for `statement`. Meaningful only when `statement` is nonblank — a result carrying it without a nonblank statement is rejected as a result-shape violation (an operation error, never terminal). Omitted (or `null`) keeps the legacy semantics: replayable, not sensitive, no language. |
 
 Display conventions (follow the built-in drivers): at most 500 rows with
 `truncated`/`has_more` signaling, display cells sanitized and capped at
 300 runes with an ellipsis suffix, full values preserved in
 `untruncated_rows`.
+
+**`StatementMetadata`** — `{language: string, replayable: boolean,
+sensitive: boolean}`. Optional structured metadata for a backend-native
+`statement`. It is meaningful only when the statement is nonblank, and
+the object is authoritative: all three scalar fields are present when
+the object is present. Plugins omit the field when there is no metadata;
+the host also accepts `null` as equivalent. Omitted metadata keeps the
+legacy defaults — `replayable: true`, `sensitive: false`,
+`language: ""` — so plugins written before this field existed keep
+working unchanged.
+
+- `language` is the backend statement language (e.g. `"redis"`); the host
+  carries it on query-log entries (later UI work may derive the active
+  driver language from it).
+- `replayable` describes whether the user may copy, re-run, or explain
+  the statement. `false` makes those actions no-ops behind a
+  "not replayable" status; the entry still renders.
+- `sensitive` marks a statement that must never be stored verbatim. The
+  host never persists the text: the query log stores a stable redacted
+  marker and forces the entry non-replayable, in memory and at rest.
 
 **`ColumnInfo`** — `{name, type, attributes, nullable: boolean,
 default_value: string | null, primary_key: number, indexes: IndexKind[]}`.
@@ -436,10 +457,13 @@ payload matching `kind` is meaningful; the others are omitted.
 **`RowWriteRequest`** — `{operation: "insert" | "update" | "delete",
 table: string, key?: RowValue[], values?: RowValue[]}`.
 
-**`RowWriteResponse`** — `{result: {rows_affected: number, statement?: string}}`.
-`statement` is the optional backend-native, replayable command the driver
-executed for the write; the host logs it in place of the generic UI
-preview when non-blank and omits it from the wire when empty.
+**`RowWriteResponse`** — `{result: {rows_affected: number, statement?:
+string, statement_metadata?: StatementMetadata | null}}`.
+`statement` is the optional backend-native command the driver executed
+for the write; the host logs it in place of the generic UI preview when
+non-blank and omits it from the wire when empty. `statement_metadata`
+follows the `Result` convention: meaningful only with a nonblank
+`statement`, omitted (or `null`) keeps the legacy defaults.
 
 **`DocumentPayload`** — `{format: string, data: string}`. `data` is the
 document bytes as a **base64** JSON string; `format` is the driver's
@@ -451,10 +475,12 @@ document?: DocumentPayload | null}`. `id` carries the document identity
 for read/replace/delete; `document` the body for insert/replace.
 
 **`DocumentWriteResponse`** — `{result: {rows_affected: number,
-statement?: string}, document?: DocumentPayload | null}`. `document` is
-set for read operations; a read that returns no document is an error.
-`statement` is the optional backend-native, replayable command the driver
-executed for the write (same convention as `RowWriteResponse`).
+statement?: string, statement_metadata?: StatementMetadata | null},
+document?: DocumentPayload | null}`. `document` is set for read
+operations; a read that returns no document is an error.
+`statement` is the optional backend-native command the driver executed
+for the write (same convention as `RowWriteResponse`), with
+`statement_metadata` following the `Result` convention too.
 
 ### Nullability and encoding conventions
 
@@ -466,7 +492,8 @@ executed for the write (same convention as `RowWriteResponse`).
   `form`, `keep_target` (false), `extras`, `document` (null), payload
   fields on `Value`, `key`/`values` on `RowWriteRequest`, `document_ids`
   (null when not document-capable), `statement` (empty on `Result` and
-  write results).
+  write results), `statement_metadata` (omitted when there is no
+  metadata).
 - **Bytes are base64 JSON strings**: `DocumentPayload.data`,
   `Value.bytes`.
 - **`duration_ns` is an integer** — nanoseconds, not a float or string.

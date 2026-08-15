@@ -296,3 +296,102 @@ func TestStore_appendsCapAtLimit(t *testing.T) {
 		t.Fatalf("stored entries = %d, want the cap %d", len(got), limit)
 	}
 }
+
+// TestStore_migratesMetadataColumns seeds a pre-metadata schema (the
+// scoped query_log without language/replayable/sensitive) and proves Open
+// adds the columns idempotently and existing rows read back with the
+// legacy defaults: replayable, not sensitive, no language.
+func TestStore_migratesMetadataColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE query_log (
+		id INTEGER PRIMARY KEY,
+		connection_id TEXT NOT NULL DEFAULT '',
+		started_at INTEGER NOT NULL,
+		statement TEXT NOT NULL,
+		duration INTEGER NOT NULL,
+		message TEXT NOT NULL,
+		status TEXT NOT NULL
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO query_log (connection_id, started_at, statement, duration, message, status) VALUES (?, ?, 'SELECT legacy', 0, 'completed', 'success')`, "conn-a", time.Now().UnixNano()); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := Open(path, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got, err := store.Load("conn-a", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("entries = %#v, want the legacy row", got)
+	}
+	entry := got[0]
+	if entry.Statement != "SELECT legacy" || !entry.Replayable || entry.Sensitive || entry.Language != "" {
+		t.Fatalf("legacy entry = %#v, want replayable, not sensitive, no language", entry)
+	}
+
+	// Reopening is idempotent: the second Open must not fail on existing
+	// columns and must keep the row's values.
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = Open(path, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got, err = store.Load("conn-a", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Statement != "SELECT legacy" {
+		t.Fatalf("entries after reopen = %#v, want the legacy row", got)
+	}
+}
+
+// TestStore_metadataRoundTrip proves language, replayable, and sensitive
+// survive persistence: explicit non-replayable and sensitive values are
+// stored, not collapsed into the legacy defaults.
+func TestStore_metadataRoundTrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.db")
+	store, err := Open(path, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	entry := Entry{
+		StartedAt:  time.Now(),
+		Statement:  "SET key 1",
+		Duration:   time.Millisecond,
+		Message:    "completed",
+		Status:     "success",
+		Language:   "redis",
+		Replayable: false,
+		Sensitive:  true,
+	}
+	if err := store.Append("conn-a", entry, 100); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Load("conn-a", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("entries = %#v, want the metadata entry", got)
+	}
+	if got[0].Language != entry.Language || got[0].Replayable != entry.Replayable || got[0].Sensitive != entry.Sensitive {
+		t.Fatalf("loaded entry = %#v, want language %q, replayable %t, sensitive %t", got[0], entry.Language, entry.Replayable, entry.Sensitive)
+	}
+}

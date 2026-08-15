@@ -102,12 +102,32 @@ type Result struct {
 	// Rows, for document-capable browse results. Empty when the backend is
 	// not document-capable or a row has no identity.
 	DocumentIDs []DocumentPayload `json:"document_ids"`
-	// Statement is an optional backend-native, replayable statement for
-	// the operation that produced this result (external plugins return the
-	// exact command they executed; compiled-in drivers leave it empty).
-	// The workbench logs it in place of the generic write preview when
-	// non-blank. Omitted from the wire when empty.
+	// Statement is an optional backend-native statement for the operation
+	// that produced this result (external plugins return the exact command
+	// they executed; compiled-in drivers leave it empty). The workbench
+	// logs it in place of the generic write preview when non-blank.
+	// Replayability and sensitivity are described by StatementMetadata.
+	// Omitted from the wire when empty.
 	Statement string `json:"statement,omitempty"`
+	// StatementMetadata optionally describes Statement. It is meaningful
+	// only when Statement is nonblank; orphan metadata (metadata without a
+	// statement) is rejected at the plugin boundary. Omitted from the wire
+	// when nil, so older plugins keep the prior shape.
+	StatementMetadata *StatementMetadata `json:"statement_metadata,omitempty"`
+}
+
+// StatementMetadata is optional structured metadata for a backend-native
+// statement. It is meaningful only when the accompanying statement is
+// nonblank. A nil StatementMetadata (the object omitted from the wire)
+// keeps the legacy defaults — replayable, not sensitive, no language —
+// so a nonblank legacy statement without metadata keeps exactly its
+// current behavior. When the object is present it is authoritative:
+// plugins send all three fields, and the zero value of an absent field
+// decodes as false/empty.
+type StatementMetadata struct {
+	Language   string `json:"language"`
+	Replayable bool   `json:"replayable"`
+	Sensitive  bool   `json:"sensitive"`
 }
 
 type SchemaObject struct {

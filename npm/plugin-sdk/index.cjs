@@ -397,9 +397,56 @@ class PluginServer {
       return;
     }
     Promise.resolve(promise).then(
-      (result) => finish(undefined, result),
+      (result) => {
+        try {
+          this._validateResultMetadata(method, result);
+        } catch (error) {
+          finish(error);
+          return;
+        }
+        finish(undefined, result);
+      },
       (error) => finish(error),
     );
+  }
+
+  // _validateResultMetadata mirrors the host's plugin-boundary rule for
+  // statement_metadata: the object is meaningful only with a nonblank
+  // statement, and when present it is authoritative — every field must be
+  // present with the right type. Violations reject the handler result
+  // (an internal error) before it reaches the wire; omission and explicit
+  // false pass through verbatim.
+  _validateResultMetadata(method, result) {
+    let target = result;
+    if (method === METHOD.rowWrite || method === METHOD.documentWrite) {
+      target = result && typeof result === 'object' && !Array.isArray(result) ? result.result : result;
+    }
+    if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(target, 'statement_metadata')) {
+      return;
+    }
+    const metadata = target.statement_metadata;
+    if (metadata === null) {
+      return; // null is treated as omitted, like the host DTO
+    }
+    if (typeof metadata !== 'object' || Array.isArray(metadata)) {
+      throw new TypeError('statement_metadata must be an object');
+    }
+    if (typeof metadata.language !== 'string') {
+      throw new TypeError('statement_metadata.language must be a string');
+    }
+    if (typeof metadata.replayable !== 'boolean') {
+      throw new TypeError('statement_metadata.replayable must be a boolean');
+    }
+    if (typeof metadata.sensitive !== 'boolean') {
+      throw new TypeError('statement_metadata.sensitive must be a boolean');
+    }
+    const statement = target.statement;
+    if (typeof statement !== 'string' || statement.trim() === '') {
+      throw new TypeError('statement_metadata requires a nonblank statement');
+    }
   }
 
   // _invoke resolves one supported method onto the definition and the

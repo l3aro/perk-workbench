@@ -24,7 +24,20 @@ type Entry struct {
 	Duration  time.Duration
 	Message   string
 	Status    string // "success", "failed", "canceled"
+	// Language is the backend statement language (e.g. "redis") when the
+	// backend supplied it; empty for legacy entries.
+	Language string
+	// Replayable reports whether the statement may be copied or re-run.
+	// Legacy entries and entries without metadata default to true;
+	// sensitive entries are forced false before persistence.
+	Replayable bool
+	// Sensitive marks a statement that must never be stored verbatim.
+	Sensitive bool
 }
+
+// CanReplay reports whether the entry's statement may be copied or
+// explained: sensitive entries are never replayable.
+func (e Entry) CanReplay() bool { return e.Replayable && !e.Sensitive }
 
 // Store is a lazily opened scoped query-log database shared by every
 // save and load. It owns exactly one *sql.DB.
@@ -58,7 +71,10 @@ func Open(path string, retentionDays int) (*Store, error) {
 		statement TEXT NOT NULL,
 		duration INTEGER NOT NULL,
 		message TEXT NOT NULL,
-		status TEXT NOT NULL
+		status TEXT NOT NULL,
+		language TEXT NOT NULL DEFAULT '',
+		replayable INTEGER NOT NULL DEFAULT 1,
+		sensitive INTEGER NOT NULL DEFAULT 0
 	)`); err != nil {
 		db.Close()
 		return nil, err
@@ -100,20 +116,22 @@ func (s *Store) Load(connectionID string, limit int) ([]Entry, error) {
 	if err := s.prune(time.Now(), connectionID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT started_at, statement, duration, message, status FROM query_log WHERE connection_id = ? ORDER BY started_at DESC, id DESC LIMIT ?`, connectionID, limit)
+	rows, err := s.db.Query(`SELECT started_at, statement, duration, message, status, language, replayable, sensitive FROM query_log WHERE connection_id = ? ORDER BY started_at DESC, id DESC LIMIT ?`, connectionID, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var entries []Entry
 	for rows.Next() {
-		var startedAt, duration int64
+		var startedAt, duration, replayable, sensitive int64
 		var entry Entry
-		if rows.Scan(&startedAt, &entry.Statement, &duration, &entry.Message, &entry.Status) != nil {
+		if rows.Scan(&startedAt, &entry.Statement, &duration, &entry.Message, &entry.Status, &entry.Language, &replayable, &sensitive) != nil {
 			continue
 		}
 		entry.StartedAt = time.Unix(0, startedAt)
 		entry.Duration = time.Duration(duration)
+		entry.Replayable = replayable != 0
+		entry.Sensitive = sensitive != 0
 		entries = append(entries, entry)
 	}
 	return entries, rows.Err()
@@ -129,8 +147,8 @@ func (s *Store) Append(connectionID string, entry Entry, limit int) error {
 	if err := s.prune(time.Now(), connectionID); err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`INSERT INTO query_log(connection_id, started_at, statement, duration, message, status) VALUES (?, ?, ?, ?, ?, ?)`,
-		connectionID, entry.StartedAt.UnixNano(), entry.Statement, int64(entry.Duration), entry.Message, entry.Status); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO query_log(connection_id, started_at, statement, duration, message, status, language, replayable, sensitive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		connectionID, entry.StartedAt.UnixNano(), entry.Statement, int64(entry.Duration), entry.Message, entry.Status, entry.Language, boolInt(entry.Replayable), boolInt(entry.Sensitive)); err != nil {
 		return err
 	}
 	_, err := s.db.Exec(`DELETE FROM query_log WHERE id IN (
@@ -156,17 +174,30 @@ func (s *Store) prune(now time.Time, connectionID string) error {
 	return err
 }
 
-// migrate adds the connection_id scope column to legacy tables and
-// quarantines every pre-scope row behind one generated scope. It returns
-// that scope so the saved_queries import can share it.
+// migrate adds the connection_id scope column and the statement-metadata
+// columns to legacy tables and quarantines every pre-scope row behind one
+// generated scope. It returns that scope so the saved_queries import can
+// share it. Existing rows keep the metadata column defaults: replayable,
+// not sensitive, no language.
 func migrate(db *sql.DB) (string, error) {
-	hasColumn, err := hasColumn(db)
-	if err != nil {
-		return "", err
-	}
-	if !hasColumn {
-		if _, err := db.Exec(`ALTER TABLE query_log ADD COLUMN connection_id TEXT NOT NULL DEFAULT ''`); err != nil {
+	var err error
+	for _, column := range []struct {
+		name string
+		ddl  string
+	}{
+		{"connection_id", `ALTER TABLE query_log ADD COLUMN connection_id TEXT NOT NULL DEFAULT ''`},
+		{"language", `ALTER TABLE query_log ADD COLUMN language TEXT NOT NULL DEFAULT ''`},
+		{"replayable", `ALTER TABLE query_log ADD COLUMN replayable INTEGER NOT NULL DEFAULT 1`},
+		{"sensitive", `ALTER TABLE query_log ADD COLUMN sensitive INTEGER NOT NULL DEFAULT 0`},
+	} {
+		present, err := hasColumn(db, column.name)
+		if err != nil {
 			return "", err
+		}
+		if !present {
+			if _, err := db.Exec(column.ddl); err != nil {
+				return "", err
+			}
 		}
 	}
 	var legacy int
@@ -187,7 +218,7 @@ func migrate(db *sql.DB) (string, error) {
 	return legacyScope, err
 }
 
-func hasColumn(db *sql.DB) (bool, error) {
+func hasColumn(db *sql.DB, name string) (bool, error) {
 	rows, err := db.Query(`PRAGMA table_info(query_log)`)
 	if err != nil {
 		return false, err
@@ -195,14 +226,22 @@ func hasColumn(db *sql.DB) (bool, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var cid, notNull, pk int
-		var name, columnType string
+		var columnName, columnType string
 		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+		if err := rows.Scan(&cid, &columnName, &columnType, &notNull, &defaultValue, &pk); err != nil {
 			return false, err
 		}
-		if name == "connection_id" {
+		if columnName == name {
 			return true, nil
 		}
 	}
 	return false, rows.Err()
+}
+
+// boolInt is the SQLite storage form of a boolean column.
+func boolInt(value bool) int64 {
+	if value {
+		return 1
+	}
+	return 0
 }

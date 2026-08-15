@@ -47,6 +47,14 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "delete_profile":
 			m.confirmDeleteRecentConnection()
 		case "query_log_yank":
+			entry, ok := m.queryLog.component.SelectedEntry()
+			if !ok {
+				return m, nil
+			}
+			if !entry.CanReplay() {
+				m.setStatus("not replayable")
+				return m, nil
+			}
 			text, ok := m.queryLog.component.SelectedCellText()
 			if !ok {
 				return m, nil
@@ -54,6 +62,14 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus("copied to clipboard")
 			return m, copyQueryLogStatement(text)
 		case "query_log_explain":
+			entry, ok := m.queryLog.component.SelectedEntry()
+			if !ok {
+				return m, nil
+			}
+			if !entry.CanReplay() {
+				m.setStatus("not replayable")
+				return m, nil
+			}
 			statement, ok := m.queryLog.component.SelectedStatement()
 			if !ok {
 				return m, nil

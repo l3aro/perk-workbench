@@ -19,6 +19,9 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher) (
 			case keys.Match(keyPress, "detail.explain", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				// Root builds the picker; it closes the detail only when
 				// the picker is supported (matches the old behavior).
+				if !m.Detail.CanReplay() {
+					return m, uikit.StatusChanged{Text: "not replayable"}, nil
+				}
 				return m, uikit.ExplainRequested{Statement: m.Detail.Statement}, nil
 			case keys.Match(keyPress, "detail.close", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Detail = nil
@@ -65,11 +68,17 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher) (
 			if !ok {
 				return m, nil, nil
 			}
+			if !entry.CanReplay() {
+				return m, uikit.StatusChanged{Text: "not replayable"}, nil
+			}
 			return m, uikit.ClipboardRequested{Text: queryLogCell(entry, m.Column)}, nil
 		case keys.Match(keyPress, "query_log.explain", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			entry, ok := m.SelectedEntry()
 			if !ok {
 				return m, nil, nil
+			}
+			if !entry.CanReplay() {
+				return m, uikit.StatusChanged{Text: "not replayable"}, nil
 			}
 			return m, uikit.ExplainRequested{Statement: entry.Statement}, nil
 		case keys.Match(keyPress, "query_log.top_first", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):

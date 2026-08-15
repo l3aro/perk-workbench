@@ -296,6 +296,7 @@ func (m *Model) openEditDocument() tea.Cmd {
 
 type cellEditorUpdatedMsg struct {
 	statement string
+	metadata  *sharedsql.StatementMetadata
 	startedAt time.Time
 	err       error
 }
@@ -321,13 +322,13 @@ func (m Model) executeCellUpdate() tea.Cmd {
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return cellEditorUpdatedMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
+		return cellEditorUpdatedMsg{statement: writeLogStatement(preview, result), metadata: result.StatementMetadata, startedAt: startedAt, err: err}
 	}
 }
 
 func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea.Cmd) {
 	if msg.statement != "" {
-		m.appendQueryLog(actionLogEntry(msg.statement, msg.startedAt, msg.err, "updated 1 row"))
+		m.appendQueryLog(actionLogEntry(msg.statement, msg.metadata, msg.startedAt, msg.err, "updated 1 row"))
 	}
 	if msg.err != nil {
 		m.setStatus(safeText(fmt.Sprintf("updating cell: %v", msg.err)))
@@ -345,6 +346,7 @@ type documentEditorLoadedMsg struct {
 
 type documentEditorSavedMsg struct {
 	statement string
+	metadata  *sharedsql.StatementMetadata
 	inserting bool
 	startedAt time.Time
 	err       error
@@ -369,7 +371,7 @@ func (m Model) executeDocumentSave() tea.Cmd {
 			if err == nil && result.RowsAffected != 1 {
 				err = fmt.Errorf("inserted %d rows, want 1", result.RowsAffected)
 			}
-			return documentEditorSavedMsg{statement: writeLogStatement(preview, result), inserting: true, startedAt: startedAt, err: err}
+			return documentEditorSavedMsg{statement: writeLogStatement(preview, result), metadata: result.StatementMetadata, inserting: true, startedAt: startedAt, err: err}
 		}
 	}
 	identity := *e.Identity
@@ -378,7 +380,7 @@ func (m Model) executeDocumentSave() tea.Cmd {
 		if err == nil && result.RowsAffected != 1 {
 			err = fmt.Errorf("updated %d rows, want 1", result.RowsAffected)
 		}
-		return documentEditorSavedMsg{statement: writeLogStatement(preview, result), startedAt: startedAt, err: err}
+		return documentEditorSavedMsg{statement: writeLogStatement(preview, result), metadata: result.StatementMetadata, startedAt: startedAt, err: err}
 	}
 }
 
@@ -410,7 +412,7 @@ func (m Model) updateDocumentEditorSaved(message documentEditorSavedMsg) (tea.Mo
 		if message.inserting {
 			text = "inserted 1 row"
 		}
-		m.appendQueryLog(actionLogEntry(message.statement, message.startedAt, message.err, text))
+		m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, text))
 	}
 	if message.err != nil {
 		m.browse.component.DocumentSaveFailed()

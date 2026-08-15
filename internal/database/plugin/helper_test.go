@@ -40,6 +40,8 @@ func TestPluginHelperChild(t *testing.T) {
 		rowWriter:       os.Getenv("PERK_PLUGIN_ROW_WRITER") == "1",
 		document:        os.Getenv("PERK_PLUGIN_DOCUMENT") == "1",
 		writeStatement:  os.Getenv("PERK_PLUGIN_WRITE_STATEMENT"),
+		writeMetadata:   os.Getenv("PERK_PLUGIN_WRITE_METADATA"),
+		executeMetadata: os.Getenv("PERK_PLUGIN_EXECUTE_METADATA"),
 		queryLanguage:   os.Getenv("PERK_PLUGIN_QUERY_LANGUAGE"),
 	}
 	if raw := os.Getenv("PERK_PLUGIN_SCHEMA"); raw != "" {
@@ -71,6 +73,8 @@ type pluginHelper struct {
 	rowWriter       bool
 	document        bool
 	writeStatement  string
+	writeMetadata   string
+	executeMetadata string
 	queryLanguage   string
 	schemaObjects   []sharedsql.SchemaObject
 	schemaSet       bool
@@ -230,10 +234,11 @@ func (h *pluginHelper) resultFor(method string, params json.RawMessage) any {
 		return struct{}{}
 	case methodExecute, methodExecuteReadOnly, methodBrowseTable:
 		return sharedsql.Result{
-			Columns:      []string{"name"},
-			Rows:         [][]*string{{strPtr("widgets")}},
-			RowsAffected: 1,
-			Duration:     time.Millisecond,
+			Columns:           []string{"name"},
+			Rows:              [][]*string{{strPtr("widgets")}},
+			RowsAffected:      1,
+			Duration:          time.Millisecond,
+			StatementMetadata: h.metadata(h.executeMetadata),
 		}
 	case methodListSchema:
 		if h.schemaSet {
@@ -253,17 +258,30 @@ func (h *pluginHelper) resultFor(method string, params json.RawMessage) any {
 	case methodListIndexesAll:
 		return map[string][]sharedsql.IndexInfo{}
 	case methodRowWrite:
-		return sharedsql.RowWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1, Statement: h.writeStatement}}
+		return sharedsql.RowWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1, Statement: h.writeStatement, StatementMetadata: h.metadata(h.writeMetadata)}}
 	case methodDocumentWrite:
 		var request documentWriteParams
 		_ = json.Unmarshal(params, &request)
-		response := sharedsql.DocumentWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1, Statement: h.writeStatement}}
+		response := sharedsql.DocumentWriteResponse{Result: sharedsql.WriteResult{RowsAffected: 1, Statement: h.writeStatement, StatementMetadata: h.metadata(h.writeMetadata)}}
 		if request.Request.Operation == sharedsql.DocumentWriteRead {
 			response.Document = request.Request.ID
 		}
 		return response
 	}
 	return struct{}{}
+}
+
+// metadata decodes one PERK_PLUGIN_*_METADATA env payload; an empty value
+// means the field is omitted from the response.
+func (h *pluginHelper) metadata(raw string) *sharedsql.StatementMetadata {
+	if raw == "" {
+		return nil
+	}
+	var metadata sharedsql.StatementMetadata
+	if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
+		os.Exit(2)
+	}
+	return &metadata
 }
 
 // capabilities builds the advertised driver capabilities from env.

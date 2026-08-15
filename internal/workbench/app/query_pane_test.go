@@ -159,7 +159,7 @@ func TestQueryLog_y_copiesSelectedCellImmediately(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	message := strings.Repeat("query message ", 4)
-	model.appendQueryLog(queryLogEntry{Statement: "SELECT 42", Message: message})
+	model.appendQueryLog(queryLogEntry{Statement: "SELECT 42", Message: message, Replayable: true})
 	updated, _ := model.Update(tea.KeyPressMsg{Code: '3', Text: "3"})
 	model = updated.(Model)
 	model.queryLog.component.Column = 4
