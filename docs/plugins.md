@@ -347,7 +347,7 @@ exposes one; `null` (or absent) when unknown.
 
 Display conventions (follow the built-in drivers): at most 500 rows with
 `truncated`/`has_more` signaling, display cells sanitized and capped at
-50 runes with an ellipsis suffix, full values preserved in
+300 runes with an ellipsis suffix, full values preserved in
 `untruncated_rows`.
 
 **`ColumnInfo`** — `{name, type, attributes, nullable: boolean,
