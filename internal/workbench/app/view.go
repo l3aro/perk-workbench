@@ -35,6 +35,8 @@ func (m Model) View() tea.View {
 		} else if m.overlay.pluginManager != nil {
 			if m.overlay.pluginManager.removeConfirm != nil {
 				m.overlay.pluginManager.removeConfirm.Draw(canvas)
+			} else if m.overlay.pluginManager.restartConfirm != nil {
+				m.overlay.pluginManager.restartConfirm.Draw(canvas)
 			} else {
 				m.drawConfirmDialog(canvas, m.pluginManagerContent())
 			}

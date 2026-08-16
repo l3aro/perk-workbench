@@ -251,7 +251,7 @@ func (m Model) updateTableInfo(message tableInfoMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
 			log.Error("loading structure", message.err)
-			m.setStatus(safeText(fmt.Sprintf("loading structure: %v", message.err)))
+			m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("loading structure: %v", message.err))))
 		}
 		return m, nil
 	}
@@ -304,7 +304,7 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 			actionMsg = "adding column"
 		}
 		m.schema.component.Structure.ColumnForm.Saving = false
-		m.setStatus(safeText(fmt.Sprintf(actionMsg+": %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf(actionMsg+": %v", message.err))))
 		return m, nil
 	}
 	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
@@ -318,7 +318,7 @@ func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd
 	}
 	if message.err != nil {
 		m.schema.component.Structure.ColumnForm.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("deleting column: %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("deleting column: %v", message.err))))
 		return m, nil
 	}
 	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
@@ -543,7 +543,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 			Status:     "failed",
 			Replayable: true,
 		})
-		m.setStatus(safeText(fmt.Sprintf("loading browse: %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("loading browse: %v", message.err))))
 		return m, nil
 	}
 	// Set the status before setBrowse so its split-aware table sizing

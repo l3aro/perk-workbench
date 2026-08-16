@@ -184,7 +184,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 			// log and the notification pipeline.
 			redacted := redactCredentials(test.err.Error(), m.connectionSecrets(test.target))
 			log.Error("connection test", errors.New(redacted))
-			m.setStatus("connection test failed")
+			m.setStatus(safeText(pluginFailureStatus(test.err, "connection test failed")))
 			return m, nil
 		}
 		// A successful test stands in for the removed Save button: the

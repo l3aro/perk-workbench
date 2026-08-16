@@ -69,7 +69,7 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
 			log.Error("loading indexes", message.err)
-			m.setStatus(safeText(fmt.Sprintf("loading indexes: %v", message.err)))
+			m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("loading indexes: %v", message.err))))
 		}
 		return m, nil
 	}
@@ -97,7 +97,7 @@ func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) 
 	}
 	if message.err != nil {
 		m.schema.component.Structure.IndexForm.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("updating index: %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("updating index: %v", message.err))))
 		return m, nil
 	}
 	m.schema.component.Structure.IndexForm.Close()
@@ -110,7 +110,7 @@ func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) 
 	}
 	if message.err != nil {
 		m.schema.component.Structure.IndexForm.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("deleting index: %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("deleting index: %v", message.err))))
 		return m, nil
 	}
 	m.schema.component.Structure.IndexForm.Close()

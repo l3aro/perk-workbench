@@ -448,6 +448,41 @@ func RegisterShim(shim Shim) error {
 	return nil
 }
 
+// ValidateShimReplacement validates a restart replacement whose driver
+// is already registered under its own identity: the replacement must be
+// self-consistent and must not conflict with any OTHER registered
+// driver, while the entry's own registration is excluded — it is the
+// registration being swapped in place, never duplicated. The caller is
+// still responsible for requiring the replacement to keep the
+// registered identity. Side-effect-free, like ValidateShim.
+func ValidateShimReplacement(shim Shim) error {
+	if shim == nil {
+		return errors.New("database: nil shim")
+	}
+	caps := shim.Capabilities()
+	if err := validateSpec(Spec{
+		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
+	}); err != nil {
+		return err
+	}
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	for _, pattern := range caps.Targets {
+		for name, existing := range byName {
+			if name == caps.Name {
+				continue // the entry's own registration, being swapped
+			}
+			for _, other := range existing.Targets {
+				if strings.HasPrefix(pattern.Prefix, other.Prefix) || strings.HasPrefix(other.Prefix, pattern.Prefix) {
+					return fmt.Errorf("database: driver %q target prefix %q overlaps %q of driver %q", caps.Name, pattern.Prefix, other.Prefix, name)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func init() {
 	// Registration order is both the match precedence and the connection
 	// form's driver order; target forms are disjoint, so order is safe

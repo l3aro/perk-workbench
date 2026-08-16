@@ -14,13 +14,19 @@ import (
 	"github.com/l3aro/perk-workbench/internal/database"
 )
 
-// Loader owns the lifecycle of every spawned plugin child and every
-// session opened in them. Close is the single idempotent cleanup path.
+// Loader owns the lifecycle of every configured plugin entry: the
+// spawned child, the registered shim, and every session opened in them.
+// Close is the single idempotent cleanup path. Entries rejected at
+// load (resolution, pin drift, handshake, protocol, or registration
+// failure) are retained with their failure so they stay inspectable and
+// restartable; Restart recovers exactly one entry.
 type Loader struct {
-	mu       sync.Mutex
-	clients  []*Client
-	sessions map[*sessionProxy]struct{}
-	closed   bool
+	mu         sync.Mutex
+	configPath string
+	entries    []*entry // one per unique configured entry, in config order
+	clients    []*Client
+	sessions   map[*sessionProxy]struct{}
+	closed     bool
 }
 
 // spawnArgs is the argv appended to every plugin spawn. Production loads
@@ -52,38 +58,50 @@ func LoadPinned(ctx context.Context, configPath string, entries []string, trust 
 }
 
 func load(ctx context.Context, configPath string, entries []string, trust map[string]string, register func(database.Shim) error) (*Loader, []error) {
-	loader := &Loader{sessions: map[*sessionProxy]struct{}{}}
+	loader := &Loader{configPath: configPath, sessions: map[*sessionProxy]struct{}{}}
 	var errs []error
 	seen := map[string]struct{}{}
-	for _, entry := range entries {
-		path, err := resolvePluginExecutable(entry, configPath)
+	for _, entryText := range entries {
+		item := &entry{configEntry: entryText, register: register}
+		fail := func(err error) {
+			item.err = err
+			errs = append(errs, err)
+		}
+		path, err := resolvePluginExecutable(entryText, configPath)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("plugin %q: %w", entry, err))
+			fail(fmt.Errorf("plugin %q: %w", entryText, err))
+			loader.trackEntry(item)
 			continue
 		}
 		if _, duplicate := seen[path]; duplicate {
 			continue // canonical duplicates are silently skipped
 		}
 		seen[path] = struct{}{}
+		item.path = path
 
 		if pin, pinned := trust[path]; pinned {
+			item.trust = pin
 			digest, err := SHA256File(path)
 			if err != nil {
-				errs = append(errs, fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", entry, err))
+				fail(fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", entryText, err))
+				loader.trackEntry(item)
 				continue
 			}
 			if !strings.EqualFold(digest, pin) {
-				errs = append(errs, fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", entry, pin, digest))
+				fail(fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", entryText, pin, digest))
+				loader.trackEntry(item)
 				continue
 			}
 		}
 
 		client, err := spawn(path, spawnArgs...)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("plugin %q: %w", entry, err))
+			fail(fmt.Errorf("plugin %q: %w", entryText, err))
+			loader.trackEntry(item)
 			continue
 		}
 		loader.trackClient(client)
+		item.client = client
 
 		var handshake initializeResult
 		initStart := time.Now()
@@ -92,24 +110,31 @@ func load(ctx context.Context, configPath string, entries []string, trust map[st
 			WorkbenchVersion: workbenchVersion,
 		}, &handshake); err != nil {
 			client.setInitDuration(time.Since(initStart))
-			errs = append(errs, fmt.Errorf("plugin %q: initialize: %w", entry, err))
+			fail(fmt.Errorf("plugin %q: initialize: %w", entryText, err))
 			_ = client.Close()
+			loader.trackEntry(item)
 			continue
 		}
 		client.setInitDuration(time.Since(initStart))
 		if handshake.ProtocolVersion != ProtocolVersion {
-			errs = append(errs, fmt.Errorf("plugin %q: protocol version %d, want %d", entry, handshake.ProtocolVersion, ProtocolVersion))
+			fail(fmt.Errorf("plugin %q: protocol version %d, want %d", entryText, handshake.ProtocolVersion, ProtocolVersion))
 			_ = client.Close()
+			loader.trackEntry(item)
 			continue
 		}
 		// The plugin has identified itself; operation errors now carry
 		// this host-known identity, never the child's data claims.
 		client.SetPlugin(handshake.Capabilities.Name)
-		if err := register(&shim{client: client, caps: handshake.Capabilities, loader: loader}); err != nil {
-			errs = append(errs, fmt.Errorf("plugin %q: %w", entry, err))
+		client.setProtocolVersion(handshake.ProtocolVersion)
+		item.shim = newShim(client, handshake.Capabilities, loader)
+		if err := register(item.shim); err != nil {
+			fail(fmt.Errorf("plugin %q: %w", entryText, err))
 			_ = client.Close()
+			loader.trackEntry(item)
 			continue
 		}
+		item.registered = true
+		loader.trackEntry(item)
 	}
 	return loader, errs
 }
@@ -169,6 +194,14 @@ func (l *Loader) trackClient(client *Client) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.clients = append(l.clients, client)
+}
+
+// trackEntry records one configured entry in config order. Entries are
+// appended exactly once, at the end of their load (or rejection).
+func (l *Loader) trackEntry(item *entry) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.entries = append(l.entries, item)
 }
 
 func (l *Loader) trackSession(proxy *sessionProxy) {

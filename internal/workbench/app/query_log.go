@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/clipboard"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
@@ -157,10 +158,15 @@ func (m Model) transientStatement(entry querylog.Entry) (string, bool) {
 	return original, original != ""
 }
 
-// rowWriteFailureStatus renders a row-write failure status. A sensitive
-// write must not echo the backend error — Redis errors include the
-// offending command and its arguments — so it reports a generic failure.
+// rowWriteFailureStatus renders a row-write failure status. A dead
+// plugin gets the actionable recovery path (the CTA leaks nothing); a
+// sensitive write must not echo the backend error — Redis errors include
+// the offending command and its arguments — so it reports a generic
+// failure; anything else carries the raw error.
 func rowWriteFailureStatus(verb string, metadata *sharedsql.StatementMetadata, err error) string {
+	if plugin.IsTerminal(err) {
+		return pluginStoppedCTA
+	}
 	if metadata != nil && metadata.Sensitive {
 		return verb + ": failed"
 	}

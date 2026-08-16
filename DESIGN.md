@@ -222,6 +222,20 @@ The seam has three pieces, all declared in `internal/database`:
 
 The write side of the contract is DTO-shaped: `internal/sql` declares the `WriteCapabilities` descriptor, the `RowValue` tagged tree, and the `RowWriteRequest`/`RowWriteResponse` and `DocumentPayload` request/response types, all JSON-safe and marshaled verbatim across the wire. The wire protocol is the versioned perk/v1 envelope — JSON-RPC 2.0 over NDJSON stdio, with a `perk/v1/initialize` handshake that rejects incompatible plugins before registration (see `docs/plugins.md`). Optional capability interfaces (`WriteCapabilitiesProvider`, `RowWriter`, `DocumentReader`, `DocumentWriter`) are discovered by the workbench on the proxied service exactly as on a compiled-in service.
 
+Live lifecycle: the loader keeps one entry per configured plugin —
+including entries rejected at startup, which stay inspectable and
+recoverable — and exposes a concurrency-safe status/control API
+(`Statuses`, `Restart`, `EntryForService`), injected into the workbench
+as `app.PluginControl`; the app never owns child processes. Restart
+re-verifies the configured pin before spawning, validates the
+replacement (perk protocol version, driver identity), and atomically
+swaps the shim's transport client: old session generations fail
+deterministically, new opens use the replacement, and the global driver
+registration is never replaced or duplicated. Terminal child/protocol
+failures carry an error marker the workbench renders as the Plugins →
+Status → Restart recovery path, with the original error preserved in
+the query-log detail and diagnostics.
+
 ## Verification
 
 Use focused package tests while changing a component, then run:

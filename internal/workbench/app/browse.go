@@ -391,7 +391,7 @@ func (m Model) updateDocumentEditorLoaded(message documentEditorLoadedMsg) (tea.
 	m.browse.component = component
 	switch {
 	case outcome.Err != nil:
-		m.setStatus(safeText(fmt.Sprintf("loading document: %v", outcome.Err)))
+		m.setStatus(safeText(pluginFailureStatus(outcome.Err, fmt.Sprintf("loading document: %v", outcome.Err))))
 		return m, nil
 	case outcome.Format != "":
 		m.setStatus(fmt.Sprintf("document editing is unsupported for format %s", outcome.Format))

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/l3aro/perk-workbench/internal/database"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
@@ -12,11 +13,20 @@ import (
 
 // shim is the database.Shim face of one plugin: the capabilities the
 // plugin advertised at handshake, plus the target builder and service
-// opener bridged over the wire.
+// opener bridged over the wire. The client pointer swaps atomically on
+// Restart: sessions opened before the swap keep their old generation,
+// sessions opened after it use the replacement.
 type shim struct {
-	client *Client
+	client atomic.Pointer[Client]
 	caps   database.Capabilities
 	loader *Loader
+}
+
+// newShim builds a shim bound to client.
+func newShim(client *Client, caps database.Capabilities, loader *Loader) *shim {
+	s := &shim{caps: caps, loader: loader}
+	s.client.Store(client)
+	return s
 }
 
 func (s *shim) Capabilities() database.Capabilities { return s.caps }
@@ -28,21 +38,24 @@ func (s *shim) BuildTarget(values database.FormValues) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), shortCallTimeout)
 	defer cancel()
 	var result buildTargetResult
-	if err := s.client.Call(ctx, methodBuildTarget, values, &result); err != nil {
+	if err := s.client.Load().Call(ctx, methodBuildTarget, values, &result); err != nil {
 		return "", false
 	}
 	return result.Target, result.OK
 }
 
-// Open opens a session in the plugin, tracks it with the loader, and
-// returns the capability-wrapped service.
+// Open opens a session in the current plugin generation, tracks it with
+// the loader, and returns the capability-wrapped service. The client
+// generation is pinned per call: a Restart swapping mid-open can never
+// bind a session id to the wrong child.
 func (s *shim) Open(ctx context.Context, target string) (sharedsql.Service, error) {
+	client := s.client.Load()
 	var result openResult
-	if err := s.client.Call(ctx, methodOpen, openParams{Target: target}, &result); err != nil {
+	if err := client.Call(ctx, methodOpen, openParams{Target: target}, &result); err != nil {
 		return nil, err
 	}
 	proxy := &sessionProxy{
-		client:    s.client,
+		client:    client,
 		loader:    s.loader,
 		sessionID: result.SessionID,
 		info:      result.Info,

@@ -85,7 +85,7 @@ func (m Model) updateForeignKeys(message foreignKeysLoadedMsg) (tea.Model, tea.C
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
 			log.Error("loading foreign keys", message.err)
-			m.setStatus(safeText(fmt.Sprintf("loading foreign keys: %v", message.err)))
+			m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("loading foreign keys: %v", message.err))))
 		}
 		return m, nil
 	}
@@ -106,7 +106,7 @@ func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoaded
 	if message.table != m.SelectedTable || message.err != nil {
 		if message.err != nil {
 			log.Error("loading referencing foreign keys", message.err)
-			m.setStatus(safeText(fmt.Sprintf("loading referencing foreign keys: %v", message.err)))
+			m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("loading referencing foreign keys: %v", message.err))))
 		}
 		return m, nil
 	}
@@ -120,7 +120,7 @@ func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model,
 	}
 	if message.err != nil {
 		m.schema.component.Structure.ForeignKeyForm.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("updating foreign key: %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("updating foreign key: %v", message.err))))
 		return m, nil
 	}
 	m.schema.component.Structure.ForeignKeyForm.Close()
@@ -134,7 +134,7 @@ func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model,
 	}
 	if message.err != nil {
 		m.schema.component.Structure.ForeignKeyForm.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("deleting foreign key: %v", message.err)))
+		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("deleting foreign key: %v", message.err))))
 		return m, nil
 	}
 	m.schema.component.Structure.ForeignKeyForm.Close()

@@ -268,15 +268,16 @@ func (d *stderrDrain) snapshot() []string {
 // protocol traffic: stdin/stdout frames, connection targets, form
 // values, credentials, and statements are not retained anywhere.
 type Snapshot struct {
-	Path         string        `json:"path"`          // canonical executable path
-	PID          int           `json:"pid"`           // child pid; 0 once reaped
-	Plugin       string        `json:"plugin"`        // self-claimed name after the handshake
-	InitDuration time.Duration `json:"init_duration"` // initialize RPC duration once Load completes
-	InFlight     int           `json:"in_flight"`     // pending requests at snapshot time
-	Error        string        `json:"error"`         // terminal protocol/process error text when present
-	ExitStatus   int           `json:"exit_status"`   // exit code once reaped; -1 while running or signal-killed
-	Running      bool          `json:"running"`       // child process not yet reaped
-	Stderr       []string      `json:"stderr"`        // newest bounded diagnostics lines/tail
+	Path            string        `json:"path"`             // canonical executable path
+	PID             int           `json:"pid"`              // child pid; 0 once reaped
+	Plugin          string        `json:"plugin"`           // self-claimed name after the handshake
+	ProtocolVersion int           `json:"protocol_version"` // perk/v1 version claimed at the last successful handshake; 0 before it
+	InitDuration    time.Duration `json:"init_duration"`    // initialize RPC duration once Load completes
+	InFlight        int           `json:"in_flight"`        // pending requests at snapshot time
+	Error           string        `json:"error"`            // terminal protocol/process error text when present
+	ExitStatus      int           `json:"exit_status"`      // exit code once reaped; -1 while running or signal-killed
+	Running         bool          `json:"running"`          // child process not yet reaped
+	Stderr          []string      `json:"stderr"`           // newest bounded diagnostics lines/tail
 }
 
 // Snapshot returns an immutable copy of the client's diagnostics. It
@@ -285,13 +286,14 @@ type Snapshot struct {
 func (c *Client) Snapshot() Snapshot {
 	c.mu.Lock()
 	snap := Snapshot{
-		Path:         c.path,
-		PID:          c.pid,
-		Plugin:       c.plugin,
-		InitDuration: c.initDuration,
-		InFlight:     len(c.pending),
-		ExitStatus:   c.exitStatus,
-		Running:      c.running,
+		Path:            c.path,
+		PID:             c.pid,
+		Plugin:          c.plugin,
+		ProtocolVersion: c.protocolVersion,
+		InitDuration:    c.initDuration,
+		InFlight:        len(c.pending),
+		ExitStatus:      c.exitStatus,
+		Running:         c.running,
 	}
 	if c.err != nil {
 		snap.Error = c.err.Error()
@@ -307,5 +309,14 @@ func (c *Client) Snapshot() Snapshot {
 func (c *Client) setInitDuration(d time.Duration) {
 	c.mu.Lock()
 	c.initDuration = d
+	c.mu.Unlock()
+}
+
+// setProtocolVersion records the perk/v1 version the child claimed at
+// its successful initialize handshake. The Loader calls it once, after
+// the version check passes.
+func (c *Client) setProtocolVersion(version int) {
+	c.mu.Lock()
+	c.protocolVersion = version
 	c.mu.Unlock()
 }

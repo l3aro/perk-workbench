@@ -60,11 +60,17 @@ type Model struct {
 	reconnectPending bool
 	openTag          uint64
 	connectionID     string
+	// connectionTarget is the full opener target (driver prefix intact)
+	// of the current connection, captured at open time; the workflow's
+	// Target holds the stripped target once opened. It is what a plugin
+	// restart reconnects after recovering the child.
+	connectionTarget string
 	databaseInfo     sharedsql.DatabaseInfo
 	queryLanguage    sharedsql.QueryLanguage
 	keybindings      Keybindings
 	vimMode          bool
 	configPath       string
+	pluginControl    PluginControl
 	connection       connectionState
 	schema           schemaState
 	queryLog         queryState
@@ -251,6 +257,9 @@ type contextMenuModel struct {
 }
 
 type databaseOpenedMsg struct {
+	// requested is the full opener target (driver prefix intact) that
+	// produced this open; the workflow keeps only the stripped target.
+	requested     string
 	target        string
 	service       sharedsql.Service
 	info          sharedsql.DatabaseInfo
@@ -355,9 +364,10 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 	return func() tea.Msg {
 		opened, err := m.openDatabase(m.appContext, target)
 		if err != nil {
-			return databaseOpenedMsg{err: err, reconnect: reconnect, openTag: tag}
+			return databaseOpenedMsg{requested: target, err: err, reconnect: reconnect, openTag: tag}
 		}
 		return databaseOpenedMsg{
+			requested:     target,
 			target:        opened.Target,
 			service:       opened.Service,
 			info:          opened.Info,
@@ -432,6 +442,13 @@ func (m *Model) Service() sharedsql.Service { return m.Database }
 func (m *Model) SetKeybindings(b Keybindings) {
 	m.keybindings = b
 	m.overlay.commandPalette = newCommandPalette(*m)
+}
+
+// SetPluginControl injects the live plugin lifecycle controller (the
+// real plugin.Loader from cmd main, or a fake in tests). Without it the
+// plugin manager shows add/remove only: no live status or restart.
+func (m *Model) SetPluginControl(control PluginControl) {
+	m.pluginControl = control
 }
 
 // browsePageSizeDefault returns the configured default browse page size,

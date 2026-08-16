@@ -158,7 +158,17 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		// name so the user can adjust or discard it.
 		m.schema.component.Structure.TableFormRunning = false
 		m.overlay.formMode.Mode = formModeNormal
-		m.setStatus(safeText("table action failed: " + message.err.Error()))
+		// The original structured error stays in the query-log entry and
+		// diagnostics; a dead plugin gets the actionable recovery path on
+		// the status line instead.
+		m.setStatus(safeText(pluginFailureStatus(message.err, "table action failed: "+message.err.Error())))
+		return m, nil
+	}
+	if plugin.IsTerminal(message.err) {
+		// The plugin child exited or the protocol died: surface the
+		// actionable recovery path. The query-log entry above preserves
+		// the original error for detail/diagnostics.
+		m.setStatus(safeText(pluginStoppedCTA))
 	}
 	return m, nil
 }
@@ -197,8 +207,10 @@ func (m Model) loadSchema() tea.Cmd {
 
 func (m Model) updateSchemaLoaded(message schemaLoadedMsg) (tea.Model, tea.Cmd) {
 	if message.err != nil {
-		// Keep the previous sidebar; report the refresh failure.
-		m.setStatus(safeText("refreshing schema: " + message.err.Error()))
+		// Keep the previous sidebar; report the refresh failure. A dead
+		// plugin gets the actionable recovery path; the original error
+		// stays in the diagnostics log.
+		m.setStatus(safeText(pluginFailureStatus(message.err, "refreshing schema: "+message.err.Error())))
 		return m, nil
 	}
 	// An active database/schema scope re-filters its object list from the

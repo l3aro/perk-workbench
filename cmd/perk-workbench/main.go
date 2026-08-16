@@ -286,6 +286,10 @@ func run(target string, readOnly bool) error {
 
 	model := app.New(target, ctx, database.Open, readOnly)
 	model.SetKeybindings(keybindings)
+	// The loader is the live plugin lifecycle controller: the Plugins
+	// manager's Status view and Restart act through it, and the app
+	// never owns child processes.
+	model.SetPluginControl(loader)
 	if client != nil {
 		model.SetAI(client, history)
 	}
@@ -326,6 +330,10 @@ func loadPlugins(ctx context.Context, config app.Config, register func(database.
 	}
 	return loader
 }
+
+// The loader is the production PluginControl: live statuses, restart,
+// and the service-to-entry mapping all come from it.
+var _ app.PluginControl = (*plugin.Loader)(nil)
 
 // closeProgram tears down the opened database service first — an active
 // plugin session receives its perk/v1/close before the child is

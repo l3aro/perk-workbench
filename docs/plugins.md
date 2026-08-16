@@ -308,6 +308,44 @@ required`** status. Neither flow mutates the live driver registry — a
 restart applies the change, so a pinned mismatch can never be enabled
 or loaded around.
 
+**Live status** — the menu's *Status* entry shows one line per
+configured entry — the host-known plugin name (or the configured entry
+before any successful handshake) and its state (`running`, `crashed`,
+`rejected`, `stopped`, or `unresolved`) — with the selected entry's
+compact details: the configured entry and canonical path, plugin
+identity, perk protocol version, trust state and fingerprint,
+pid/running/exit state, initialize duration, in-flight count, the last
+terminal/structured failure, and the newest bounded stderr tail (the
+loader retains at most 64 KiB / 100 lines per child, and the view caps
+the rendered tail). The snapshot is taken once when the view opens;
+`r` refreshes it explicitly — never automatically. Status reads never
+spawn, mutate, or exchange protocol traffic, and never expose targets
+or credentials: the failure text and every stderr line pass through the
+credential redactor before they are shown, logged, or persisted.
+
+**Restarting a plugin** — selecting *Restart* (on the selected entry)
+asks for explicit confirmation (`Yes`/`No`). The loader re-verifies the
+entry's configured pin immediately before the replacement spawns — a
+drifted pin fails closed and nothing executes — then terminates and
+reaps the old child, initializes and validates the replacement (same
+perk protocol version and driver identity), and atomically swaps the
+transport client used by future session opens, without touching the
+global driver registration. Sessions opened before the restart keep
+their old generation and fail deterministically; they never silently
+jump to the replacement. If the restarted entry backs the current
+connection, the dead service is closed first and the same target
+reconnects through the normal open path, so schema, browse, and query
+work again; otherwise only the child is restarted. A failed restart
+leaves the previous state intact and records the failure in the status
+view, where it stays inspectable.
+
+**Stopped-plugin detection** — when an operation fails because a plugin
+child exited or the perk/v1 protocol died (never for operation errors),
+the status line shows *the plugin stopped; open Plugins → Status →
+Restart to recover it*. The original structured error stays in the
+query-log detail and diagnostics; the workbench never restarts children
+or replays queries automatically.
+
 ## Conformance testing (`plugin test`)
 
 `plugin test [--json] EXECUTABLE` runs the perk/v1 conformance suite

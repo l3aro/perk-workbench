@@ -46,6 +46,7 @@ func TestPluginHelperChild(t *testing.T) {
 		rpcErrorCode:    envInt("PERK_PLUGIN_RPC_ERROR_CODE", -32000),
 		rpcErrorMessage: os.Getenv("PERK_PLUGIN_RPC_ERROR_MESSAGE"),
 		rpcErrorData:    os.Getenv("PERK_PLUGIN_RPC_ERROR_DATA"),
+		initDelay:       time.Duration(envInt("PERK_PLUGIN_INIT_DELAY_MS", 0)) * time.Millisecond,
 	}
 	if raw := os.Getenv("PERK_PLUGIN_SCHEMA"); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &helper.schemaObjects); err != nil {
@@ -84,6 +85,7 @@ type pluginHelper struct {
 	rpcErrorData    string
 	schemaObjects   []sharedsql.SchemaObject
 	schemaSet       bool
+	initDelay       time.Duration
 }
 
 // serve reads request frames and answers until stdin closes.
@@ -131,6 +133,13 @@ func (h *pluginHelper) handleNotification(method string, params json.RawMessage)
 
 // handleRequest answers one request. false stops the serve loop.
 func (h *pluginHelper) handleRequest(id uint64, method string, params json.RawMessage) bool {
+	if method == methodInitialize && h.initDelay > 0 {
+		// The race tests hold the child mid-handshake so they can prove
+		// Close wins over an in-flight Restart; the marker line
+		// publishes that the handshake has started.
+		h.markerLine(fmt.Sprintf("init %d", id))
+		time.Sleep(h.initDelay)
+	}
 	switch h.behavior {
 	case "wrong_version":
 		if method == methodInitialize {

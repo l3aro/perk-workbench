@@ -41,6 +41,11 @@ type Client struct {
 	running      bool          // child not yet reaped
 	exitStatus   int           // exit code once reaped; -1 while running or signal-killed
 
+	// protocolVersion is the perk/v1 version the child claimed at its
+	// last successful initialize handshake; 0 before any handshake
+	// succeeded.
+	protocolVersion int
+
 	closeOnce sync.Once
 }
 
@@ -58,6 +63,33 @@ type pendingCall struct {
 type callResult struct {
 	result json.RawMessage
 	err    error
+}
+
+// TerminalError marks a plugin-terminal failure: the child exited or
+// the perk/v1 protocol died. Every pending call fails with it and later
+// calls return it immediately, so callers can distinguish a dead
+// transport from an operation error (plugin.Error). Detect with
+// errors.As or the IsTerminal helper; the wrapped error's text is
+// unchanged.
+type TerminalError struct{ Err error }
+
+func (e *TerminalError) Error() string { return e.Err.Error() }
+func (e *TerminalError) Unwrap() error { return e.Err }
+
+// IsTerminal reports whether err is a plugin-terminal failure (child
+// exit or protocol death) rather than an operation error.
+func IsTerminal(err error) bool {
+	var terminal *TerminalError
+	return errors.As(err, &terminal)
+}
+
+// wrapTerminal marks err as terminal, preserving its text. nil passes
+// through as nil.
+func wrapTerminal(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &TerminalError{Err: err}
 }
 
 // spawn launches a plugin child. stderr is drained so the child can
@@ -149,7 +181,7 @@ func (c *Client) readLoop() {
 	c.mu.Lock()
 	c.waitErr = waitErr
 	if waitErr != nil || !errors.Is(readErr, io.EOF) {
-		c.err = errors.Join(readErr, waitErr)
+		c.err = wrapTerminal(errors.Join(readErr, waitErr))
 	}
 	c.pid = 0
 	c.running = false
@@ -371,12 +403,15 @@ func (c *Client) terminalLocked(err error) {
 		return
 	}
 	c.unusable = true
-	c.err = err
+	c.err = wrapTerminal(err)
 	for _, entry := range c.pending {
 		if entry.stop != nil {
 			entry.stop()
 		}
-		entry.ch <- callResult{err: err} // nonblocking: buffered 1
+		// Deliver the wrapped error: in-flight callers must see the
+		// terminal marker too, so a child killed mid-operation is
+		// indistinguishable from a later call on the dead client.
+		entry.ch <- callResult{err: c.err} // nonblocking: buffered 1
 	}
 	c.pending = make(map[uint64]*pendingCall)
 }
@@ -397,7 +432,7 @@ func (c *Client) Close() error {
 		c.mu.Lock()
 		c.unusable = true
 		if c.err == nil {
-			c.err = errors.New("perk/v1: client closed")
+			c.err = wrapTerminal(errors.New("perk/v1: client closed"))
 		}
 		c.mu.Unlock()
 	})

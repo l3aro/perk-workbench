@@ -45,6 +45,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	m.reconnectPending = false
 	previous := m.Database
 	m.Opened(message.target, message.service, "")
+	m.connectionTarget = message.requested
 	if previous != nil {
 		if err := previous.Close(); err != nil {
 			log.Error("close previous database", err)
