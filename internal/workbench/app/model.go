@@ -624,16 +624,19 @@ func (m Model) schemaTable(item schema.Item) string {
 }
 
 // schemaSnapshot builds the session snapshot root hands to the schema
-// component for one update or render.
+// component for one update or render. DatabaseScopeCapable mirrors the
+// active driver's explicit workspace advertisement: only then may an
+// unknown/non-built-in product serve a generic database scope.
 func (m Model) schemaSnapshot() schema.Snapshot {
 	return schema.Snapshot{
-		SelectedTable:   m.SelectedTable,
-		Database:        m.databaseInfo,
-		Target:          m.Target,
-		ReadOnly:        m.ReadOnly,
-		WorkspaceTarget: m.WorkspaceTarget,
-		ForeignKeysAll:  m.schema.foreignKeysAll,
-		IndexesAll:      m.schema.indexesAll,
+		SelectedTable:        m.SelectedTable,
+		Database:             m.databaseInfo,
+		Target:               m.Target,
+		ReadOnly:             m.ReadOnly,
+		WorkspaceTarget:      m.WorkspaceTarget,
+		DatabaseScopeCapable: m.workspace.advertised != nil,
+		ForeignKeysAll:       m.schema.foreignKeysAll,
+		IndexesAll:           m.schema.indexesAll,
 	}
 }
 
@@ -875,7 +878,9 @@ func (m Model) scopeObjectTable(object sharedsql.SchemaObject) string {
 // the database's own objects, MongoDB the sole root's collections,
 // PostgreSQL database scopes every loaded table/view (all belong to the
 // connected database), and PostgreSQL schema scopes the
-// schema-prefixed names.
+// schema-prefixed names. Unknown/non-built-in products scope to the
+// selected database's non-root objects only when their driver advertises
+// explicit workspace metadata.
 func (m Model) scopeObjects(objects []sharedsql.SchemaObject) []sharedsql.SchemaObject {
 	switch m.WorkspaceTarget.Kind {
 	case core.WorkspaceDatabase:
@@ -892,6 +897,15 @@ func (m Model) scopeObjects(objects []sharedsql.SchemaObject) []sharedsql.Schema
 			return filterSchemaObjects(objects, func(object sharedsql.SchemaObject) bool {
 				return object.Type == "table" || object.Type == "view"
 			})
+		default:
+			// Non-legacy products (SQLite excluded) scope only when the
+			// driver explicitly advertises workspace metadata; without
+			// it an unknown product keeps the SQL-only root behavior.
+			if m.databaseInfo.Product != "SQLite" && m.workspace.advertised != nil {
+				return filterSchemaObjects(objects, func(object sharedsql.SchemaObject) bool {
+					return object.Database == m.WorkspaceTarget.Database && object.Type != "database"
+				})
+			}
 		}
 	case core.WorkspaceSchema:
 		if m.databaseInfo.Product == "PostgreSQL" {

@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/core"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
@@ -673,5 +674,176 @@ func TestWorkspaceView_advertisedWithoutProviderFails(t *testing.T) {
 	}
 	if model.workspace.loading {
 		t.Fatal("view must not stay loading after the synchronous mismatch failure")
+	}
+}
+
+// pluginDatabaseScopeObjects is a plugin-like fixture: the synthesized
+// database-root shape of flat perk/v1 responses across two databases with
+// mixed object kinds.
+func pluginDatabaseScopeObjects() []sharedsql.SchemaObject {
+	return []sharedsql.SchemaObject{
+		{Database: "pluginkv", Type: "database", Name: "pluginkv"},
+		{Database: "pluginkv", Type: "table", Name: "widgets", RowCount: int64Ptr(42)},
+		{Database: "pluginkv", Type: "hash", Name: "users"},
+		{Database: "cache", Type: "database", Name: "cache"},
+		{Database: "cache", Type: "table", Name: "sessions"},
+	}
+}
+
+// pluginDatabaseWorkspace is the advertisement of a plugin-like product
+// with one database-scoped custom view.
+func pluginDatabaseWorkspace() *sharedsql.WorkspaceCapability {
+	return &sharedsql.WorkspaceCapability{CustomViews: []sharedsql.CustomWorkspaceView{
+		{ID: "db-overview", Label: "Overview", Scopes: []sharedsql.WorkspaceViewKind{sharedsql.WorkspaceViewDatabase}},
+	}}
+}
+
+// TestPluginDatabaseScope_keyboardSelectsRoot drives Enter on a database
+// root of a plugin-like product with explicit workspace metadata: the
+// workspace targets the database, Browse lists the database's non-root
+// objects in sidebar order, the database-scoped custom tab appears, and
+// loading it issues a request carrying the structured database target.
+func TestPluginDatabaseScope_keyboardSelectsRoot(t *testing.T) {
+	var calls []sharedsql.WorkspaceViewRequest
+	service := &stubWorkspaceViewService{
+		results: map[string]sharedsql.Result{"db-overview": keysResult("k1", "k2")},
+		calls:   &calls,
+	}
+	model := workspaceViewModel(t, service, pluginDatabaseWorkspace())
+	_ = model.setSchemaObjects(pluginDatabaseScopeObjects())
+	model.schema.component.List.Select(0) // the pluginkv database root
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+
+	if model.WorkspaceTarget.Kind != core.WorkspaceDatabase || model.WorkspaceTarget.Database != "pluginkv" {
+		t.Fatalf("workspace target = %+v, want the pluginkv database scope", model.WorkspaceTarget)
+	}
+	want := []sharedsql.SchemaObject{
+		{Database: "pluginkv", Type: "table", Name: "widgets", RowCount: int64Ptr(42)},
+		{Database: "pluginkv", Type: "hash", Name: "users"},
+	}
+	assertScopeObjects(t, model, want)
+	view := ansi.Strip(model.workspaceView())
+	for _, present := range []string{"widgets", "users", "2 objects", "Overview"} {
+		if !strings.Contains(view, present) {
+			t.Fatalf("workspace view misses %q: %q", present, view)
+		}
+	}
+	for _, absent := range []string{"cache", "sessions"} {
+		if strings.Contains(view, absent) {
+			t.Fatalf("workspace view leaks the other database %q: %q", absent, view)
+		}
+	}
+
+	// The database-scoped custom tab is exposed after the standard tabs
+	// and loads lazily with the active database target.
+	labels, _ := model.workspaceTabMeta(model.workspaceTabs())
+	if got := strings.Join(labels, ","); got != "SQL,Browse,Overview" {
+		t.Fatalf("database tab labels = %q, want the database-scoped view", got)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("views loaded before the tab was opened: %d calls", len(calls))
+	}
+	updated, command := openCustomViewFromFK(model)
+	model = updated.(Model)
+	model = runTableCommand(model, command)
+	if len(calls) != 1 {
+		t.Fatalf("view requests = %#v, want exactly one", calls)
+	}
+	wantRequest := sharedsql.WorkspaceViewRequest{
+		ViewID: "db-overview",
+		Target: sharedsql.WorkspaceViewTarget{Kind: sharedsql.WorkspaceViewDatabase, Database: "pluginkv"},
+	}
+	if calls[0] != wantRequest {
+		t.Fatalf("view request = %#v, want %#v", calls[0], wantRequest)
+	}
+}
+
+// TestPluginDatabaseScope_clickSelectsRoot drives a left-click on the
+// database root row of the schema sidebar: the same scope selection the
+// keyboard path performs, with the same object list.
+func TestPluginDatabaseScope_clickSelectsRoot(t *testing.T) {
+	model := workspaceViewModel(t, &stubWorkspaceViewService{results: map[string]sharedsql.Result{}}, pluginDatabaseWorkspace())
+	_ = model.setSchemaObjects(pluginDatabaseScopeObjects())
+
+	// The first root row is contentY 4 (pane title + 3-row filter box),
+	// so terminal Y 5; any x inside the schema pane hits it.
+	updated, _ := model.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	model = updated.(Model)
+
+	if model.WorkspaceTarget.Kind != core.WorkspaceDatabase || model.WorkspaceTarget.Database != "pluginkv" {
+		t.Fatalf("workspace target = %+v, want the pluginkv database scope", model.WorkspaceTarget)
+	}
+	want := []sharedsql.SchemaObject{
+		{Database: "pluginkv", Type: "table", Name: "widgets", RowCount: int64Ptr(42)},
+		{Database: "pluginkv", Type: "hash", Name: "users"},
+	}
+	assertScopeObjects(t, model, want)
+}
+
+// TestPluginDatabaseScope_absentMetadataKeepsSQLOnlyRoot: without an
+// explicit workspace advertisement an unknown product's roots behave
+// exactly as before — Enter and clicks only toggle, never targeting a
+// database scope.
+func TestPluginDatabaseScope_absentMetadataKeepsSQLOnlyRoot(t *testing.T) {
+	model := workspaceViewModel(t, &stubWorkspaceViewService{results: map[string]sharedsql.Result{}}, nil)
+	_ = model.setSchemaObjects(pluginDatabaseScopeObjects())
+	model.schema.component.List.Select(0)
+
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.WorkspaceTarget.Kind != core.WorkspaceNone {
+		t.Fatalf("workspace target after Enter = %+v, want none (SQL-only root)", model.WorkspaceTarget)
+	}
+	if model.browse.component.ObjectListMode() {
+		t.Fatal("browse pane entered object-list mode without metadata")
+	}
+
+	updated, _ = model.Update(tea.MouseClickMsg{X: 5, Y: 5, Button: tea.MouseLeft})
+	model = updated.(Model)
+	if model.WorkspaceTarget.Kind != core.WorkspaceNone {
+		t.Fatalf("workspace target after click = %+v, want none (SQL-only root)", model.WorkspaceTarget)
+	}
+}
+
+// TestPluginDatabaseScope_connectionChangeDropsCapability: switching to a
+// driver without workspace metadata removes the scope capability, so the
+// new connection's database roots cannot be targeted — the pre-switch
+// database target is left untouched.
+func TestPluginDatabaseScope_connectionChangeDropsCapability(t *testing.T) {
+	model := workspaceViewModel(t, &stubWorkspaceViewService{results: map[string]sharedsql.Result{}}, pluginDatabaseWorkspace())
+	_ = model.setSchemaObjects(pluginDatabaseScopeObjects())
+	model.schema.component.List.Select(0)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.WorkspaceTarget.Kind != core.WorkspaceDatabase {
+		t.Fatalf("setup: workspace target = %+v, want the database scope", model.WorkspaceTarget)
+	}
+
+	// A fresh connection with objects but no advertisement replaces the
+	// driver synchronously; the schema tree follows.
+	model.openTag++
+	updated, _ = model.Update(databaseOpenedMsg{
+		target:        "other:db",
+		service:       &stubService{},
+		info:          sharedsql.DatabaseInfo{Product: "Other", Version: "1"},
+		queryLanguage: sharedsql.SQLQueryLanguage,
+		openTag:       model.openTag,
+	})
+	model = updated.(Model)
+	if model.workspace.advertised != nil {
+		t.Fatal("connection change kept the old advertisement")
+	}
+	_ = model.setSchemaObjects([]sharedsql.SchemaObject{
+		{Database: "other", Type: "database", Name: "other"},
+		{Database: "other", Type: "table", Name: "thing"},
+	})
+	model.schema.component.List.Select(0) // the other database root
+
+	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	model = updated.(Model)
+	if model.WorkspaceTarget.Database != "pluginkv" {
+		t.Fatalf("workspace target = %+v, want the pre-switch pluginkv target untouched (root not selectable)", model.WorkspaceTarget)
 	}
 }

@@ -306,17 +306,21 @@ func (m Model) SchemaSelect(snapshot Snapshot) (Model, Event, tea.Cmd) {
 }
 
 // databaseRootSelectable reports whether a database root can become the
-// workspace target: SQLite (and unknown) roots never do — their workspace
-// stays SQL-only until a table opens — and PostgreSQL roots only when they
-// are the connected database.
+// workspace target: SQLite roots never do — their workspace stays SQL-only
+// until a table opens — PostgreSQL roots only when they are the connected
+// database, and unknown/non-built-in products only when the driver
+// advertises explicit workspace metadata (the host then serves their
+// database scopes generically). MySQL and MongoDB roots always do.
 func (m Model) databaseRootSelectable(database string, snapshot Snapshot) bool {
 	switch snapshot.Database.Product {
 	case "MySQL", "MongoDB":
 		return true
 	case "PostgreSQL":
 		return m.databaseRootConnected(database, snapshot)
-	default: // SQLite and unknown products: no scope targets
+	case "SQLite":
 		return false
+	default: // unknown/non-built-in products
+		return snapshot.DatabaseScopeCapable
 	}
 }
 

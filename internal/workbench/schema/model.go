@@ -58,8 +58,10 @@ type TableSelected struct {
 
 // DatabaseSelected asks the root to open the database scope of the sidebar
 // root: clear the table workspace and target the database. SQLite roots
-// never emit it (their workspace stays SQL-only until a table opens), and
-// PostgreSQL roots only when they are the connected database.
+// never emit it (their workspace stays SQL-only until a table opens),
+// PostgreSQL roots only when they are the connected database, and
+// unknown/non-built-in products only when the driver advertises workspace
+// metadata.
 type DatabaseSelected struct{ Database string }
 
 // SchemaSelected asks the root to open the PostgreSQL schema scope of the
@@ -163,6 +165,11 @@ type Snapshot struct {
 	// database, a PostgreSQL schema, or a table. The scope diagram reads
 	// it to filter its cards.
 	WorkspaceTarget core.WorkspaceTarget
+	// DatabaseScopeCapable reports that the active driver advertises
+	// explicit workspace metadata, so unknown/non-built-in products may
+	// serve a generic database scope. Host-owned: the root sets it from
+	// its workspace advertisement, never from the product name.
+	DatabaseScopeCapable bool
 	// ForeignKeysAll and IndexesAll are the connection-level schema caches:
 	// every foreign key and index keyed by table, loaded by the root on
 	// connect and refreshed on DDL. Nil when not loaded yet; the diagrams
