@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -21,21 +22,24 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if message.err != nil {
-		log.Error("open database", message.err)
+		// Redact credential material before it reaches the event log,
+		// notification history, status line, or failure screen.
+		redacted := redactCredentials(message.err.Error(), m.connectionSecrets(m.Target))
+		log.Error("open database", errors.New(redacted))
 		if message.reconnect {
 			// The previous database is still connected: a failed switch
 			// keeps the current session instead of dropping to failure.
 			m.reconnectPending = false
-			m.setStatus(safeText(fmt.Sprintf("database switch failed: %v", message.err)))
+			m.setStatus(safeText(fmt.Sprintf("database switch failed: %v", redacted)))
 			return m, nil
 		}
 		if m.connection.component.Form.Focus == connectionFocusForm {
 			m.State = stateConnection
-			m.setStatus(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
+			m.setStatus(safeText(fmt.Sprintf("database unavailable: %v", redacted)))
 			m.overlay.formMode.Mode = formModeNormal
 			return m, nil
 		}
-		m.Fail(safeText(fmt.Sprintf("database unavailable: %v", message.err)))
+		m.Fail(safeText(fmt.Sprintf("database unavailable: %v", redacted)))
 		return m, nil
 	}
 	m.reconnectPending = false

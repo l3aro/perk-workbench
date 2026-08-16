@@ -469,7 +469,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := profile.Load(model.connection.component.Path)
+		loaded, _, _ := profile.Load(model.connection.component.Path)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -486,7 +486,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := profile.Load(model.connection.component.Path)
+		loaded, _, _ := profile.Load(model.connection.component.Path)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -505,7 +505,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.State != stateReady {
 			t.Fatalf("state = %v, want ready", model.State)
 		}
-		loaded, _ := profile.Load(model.connection.component.Path)
+		loaded, _, _ := profile.Load(model.connection.component.Path)
 		assertOneUUIDv7Profile(t, loaded)
 		closeOpened(model)
 	})
@@ -522,7 +522,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 		if model.connectionID != "" {
 			t.Fatalf("failed open set connection ID %q", model.connectionID)
 		}
-		loaded, _ := profile.Load(model.connection.component.Path)
+		loaded, _, _ := profile.Load(model.connection.component.Path)
 		if len(loaded) != 0 {
 			t.Fatalf("failed open saved profiles = %#v, want none", loaded)
 		}

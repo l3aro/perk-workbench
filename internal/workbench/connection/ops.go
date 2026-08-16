@@ -66,6 +66,10 @@ func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, err
 		}
 	}
 	connection.Extras = maps.Clone(m.Form.Values.Extras)
+	// Carry the fail-closed marker through the edit round-trip: a field
+	// still holding its retained undecryptable blob must never be saved
+	// (Save refuses it until the user re-enters the value).
+	connection.Undecryptable = maps.Clone(m.Form.Values.Undecryptable)
 	// Reuse or generate the opaque profile identity. Editing a profile
 	// keeps its ID; a new profile that matches an existing one reuses that
 	// ID so its scoped chat/query history survives; otherwise mint a
@@ -99,7 +103,9 @@ func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, err
 		connections = append(connections, existing)
 	}
 	m.SetProfiles(connections)
-	m.Save()
+	if err := m.Save(); err != nil {
+		return profile.Profile{}, err
+	}
 	return connection, nil
 }
 
@@ -120,6 +126,7 @@ func (m *Model) LoadValues(connection profile.Profile) {
 	m.Form.Values.ReadOnly = connection.ReadOnly
 	m.Form.Values.Pass = connection.Pass
 	m.Form.Values.Extras = maps.Clone(connection.Extras)
+	m.Form.Values.Undecryptable = maps.Clone(connection.Undecryptable)
 }
 
 // Delete removes the given profile from the recent list.

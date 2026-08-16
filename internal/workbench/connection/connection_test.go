@@ -1,7 +1,9 @@
 package connection
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/go-sql-driver/mysql"
@@ -218,5 +220,55 @@ func TestExtras_roundTripThroughProfile(t *testing.T) {
 	recorded.Extras["schema"] = "mutated"
 	if m.Form.Values.Extras["schema"] != "public" {
 		t.Fatal("recorded profile aliases the form extras map")
+	}
+}
+
+// --- undecryptable-blob fail-closed round-trip ---------------------------
+
+func TestLoadValues_carriesUndecryptableMarker(t *testing.T) {
+	model := New()
+	blob := "enc:v2:" + strings.Repeat("A", 100)
+	saved := profile.Profile{Driver: DriverMySQL, Name: "Prod", Host: "h", Port: "3306", User: "u", Pass: blob}
+	saved.Undecryptable = map[string]string{"pass": blob}
+	model.LoadValues(saved)
+	if got := model.Form.Values.Undecryptable["pass"]; got != blob {
+		t.Fatalf("form marker = %q, want the retained blob carried", got)
+	}
+	if model.Form.Values.Pass != blob {
+		t.Fatalf("form pass = %q, want the retained blob (never a literal)", model.Form.Values.Pass)
+	}
+}
+
+func TestRecord_retainedBlobRefusesSaveUntilReentered(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	blob := "enc:v2:" + strings.Repeat("B", 100)
+	model := New()
+	model.Path = filepath.Join(t.TempDir(), "connections.json")
+	model.Form.Values.Driver = DriverMySQL
+	model.Form.Values.Name = "Prod"
+	model.Form.Values.Host, model.Form.Values.Port, model.Form.Values.User = "h", "3306", "u"
+	model.Form.Values.Pass = blob
+	model.Form.Values.Undecryptable = map[string]string{"pass": blob}
+
+	// An untouched retained blob must never be re-wrapped as a literal.
+	if _, err := model.Record("", false); err == nil || !strings.Contains(err.Error(), "undecryptable") {
+		t.Fatalf("Record error = %v, want the undecryptable refusal", err)
+	}
+	if _, err := os.Stat(model.Path); !os.IsNotExist(err) {
+		t.Fatalf("refused save still wrote %s", model.Path)
+	}
+
+	// Re-entering the password clears the refusal and saves normally.
+	model.Form.Values.Pass = "fresh-password"
+	recorded, err := model.Record("", false)
+	if err != nil {
+		t.Fatalf("Record after re-entering: %v", err)
+	}
+	if recorded.Pass != "fresh-password" {
+		t.Fatalf("recorded pass = %q, want the re-entered value", recorded.Pass)
+	}
+	loaded, _, secretFail := profile.Load(model.Path)
+	if secretFail || len(loaded) != 1 || loaded[0].Pass != "fresh-password" {
+		t.Fatalf("loaded = %#v/%t, want the re-entered password persisted", loaded, secretFail)
 	}
 }

@@ -321,11 +321,21 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	model.connection.component.Path, _ = profile.Path()
 	model.configPath = ConfigPath()
 	var migrated bool
-	profiles, migrated := profile.Load(model.connection.component.Path)
+	profiles, migrated, secretFail := profile.Load(model.connection.component.Path)
 	model.connection.component.SetProfiles(profiles)
-	if migrated {
+	if migrated && !secretFail {
 		// Best-effort: persist the assigned legacy profile IDs immediately.
+		// Skipped when a stored secret could not be decrypted: Save
+		// refuses to rewrite undecryptable blobs (fail closed, never
+		// destructive), so nothing is persisted until the user re-enters
+		// the affected password.
 		model.connection.component.Save()
+	}
+	if secretFail {
+		// Surface the load failure state: the affected profile's stored
+		// password could not be decrypted and will not be rewritten
+		// until the user re-enters it.
+		model.setStatus("a saved profile's password could not be decrypted; re-enter it to save")
 	}
 	// Route every logged event into the notification popup pipeline.
 	log.SetNotifier(notification.EnqueueLogEntry)
@@ -500,7 +510,7 @@ func (s *browseState) reset() {
 // and filter inputs.
 func (s *connectionState) reset() {
 	s.component.Path, _ = profile.Path()
-	profiles, _ := profile.Load(s.component.Path)
+	profiles, _, _ := profile.Load(s.component.Path)
 	s.component.SetProfiles(profiles)
 	s.component.Recent.ResetFilter()
 	s.component.RecentFilter.SetValue("")

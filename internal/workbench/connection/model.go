@@ -103,11 +103,13 @@ func (m *Model) SetProfiles(profiles []profile.Profile) {
 }
 
 // Save persists the current profile list, best-effort like the original
-// callers.
-func (m Model) Save() {
-	if m.Path != "" {
-		_ = profile.Save(m.Path, m.Profiles)
+// callers; it returns the persistence error so callers that must know
+// (Record) can surface it.
+func (m Model) Save() error {
+	if m.Path == "" {
+		return nil
 	}
+	return profile.Save(m.Path, m.Profiles)
 }
 
 // Selected returns the profile under the recent list cursor, if any.

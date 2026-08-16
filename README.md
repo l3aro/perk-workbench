@@ -64,6 +64,36 @@ Accepted `DB_CONNECTION` values are `sqlite`, `mysql`, and `pgsql`. SQLite requi
 | `DB_USERNAME` | `mysql`/`pgsql`: yes | — |
 | `DB_PASSWORD` | no | empty |
 
+## Credential storage
+
+Connection profiles are saved to `connections.json` under your user
+config directory (`~/.config/perk-workbench/`). Literal passwords are
+encrypted at rest with AES-256-GCM using a key in `secret.key` inside
+the same directory; each ciphertext is bound to its profile and field,
+and the directory and files are locked down to 0700/0600. Connection
+targets that carry credentials — `redis://user:pass@host`,
+`mongodb://user:pass@host/db`, `postgres://user@host/db?password=…`,
+`mysql:user:pass@tcp(host:3306)/db` — are encrypted the same way;
+non-credential targets (file paths, database names) stay plaintext and
+readable.
+
+**Threat model.** The key and the ciphertext live under the same
+user-owned directory, so encryption protects against accidental
+disclosure and copies of your config (backups, shared screenshots,
+misplaced files) — **not** against an attacker with your account
+access, who can read both. Env and file references are the stronger
+separation:
+
+```bash
+perk-workbench                # with DB_PASSWORD set, or
+# ${MY_PASSWORD} / file:///path/to/secret in the connection form
+```
+
+A stored password that cannot be decrypted (tampered file, replaced
+key) is never shown as plaintext and is never rewritten: the app
+reports it and refuses to save until you re-enter the value, so a
+transient key problem cannot silently destroy your stored ciphertext.
+
 ## Features
 
 | | |

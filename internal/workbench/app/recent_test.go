@@ -26,7 +26,7 @@ func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 
 	// When
 	model.recordConnection("")
-	loaded, _ := profile.Load(model.connection.component.Path)
+	loaded, _, _ := profile.Load(model.connection.component.Path)
 
 	// Then
 	if len(loaded) != 2 {
@@ -65,7 +65,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	if err := profile.Save(path, model.connection.component.Profiles); err != nil {
 		t.Fatalf("saving connection profiles: %v", err)
 	}
-	loaded, _ := profile.Load(path)
+	loaded, _, _ := profile.Load(path)
 
 	// Then — verify password is encrypted (not plaintext) in the JSON file
 	var stored []struct{ Pass string }
@@ -544,7 +544,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	if err := profile.Save(model.connection.component.Path, model.connection.component.Profiles); err != nil {
 		t.Fatalf("saving profiles: %v", err)
 	}
-	loaded, _ := profile.Load(model.connection.component.Path)
+	loaded, _, _ := profile.Load(model.connection.component.Path)
 	if len(loaded) != 1 || loaded[0].ID != prof.ID {
 		t.Fatalf("loaded profiles = %#v, want the saved ID preserved", loaded)
 	}
@@ -552,7 +552,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	// Editing an existing profile carries its ID into the form and re-record
 	// preserves it (simulating an edited-and-saved profile).
 	model2 := New("", context.Background(), testOpen, false)
-	model2.connection.component.Profiles, _ = profile.Load(model2.connection.component.Path)
+	model2.connection.component.Profiles, _, _ = profile.Load(model2.connection.component.Path)
 	_ = model2.connection.component.Recent.SetItems(connection.RecentListItems(model2.connection.component.Profiles))
 	command := model2.editSelectedRecentConnection()
 	model2 = resolveConnectionCommand(model2, command)
@@ -575,7 +575,7 @@ func TestConnectionProfiles_generatesAndPreservesUUIDv7ID(t *testing.T) {
 	if err := profile.Save(model2.connection.component.Path, model2.connection.component.Profiles); err != nil {
 		t.Fatalf("saving profiles: %v", err)
 	}
-	persisted, _ := profile.Load(model2.connection.component.Path)
+	persisted, _, _ := profile.Load(model2.connection.component.Path)
 	if len(persisted) != 2 || persisted[0].ID != model2.connection.component.Profiles[0].ID {
 		t.Fatalf("persisted profiles = %#v, want two with the new ID first", persisted)
 	}
@@ -596,7 +596,7 @@ func TestConnectionProfiles_legacyJSONProfileReceivesPersistedID(t *testing.T) {
 	}
 
 	// When — loaded and rebuilt through New
-	loaded, migrated := profile.Load(path)
+	loaded, migrated, _ := profile.Load(path)
 	if !migrated {
 		t.Fatal("legacy profile load reported no migration")
 	}
@@ -606,7 +606,7 @@ func TestConnectionProfiles_legacyJSONProfileReceivesPersistedID(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 
 	// Then — New persisted the assigned ID immediately
-	persisted, _ := profile.Load(model.connection.component.Path)
+	persisted, _, _ := profile.Load(model.connection.component.Path)
 	if len(persisted) != 1 || persisted[0].ID != model.connection.component.Profiles[0].ID {
 		t.Fatalf("persisted profiles = %#v, want the migrated ID %q on disk", persisted, model.connection.component.Profiles[0].ID)
 	}

@@ -64,6 +64,9 @@ type Form struct {
 // FormValues holds the editable form fields. ID is the opaque profile
 // scope: never displayed or user-edited. Extras carries driver-specific
 // fields beyond the fixed set, persisted in the profile.
+// Undecryptable mirrors profile.Profile.Undecryptable through an edit
+// round-trip: a field still holding its retained undecryptable blob is
+// refused by Save until the user re-enters it.
 type FormValues struct {
 	ID            string
 	Driver        Driver
@@ -75,6 +78,7 @@ type FormValues struct {
 	ReadOnly      bool
 	Action        string
 	Extras        map[string]string
+	Undecryptable map[string]string
 }
 
 // NewForm builds a fresh connection form with the disabled TLS defaults.
@@ -157,7 +161,7 @@ func (f *Form) Rebuild() tea.Cmd {
 			fields = append(fields, f.buildField(field))
 		}
 		if hasPasswordField(spec.Form.Fields) {
-			fields = append(fields, huh.NewNote().Title("Privacy").Description("Profiles save connection details. Passwords are stored encrypted at rest. Use ${ENV_VAR} or file:///path to reference secrets without persistence."))
+			fields = append(fields, huh.NewNote().Title("Privacy").Description("Profiles save connection details. Literal passwords are stored encrypted with a key in the same user-only config directory: this protects accidental disclosure and backups, not an attacker with your account access. Use ${ENV_VAR} or file:///path to reference secrets without persistence."))
 		}
 	}
 	fields = append(fields,

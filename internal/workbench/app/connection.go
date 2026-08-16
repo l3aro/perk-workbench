@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -136,7 +137,7 @@ func (m Model) testConnection() tea.Cmd {
 		defer cancel()
 		opened, err := m.openDatabase(ctx, target)
 		if err != nil {
-			return connectionTestMsg{err: err}
+			return connectionTestMsg{err: err, target: target}
 		}
 		return connectionTestMsg{err: opened.Service.Close(), target: target}
 	}
@@ -179,7 +180,10 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if test, ok := message.(connectionTestMsg); ok {
 		if test.err != nil {
-			log.Error("connection test", test.err)
+			// Redact credential material before it reaches the event
+			// log and the notification pipeline.
+			redacted := redactCredentials(test.err.Error(), m.connectionSecrets(test.target))
+			log.Error("connection test", errors.New(redacted))
 			m.setStatus("connection test failed")
 			return m, nil
 		}

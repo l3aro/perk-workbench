@@ -1073,3 +1073,26 @@ func writeExecutableAt(t *testing.T, path string) string {
 	}
 	return path
 }
+
+// TestPluginReport_neverCarriesCredentialMaterial pins the report shape:
+// inspect and doctor JSON documents carry declarative data and process
+// diagnostics only — never password keys, userinfo URLs, or any '@'-
+// containing credential material (the lifecycle never exchanges form
+// values, so nothing can leak into the report).
+func TestPluginReport_neverCarriesCredentialMaterial(t *testing.T) {
+	helper := setupPluginHelper(t, nil)
+	for _, args := range [][]string{
+		{"plugin", "inspect", "--json", helper},
+		{"plugin", "doctor", "--json", helper},
+	} {
+		status, stdout, stderr := runCLI(t, args...)
+		if status != 0 || stderr != "" {
+			t.Fatalf("%v = %d, stderr %q", args, status, stderr)
+		}
+		for _, forbidden := range []string{`"pass":`, `"password":`, "@", "://"} {
+			if strings.Contains(stdout, forbidden) {
+				t.Fatalf("%v report contains %q: %s", args, forbidden, stdout)
+			}
+		}
+	}
+}
