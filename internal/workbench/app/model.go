@@ -47,6 +47,7 @@ const (
 	tabIndexes     = core.TabIndexes
 	tabForeignKeys = core.TabForeignKeys
 	tabDiagram     = core.TabDiagram
+	tabCustom      = core.TabCustom
 )
 
 type Model struct {
@@ -75,6 +76,7 @@ type Model struct {
 	schema           schemaState
 	queryLog         queryState
 	browse           browseState
+	workspace        workspaceViewState
 	notifications    notificationState
 	overlay          overlayState
 	layout           layoutState
@@ -174,6 +176,42 @@ type browseState struct {
 	backend   browse.Backend
 }
 
+// workspaceViewState owns the driver-advertised workspace tab state for
+// the active connection: the advertisement, the active custom view, and
+// the loaded plain-data result. The workbench owns lifecycle, rendering,
+// input, and cancellation; drivers only answer bounded table data.
+type workspaceViewState struct {
+	// advertised is the active connection's workspace capability; nil
+	// keeps the legacy per-product tab policy exactly.
+	advertised *sharedsql.WorkspaceCapability
+	// active is the id of the currently selected custom view; "" means
+	// a standard tab is selected (m.Tab holds it).
+	active string
+	// loading is true while a view request is in flight.
+	loading bool
+	// err is the last failed load's error; nil after a success or
+	// before the first load. The prior result stays visible until a
+	// newer success replaces it, mirroring failed query retention.
+	err error
+	// result is the last successful load's table data.
+	result sharedsql.Result
+	// status is the rendered status line of the loaded result.
+	status string
+	// table renders the loaded result with the shared results styles.
+	table table.Model
+	// numericColumns mirrors result.ColumnTypes for alignment.
+	numericColumns []bool
+	// selectedColumn is the cursor's column; offset pans the viewport.
+	selectedColumn int
+	offset         int
+	// tag stamps every load; a reply carrying a stale tag (superseded
+	// by a newer load, selection, target change, or connection change)
+	// is dropped.
+	tag uint64
+	// cancel cancels the in-flight view request, if any.
+	cancel context.CancelFunc
+}
+
 // notificationState owns the notification pipeline's root half: history
 // persistence through the lazy store, the resolved data path, and the
 // status-popup suppression flags. The popup/detail/history state, queue,
@@ -265,6 +303,7 @@ type databaseOpenedMsg struct {
 	info          sharedsql.DatabaseInfo
 	objects       []sharedsql.SchemaObject
 	queryLanguage sharedsql.QueryLanguage
+	workspace     *sharedsql.WorkspaceCapability
 	reconnect     bool // sidebar database switch: no new connection profile
 	openTag       uint64
 	err           error
@@ -305,6 +344,9 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 		},
 		browse: browseState{
 			component: browse.New(),
+		},
+		workspace: workspaceViewState{
+			table: newResultsTable(),
 		},
 		overlay: overlayState{
 			formMode: &formModeController{},
@@ -373,6 +415,7 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 			info:          opened.Info,
 			objects:       opened.Objects,
 			queryLanguage: opened.QueryLanguage,
+			workspace:     opened.Workspace,
 			reconnect:     reconnect,
 			openTag:       tag,
 		}
@@ -635,7 +678,7 @@ func (m Model) applySchemaEvent(event schema.Event, cmd tea.Cmd) (tea.Model, tea
 		}
 		return m, tea.Batch(cmd, copyQueryLogStatement(e.Text))
 	case schema.TableSelected:
-		cmd := m.selectSchemaTableBy(e.Table)
+		cmd := m.selectSchemaTableBy(e.Table, e.Database, e.Schema)
 		return m, cmd
 	case schema.DatabaseSelected:
 		return m, tea.Batch(cmd, m.selectDatabaseTarget(e.Database))
@@ -739,9 +782,17 @@ func (m *Model) openSchemaComponentMenu(menu schema.Menu) {
 }
 
 // selectSchemaTableBy opens the given qualified table in the workflow and
-// loads its structure, index, and foreign-key data.
-func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
+// loads its structure, index, and foreign-key data. database and schema
+// are the table's structured identifiers (the sidebar item's, or the
+// scope object's derived ones); they are preserved on the workspace
+// target so table-scoped custom workspace views receive the full
+// structured target.
+func (m *Model) selectSchemaTableBy(table, database, schema string) tea.Cmd {
 	m.SelectTable(table)
+	// SelectTable replaces the workspace target; restore the table's
+	// structured scope identifiers on top of the table kind.
+	m.WorkspaceTarget.Database, m.WorkspaceTarget.Schema = database, schema
+	m.resetWorkspaceView()
 	// The landing tab is configurable; SelectTable defaults to the
 	// Structure (columns) tab.
 	m.Tab = tableOpenTargetTab()
@@ -760,7 +811,7 @@ func (m *Model) selectSchemaTableBy(table string) tea.Cmd {
 
 // selectSchemaTable opens the table of the given sidebar item.
 func (m *Model) selectSchemaTable(item schema.Item) tea.Cmd {
-	return m.selectSchemaTableBy(m.schemaTable(item))
+	return m.selectSchemaTableBy(m.schemaTable(item), item.Database, item.Schema)
 }
 
 // selectDatabaseTarget opens a database scope in the workflow: table-owned
@@ -790,9 +841,21 @@ func (m *Model) selectSchemaTarget(database, schema string) tea.Cmd {
 
 // selectScopeObject opens a scope-listed table/view through the existing
 // table-selection path, loading its structure, index, and foreign-key
-// data like any other table open.
+// data like any other table open. The object's structured identifiers —
+// its database, and the schema prefix of a PostgreSQL qualified name —
+// are preserved so table-scoped custom workspace views receive the full
+// structured target.
 func (m *Model) selectScopeObject(object sharedsql.SchemaObject) tea.Cmd {
-	return m.selectSchemaTableBy(m.scopeObjectTable(object))
+	database, schema := object.Database, ""
+	if database == "" {
+		database = m.WorkspaceTarget.Database
+	}
+	if m.databaseInfo.Product == "PostgreSQL" {
+		if before, _, ok := strings.Cut(m.scopeObjectTable(object), "."); ok {
+			schema = before
+		}
+	}
+	return m.selectSchemaTableBy(m.scopeObjectTable(object), database, schema)
 }
 
 // scopeObjectTable returns the qualified table name of a scope object:
@@ -855,9 +918,12 @@ func filterSchemaObjects(objects []sharedsql.SchemaObject, keep func(sharedsql.S
 
 // clearTableWorkspace drops table-owned browse/structure/form state so a
 // database/schema scope starts from an empty object view: no row fetch is
-// pending, the table tabs hold no stale structure data, and an open table
-// form (sidebar selection can arrive mid-edit) closes with its input mode.
+// pending, the table tabs hold no stale structure data, an open table
+// form (sidebar selection can arrive mid-edit) closes with its input
+// mode, and any custom workspace view selection resets to the standard
+// tab row.
 func (m *Model) clearTableWorkspace() {
+	m.resetWorkspaceView()
 	m.browse.component.Reset()
 	m.browse.component.Settings = browse.Settings{}
 	m.browse.component.Structure = nil

@@ -104,6 +104,59 @@ export interface QueryLanguage {
   commands?: QueryCommand[];
 }
 
+/**
+ * One standard workspace tab a driver may explicitly advertise support
+ * for: columns, indexes, foreign_keys, or diagram. Query and Browse are
+ * never part of the advertisement — they keep their per-scope policy at
+ * every driver. The list must be duplicate-free and bounded to the four
+ * fixed values.
+ */
+export const StandardWorkspaceTab: {
+  readonly Columns: 'columns';
+  readonly Indexes: 'indexes';
+  readonly ForeignKeys: 'foreign_keys';
+  readonly Diagram: 'diagram';
+};
+export type StandardWorkspaceTab = typeof StandardWorkspaceTab[keyof typeof StandardWorkspaceTab];
+
+/** Structured-target scope kinds a custom workspace view may serve. */
+export const WorkspaceViewScope: {
+  readonly Database: 'database';
+  readonly Schema: 'schema';
+  readonly Table: 'table';
+};
+export type WorkspaceViewScope = typeof WorkspaceViewScope[keyof typeof WorkspaceViewScope];
+
+/**
+ * One plain-data workspace tab a driver advertises: a stable nonblank
+ * id, a human label rendered in the workspace tab row, and the scopes
+ * it serves (one or more of database/schema/table). It carries no code
+ * and no UI: the host owns lifecycle, rendering, input, and
+ * cancellation; the driver only answers bounded table data for the
+ * view. IDs and labels must be nonblank, bounded, control-free, and
+ * unique case-insensitively within the list; scopes must be nonempty
+ * and duplicate-free. The list is capped at 8.
+ */
+export interface CustomWorkspaceView {
+  id: string;
+  label: string;
+  scopes: WorkspaceViewScope[];
+}
+
+/**
+ * Optional workspace tab advertisement of one driver: the subset of
+ * standard tabs it supports (columns, indexes, foreign_keys, diagram)
+ * and its ordered custom plain-data views. Absent (or null) keeps the
+ * host's legacy per-product tab policy exactly, so old plugins load
+ * unchanged. When present it is authoritative: standard tabs are
+ * filtered by the explicit advertisement and custom views are appended
+ * after them in advertised order, filtered by scope.
+ */
+export interface WorkspaceCapability {
+  standard_tabs?: StandardWorkspaceTab[];
+  custom_views?: CustomWorkspaceView[];
+}
+
 export interface Capabilities {
   name: string;
   display: string;
@@ -111,6 +164,7 @@ export interface Capabilities {
   form?: FormSpec | null;
   query_language?: QueryLanguage | null;
   write_capabilities: WriteCapabilities;
+  workspace?: WorkspaceCapability | null;
 }
 
 /** Connection-form values sent to buildTarget (database.FormValues). */
@@ -428,6 +482,25 @@ export interface BrowseTableRequest {
   table: string;
   options: BrowseOptions;
 }
+
+/**
+ * The active structured target of one workspace view request: the scope
+ * kind plus the identifiers the kind needs. `kind` must be database,
+ * schema, or table.
+ */
+export interface WorkspaceViewTarget {
+  kind: WorkspaceViewScope;
+  database?: string;
+  schema?: string;
+  table?: string;
+}
+
+/** One plain-data custom workspace view request (params minus session_id). */
+export interface WorkspaceViewRequest {
+  view_id: string;
+  target: WorkspaceViewTarget;
+}
+
 export type EmptyRequest = Record<string, never>;
 
 /**
@@ -458,6 +531,13 @@ export interface SessionService {
   dropColumn(request: DropRequest, context: HandlerContext): void | Promise<void>;
   addColumn(request: AddColumnRequest, context: HandlerContext): void | Promise<void>;
   browseTable(request: BrowseTableRequest, context: HandlerContext): Result | Promise<Result>;
+  /**
+   * Optional custom workspace view, required when capabilities.workspace
+   * .custom_views is a non-empty array and rejected when it is not.
+   * Returns bounded table data for one advertised view and the active
+   * structured target.
+   */
+  workspaceView?(request: WorkspaceViewRequest, context: HandlerContext): Result | Promise<Result>;
   /**
    * Optional row writer, required when capabilities.write_capabilities
    * .row_writer is true and rejected when it is not.

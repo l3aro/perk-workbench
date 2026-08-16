@@ -189,6 +189,7 @@ var perkV1Methods = map[string]struct {
 	methodBrowseTable:                {params: "browseParams", result: "result"},
 	methodRowWrite:                   {params: "rowWriteParams", result: "rowWriteResponse"},
 	methodDocumentWrite:              {params: "documentWriteParams", result: "documentWriteResponse"},
+	methodWorkspaceView:              {params: "workspaceViewParams", result: "result"},
 }
 
 func TestPerkV1Schema_structure(t *testing.T) {
@@ -363,6 +364,91 @@ func asciiTokenPatternMatches(pattern, value string) bool {
 		}
 	}
 	return true
+}
+
+// TestPerkV1Schema_workspaceDefs pins the canonical shape of the
+// optional workspace capability: standard tabs come from a fixed four-
+// value enum, custom views are capped with bounded control-free
+// id/label and nonempty unique scopes, and workspace_view params carry
+// session_id/view_id/target with a kind enum — the schema-tight
+// counterparts of the Go invariant set in
+// internal/sql/workspace_view.go.
+func TestPerkV1Schema_workspaceDefs(t *testing.T) {
+	schema := parseObject(t, "schema.json", readJSONFile(t, filepath.Join(perkV1Dir(t), "schema.json")))
+	defs := schemaDefs(t, schema)
+
+	custom := defObject(t, defs, "customWorkspaceView")
+	if !reflect.DeepEqual(requiredOf(t, custom), []string{"id", "label", "scopes"}) {
+		t.Fatalf("customWorkspaceView required = %v", requiredOf(t, custom))
+	}
+	customProps := propsOf(t, custom)
+	for field, wantMax := range map[string]int{
+		"id": sharedsql.MaxWorkspaceViewIDRunes, "label": sharedsql.MaxWorkspaceViewLabelRunes,
+	} {
+		prop, ok := customProps[field].(map[string]any)
+		if !ok {
+			t.Fatalf("customWorkspaceView has no %s property", field)
+		}
+		if maxLength, ok := prop["maxLength"].(float64); !ok || int(maxLength) != wantMax {
+			t.Fatalf("%s maxLength = %v, want %d", field, prop["maxLength"], wantMax)
+		}
+		pattern, ok := prop["pattern"].(string)
+		if !ok || !controlFreePatternMatches(pattern, "Key Info") || controlFreePatternMatches(pattern, "a\nb") {
+			t.Fatalf("%s pattern %q is not the schema's control-free pattern", field, pattern)
+		}
+	}
+	scopes, ok := customProps["scopes"].(map[string]any)
+	if !ok {
+		t.Fatal("customWorkspaceView has no scopes property")
+	}
+	if scopes["minItems"].(float64) != 1 || scopes["maxItems"].(float64) != 3 {
+		t.Fatalf("scopes bounds = %v/%v, want 1..3", scopes["minItems"], scopes["maxItems"])
+	}
+	if uniq, ok := scopes["uniqueItems"].(bool); !ok || !uniq {
+		t.Fatal("scopes must declare uniqueItems")
+	}
+
+	workspace := defObject(t, defs, "workspaceCapability")
+	workspaceProps := propsOf(t, workspace)
+	standardTabs, ok := workspaceProps["standard_tabs"].(map[string]any)
+	if !ok {
+		t.Fatal("workspaceCapability has no standard_tabs property")
+	}
+	if standardTabs["maxItems"].(float64) != 4 {
+		t.Fatalf("standard_tabs maxItems = %v, want 4", standardTabs["maxItems"])
+	}
+	if uniq, ok := standardTabs["uniqueItems"].(bool); !ok || !uniq {
+		t.Fatal("standard_tabs must declare uniqueItems")
+	}
+	standardTab := defObject(t, defs, "workspaceStandardTab")
+	enum := stringList(standardTab["enum"])
+	want := []string{"columns", "indexes", "foreign_keys", "diagram"}
+	if !reflect.DeepEqual(sorted(enum), sorted(want)) {
+		t.Fatalf("standard tab enum = %v, want %v", enum, want)
+	}
+	customViews, ok := workspaceProps["custom_views"].(map[string]any)
+	if !ok {
+		t.Fatal("workspaceCapability has no custom_views property")
+	}
+	if customViews["maxItems"].(float64) != sharedsql.MaxCustomWorkspaceViews {
+		t.Fatalf("custom_views maxItems = %v, want %d", customViews["maxItems"], sharedsql.MaxCustomWorkspaceViews)
+	}
+
+	scope := defObject(t, defs, "workspaceViewScope")
+	if !reflect.DeepEqual(sorted(stringList(scope["enum"])), []string{"database", "schema", "table"}) {
+		t.Fatalf("view scope enum = %v, want database/schema/table", scope["enum"])
+	}
+	params := defObject(t, defs, "workspaceViewParams")
+	if !reflect.DeepEqual(requiredOf(t, params), []string{"session_id", "view_id", "target"}) {
+		t.Fatalf("workspaceViewParams required = %v", requiredOf(t, params))
+	}
+	target := defObject(t, defs, "workspaceViewTarget")
+	if !reflect.DeepEqual(requiredOf(t, target), []string{"kind"}) {
+		t.Fatalf("workspaceViewTarget required = %v", requiredOf(t, target))
+	}
+	if ref, ok := propsOf(t, target)["kind"].(map[string]any)["$ref"].(string); !ok || ref != "#/$defs/workspaceViewScope" {
+		t.Fatalf("target kind = %v, want the workspaceViewScope def", propsOf(t, target)["kind"])
+	}
 }
 
 func TestPerkV1Schema_methodCoverage(t *testing.T) {
@@ -710,6 +796,8 @@ func decodeRequestParams(method string, raw json.RawMessage) error {
 		return json.Unmarshal(raw, &rowWriteParams{})
 	case methodDocumentWrite:
 		return json.Unmarshal(raw, &documentWriteParams{})
+	case methodWorkspaceView:
+		return json.Unmarshal(raw, &workspaceViewParams{})
 	}
 	return fmt.Errorf("no params DTO for %s", method)
 }
@@ -757,7 +845,7 @@ func decodeResult(method string, raw json.RawMessage) error {
 		return json.Unmarshal(raw, &buildTargetResult{})
 	case methodOpen:
 		return json.Unmarshal(raw, &openResult{})
-	case methodExecute, methodExecuteReadOnly, methodBrowseTable:
+	case methodExecute, methodExecuteReadOnly, methodBrowseTable, methodWorkspaceView:
 		return json.Unmarshal(raw, &sharedsql.Result{})
 	case methodListSchema:
 		return json.Unmarshal(raw, &[]sharedsql.SchemaObject{})
@@ -794,7 +882,7 @@ func validateResult(method string, raw json.RawMessage) error {
 		if result.ProtocolVersion != ProtocolVersion {
 			return fmt.Errorf("protocol version %d, want %d", result.ProtocolVersion, ProtocolVersion)
 		}
-	case methodExecute, methodExecuteReadOnly, methodBrowseTable:
+	case methodExecute, methodExecuteReadOnly, methodBrowseTable, methodWorkspaceView:
 		var result sharedsql.Result
 		if err := json.Unmarshal(raw, &result); err != nil {
 			return err

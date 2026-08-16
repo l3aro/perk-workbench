@@ -91,6 +91,11 @@ type Opened struct {
 	// connection's statements; a zero value (no advertisement) falls
 	// back to the legacy SQL defaults in the UI.
 	QueryLanguage QueryLanguage
+	// Workspace advertises the connection's workspace tab capability:
+	// the standard tabs it supports beyond Query/Browse and its custom
+	// plain-data views. Nil keeps the legacy per-product tab policy
+	// exactly; a non-nil advertisement is authoritative for the tab row.
+	Workspace *WorkspaceCapability
 }
 
 type Result struct {

@@ -119,6 +119,10 @@ func contextLabel(m Model) string {
 				return "Indexes"
 			case tabForeignKeys:
 				return "Foreign Keys"
+			case tabCustom:
+				if label := m.activeWorkspaceViewLabel(); label != "" {
+					return label
+				}
 			}
 		case focusQueryLog:
 			return "Query Log"
@@ -316,10 +320,14 @@ func commandAvailable(id CommandID, def commandDef, m Model) bool {
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil
 	case "cell.view":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused()) ||
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabCustom && m.workspace.table.Focused())
 	case "cell.yank":
 		return (m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabBrowse && !m.browse.component.ObjectListMode() && !m.browse.component.Form.Active() && m.browse.component.FilterForm == nil) ||
-			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused())
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery && !m.overlay.formMode.Editing() && m.queryLog.results.Focused()) ||
+			(m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabCustom && m.workspace.table.Focused())
+	case "workspace.view_reload":
+		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabCustom && !m.formActive()
 	case "indexes.filter", "indexes.reset", "indexes.toggle_diagram", "indexes.create", "indexes.edit", "indexes.delete":
 		return m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabIndexes && !m.schema.component.Structure.IndexForm.Active()
 	case "diagram.depth_up", "diagram.depth_down":

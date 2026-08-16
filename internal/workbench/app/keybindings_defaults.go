@@ -28,6 +28,7 @@ var defaultDefs = []commandDef{
 	{id: "workspace.escape_to_schema", scope: scopeView, keys: []string{"esc"}, label: "back"},
 	{id: "workspace.tab_next", scope: scopeView, keys: []string{"L"}, label: "next tab"},
 	{id: "workspace.tab_prev", scope: scopeView, keys: []string{"H"}, label: "prev tab"},
+	{id: "workspace.view_reload", scope: scopeView, keys: []string{"r"}, label: "reload view"},
 
 	// ── Schema tab (view) ───────────────────────────────────────
 	{id: "schema.filter", scope: scopeView, keys: []string{"/"}, label: "filter tables"},

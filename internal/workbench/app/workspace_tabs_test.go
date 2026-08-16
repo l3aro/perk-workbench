@@ -72,15 +72,19 @@ func TestWorkspaceTabs_targetPolicy(t *testing.T) {
 			model.Focus = focusWorkspace
 			tabs := model.workspaceTabs()
 			for index, tab := range tabs {
-				model.Tab = tab
+				model.Tab = tab.standard
+				model.workspace.active = ""
 				updated, _ := model.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
-				if got := updated.(Model).Tab; got != tabs[(index+1)%len(tabs)] {
-					t.Fatalf("L from %v = %v, want %v", tab, got, tabs[(index+1)%len(tabs)])
+				got := updated.(Model)
+				if !got.workspaceTabActive(tabs[(index+1)%len(tabs)]) {
+					t.Fatalf("L from %v = tab %v, want %v", tab, got.Tab, tabs[(index+1)%len(tabs)])
 				}
-				model.Tab = tab
+				model.Tab = tab.standard
+				model.workspace.active = ""
 				updated, _ = model.Update(tea.KeyPressMsg{Code: 'H', Text: "H"})
-				if got := updated.(Model).Tab; got != tabs[(index+len(tabs)-1)%len(tabs)] {
-					t.Fatalf("H from %v = %v, want %v", tab, got, tabs[(index+len(tabs)-1)%len(tabs)])
+				got = updated.(Model)
+				if !got.workspaceTabActive(tabs[(index+len(tabs)-1)%len(tabs)]) {
+					t.Fatalf("H from %v = tab %v, want %v", tab, got.Tab, tabs[(index+len(tabs)-1)%len(tabs)])
 				}
 			}
 		})
@@ -99,7 +103,7 @@ func TestWorkspaceTabs_targetPolicy(t *testing.T) {
 				x := cx + widths[i]/2
 				updated, _ := model.Update(tea.MouseClickMsg{X: x, Y: tabY, Button: tea.MouseLeft})
 				model = updated.(Model)
-				if model.Tab != tab {
+				if !model.workspaceTabActive(tab) {
 					t.Fatalf("click on %q = tab %v, want %v", tc.labels[i], model.Tab, tab)
 				}
 				cx += widths[i]

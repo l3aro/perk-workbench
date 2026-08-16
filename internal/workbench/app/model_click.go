@@ -292,10 +292,8 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 		cx := 2 // pane left border (1) + left padding (1)
 		for i, tab := range tabs {
 			if x >= cx && x < cx+widths[i] {
-				if m.Tab != tab {
-					m.Tab = tab
-					m.focusActiveTable()
-					return m, tea.Batch(m.loadPendingBrowse(), m.loadPendingDiagram())
+				if !m.workspaceTabActive(tab) {
+					return m, m.selectWorkspaceTab(tab)
 				}
 				return m, nil
 			}

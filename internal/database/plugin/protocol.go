@@ -85,6 +85,7 @@ const (
 	methodBrowseTable                = "perk/v1/browse_table"
 	methodRowWrite                   = "perk/v1/row_write"
 	methodDocumentWrite              = "perk/v1/document_write"
+	methodWorkspaceView              = "perk/v1/workspace_view"
 )
 
 // request is the host-to-plugin envelope; params is a marshaled DTO.
@@ -237,6 +238,12 @@ type rowWriteParams struct {
 type documentWriteParams struct {
 	SessionID uint64                         `json:"session_id"`
 	Request   sharedsql.DocumentWriteRequest `json:"request"`
+}
+
+type workspaceViewParams struct {
+	SessionID uint64                        `json:"session_id"`
+	ViewID    string                        `json:"view_id"`
+	Target    sharedsql.WorkspaceViewTarget `json:"target"`
 }
 
 // cancelParams identifies the request a cancel notification targets.

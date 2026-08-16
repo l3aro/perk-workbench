@@ -241,6 +241,31 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabForeignKeys, m.schemaSnapshot(), &m.layout.foreignKeysOffset)
 				m.schema.component = component
 				return m.applySchemaEvent(event, cmd)
+			case tabCustom:
+				if keyPress, ok := message.(tea.KeyPressMsg); ok {
+					if m.workspace.table.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+						row := m.workspace.table.Cursor()
+						col := m.workspace.selectedColumn
+						display := ""
+						if row >= 0 && row < len(m.workspace.table.Rows()) && col >= 0 && col < len(m.workspace.table.Rows()[row]) {
+							display = m.workspace.table.Rows()[row][col]
+						}
+						raw := m.rawCellValue("view", row, col, display)
+						return m, m.openCellViewer(m.workspace.table, col, raw)
+					}
+					if m.workspace.table.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
+						return m, m.copyWorkspaceViewCell()
+					}
+					if m.keybindings.Match(keyPress, "workspace.view_reload", []scope{scopeView, scopeGlobal}) {
+						return m, m.reloadWorkspaceView()
+					}
+					if moveTableCell(&m.workspace.table, &m.workspace.selectedColumn, &m.workspace.offset, m.layout.tableViewportWidth, keyPress) {
+						return m, nil
+					}
+				}
+				if m.workspace.table.Focused() {
+					m.workspace.table, command = m.workspace.table.Update(message)
+				}
 			}
 			return m, command
 		case focusQueryLog:

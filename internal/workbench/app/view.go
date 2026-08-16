@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"image"
 	"strings"
 
@@ -454,7 +455,7 @@ func (m Model) workspaceView() string {
 	tabs := m.workspaceTabs()
 	labels, _ := m.workspaceTabMeta(tabs)
 	for index, tab := range tabs {
-		if tab == m.Tab {
+		if m.workspaceTabActive(tab) {
 			labels[index] = connectionActionSelectedStyle.Render(labels[index])
 		} else {
 			labels[index] = statusStyle.Render(labels[index])
@@ -474,6 +475,8 @@ func (m Model) workspaceView() string {
 		content = m.foreignKeysView()
 	case tabDiagram:
 		content = m.diagramView()
+	case tabCustom:
+		content = m.customWorkspaceView()
 	}
 	modeLine := m.modeBadge()
 	if m.layout.compact && m.SelectedTable != "" {
@@ -547,6 +550,24 @@ func (m Model) structureView() string {
 func (m Model) browseView() string {
 	m.browse.component.SetPage(m.BrowsePage)
 	return m.browse.component.View(browseLayout(m))
+}
+
+// customWorkspaceView renders the active custom workspace view: the
+// loading, error, and empty states, or the plain-data table with its
+// status line. All driver-provided text passes through the safe-text
+// path (safeText/cellText), so a plugin can never inject ANSI or control
+// output.
+func (m Model) customWorkspaceView() string {
+	switch {
+	case m.workspace.loading:
+		return "loading…"
+	case m.workspace.err != nil:
+		return safeText(fmt.Sprintf("view unavailable: %v", m.workspace.err))
+	case !m.workspaceViewHasData():
+		return "no data"
+	}
+	content := tableViewportViewWithAlignment(m.workspace.table, m.workspace.numericColumns, m.workspace.offset, m.layout.tableViewportWidth, m.workspace.selectedColumn)
+	return content + "\n" + chrome.PaneStatus("", m.workspace.status, m.layout.tableViewportWidth)
 }
 
 // diagramView renders the full-scope relationship diagram for database

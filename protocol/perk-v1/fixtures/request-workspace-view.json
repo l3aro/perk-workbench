@@ -1,0 +1,14 @@
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "method": "perk/v1/workspace_view",
+  "params": {
+    "session_id": 7,
+    "view_id": "keys",
+    "target": {
+      "kind": "table",
+      "database": "pluginkv",
+      "table": "widgets"
+    }
+  }
+}

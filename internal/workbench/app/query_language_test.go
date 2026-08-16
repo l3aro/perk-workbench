@@ -52,7 +52,7 @@ func TestOpen_appliesQueryLanguage(t *testing.T) {
 	if got := model.queryLog.editor.text.input.Placeholder; got != "Enter a command…" {
 		t.Fatalf("editor placeholder = %q, want the advertised placeholder", got)
 	}
-	if got := model.workspaceTabLabel(tabQuery); got != "Command" {
+	if got := model.workspaceTabLabel(standardWorkspaceTabItem(tabQuery)); got != "Command" {
 		t.Fatalf("query tab label = %q, want Command", got)
 	}
 
@@ -139,15 +139,15 @@ func TestOpen_switchDropsVisibleCompletionOverlay(t *testing.T) {
 // advertisement falls back to SQL.
 func TestWorkspaceTabLabel_queryUsesEditorLanguage(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
-	if got := model.workspaceTabLabel(tabQuery); got != "SQL" {
+	if got := model.workspaceTabLabel(standardWorkspaceTabItem(tabQuery)); got != "SQL" {
 		t.Fatalf("default query tab label = %q, want SQL", got)
 	}
 	model.queryLanguage = testRedisLanguage
-	if got := model.workspaceTabLabel(tabQuery); got != "Command" {
+	if got := model.workspaceTabLabel(standardWorkspaceTabItem(tabQuery)); got != "Command" {
 		t.Fatalf("query tab label = %q, want Command", got)
 	}
 	model.queryLanguage = sharedsql.QueryLanguage{}
-	if got := model.workspaceTabLabel(tabQuery); got != "SQL" {
+	if got := model.workspaceTabLabel(standardWorkspaceTabItem(tabQuery)); got != "SQL" {
 		t.Fatalf("zero-advertisement query tab label = %q, want the SQL fallback", got)
 	}
 }

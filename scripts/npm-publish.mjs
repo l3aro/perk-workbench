@@ -68,6 +68,7 @@ async function main() {
     'npm/plugin-sdk/test/cancel.test.cjs',
     'npm/plugin-sdk/test/capabilities.test.cjs',
     'npm/plugin-sdk/test/exports.test.cjs',
+    'npm/plugin-sdk/test/workspace_view.test.cjs',
   ]);
   const archives = await packageArchives(release.version);
   publishPackages(archives, release.distTag);

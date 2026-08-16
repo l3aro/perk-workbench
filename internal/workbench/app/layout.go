@@ -87,7 +87,7 @@ func (m *Model) applyLayout(width, height int) {
 		m.overlay.explainPicker.setWidth(m.layout.tableViewportWidth)
 	}
 	if m.layout.tableViewportWidth != previousViewportWidth {
-		for _, resultTable := range []*table.Model{&m.queryLog.results, &m.schema.component.Structure.Table, &m.browse.component.Table, &m.schema.component.Structure.Indexes, &m.schema.component.Structure.ForeignKeys} {
+		for _, resultTable := range []*table.Model{&m.queryLog.results, &m.schema.component.Structure.Table, &m.browse.component.Table, &m.schema.component.Structure.Indexes, &m.schema.component.Structure.ForeignKeys, &m.workspace.table} {
 			columns := resultTable.Columns()
 			titles := make([]string, len(columns))
 			for index, column := range columns {
@@ -119,5 +119,7 @@ func (m *Model) applyLayout(width, height int) {
 	revealTableColumn(m.queryLog.results, m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth)
 	m.layout.indexesOffset = tableOffset(m.schema.component.Structure.Indexes, m.layout.indexesOffset, m.layout.tableViewportWidth)
 	m.layout.foreignKeysOffset = tableOffset(m.schema.component.Structure.ForeignKeys, m.layout.foreignKeysOffset, m.layout.tableViewportWidth)
+	m.workspace.offset = tableOffset(m.workspace.table, m.workspace.offset, m.layout.tableViewportWidth)
+	m.workspace.table.SetHeight(max(m.layout.workspaceHeight-7, 2))
 	m.queryLog.component.RevealColumn(m.layout.tableViewportWidth)
 }

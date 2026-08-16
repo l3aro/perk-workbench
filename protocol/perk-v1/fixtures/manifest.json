@@ -33,6 +33,12 @@
       "method": "perk/v1/document_write"
     },
     {
+      "file": "request-workspace-view.json",
+      "valid": true,
+      "ref": "#/$defs/request",
+      "method": "perk/v1/workspace_view"
+    },
+    {
       "file": "notification-cancel.json",
       "valid": true,
       "ref": "#/$defs/notification",
@@ -91,6 +97,12 @@
       "valid": true,
       "ref": "#/$defs/success",
       "method": "perk/v1/document_write"
+    },
+    {
+      "file": "success-workspace-view.json",
+      "valid": true,
+      "ref": "#/$defs/success",
+      "method": "perk/v1/workspace_view"
     },
     {
       "file": "error-operation.json",

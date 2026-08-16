@@ -29,7 +29,7 @@ func tableTargetKey(tab workspaceTab) string {
 func (m Model) tableTargetName(tab workspaceTab) string {
 	switch tab {
 	case tabStructure, tabBrowse, tabQuery, tabIndexes, tabForeignKeys:
-		return m.workspaceTabLabel(tab)
+		return m.workspaceTabLabel(standardWorkspaceTabItem(tab))
 	}
 	return ""
 }

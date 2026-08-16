@@ -20,6 +20,8 @@ func (m *Model) rawCellValue(tableType string, row, col int, displayValue string
 		source = m.browse.component.Result.UntruncatedRows
 	case "results":
 		source = m.queryLog.resultsRaw
+	case "view":
+		source = m.workspace.result.UntruncatedRows
 	}
 	if row >= 0 && row < len(source) && col >= 0 && col < len(source[row]) {
 		if cell := source[row][col]; cell != nil {

@@ -1,0 +1,38 @@
+{
+  "jsonrpc": "2.0",
+  "id": 6,
+  "result": {
+    "columns": [
+      "key",
+      "ttl"
+    ],
+    "column_types": [
+      "string",
+      "integer"
+    ],
+    "rows": [
+      [
+        "user:2",
+        "3600"
+      ],
+      [
+        "user:3",
+        null
+      ]
+    ],
+    "untruncated_rows": [
+      [
+        "user:2",
+        "3600"
+      ],
+      [
+        "user:3",
+        null
+      ]
+    ],
+    "rows_affected": 0,
+    "has_more": false,
+    "duration_ns": 900,
+    "truncated": false
+  }
+}

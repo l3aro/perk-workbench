@@ -86,6 +86,7 @@ const METHOD = {
   browseTable: 'perk/v1/browse_table',
   rowWrite: 'perk/v1/row_write',
   documentWrite: 'perk/v1/document_write',
+  workspaceView: 'perk/v1/workspace_view',
 };
 
 // Session-service handlers the SDK requires on every opened session,
@@ -224,6 +225,116 @@ function normalizeQueryLanguage(queryLanguage) {
 // case-insensitive equality.
 const COMMAND_NAME_RE = /^[A-Za-z0-9_]+$/;
 
+// Bounds every workspace tab advertisement must respect, mirroring
+// internal/sql/workspace_view.go. A plugin can never force an unbounded
+// tab row or handshake frame.
+const MAX_CUSTOM_WORKSPACE_VIEWS = 8;
+const MAX_WORKSPACE_VIEW_ID_RUNES = 64;
+const MAX_WORKSPACE_VIEW_LABEL_RUNES = 32;
+
+const STANDARD_WORKSPACE_TABS = new Set(['columns', 'indexes', 'foreign_keys', 'diagram']);
+const WORKSPACE_VIEW_KINDS = new Set(['database', 'schema', 'table']);
+
+// normalizeWorkspaceCapability makes the optional workspace shape
+// explicit: a present (non-null, non-undefined) object is validated and
+// returned with only non-empty lists (matching the Go host's omitempty
+// DTOs), so an explicitly advertised empty workspace — which means no
+// standard tabs beyond Query/Browse and no custom views — stays
+// distinguishable from an absent advertisement (whose legacy per-product
+// tab policy applies). Standard tabs come from the fixed four-value set
+// without duplicates; custom views are capped with nonblank bounded
+// control-free ids and labels, unique case-insensitively, plus nonempty
+// duplicate-free scopes from database/schema/table.
+function normalizeWorkspaceCapability(workspace) {
+  if (workspace === undefined || workspace === null) {
+    return undefined;
+  }
+  requireObject(workspace, 'capabilities.workspace');
+  const normalized = {};
+  const standardTabs = workspace.standard_tabs;
+  if (standardTabs !== undefined) {
+    if (!Array.isArray(standardTabs)) {
+      throw new TypeError('capabilities.workspace.standard_tabs must be an array');
+    }
+    const seen = new Set();
+    const tabs = [];
+    for (const tab of standardTabs) {
+      if (typeof tab !== 'string' || !STANDARD_WORKSPACE_TABS.has(tab)) {
+        throw new TypeError('capabilities.workspace.standard_tabs must contain only columns, indexes, foreign_keys, diagram');
+      }
+      if (seen.has(tab)) {
+        throw new TypeError('capabilities.workspace.standard_tabs must not contain duplicates');
+      }
+      seen.add(tab);
+      tabs.push(tab);
+    }
+    if (tabs.length > 0) normalized.standard_tabs = tabs;
+  }
+  const customViews = workspace.custom_views;
+  if (customViews !== undefined) {
+    if (!Array.isArray(customViews)) {
+      throw new TypeError('capabilities.workspace.custom_views must be an array');
+    }
+    if (customViews.length > MAX_CUSTOM_WORKSPACE_VIEWS) {
+      throw new TypeError(`capabilities.workspace.custom_views must not exceed ${MAX_CUSTOM_WORKSPACE_VIEWS} entries`);
+    }
+    const seenIDs = new Set();
+    const seenLabels = new Set();
+    const views = [];
+    for (let i = 0; i < customViews.length; i++) {
+      const view = customViews[i];
+      requireObject(view, `capabilities.workspace.custom_views[${i}]`);
+      const id = view.id;
+      const label = view.label;
+      const scopes = view.scopes;
+      if (typeof id !== 'string' || id.trim() === '') {
+        throw new TypeError(`capabilities.workspace.custom_views[${i}].id must be a nonblank string`);
+      }
+      if (runeLength(id) > MAX_WORKSPACE_VIEW_ID_RUNES) {
+        throw new TypeError(`capabilities.workspace.custom_views[${i}].id must not exceed ${MAX_WORKSPACE_VIEW_ID_RUNES} runes`);
+      }
+      requireControlFree(id, `capabilities.workspace.custom_views[${i}].id`);
+      if (typeof label !== 'string' || label.trim() === '') {
+        throw new TypeError(`capabilities.workspace.custom_views[${i}].label must be a nonblank string`);
+      }
+      if (runeLength(label) > MAX_WORKSPACE_VIEW_LABEL_RUNES) {
+        throw new TypeError(`capabilities.workspace.custom_views[${i}].label must not exceed ${MAX_WORKSPACE_VIEW_LABEL_RUNES} runes`);
+      }
+      requireControlFree(label, `capabilities.workspace.custom_views[${i}].label`);
+      if (!Array.isArray(scopes) || scopes.length === 0) {
+        throw new TypeError(`capabilities.workspace.custom_views[${i}].scopes must be a nonempty array`);
+      }
+      const scopeSeen = new Set();
+      const normalizedScopes = [];
+      for (const scope of scopes) {
+        if (typeof scope !== 'string' || !WORKSPACE_VIEW_KINDS.has(scope)) {
+          throw new TypeError(`capabilities.workspace.custom_views[${i}].scopes must contain only database, schema, table`);
+        }
+        if (scopeSeen.has(scope)) {
+          throw new TypeError(`capabilities.workspace.custom_views[${i}].scopes must not contain duplicates`);
+        }
+        scopeSeen.add(scope);
+        normalizedScopes.push(scope);
+      }
+      const idKey = id.toLowerCase();
+      if (seenIDs.has(idKey)) {
+        throw new TypeError('capabilities.workspace.custom_views ids must be unique case-insensitively');
+      }
+      seenIDs.add(idKey);
+      const labelKey = label.toLowerCase();
+      if (seenLabels.has(labelKey)) {
+        throw new TypeError('capabilities.workspace.custom_views labels must be unique case-insensitively');
+      }
+      seenLabels.add(labelKey);
+      views.push({ id, label, scopes: normalizedScopes });
+    }
+    if (views.length > 0) normalized.custom_views = views;
+  }
+  return normalized;
+}
+
+// normalizeQueryCommands makes the optional query_language.commands
+
 function normalizeQueryCommands(commands) {
   if (!Array.isArray(commands)) {
     throw new TypeError('capabilities.query_language.commands must be an array');
@@ -271,9 +382,10 @@ function normalizeQueryCommands(commands) {
 }
 
 // normalizeCapabilities makes the wire shape explicit: write_capabilities
-// is always present, document is omitted when null, and query_language is
-// omitted when absent or null — matching the Go host DTOs
-// (database.Capabilities, sharedsql.WriteCapabilities).
+// is always present, document is omitted when null, query_language is
+// omitted when absent or null, and workspace is omitted when absent or
+// null — matching the Go host DTOs (database.Capabilities,
+// sharedsql.WriteCapabilities, sharedsql.WorkspaceCapability).
 function normalizeCapabilities(capabilities) {
   requireObject(capabilities, 'capabilities');
   const write = capabilities.write_capabilities;
@@ -285,11 +397,17 @@ function normalizeCapabilities(capabilities) {
     writeCapabilities.document = write.document;
   }
   const queryLanguage = normalizeQueryLanguage(capabilities.query_language);
+  const workspace = normalizeWorkspaceCapability(capabilities.workspace);
   const normalized = { ...capabilities, write_capabilities: writeCapabilities };
   if (queryLanguage === undefined) {
     delete normalized.query_language;
   } else {
     normalized.query_language = queryLanguage;
+  }
+  if (workspace === undefined) {
+    delete normalized.workspace;
+  } else {
+    normalized.workspace = workspace;
   }
   return normalized;
 }
@@ -317,6 +435,13 @@ const ValueKind = Object.freeze({
 });
 const RowWriteOperation = Object.freeze({ Insert: 'insert', Update: 'update', Delete: 'delete' });
 const DocumentWriteOperation = Object.freeze({ Read: 'read', Insert: 'insert', Replace: 'replace', Delete: 'delete' });
+const StandardWorkspaceTab = Object.freeze({
+  Columns: 'columns',
+  Indexes: 'indexes',
+  ForeignKeys: 'foreign_keys',
+  Diagram: 'diagram',
+});
+const WorkspaceViewScope = Object.freeze({ Database: 'database', Schema: 'schema', Table: 'table' });
 
 class PluginServer {
   constructor(definition, options) {
@@ -365,6 +490,10 @@ class PluginServer {
     }
     if (this.capabilities.write_capabilities.document != null) {
       this._supported.add(METHOD.documentWrite);
+    }
+    const customViews = this.capabilities.workspace && this.capabilities.workspace.custom_views;
+    if (customViews !== undefined && customViews.length > 0) {
+      this._supported.add(METHOD.workspaceView);
     }
     output.on('error', () => this._terminate());
     this._readLoop();
@@ -650,6 +779,8 @@ class PluginServer {
         return this._sessionCall(params, 'rowWrite', this._object(params, 'request'), context);
       case METHOD.documentWrite:
         return this._sessionCall(params, 'documentWrite', this._object(params, 'request'), context);
+      case METHOD.workspaceView:
+        return this._sessionCall(params, 'workspaceView', this._workspaceViewRequest(params), context);
       default:
         throw new Error(`perk-workbench-plugin-sdk: unsupported method ${method}`);
     }
@@ -686,6 +817,13 @@ class PluginServer {
     }
     if (write.document == null && typeof service.documentWrite === 'function') {
       throw new TypeError('service.documentWrite is not supported without capabilities.write_capabilities.document');
+    }
+    const customViews = this.capabilities.workspace && this.capabilities.workspace.custom_views;
+    if (customViews !== undefined && customViews.length > 0 && typeof service.workspaceView !== 'function') {
+      throw new TypeError('service.workspaceView is required when capabilities.workspace.custom_views is non-empty');
+    }
+    if ((customViews === undefined || customViews.length === 0) && typeof service.workspaceView === 'function') {
+      throw new TypeError('service.workspaceView is not supported without capabilities.workspace.custom_views');
     }
     if (typeof opened.info !== 'object' || opened.info === null || Array.isArray(opened.info)) {
       throw new TypeError('open must return an info object');
@@ -731,6 +869,26 @@ class PluginServer {
 
   _table(params) {
     return requireString(params && params.table, 'table');
+  }
+
+  // _workspaceViewRequest validates one workspace_view request: a
+  // nonblank view id and a target object whose kind is one of
+  // database/schema/table, mirroring the host's WorkspaceViewTarget.
+  _workspaceViewRequest(params) {
+    const viewID = requireString(params && params.view_id, 'view_id');
+    if (viewID.trim() === '') {
+      throw new InvalidParamsError('view_id must be a nonblank string');
+    }
+    const target = requireObject(params && params.target, 'target');
+    const kind = target.kind;
+    if (typeof kind !== 'string' || !WORKSPACE_VIEW_KINDS.has(kind)) {
+      throw new InvalidParamsError('target.kind must be one of database, schema, table');
+    }
+    const normalized = { kind };
+    if (typeof target.database === 'string' && target.database !== '') normalized.database = target.database;
+    if (typeof target.schema === 'string' && target.schema !== '') normalized.schema = target.schema;
+    if (typeof target.table === 'string' && target.table !== '') normalized.table = target.table;
+    return { view_id: viewID, target: normalized };
   }
 
   _name(params, key) {
@@ -793,4 +951,6 @@ module.exports = {
   ValueKind,
   RowWriteOperation,
   DocumentWriteOperation,
+  StandardWorkspaceTab,
+  WorkspaceViewScope,
 };

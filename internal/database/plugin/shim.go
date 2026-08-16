@@ -274,23 +274,31 @@ func resultFromWrite(method string, write sharedsql.WriteResult) (sharedsql.Resu
 
 // wrapService layers the capability wrappers over the session proxy so
 // optional-interface discovery — sql.RowWriter,
-// sql.DocumentReader/DocumentWriter, WriteCapabilitiesProvider — mirrors
-// the plugin's advertised capabilities. With no write capabilities the
+// sql.DocumentReader/DocumentWriter, WriteCapabilitiesProvider,
+// sql.WorkspaceViewProvider — mirrors the plugin's advertised
+// capabilities. With no write capabilities and no workspace views the
 // raw proxy is returned (it still satisfies sql.Service). When both
-// capabilities are present, the document layer wraps the row layer so
-// the returned service satisfies every interface at once.
+// write capabilities are present, the document layer wraps the row
+// layer so the returned service satisfies every interface at once; the
+// workspace-view layer wraps whatever write shape preceded it.
 func wrapService(proxy *sessionProxy, caps database.Capabilities) sharedsql.Service {
 	row := caps.WriteCapabilities.RowWriter
 	document := caps.WriteCapabilities.Document != nil
+	var service sharedsql.Service
 	switch {
 	case row && document:
-		return &documentRowWriter{rowWriter: &rowWriter{Service: proxy, proxy: proxy, caps: caps}}
+		service = &documentRowWriter{rowWriter: &rowWriter{Service: proxy, proxy: proxy, caps: caps}}
 	case row:
-		return &rowWriter{Service: proxy, proxy: proxy, caps: caps}
+		service = &rowWriter{Service: proxy, proxy: proxy, caps: caps}
 	case document:
-		return &documentWriter{Service: proxy, proxy: proxy, caps: caps}
+		service = &documentWriter{Service: proxy, proxy: proxy, caps: caps}
+	default:
+		service = proxy
 	}
-	return proxy
+	if caps.Workspace != nil && len(caps.Workspace.CustomViews) > 0 {
+		service = &workspaceViewer{Service: service, proxy: proxy}
+	}
+	return service
 }
 
 var (
@@ -306,7 +314,35 @@ var (
 	_ sharedsql.DocumentReader            = (*documentRowWriter)(nil)
 	_ sharedsql.DocumentWriter            = (*documentRowWriter)(nil)
 	_ sharedsql.WriteCapabilitiesProvider = (*documentRowWriter)(nil)
+	_ sharedsql.Service                   = (*workspaceViewer)(nil)
+	_ sharedsql.WorkspaceViewProvider     = (*workspaceViewer)(nil)
 )
+
+// workspaceViewer layers sql.WorkspaceViewProvider over a session for
+// plugins that advertise custom workspace views. A plugin that does not
+// advertise custom views never gets the wrapper: its sessions expose
+// only sql.Service, so the workbench never sends a perk/v1/workspace_view
+// request it cannot answer. A plugin that advertises custom views but
+// fails to answer the method gets an operation error (method not found),
+// surfaced in the view's error state — the advertisement mismatch is
+// never silent.
+type workspaceViewer struct {
+	sharedsql.Service
+	proxy *sessionProxy
+}
+
+func (w *workspaceViewer) WorkspaceView(ctx context.Context, request sharedsql.WorkspaceViewRequest) (sharedsql.Result, error) {
+	var result sharedsql.Result
+	err := w.proxy.call(ctx, methodWorkspaceView, workspaceViewParams{
+		SessionID: w.proxy.sessionID,
+		ViewID:    request.ViewID,
+		Target:    request.Target,
+	}, &result)
+	if err != nil {
+		return result, err
+	}
+	return result, checkStatementMetadata(methodWorkspaceView, result.Statement, result.StatementMetadata)
+}
 
 // rowWriter layers sql.RowWriter over a session for row-write-capable
 // plugins.

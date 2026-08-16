@@ -553,10 +553,10 @@ below are the JSON field names):
 
 | Area | SDK types |
 |---|---|
-| Capabilities & forms | `Capabilities`, `TargetPattern`, `FormSpec`, `FormField`, `FormOption`, `FormFieldKind`, `FormValidation`, `FormValues`, `QueryLanguage`, `WriteCapabilities`, `DocumentWriteCapability`, `DocumentFormat` |
-| Shared DTOs | `DatabaseInfo`, `SchemaObject`, `Result`, `ColumnInfo`, `ColumnDef`, `ColumnChange`, `IndexInfo`, `IndexChange`, `ForeignKeyInfo`, `ReferencingForeignKeyInfo`, `ForeignKeyChange`, `BrowseFilter`, `BrowseSort`, `BrowseOptions`, `DocumentPayload` |
+| Capabilities & forms | `Capabilities`, `TargetPattern`, `FormSpec`, `FormField`, `FormOption`, `FormFieldKind`, `FormValidation`, `FormValues`, `QueryLanguage`, `WriteCapabilities`, `DocumentWriteCapability`, `DocumentFormat`, `WorkspaceCapability`, `CustomWorkspaceView`, `StandardWorkspaceTab`, `WorkspaceViewScope` |
+| Shared DTOs | `DatabaseInfo`, `SchemaObject`, `Result`, `ColumnInfo`, `ColumnDef`, `ColumnChange`, `IndexInfo`, `IndexChange`, `ForeignKeyInfo`, `ReferencingForeignKeyInfo`, `ForeignKeyChange`, `BrowseFilter`, `BrowseSort`, `BrowseOptions`, `DocumentPayload`, `WorkspaceViewTarget`, `WorkspaceViewRequest` |
 | Row & document writes | `Value`, `ValueKind`, `NamedValue`, `RowValue`, `RowWriteOperation`, `RowWriteRequest`, `RowWriteResponse`, `DocumentWriteOperation`, `DocumentWriteRequest`, `DocumentWriteResponse` |
-| Handler contracts | `HandlerContext`, `StatementRequest`, `TableRequest`, `IndexChangeRequest`, `ReplaceIndexRequest`, `DropRequest`, `ForeignKeyChangeRequest`, `ReplaceForeignKeyRequest`, `ColumnChangeRequest`, `AddColumnRequest`, `BrowseTableRequest`, `EmptyRequest`, `BuildTargetResult`, `OpenResult`, `SessionService` |
+| Handler contracts | `HandlerContext`, `StatementRequest`, `TableRequest`, `IndexChangeRequest`, `ReplaceIndexRequest`, `DropRequest`, `ForeignKeyChangeRequest`, `ReplaceForeignKeyRequest`, `ColumnChangeRequest`, `AddColumnRequest`, `BrowseTableRequest`, `WorkspaceViewRequest`, `EmptyRequest`, `BuildTargetResult`, `OpenResult`, `SessionService` |
 | Entry points | `PluginDefinition`, `PluginServer`, `PluginServerOptions`, `createPluginServer` |
 | Errors | `ErrorKind`, `PluginOperationError`, `RequestCancelledError` |
 
@@ -639,6 +639,7 @@ Response (plugin → host):
 | `form` | `FormSpec` or null | Optional; omitted for target-only drivers (MongoDB-style, opened by target URL only). |
 | `query_language` | `QueryLanguage` or null | Optional; how the query editor presents this driver's statements. Omitted, null, or all-empty advertisements are normalized by the host to the legacy SQL default, so plugins written before this field existed keep working unchanged; a present-but-invalid advertisement rejects registration. |
 | `write_capabilities` | `WriteCapabilities` | Always present. Gates the optional `row_write`/`document_write` RPCs. |
+| `workspace` | `WorkspaceCapability` or null | Optional; the driver's workspace tab advertisement. Omitted (or null) keeps the host's legacy per-product tab policy exactly, so plugins written before this field existed load unchanged; a present-but-invalid advertisement rejects registration. Gates the optional `perk/v1/workspace_view` RPC. |
 
 `protocol_version` in the result must equal the requested version (1) or
 the plugin is rejected before registration.
@@ -733,6 +734,29 @@ directions when a session opens (handler required when advertised,
 | `perk/v1/row_write` | `{session_id, request}` | `RowWriteResponse` | `request: RowWriteRequest` |
 | `perk/v1/document_write` | `{session_id, request}` | `DocumentWriteResponse` | `request: DocumentWriteRequest` |
 
+### Optional workspace view RPC
+
+Advertised by a non-empty `workspace.custom_views`; the SDK enforces the
+match in both directions when a session opens (handler required when
+advertised, **rejected** when not). The host never sends this method to
+a plugin whose advertisement has no custom views.
+
+| Method | Params | Result | Handler request (params minus `session_id`) |
+|---|---|---|---|
+| `perk/v1/workspace_view` | `{session_id, view_id, target}` | `Result` | `{view_id, target: WorkspaceViewTarget}` |
+
+`perk/v1/workspace_view` executes one advertised custom view for the
+active structured target. It is a session operation like any other: the
+caller's context forwards cancellation as a `perk/v1/cancel`
+notification (see [Cancellation](#cancellation)), and the result follows
+the bounded table-result conventions of `Result` (at most 500 rows,
+display cells sanitized and capped at 300 runes). The host owns
+lifecycle, rendering, input, navigation, and cancellation; the driver
+only answers plain table data — no code, no ANSI, no keybindings, no
+executable templates ever cross the wire. A plugin that advertises
+custom views but answers with a method-not-found error surfaces the
+mismatch in the view's error state, never silently.
+
 ## Data types
 
 ### Capabilities and forms
@@ -799,6 +823,38 @@ legacy SQL default — `name: "SQL"`, `editor_label: "SQL"`,
 a present-but-invalid advertisement is **rejected** at registration,
 never silently defaulted. The protocol version is unchanged, so
 existing plugins (which omit the field) load exactly as before.
+
+**`WorkspaceCapability`** — `{standard_tabs?: string[], custom_views?:
+CustomWorkspaceView[]}`. The optional workspace tab advertisement:
+
+- `standard_tabs` — the subset of standard tabs the driver supports:
+  `"columns"`, `"indexes"`, `"foreign_keys"`, `"diagram"`. Query and
+  Browse are never part of the advertisement: those tabs keep their
+  per-scope policy at every driver. When the advertisement is present it
+  is authoritative — the visible standard tabs are the target-kind scope
+  set (table: Columns/Indexes/Foreign Keys; database/schema: Diagram)
+  filtered by this list, so a non-relational backend simply omits
+  `"foreign_keys"` (or advertises none). Duplicates and unknown values
+  are rejected.
+- `custom_views` — the ordered custom plain-data tabs. Each entry is
+  `{id: string, label: string, scopes: string[]}`: `id` is a stable
+  nonblank identifier (≤ 64 runes) echoed back on every
+  `perk/v1/workspace_view` request; `label` is the tab-row label (≤ 32
+  runes); `scopes` is a nonempty list of `"database"`, `"schema"`,
+  `"table"` (no duplicates) — the tab appears only while the active
+  workspace scope matches one of them. IDs and labels must be free of
+  control characters and unique case-insensitively within the list, and
+  the list is capped at 8 entries, so a plugin can never force an
+  unbounded tab row or handshake frame.
+
+An omitted or null `workspace` keeps the host's legacy per-product tab
+policy exactly — every built-in driver and every plugin written before
+this field existed renders the same tabs as before. A present-but-invalid
+advertisement is **rejected** at registration, never silently defaulted.
+A driver that advertises custom views must implement
+`perk/v1/workspace_view`; the SDK rejects an advertised session without
+the handler, and the host surfaces a missing method in the view's error
+state.
 
 ### Shared service DTOs
 
@@ -889,6 +945,20 @@ Operator values: `""` (none), `LIKE`, `NOT LIKE`, `PATTERN`,
 `NOT PATTERN`, `=`, `!=`, `<`, `<=`, `>`, `>=`, `IS NULL`, `IS NOT NULL`.
 
 **`BrowseSort`** — `{column: string, descending: boolean}`.
+
+**`WorkspaceViewTarget`** — `{kind: string, database?: string, schema?:
+string, table?: string}`. The active structured target of one
+`perk/v1/workspace_view` request. `kind` is one of `"database"`,
+`"schema"`, `"table"`; the identifier fields carry the scope's names:
+`database`/`schema` for the scope kinds, and for a table target the
+qualified `table` plus the table's `database` and `schema` identifiers
+preserved at selection time (a PostgreSQL sidebar table, for example,
+carries both its database and its schema).
+
+**`WorkspaceViewRequest`** — the `perk/v1/workspace_view` handler
+request (params minus `session_id`): `{view_id: string, target:
+WorkspaceViewTarget}`. `view_id` is a nonblank advertised custom view id;
+`target` is the active structured target at load time.
 
 ### Row and document writes
 

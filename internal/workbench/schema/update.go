@@ -302,7 +302,7 @@ func (m Model) SchemaSelect(snapshot Snapshot) (Model, Event, tea.Cmd) {
 		}
 		return m, DatabaseSelected{Database: item.Database}, cmd
 	}
-	return m, TableSelected{Table: m.TableName(item, snapshot)}, nil
+	return m, TableSelected{Table: m.TableName(item, snapshot), Database: item.Database, Schema: item.Schema}, nil
 }
 
 // databaseRootSelectable reports whether a database root can become the
@@ -447,7 +447,7 @@ func (m Model) HandleSchemaClick(x, contentY int, layout uikit.Layout, snapshot 
 		}
 		return m, DatabaseSelected{Database: item.Database}, cmd
 	}
-	return m, TableSelected{Table: m.TableName(item, snapshot)}, nil
+	return m, TableSelected{Table: m.TableName(item, snapshot), Database: item.Database, Schema: item.Schema}, nil
 }
 
 // ClickClock is the root's shared click-tracking state for the workspace

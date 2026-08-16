@@ -147,6 +147,11 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, m.toggleTab(false)
 		}
 		return m, nil
+	case "workspace.view_reload":
+		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace && m.Tab == tabCustom {
+			return m, m.reloadWorkspaceView()
+		}
+		return m, nil
 	case "schema.select_table":
 		if m.State == stateReady && m.Focus == focusSchema {
 			component, event, cmd := m.schema.component.SchemaSelect(m.schemaSnapshot())

@@ -68,3 +68,67 @@ func TestValidateCapabilities_commandCatalog(t *testing.T) {
 		t.Fatal("over-cap catalog accepted")
 	}
 }
+
+// TestValidateCapabilities_workspaceAdvertisement: the conformance
+// runner's capabilities validation enforces the same workspace tab
+// invariants as registration — a fixed standard-tab set without
+// duplicates and capped custom views with nonblank bounded control-free
+// case-insensitively-unique ids and labels plus nonempty duplicate-free
+// valid scopes — so a real plugin handshake can never smuggle an
+// unbounded or malformed tab advertisement past the suite.
+func TestValidateCapabilities_workspaceAdvertisement(t *testing.T) {
+	base := database.Capabilities{
+		Name:    "kv",
+		Display: "KV",
+		Targets: []database.TargetPattern{{Prefix: "kv:"}},
+	}
+	workspace := func(ws *sharedsql.WorkspaceCapability) error {
+		caps := base
+		caps.Workspace = ws
+		return validateCapabilities(caps)
+	}
+
+	if err := workspace(&sharedsql.WorkspaceCapability{
+		StandardTabs: []sharedsql.StandardWorkspaceTab{sharedsql.StandardWorkspaceTabColumns},
+		CustomViews: []sharedsql.CustomWorkspaceView{
+			{ID: "keys", Label: "Keys", Scopes: []sharedsql.WorkspaceViewKind{sharedsql.WorkspaceViewTable}},
+		},
+	}); err != nil {
+		t.Fatalf("valid workspace advertisement rejected: %v", err)
+	}
+	if err := workspace(nil); err != nil {
+		t.Fatalf("absent workspace advertisement rejected: %v", err)
+	}
+
+	for _, test := range []struct {
+		name string
+		ws   *sharedsql.WorkspaceCapability
+	}{
+		{name: "unknown standard tab", ws: &sharedsql.WorkspaceCapability{StandardTabs: []sharedsql.StandardWorkspaceTab{"relations"}}},
+		{name: "duplicate standard tab", ws: &sharedsql.WorkspaceCapability{StandardTabs: []sharedsql.StandardWorkspaceTab{sharedsql.StandardWorkspaceTabColumns, sharedsql.StandardWorkspaceTabColumns}}},
+		{name: "duplicate custom view id", ws: &sharedsql.WorkspaceCapability{CustomViews: []sharedsql.CustomWorkspaceView{
+			{ID: "Keys", Label: "One", Scopes: []sharedsql.WorkspaceViewKind{sharedsql.WorkspaceViewTable}},
+			{ID: "keys", Label: "Two", Scopes: []sharedsql.WorkspaceViewKind{sharedsql.WorkspaceViewTable}},
+		}}},
+		{name: "invalid scope", ws: &sharedsql.WorkspaceCapability{CustomViews: []sharedsql.CustomWorkspaceView{
+			{ID: "keys", Label: "Keys", Scopes: []sharedsql.WorkspaceViewKind{"collection"}},
+		}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := workspace(test.ws); err == nil {
+				t.Fatal("invalid workspace advertisement accepted")
+			}
+		})
+	}
+
+	over := &sharedsql.WorkspaceCapability{CustomViews: make([]sharedsql.CustomWorkspaceView, sharedsql.MaxCustomWorkspaceViews+1)}
+	for i := range over.CustomViews {
+		over.CustomViews[i] = sharedsql.CustomWorkspaceView{
+			ID: "view" + strings.Repeat("x", i), Label: "View",
+			Scopes: []sharedsql.WorkspaceViewKind{sharedsql.WorkspaceViewTable},
+		}
+	}
+	if err := workspace(over); err == nil {
+		t.Fatal("over-cap custom view list accepted")
+	}
+}

@@ -883,3 +883,131 @@ func waitForMarkerLines(t *testing.T, path string, want int) []string {
 	t.Fatalf("marker file %s never reached %d lines", path, want)
 	return nil
 }
+
+// TestProxy_workspaceViewWrapper: the workspace-view wrapper is exposed
+// exactly when the plugin advertises custom workspace views, and the
+// wrapped method bridges a real RPC round trip carrying the view id and
+// the structured target. Absent metadata keeps the raw session (no
+// optional interface), so old plugins never receive a workspace_view
+// request they cannot answer.
+func TestProxy_workspaceViewWrapper(t *testing.T) {
+	workspace := `{"standard_tabs":["columns"],"custom_views":[{"id":"keys","label":"Keys","scopes":["database","table"]}]}`
+	for _, test := range []struct {
+		name      string
+		workspace string
+		want      bool
+	}{
+		{name: "absent metadata", want: false},
+		{name: "custom views advertised", workspace: workspace, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("PERK_PLUGIN_HELPER", "1")
+			setEnv(t, "PERK_PLUGIN_WORKSPACE", test.workspace)
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var shim database.Shim
+			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
+				[]string{executable}, func(s database.Shim) error {
+					shim = s
+					return nil
+				})
+			if len(errs) != 0 {
+				t.Fatalf("Load errors = %v, want none", errs)
+			}
+			t.Cleanup(func() { _ = loader.Close() })
+
+			service, err := shim.Open(context.Background(), "pluginkv:x")
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			provider, ok := service.(sharedsql.WorkspaceViewProvider)
+			if ok != test.want {
+				t.Fatalf("WorkspaceViewProvider = %t, want %t", ok, test.want)
+			}
+			if !ok {
+				return
+			}
+			result, err := provider.WorkspaceView(context.Background(), sharedsql.WorkspaceViewRequest{
+				ViewID: "keys",
+				Target: sharedsql.WorkspaceViewTarget{Kind: sharedsql.WorkspaceViewDatabase, Database: "pluginkv"},
+			})
+			if err != nil {
+				t.Fatalf("WorkspaceView: %v", err)
+			}
+			if len(result.Rows) != 1 || result.Rows[0][0] == nil || *result.Rows[0][0] != "keys" {
+				t.Fatalf("WorkspaceView rows = %#v, want the view id echoed back", result.Rows)
+			}
+			if result.Rows[0][1] == nil || *result.Rows[0][1] != "database" {
+				t.Fatalf("WorkspaceView target cell = %#v, want %q", result.Rows[0][1], "database")
+			}
+		})
+	}
+}
+
+// TestProxy_canceledWorkspaceView: canceling the caller's context
+// notifies the plugin with the original request id and the call returns
+// context.Canceled — the workspace view is a session operation with the
+// same cancellation semantics as every other session call.
+func TestProxy_canceledWorkspaceView(t *testing.T) {
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	t.Setenv("PERK_PLUGIN_BEHAVIOR", "block_workspace_view")
+	setEnv(t, "PERK_PLUGIN_WORKSPACE", `{"custom_views":[{"id":"keys","label":"Keys","scopes":["table"]}]}`)
+	marker := filepath.Join(t.TempDir(), "events.log")
+	t.Setenv("PERK_PLUGIN_MARKER", marker)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var shim database.Shim
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
+		[]string{executable}, func(s database.Shim) error {
+			shim = s
+			return nil
+		})
+	if len(errs) != 0 {
+		t.Fatalf("Load errors = %v, want none", errs)
+	}
+	t.Cleanup(func() { _ = loader.Close() })
+
+	service, err := shim.Open(context.Background(), "pluginkv:svc")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	provider, ok := service.(sharedsql.WorkspaceViewProvider)
+	if !ok {
+		t.Fatal("service is not a WorkspaceViewProvider")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	var viewErr error
+	go func() {
+		defer close(done)
+		_, viewErr = provider.WorkspaceView(ctx, sharedsql.WorkspaceViewRequest{
+			ViewID: "keys",
+			Target: sharedsql.WorkspaceViewTarget{Kind: sharedsql.WorkspaceViewTable, Table: "widgets"},
+		})
+	}()
+	waitForMarkerLines(t, marker, 1) // workspace_view reached the plugin
+	cancel()
+	waitForMarkerLines(t, marker, 2) // cancel notification reached the plugin
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WorkspaceView did not return after cancel")
+	}
+	if !errors.Is(viewErr, context.Canceled) {
+		t.Fatalf("WorkspaceView error = %v, want context.Canceled", viewErr)
+	}
+	lines := waitForMarkerLines(t, marker, 2)
+	if viewID := strings.TrimPrefix(lines[0], "workspace-view "); viewID == lines[0] {
+		t.Fatalf("marker line %q, want workspace-view <id>", lines[0])
+	} else if cancelID := strings.TrimPrefix(lines[1], "cancel "); cancelID == lines[1] {
+		t.Fatalf("marker line %q, want cancel <id>", lines[1])
+	} else if viewID != cancelID {
+		t.Fatalf("cancel id %q does not match workspace-view id %q", cancelID, viewID)
+	}
+}

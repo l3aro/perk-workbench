@@ -48,6 +48,13 @@ type Spec struct {
 	// falls back to its defaults); built-ins and registered shims always
 	// carry an explicit one.
 	QueryLanguage QueryLanguage
+
+	// Workspace advertises the driver's workspace tab capability: the
+	// standard tabs it supports beyond Query/Browse and its ordered
+	// custom plain-data views. Nil keeps the legacy per-product tab
+	// policy exactly; a present advertisement is authoritative for the
+	// tab row.
+	Workspace *sharedsql.WorkspaceCapability
 }
 
 // TargetPattern declaratively addresses one target form of a driver. A
@@ -195,6 +202,9 @@ func validateSpec(spec Spec) error {
 	if err := validateQueryLanguage(spec.QueryLanguage); err != nil {
 		return fmt.Errorf("database: driver %q: %w", spec.Name, err)
 	}
+	if err := sharedsql.ValidateWorkspaceCapability(spec.Workspace); err != nil {
+		return fmt.Errorf("database: driver %q: %w", spec.Name, err)
+	}
 	return nil
 }
 
@@ -296,6 +306,39 @@ type QueryCommand = sharedsql.QueryCommand
 // explicit query language advertisement gets.
 var SQLQueryLanguage = sharedsql.SQLQueryLanguage
 
+// Workspace types: the workspace tab advertisement and view request
+// DTOs live in the shared contract package and cross the plugin DTO
+// boundary unchanged.
+type (
+	// WorkspaceCapability is a driver's workspace tab advertisement.
+	WorkspaceCapability = sharedsql.WorkspaceCapability
+	// CustomWorkspaceView is one advertised custom plain-data tab.
+	CustomWorkspaceView = sharedsql.CustomWorkspaceView
+	// StandardWorkspaceTab is one advertised standard tab key.
+	StandardWorkspaceTab = sharedsql.StandardWorkspaceTab
+	// WorkspaceViewKind is a workspace view target kind.
+	WorkspaceViewKind = sharedsql.WorkspaceViewKind
+	// WorkspaceViewTarget is the active structured target of a view.
+	WorkspaceViewTarget = sharedsql.WorkspaceViewTarget
+	// WorkspaceViewRequest is one custom view request.
+	WorkspaceViewRequest = sharedsql.WorkspaceViewRequest
+)
+
+// Workspace view target kinds, aliased from the shared contract.
+const (
+	WorkspaceViewDatabase = sharedsql.WorkspaceViewDatabase
+	WorkspaceViewSchema   = sharedsql.WorkspaceViewSchema
+	WorkspaceViewTable    = sharedsql.WorkspaceViewTable
+)
+
+// Standard workspace tab keys, aliased from the shared contract.
+const (
+	StandardWorkspaceTabColumns     = sharedsql.StandardWorkspaceTabColumns
+	StandardWorkspaceTabIndexes     = sharedsql.StandardWorkspaceTabIndexes
+	StandardWorkspaceTabForeignKeys = sharedsql.StandardWorkspaceTabForeignKeys
+	StandardWorkspaceTabDiagram     = sharedsql.StandardWorkspaceTabDiagram
+)
+
 // isZeroQueryLanguage reports whether ql carries no advertisement at
 // all — every field blank and no examples.
 func isZeroQueryLanguage(ql QueryLanguage) bool {
@@ -345,6 +388,11 @@ type Capabilities struct {
 	// interfaces a plugin's sessions implement. A zero value means no
 	// write support: the workbench never attempts row or document writes.
 	WriteCapabilities sharedsql.WriteCapabilities `json:"write_capabilities"`
+	// Workspace advertises the optional workspace tab metadata: the
+	// standard tabs beyond Query/Browse the driver supports and its
+	// ordered custom plain-data views. Absent (nil) keeps the legacy
+	// per-product tab policy exactly, so old plugins load unchanged.
+	Workspace *sharedsql.WorkspaceCapability `json:"workspace,omitempty"`
 }
 
 // Shim is the in-process face of one plugin-backed driver: the
@@ -394,6 +442,7 @@ func ValidateShim(shim Shim) error {
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
 		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
+		Workspace:     caps.Workspace,
 	}); err != nil {
 		return err
 	}
@@ -418,6 +467,7 @@ func RegisterShim(shim Shim) error {
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
 		QueryLanguage: queryLanguage,
+		Workspace:     caps.Workspace,
 	}); err != nil {
 		return err
 	}
@@ -442,6 +492,7 @@ func RegisterShim(shim Shim) error {
 		Open:          shim.Open,
 		Form:          caps.Form,
 		QueryLanguage: queryLanguage,
+		Workspace:     caps.Workspace,
 	}
 	byName[caps.Name] = spec
 	order = append(order, caps.Name)
@@ -463,6 +514,7 @@ func ValidateShimReplacement(shim Shim) error {
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
 		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
+		Workspace:     caps.Workspace,
 	}); err != nil {
 		return err
 	}

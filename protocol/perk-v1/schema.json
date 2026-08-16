@@ -54,7 +54,8 @@
             "perk/v1/add_column",
             "perk/v1/browse_table",
             "perk/v1/row_write",
-            "perk/v1/document_write"
+            "perk/v1/document_write",
+            "perk/v1/workspace_view"
           ]
         },
         "params": true
@@ -227,6 +228,16 @@
         },
         "write_capabilities": {
           "$ref": "#/$defs/writeCapabilities"
+        },
+        "workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/workspaceCapability"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -430,6 +441,118 @@
           "minLength": 1,
           "maxLength": 256,
           "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+        }
+      }
+    },
+    "customWorkspaceView": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "label",
+        "scopes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/workspaceViewScope"
+          }
+        }
+      }
+    },
+    "workspaceStandardTab": {
+      "type": "string",
+      "enum": [
+        "columns",
+        "indexes",
+        "foreign_keys",
+        "diagram"
+      ]
+    },
+    "workspaceCapability": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "standard_tabs": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/workspaceStandardTab"
+          }
+        },
+        "custom_views": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/customWorkspaceView"
+          }
+        }
+      }
+    },
+    "workspaceViewScope": {
+      "type": "string",
+      "enum": [
+        "database",
+        "schema",
+        "table"
+      ]
+    },
+    "workspaceViewTarget": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/workspaceViewScope"
+        },
+        "database": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        }
+      }
+    },
+    "workspaceViewParams": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "session_id",
+        "view_id",
+        "target"
+      ],
+      "properties": {
+        "session_id": {
+          "$ref": "#/$defs/uint64"
+        },
+        "view_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "$ref": "#/$defs/workspaceViewTarget"
         }
       }
     },
@@ -1754,7 +1877,8 @@
           "perk/v1/add_column",
           "perk/v1/browse_table",
           "perk/v1/row_write",
-          "perk/v1/document_write"
+          "perk/v1/document_write",
+          "perk/v1/workspace_view"
         ]
       },
       "properties": {
@@ -2187,6 +2311,22 @@
             },
             "result": {
               "$ref": "#/$defs/documentWriteResponse"
+            }
+          }
+        },
+        "perk/v1/workspace_view": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": [
+            "params",
+            "result"
+          ],
+          "properties": {
+            "params": {
+              "$ref": "#/$defs/workspaceViewParams"
+            },
+            "result": {
+              "$ref": "#/$defs/result"
             }
           }
         }

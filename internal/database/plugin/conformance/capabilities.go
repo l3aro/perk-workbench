@@ -12,10 +12,11 @@ import (
 // validateCapabilities checks the registration invariants of one
 // initialize capabilities advertisement: a nonblank name, at least one
 // target form with nonblank prefixes, a form whose prefix is one of the
-// stripped target forms, and a valid query-language advertisement. This
-// is the side-effect-free ValidateShim invariant set (drivers.go),
-// minus the registry-conflict half: conflicts are global registry
-// state, which a conformance run must not depend on.
+// stripped target forms, a valid query-language advertisement, and a
+// valid workspace tab advertisement. This is the side-effect-free
+// ValidateShim invariant set (drivers.go), minus the registry-conflict
+// half: conflicts are global registry state, which a conformance run
+// must not depend on.
 func validateCapabilities(caps database.Capabilities) error {
 	switch {
 	case strings.TrimSpace(caps.Name) == "":
@@ -42,6 +43,9 @@ func validateCapabilities(caps database.Capabilities) error {
 	}
 	if err := validateQueryLanguage(caps.QueryLanguage); err != nil {
 		return fmt.Errorf("query language: %w", err)
+	}
+	if err := sharedsql.ValidateWorkspaceCapability(caps.Workspace); err != nil {
+		return fmt.Errorf("workspace: %w", err)
 	}
 	return nil
 }

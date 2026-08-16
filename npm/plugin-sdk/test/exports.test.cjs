@@ -22,6 +22,13 @@ test('enum constants are frozen with the v1 values', () => {
     Replace: 'replace',
     Delete: 'delete',
   });
+  assert.deepEqual(sdk.StandardWorkspaceTab, {
+    Columns: 'columns',
+    Indexes: 'indexes',
+    ForeignKeys: 'foreign_keys',
+    Diagram: 'diagram',
+  });
+  assert.deepEqual(sdk.WorkspaceViewScope, { Database: 'database', Schema: 'schema', Table: 'table' });
   assert.deepEqual(sdk.ValueKind, {
     Default: 'default',
     Null: 'null',
@@ -57,6 +64,8 @@ test('enum constants are frozen with the v1 values', () => {
     sdk.ValueKind,
     sdk.RowWriteOperation,
     sdk.DocumentWriteOperation,
+    sdk.StandardWorkspaceTab,
+    sdk.WorkspaceViewScope,
     sdk.ErrorKind,
   ]) {
     assert.ok(Object.isFrozen(constant));

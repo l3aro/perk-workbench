@@ -255,3 +255,18 @@ func (m *Model) copySQLCell() tea.Cmd {
 	m.setStatus("copied to clipboard")
 	return copyQueryLogStatement(value)
 }
+
+// copyWorkspaceViewCell copies the untruncated value of the selected
+// custom-view cell to the clipboard.
+func (m *Model) copyWorkspaceViewCell() tea.Cmd {
+	row, col := m.workspace.table.Cursor(), m.workspace.selectedColumn
+	if row < 0 || row >= len(m.workspace.result.UntruncatedRows) || col < 0 || col >= len(m.workspace.result.UntruncatedRows[row]) {
+		return nil
+	}
+	value := ""
+	if cell := m.workspace.result.UntruncatedRows[row][col]; cell != nil {
+		value = *cell
+	}
+	m.setStatus("copied to clipboard")
+	return copyQueryLogStatement(value)
+}

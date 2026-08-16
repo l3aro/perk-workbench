@@ -101,9 +101,7 @@ func revealTableColumn(resultTable table.Model, selectedColumn int, offset *int,
 }
 
 func (m *Model) toggleTab(forward bool) tea.Cmd {
-	m.Tab = cycleWorkspaceTab(m.workspaceTabs(), m.Tab, forward)
-	m.focusActiveTable()
-	return tea.Batch(m.loadPendingBrowse(), m.loadPendingDiagram())
+	return m.selectWorkspaceTab(cycleWorkspaceTab(m.workspaceTabs(), m.activeWorkspaceTabItem(), forward))
 }
 
 // loadPendingDiagram starts the connection-level schema caches when the
@@ -152,6 +150,8 @@ func (m *Model) focusActiveTable() {
 		m.schema.component.Structure.ForeignKeys.Focus()
 	case tabDiagram:
 		// The full-ERD pane owns no table; every table is blurred.
+	case tabCustom:
+		m.workspace.table.Focus()
 	}
 }
 
@@ -161,6 +161,7 @@ func (m *Model) blurTables() {
 	m.queryLog.results.Blur()
 	m.schema.component.Structure.Indexes.Blur()
 	m.schema.component.Structure.ForeignKeys.Blur()
+	m.workspace.table.Blur()
 	m.queryLog.component.Blur()
 	m.chat.component.Input.Blur()
 }
@@ -215,6 +216,9 @@ func (m *Model) scrollActiveWorkspaceTableHorizontal(step int) {
 	case tabQuery:
 		moveTableColumn(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, step)
 		return
+	case tabCustom:
+		moveTableColumn(&m.workspace.table, &m.workspace.selectedColumn, &m.workspace.offset, m.layout.tableViewportWidth, step)
+		return
 	}
 	var resultTable *table.Model
 	var offset *int
@@ -254,6 +258,10 @@ func (m *Model) scrollActiveWorkspaceTable(step int) {
 		rows := m.schema.component.Structure.ForeignKeys.Rows()
 		newCursor := clamp(m.schema.component.Structure.ForeignKeys.Cursor()+step, 0, max(len(rows)-1, 0))
 		m.schema.component.Structure.ForeignKeys.SetCursor(newCursor)
+	case tabCustom:
+		rows := m.workspace.table.Rows()
+		newCursor := clamp(m.workspace.table.Cursor()+step, 0, max(len(rows)-1, 0))
+		m.workspace.table.SetCursor(newCursor)
 	}
 }
 

@@ -37,6 +37,11 @@ const (
 	TabIndexes
 	TabForeignKeys
 	TabDiagram
+	// TabCustom marks that a driver-advertised custom workspace view is
+	// active instead of a standard tab; the view's id lives in the
+	// workbench's workspace-view state. The standard tab policy never
+	// selects it directly.
+	TabCustom
 )
 
 // WorkspaceTargetKind is the sidebar scope the workspace tabs serve.

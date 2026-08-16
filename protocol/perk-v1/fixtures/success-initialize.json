@@ -59,6 +59,21 @@
           "format": "application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed",
           "text": true
         }
+      },
+      "workspace": {
+        "standard_tabs": [
+          "columns",
+          "indexes"
+        ],
+        "custom_views": [
+          {
+            "id": "key-info",
+            "label": "Key Info",
+            "scopes": [
+              "table"
+            ]
+          }
+        ]
       }
     }
   }

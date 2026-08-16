@@ -47,7 +47,14 @@ type Event = any
 
 // TableSelected asks the root to open the given qualified table: select it
 // in the workflow and load its structure, index, and foreign-key data.
-type TableSelected struct{ Table string }
+// Database and Schema are the selected item's structured identifiers,
+// preserved so table-scoped workspace views receive the full structured
+// target.
+type TableSelected struct {
+	Table    string
+	Database string
+	Schema   string
+}
 
 // DatabaseSelected asks the root to open the database scope of the sidebar
 // root: clear the table workspace and target the database. SQLite roots

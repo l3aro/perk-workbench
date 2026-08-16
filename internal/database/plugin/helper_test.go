@@ -43,6 +43,8 @@ func TestPluginHelperChild(t *testing.T) {
 		writeMetadata:   os.Getenv("PERK_PLUGIN_WRITE_METADATA"),
 		executeMetadata: os.Getenv("PERK_PLUGIN_EXECUTE_METADATA"),
 		queryLanguage:   os.Getenv("PERK_PLUGIN_QUERY_LANGUAGE"),
+		workspace:       os.Getenv("PERK_PLUGIN_WORKSPACE"),
+		workspaceDelay:  time.Duration(envInt("PERK_PLUGIN_WORKSPACE_DELAY_MS", 0)) * time.Millisecond,
 		rpcErrorCode:    envInt("PERK_PLUGIN_RPC_ERROR_CODE", -32000),
 		rpcErrorMessage: os.Getenv("PERK_PLUGIN_RPC_ERROR_MESSAGE"),
 		rpcErrorData:    os.Getenv("PERK_PLUGIN_RPC_ERROR_DATA"),
@@ -80,6 +82,8 @@ type pluginHelper struct {
 	writeMetadata   string
 	executeMetadata string
 	queryLanguage   string
+	workspace       string
+	workspaceDelay  time.Duration
 	rpcErrorCode    int
 	rpcErrorMessage string
 	rpcErrorData    string
@@ -251,6 +255,40 @@ func (h *pluginHelper) handleRequest(id uint64, method string, params json.RawMe
 			h.respond(id, []sharedsql.SchemaObject{{Database: "pluginkv", Type: "collection", Name: "LISTS"}}, nil)
 			return true
 		}
+	case "block_workspace_view":
+		if method == methodWorkspaceView {
+			h.markerLine(fmt.Sprintf("workspace-view %d", id))
+			if h.workspaceDelay > 0 {
+				<-time.After(h.workspaceDelay)
+			}
+			for {
+				frame, err := readFrame(h.reader)
+				if err != nil {
+					os.Exit(0) // stdin closed before the cancel arrived
+				}
+				var incoming struct {
+					ID     *uint64         `json:"id"`
+					Method string          `json:"method"`
+					Params json.RawMessage `json:"params"`
+				}
+				if err := json.Unmarshal(frame, &incoming); err != nil {
+					os.Exit(1)
+				}
+				if incoming.ID == nil && incoming.Method == methodCancel {
+					var canceled cancelParams
+					_ = json.Unmarshal(incoming.Params, &canceled)
+					if canceled.ID == id {
+						h.markerLine(fmt.Sprintf("cancel %d", id))
+						h.respond(id, nil, &rpcError{
+							Code:    RPCErrorCanceled,
+							Message: "canceled",
+							Data:    json.RawMessage(`{"kind":"cancelled"}`),
+						})
+						return true
+					}
+				}
+			}
+		}
 	}
 	h.respond(id, h.resultFor(method, params), nil)
 	return true
@@ -278,6 +316,16 @@ func (h *pluginHelper) resultFor(method string, params json.RawMessage) any {
 			RowsAffected:      1,
 			Duration:          time.Millisecond,
 			StatementMetadata: h.metadata(h.executeMetadata),
+		}
+	case methodWorkspaceView:
+		var request workspaceViewParams
+		_ = json.Unmarshal(params, &request)
+		return sharedsql.Result{
+			Columns:      []string{"view", "target"},
+			ColumnTypes:  []string{"string", "string"},
+			Rows:         [][]*string{{strPtr(request.ViewID), strPtr(string(request.Target.Kind))}},
+			RowsAffected: 0,
+			Duration:     time.Millisecond,
 		}
 	case methodListSchema:
 		if h.schemaSet {
@@ -359,6 +407,13 @@ func (h *pluginHelper) capabilities() database.Capabilities {
 			os.Exit(2)
 		}
 		caps.QueryLanguage = &ql
+	}
+	if h.workspace != "" {
+		var ws sharedsql.WorkspaceCapability
+		if err := json.Unmarshal([]byte(h.workspace), &ws); err != nil {
+			os.Exit(2)
+		}
+		caps.Workspace = &ws
 	}
 	return caps
 }

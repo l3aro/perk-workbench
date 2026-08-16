@@ -382,3 +382,84 @@ func TestRegisterShim_rejectsCrossDriverOverlap(t *testing.T) {
 		t.Fatalf("RegisterShim(same-driver ordered overlap) = %v, want success", err)
 	}
 }
+
+// TestRegisterShim_workspace: a valid workspace advertisement passes
+// registration and reaches the registered spec and the opened service;
+// invalid metadata is rejected — never silently defaulted.
+func TestRegisterShim_workspace(t *testing.T) {
+	workspace := &database.WorkspaceCapability{
+		StandardTabs: []database.StandardWorkspaceTab{database.StandardWorkspaceTabColumns},
+		CustomViews: []database.CustomWorkspaceView{
+			{ID: "keys", Label: "Keys", Scopes: []database.WorkspaceViewKind{database.WorkspaceViewTable}},
+		},
+	}
+	caps := fakeRedisShim{}.Capabilities()
+	caps.Name = "wskv"
+	caps.Targets = []database.TargetPattern{{Prefix: "wskv:"}}
+	caps.Form = nil
+	caps.Workspace = workspace
+	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return caps })); err != nil {
+		t.Fatalf("RegisterShim: %v", err)
+	}
+	spec, ok := database.ByName("wskv")
+	if !ok {
+		t.Fatal("wskv not registered")
+	}
+	if !reflect.DeepEqual(spec.Workspace, workspace) {
+		t.Fatalf("spec workspace = %+v, want %+v", spec.Workspace, workspace)
+	}
+
+	opened, err := database.Open(context.Background(), "wskv:svc")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer opened.Service.Close()
+	if !reflect.DeepEqual(opened.Workspace, workspace) {
+		t.Fatalf("Opened workspace = %+v, want %+v", opened.Workspace, workspace)
+	}
+
+	for _, test := range []struct {
+		name      string
+		workspace *database.WorkspaceCapability
+	}{
+		{name: "unknown standard tab", workspace: &database.WorkspaceCapability{StandardTabs: []database.StandardWorkspaceTab{"relations"}}},
+		{name: "duplicate view id", workspace: &database.WorkspaceCapability{CustomViews: []database.CustomWorkspaceView{
+			{ID: "Keys", Label: "One", Scopes: []database.WorkspaceViewKind{database.WorkspaceViewTable}},
+			{ID: "keys", Label: "Two", Scopes: []database.WorkspaceViewKind{database.WorkspaceViewTable}},
+		}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			bad := fakeRedisShim{}.Capabilities()
+			bad.Name = "wsbad"
+			bad.Targets = []database.TargetPattern{{Prefix: "wsbad:"}}
+			bad.Form = nil
+			bad.Workspace = test.workspace
+			if err := database.RegisterShim(shimFunc(func() database.Capabilities { return bad })); err == nil {
+				t.Fatalf("RegisterShim(%s) succeeded, want an error", test.name)
+			}
+		})
+	}
+}
+
+// TestCapabilities_workspaceJSONRoundTrip: the workspace advertisement
+// survives the Capabilities JSON round trip unchanged.
+func TestCapabilities_workspaceJSONRoundTrip(t *testing.T) {
+	caps := fakeRedisShim{}.Capabilities()
+	caps.Workspace = &database.WorkspaceCapability{
+		StandardTabs: []database.StandardWorkspaceTab{database.StandardWorkspaceTabColumns, database.StandardWorkspaceTabIndexes},
+		CustomViews: []database.CustomWorkspaceView{
+			{ID: "keys", Label: "Keys", Scopes: []database.WorkspaceViewKind{database.WorkspaceViewTable, database.WorkspaceViewDatabase}},
+		},
+	}
+	var decoded database.Capabilities
+	contents, err := json.Marshal(caps)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := json.Unmarshal(contents, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !reflect.DeepEqual(caps, decoded) {
+		t.Fatalf("round trip = %+v, want %+v", decoded, caps)
+	}
+}

@@ -90,6 +90,12 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	if saved, ok := message.(documentEditorSavedMsg); ok {
 		return m.updateDocumentEditorSaved(saved)
 	}
+	// Route custom workspace-view loads before the modal branch: a view
+	// reply must apply even when an overlay opened while it was in
+	// flight (stale replies are dropped inside).
+	if loaded, ok := message.(workspaceViewLoadedMsg); ok {
+		return m.updateWorkspaceView(loaded)
+	}
 
 	// Route streaming, persistence, and tool-round messages early so modal
 	// branches never consume them and stall the stream.

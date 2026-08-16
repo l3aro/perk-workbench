@@ -130,6 +130,10 @@ test('every schema method is served at runtime, and cancel is a notification', a
         row_writer: true,
         document: { format: sdk.DocumentFormat.MongoExtendedJSON, text: true },
       },
+      workspace: {
+        standard_tabs: ['columns', 'indexes', 'foreign_keys', 'diagram'],
+        custom_views: [{ id: 'keys', label: 'Keys', scopes: ['database', 'schema', 'table'] }],
+      },
     },
     buildTarget: async () => ({ target: 'kv:x', ok: true }),
     open: async () => ({
@@ -137,6 +141,7 @@ test('every schema method is served at runtime, and cancel is a notification', a
       service: serviceStub({
         rowWrite: async () => ({ result: { rows_affected: 0 } }),
         documentWrite: async () => ({ result: { rows_affected: 0 } }),
+        workspaceView: async () => ({ rows_affected: 0 }),
       }),
     }),
   };
@@ -201,6 +206,8 @@ function paramsFor(method) {
     case 'perk/v1/row_write':
     case 'perk/v1/document_write':
       return { ...session, request: {} };
+    case 'perk/v1/workspace_view':
+      return { ...session, view_id: 'keys', target: { kind: 'table', table: 'kv' } };
     default:
       throw new Error(`no params for ${method}`);
   }
@@ -217,6 +224,7 @@ test('canonical fixture frames drive through createPluginServer', async () => {
       service: serviceStub({
         rowWrite: async () => ({ result: { rows_affected: 0 } }),
         documentWrite: async () => ({ result: { rows_affected: 0 } }),
+        workspaceView: async () => ({ rows_affected: 0 }),
       }),
     }),
   };
@@ -250,10 +258,16 @@ test('canonical fixture frames drive through createPluginServer', async () => {
   await waitForFrames(client, 11);
   assert.equal(client.frames[10].error, undefined);
 
+  // The canonical workspace-view frame reaches the advertised custom
+  // view handler with session_id 7 stripped.
+  client.input.write(`${JSON.stringify(fixtures.get('request-workspace-view.json'))}\n`);
+  await waitForFrames(client, 12);
+  assert.equal(client.frames[11].error, undefined);
+
   // The canonical cancel notification never gets a response.
   client.input.write(`${JSON.stringify(fixtures.get('notification-cancel.json'))}\n`);
   await delay(20);
-  assert.equal(client.frames.length, 11);
+  assert.equal(client.frames.length, 12);
 
   // Parseable invalid frames are answered with the manifest's expected
   // JSON-RPC codes, and the server keeps serving.
@@ -261,9 +275,9 @@ test('canonical fixture frames drive through createPluginServer', async () => {
   for (const file of invalidFiles) {
     client.input.write(`${JSON.stringify(fixtures.get(file))}\n`);
   }
-  await waitForFrames(client, 11 + invalidFiles.length);
+  await waitForFrames(client, 12 + invalidFiles.length);
   for (let i = 0; i < invalidFiles.length; i++) {
-    const frame = client.frames[11 + i];
+    const frame = client.frames[12 + i];
     const entry = entries.get(invalidFiles[i]);
     assert.equal(frame.error.code, entry.code, `${invalidFiles[i]} must answer ${entry.code}`);
     assert.equal(frame.error.data, undefined);
