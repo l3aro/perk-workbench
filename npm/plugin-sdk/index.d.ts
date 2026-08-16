@@ -497,13 +497,27 @@ export interface PluginOperationErrorOptions {
   plugin?: string;
   /** Advisory method name; the server fills in the wire method when absent. */
   method?: string;
+  /**
+   * Optional advisory hint explaining the failure. Non-control: the host
+   * renders it separately from the error and never acts on it. Blank
+   * values are omitted from the wire.
+   */
+  hint?: string;
+  /**
+   * Optional advisory statement the user may try instead of the failed
+   * one. Non-control: the host never executes it and never merges it
+   * into the error identity or message. Blank values are omitted from
+   * the wire.
+   */
+  suggested_statement?: string;
 }
 
 /**
  * Structured plugin operation error a handler can throw. The server
  * replies with its code and message plus an optional `data` object
- * carrying kind/plugin/method provenance. Generic thrown errors keep
- * the legacy -32603 mapping and carry no data.
+ * carrying kind/plugin/method provenance and optional advisory
+ * hint/suggested_statement guidance. Generic thrown errors keep the
+ * legacy -32603 mapping and carry no data.
  */
 export class PluginOperationError extends Error {
   readonly name: 'PluginOperationError';
@@ -511,6 +525,8 @@ export class PluginOperationError extends Error {
   readonly kind: ErrorKind;
   readonly plugin?: string;
   readonly method?: string;
+  readonly hint?: string;
+  readonly suggested_statement?: string;
   constructor(message: string, options?: PluginOperationErrorOptions);
 }
 

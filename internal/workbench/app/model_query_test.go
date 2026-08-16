@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -294,6 +295,48 @@ func TestExecute_error_message_retains_prior_results(t *testing.T) {
 	}
 	if got, want := model.queryLog.component.Entries[0].Message, "near \"bad\": syntax error"; got != want {
 		t.Fatalf("query log message = %q, want %q", got, want)
+	}
+}
+
+// TestExecute_error_advisoryGuidanceSurfacesSeparately proves a plugin
+// operation error's hint and suggested_statement reach the query log
+// entry as separate fields: the message keeps the raw backend error
+// identity, the advisories ride along for the detail view, and the chat
+// context mirrors only the raw error.
+func TestExecute_error_advisoryGuidanceSurfacesSeparately(t *testing.T) {
+	model := readyModel(t)
+	requestID := startQuery(t, &model)
+	pluginErr := &plugin.Error{
+		Code:               -32000,
+		Message:            "redis: WRONGTYPE Operation against a key holding the wrong kind of value",
+		Kind:               plugin.KindOperation,
+		Plugin:             "redis",
+		Method:             "perk/v1/execute",
+		Hint:               "GET accepts strings, but user:1 is a hash",
+		SuggestedStatement: "HGETALL user:1",
+	}
+	updated, _ := model.Update(queryFailedMsg{requestID: requestID, statement: "GET user:1", err: pluginErr})
+	model = updated.(Model)
+	entry := model.queryLog.component.Entries[0]
+	if entry.Status != "failed" {
+		t.Fatalf("query log status = %q, want failed", entry.Status)
+	}
+	if entry.Message != pluginErr.Error() {
+		t.Fatalf("message = %q, want the raw backend error %q", entry.Message, pluginErr.Error())
+	}
+	if entry.Hint != pluginErr.Hint || entry.SuggestedStatement != pluginErr.SuggestedStatement {
+		t.Fatalf("entry advisories = %q/%q, want %q/%q", entry.Hint, entry.SuggestedStatement, pluginErr.Hint, pluginErr.SuggestedStatement)
+	}
+	// The error identity never embeds advisory text, and the chat
+	// context mirrors only the raw error.
+	if strings.Contains(entry.Message, "HGETALL") || strings.Contains(entry.Message, "Hint:") {
+		t.Fatalf("advisories leaked into the error message %q", entry.Message)
+	}
+	if model.chat.component.LastFailedError != pluginErr.Error() {
+		t.Fatalf("chat error context = %q, want the raw error %q", model.chat.component.LastFailedError, pluginErr.Error())
+	}
+	if model.chat.component.LastFailedQuery != "GET user:1" {
+		t.Fatalf("chat query context = %q, want the statement", model.chat.component.LastFailedQuery)
 	}
 }
 

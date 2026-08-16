@@ -36,9 +36,12 @@ const ERROR_KINDS = new Set(Object.values(ErrorKind));
 // PluginOperationError is a structured plugin operation error a handler
 // can throw: the server replies with its integer code (default -32000)
 // and message plus an optional data object carrying kind/plugin/method
-// provenance. A blank or unknown kind normalizes to operation, matching
-// the host. Generic thrown errors keep the legacy -32603 mapping and
-// carry no data.
+// provenance and optional advisory guidance. A blank or unknown kind
+// normalizes to operation, matching the host. Advisory hint and
+// suggested_statement are non-control: the host renders them separately
+// from the error and never executes a suggested statement; blank values
+// are omitted from the wire. Generic thrown errors keep the legacy
+// -32603 mapping and carry no data.
 class PluginOperationError extends Error {
   constructor(message, options = {}) {
     super(message);
@@ -47,6 +50,10 @@ class PluginOperationError extends Error {
     this.kind = ERROR_KINDS.has(options.kind) ? options.kind : ErrorKind.Operation;
     if (typeof options.plugin === 'string' && options.plugin !== '') this.plugin = options.plugin;
     if (typeof options.method === 'string' && options.method !== '') this.method = options.method;
+    if (typeof options.hint === 'string' && options.hint !== '') this.hint = options.hint;
+    if (typeof options.suggested_statement === 'string' && options.suggested_statement !== '') {
+      this.suggested_statement = options.suggested_statement;
+    }
   }
 }
 
@@ -421,6 +428,13 @@ class PluginServer {
           // The wire method is authoritative here; the host overrides
           // data.method with its own request method anyway.
           data.method = error.method !== undefined ? error.method : method;
+          // Advisory guidance, never control: the host renders it
+          // separately and never executes a suggested statement. Empty
+          // strings are omitted entirely.
+          if (error.hint !== undefined && error.hint !== '') data.hint = error.hint;
+          if (error.suggested_statement !== undefined && error.suggested_statement !== '') {
+            data.suggested_statement = error.suggested_statement;
+          }
         } else if (Number.isInteger(error && error.code)) {
           code = error.code;
           message = (error && error.message) || 'internal error';

@@ -158,6 +158,16 @@
         },
         "method": {
           "type": "string"
+        },
+        "hint": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional advisory guidance explaining a failure. Never causes host behavior and never executes anything; the host renders it separately from the error, labeled. Empty strings are omitted on the wire."
+        },
+        "suggested_statement": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional advisory statement the user may try instead of the failed one. Advisory only — the host never executes it and never merges it into the error identity or message. Empty strings are omitted on the wire."
         }
       }
     },

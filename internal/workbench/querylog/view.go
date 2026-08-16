@@ -53,7 +53,8 @@ func (m Model) Draw(canvas uv.ScreenBuffer, layout uikit.Layout) {
 	b.WriteString("\n")
 	b.WriteString("  Message:  ")
 	b.WriteString(ansi.Wordwrap(uikit.SafeText(chrome.DetailValue(d.Message)), innerW-14, " "))
-	b.WriteString("\n\n  y copy | e explain | enter/esc close")
+	b.WriteString(advisoryBlock(*d, innerW))
+	b.WriteString("\n  y copy | e explain | enter/esc close")
 
 	dialogBg := uv.Cell{Content: " ", Width: 1, Style: uv.Style{Bg: chrome.ParseHex(uikit.ColorPanel)}}
 	canvas.FillArea(&dialogBg, image.Rect(1, 1, layout.Width-1, layout.Height-1))
@@ -73,4 +74,26 @@ func (m Model) Draw(canvas uv.ScreenBuffer, layout uikit.Layout) {
 	canvas.SetCell(layout.Width-1, layout.Height-1, &uv.Cell{Content: "╯", Width: 1, Style: borderStyle})
 
 	uv.NewStyledString(b.String()).Draw(canvas, image.Rect(1, 1, layout.Width-1, layout.Height-1))
+}
+
+// advisoryBlock renders the labeled advisory guidance lines of a detail
+// entry: "  Hint:     …" and "  Try:      …", each word-wrapped like the
+// message, ending in a trailing newline. It is empty when neither
+// advisory is present, so the detail view shows no advisory labels for
+// entries without backend guidance. Advisories are backend text rendered
+// separately from the raw error message; the workbench never executes a
+// suggested statement.
+func advisoryBlock(d Entry, innerW int) string {
+	var b strings.Builder
+	if d.Hint != "" {
+		b.WriteString("\n")
+		b.WriteString("  Hint:     ")
+		b.WriteString(ansi.Wordwrap(uikit.SafeText(chrome.DetailValue(d.Hint)), innerW-14, " "))
+	}
+	if d.SuggestedStatement != "" {
+		b.WriteString("\n")
+		b.WriteString("  Try:      ")
+		b.WriteString(ansi.Wordwrap(uikit.SafeText(chrome.DetailValue(d.SuggestedStatement)), innerW-14, " "))
+	}
+	return b.String()
 }

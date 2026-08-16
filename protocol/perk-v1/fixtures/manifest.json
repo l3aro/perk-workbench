@@ -1,6 +1,6 @@
 {
   "title": "perk/v1 fixture manifest",
-  "description": "Canonical perk/v1 frames, one file per entry, under protocol/perk-v1/fixtures. Each entry names the file, whether the frame is protocol-valid, the schema $def it targets (ref), and — where applicable — the expected method, JSON-RPC error code, normalized error kind, and the rejection a parseable invalid frame must provoke. Tests read this manifest; they never infer behavior from file names. Boundary-sized frames are not stored here; conformance tests generate them.",
+  "description": "Canonical perk/v1 frames, one file per entry, under protocol/perk-v1/fixtures. Each entry names the file, whether the frame is protocol-valid, the schema $def it targets (ref), and — where applicable — the expected method, JSON-RPC error code, normalized error kind, the expected advisory hint and suggested_statement, and the rejection a parseable invalid frame must provoke. Tests read this manifest; they never infer behavior from file names. Boundary-sized frames are not stored here; conformance tests generate them.",
   "fixtures": [
     {
       "file": "request-initialize.json",
@@ -118,6 +118,15 @@
       "ref": "#/$defs/error",
       "code": -32000,
       "kind": "operation"
+    },
+    {
+      "file": "error-advisory.json",
+      "valid": true,
+      "ref": "#/$defs/error",
+      "code": -32000,
+      "kind": "operation",
+      "hint": "GET accepts strings, but user:1 is a hash",
+      "suggested_statement": "HGETALL user:1"
     },
     {
       "file": "invalid-request-jsonrpc.json",

@@ -73,8 +73,12 @@ func actionLogEntry(statement string, metadata *sharedsql.StatementMetadata, sta
 	if err != nil && entry.Sensitive {
 		// A sensitive failure must not echo backend error text — Redis
 		// errors include the offending command and its arguments — so
-		// the default failed message fills in at append time.
+		// the default failed message fills in at append time. Advisory
+		// guidance is backend text too (it can name keys of the
+		// redacted statement) and is dropped with the message.
 		entry.Message = ""
+		entry.Hint = ""
+		entry.SuggestedStatement = ""
 	}
 	return entry
 }
@@ -102,9 +106,13 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 		entry.Statement = redactedStatement
 		entry.Replayable = false
 		// The failure message must never echo backend error text either
-		// (Redis errors include the offending command and its arguments).
+		// (Redis errors include the offending command and its
+		// arguments), and advisory guidance is backend text too — it can
+		// name keys of the redacted statement — so both are dropped.
 		if entry.Status == "failed" {
 			entry.Message = "failed"
+			entry.Hint = ""
+			entry.SuggestedStatement = ""
 		}
 	}
 	m.queryLog.component.Append(entry)

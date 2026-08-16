@@ -125,11 +125,15 @@ type rpcError struct {
 // rpcErrorData is the optional structured provenance in an error's data
 // object. Kind classifies the failure; Plugin and Method are advisory
 // only — the host overrides them with its own method and the identity
-// retained from the initialize handshake.
+// retained from the initialize handshake. Hint and SuggestedStatement
+// are optional non-control advisory guidance: the host renders them
+// separately from the error and never acts on them.
 type rpcErrorData struct {
-	Kind   string `json:"kind"`
-	Plugin string `json:"plugin"`
-	Method string `json:"method"`
+	Kind               string `json:"kind"`
+	Plugin             string `json:"plugin"`
+	Method             string `json:"method"`
+	Hint               string `json:"hint"`
+	SuggestedStatement string `json:"suggested_statement"`
 }
 
 // initializeParams carries the host's protocol version and identity.
@@ -243,13 +247,23 @@ type cancelParams struct {
 // Error is a structured plugin operation error with stable provenance:
 // the JSON-RPC code and message, the normalized Kind, and the host-side
 // Method and Plugin identity. Operation errors are never terminal client
-// failures; inspect the fields with errors.As.
+// failures; inspect the fields with errors.As. Hint and
+// SuggestedStatement are optional advisory guidance carried verbatim
+// from the plugin's error data: the host renders them separately from
+// the error (never merged into Error's text) and never executes a
+// suggested statement.
 type Error struct {
 	Code    int
 	Message string
 	Kind    Kind
 	Plugin  string
 	Method  string
+	// Hint explains the failure; empty when the plugin sent none.
+	Hint string
+	// SuggestedStatement is a statement the user may try instead;
+	// empty when the plugin sent none. Advisory only — never executed
+	// by the host.
+	SuggestedStatement string
 }
 
 // Error renders the concise stable operation-error text. Method
@@ -268,13 +282,49 @@ func rpcErrorToGoError(method, plugin string, rpcErr *rpcError) error {
 	if rpcErr.Code == RPCErrorCanceled {
 		return context.Canceled
 	}
+	hint, suggested := errorDataAdvisories(rpcErr.Data)
 	return &Error{
-		Code:    rpcErr.Code,
-		Message: rpcErr.Message,
-		Kind:    errorDataKind(rpcErr.Data),
-		Plugin:  plugin,
-		Method:  method,
+		Code:               rpcErr.Code,
+		Message:            rpcErr.Message,
+		Kind:               errorDataKind(rpcErr.Data),
+		Plugin:             plugin,
+		Method:             method,
+		Hint:               hint,
+		SuggestedStatement: suggested,
 	}
+}
+
+// errorDataAdvisories extracts the plugin's optional advisory fields from
+// the error data object. Omitted, null, blank, or non-string values are
+// ignored (empty), mirroring errorDataKind's tolerance: malformed data
+// can never change the error's identity or message, only optionally
+// enrich the separately rendered guidance.
+func errorDataAdvisories(raw json.RawMessage) (hint, suggested string) {
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return "", ""
+	}
+	for _, field := range []struct {
+		key string
+		dst *string
+	}{
+		{key: "hint", dst: &hint},
+		{key: "suggested_statement", dst: &suggested},
+	} {
+		rawField, ok := fields[field.key]
+		if !ok {
+			continue
+		}
+		var text string
+		if err := json.Unmarshal(rawField, &text); err != nil || text == "" {
+			continue
+		}
+		*field.dst = text
+	}
+	return hint, suggested
 }
 
 // errorDataKind extracts the plugin's kind claim from the optional error

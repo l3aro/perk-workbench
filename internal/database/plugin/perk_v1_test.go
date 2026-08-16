@@ -335,7 +335,12 @@ type perkV1Fixture struct {
 	Method string `json:"method,omitempty"`
 	Code   int    `json:"code,omitempty"`
 	Kind   string `json:"kind,omitempty"`
-	Reject string `json:"reject,omitempty"`
+	// Hint and SuggestedStatement are the advisory guidance an error
+	// fixture must carry through rpcErrorToGoError, when the manifest
+	// declares any.
+	Hint               string `json:"hint,omitempty"`
+	SuggestedStatement string `json:"suggested_statement,omitempty"`
+	Reject             string `json:"reject,omitempty"`
 }
 
 type perkV1Manifest struct {
@@ -558,6 +563,12 @@ func verifyPerkV1Error(frame []byte, fixture perkV1Fixture) error {
 	}
 	if fixture.Kind != "" && pluginErr.Kind != Kind(fixture.Kind) {
 		return fmt.Errorf("kind %q, want %q", pluginErr.Kind, fixture.Kind)
+	}
+	if pluginErr.Hint != fixture.Hint {
+		return fmt.Errorf("hint %q, want %q", pluginErr.Hint, fixture.Hint)
+	}
+	if pluginErr.SuggestedStatement != fixture.SuggestedStatement {
+		return fmt.Errorf("suggested_statement %q, want %q", pluginErr.SuggestedStatement, fixture.SuggestedStatement)
 	}
 	return nil
 }

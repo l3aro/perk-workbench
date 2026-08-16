@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -137,7 +138,16 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: message.err.Error(), Status: "failed", Replayable: true})
+	// Backend advisory guidance travels separately from the raw error:
+	// the message keeps the error identity, while the advisory fields
+	// render labeled in the detail view and never join the error text.
+	var hint, suggested string
+	var pluginErr *plugin.Error
+	if errors.As(message.err, &pluginErr) {
+		hint = pluginErr.Hint
+		suggested = pluginErr.SuggestedStatement
+	}
+	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: message.err.Error(), Status: "failed", Replayable: true, Hint: hint, SuggestedStatement: suggested})
 	m.chat.component.LastFailedQuery = message.statement
 	m.chat.component.LastFailedError = message.err.Error()
 	if quit {

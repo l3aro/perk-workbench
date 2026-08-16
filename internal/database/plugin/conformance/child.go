@@ -278,8 +278,9 @@ func parseFrame(line []byte) (Frame, error) {
 			return Frame{}, errors.New("response error is missing a string message")
 		}
 		// The optional data object mirrors the perk/v1 provenance
-		// shape: an object whose kind/plugin/method members, when
-		// present, are strings. Null is valid (the canonical
+		// shape: an object whose kind/plugin/method members — and the
+		// optional hint/suggested_statement advisory strings — are
+		// strings when present. Null is valid (the canonical
 		// error-null-data frame); scalars, arrays, and non-string
 		// members are not.
 		var data json.RawMessage
@@ -288,7 +289,7 @@ func parseFrame(line []byte) (Frame, error) {
 			if !ok {
 				return Frame{}, errors.New("response error data must be an object")
 			}
-			for _, key := range []string{"kind", "plugin", "method"} {
+			for _, key := range []string{"kind", "plugin", "method", "hint", "suggested_statement"} {
 				if value, present := dataObject[key]; present && value != nil {
 					if _, ok := value.(string); !ok {
 						return Frame{}, fmt.Errorf("response error data %q must be a string", key)

@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": 14,
+  "error": {
+    "code": -32000,
+    "message": "redis: WRONGTYPE Operation against a key holding the wrong kind of value",
+    "data": {
+      "kind": "operation",
+      "plugin": "perk-redis",
+      "method": "perk/v1/execute",
+      "hint": "GET accepts strings, but user:1 is a hash",
+      "suggested_statement": "HGETALL user:1"
+    }
+  }
+}

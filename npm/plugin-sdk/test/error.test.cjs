@@ -87,6 +87,55 @@ test('structured operation errors roundtrip onto code/message and data', async (
   await server.close();
 });
 
+test('PluginOperationError carries advisory hint and suggested_statement', () => {
+  const error = new PluginOperationError('redis: WRONGTYPE Operation against a key holding the wrong kind of value', {
+    code: -32000,
+    kind: ErrorKind.Operation,
+    plugin: 'perk-redis',
+    method: 'perk/v1/execute',
+    hint: 'GET accepts strings, but user:1 is a hash',
+    suggested_statement: 'HGETALL user:1',
+  });
+  assert.equal(error.hint, 'GET accepts strings, but user:1 is a hash');
+  assert.equal(error.suggested_statement, 'HGETALL user:1');
+
+  // Blank and non-string advisory options are ignored (absent).
+  const blanks = new PluginOperationError('x', { hint: '', suggested_statement: '' });
+  assert.equal(blanks.hint, undefined);
+  assert.equal(blanks.suggested_statement, undefined);
+  const nonStrings = new PluginOperationError('x', { hint: 7, suggested_statement: ['HGETALL'] });
+  assert.equal(nonStrings.hint, undefined);
+  assert.equal(nonStrings.suggested_statement, undefined);
+});
+
+test('advisory guidance serializes onto data and is omitted when blank', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      open: async () => ({
+        info: { product: 'KV', version: '1' },
+        service: serviceStub({
+          execute: async () => {
+            throw new PluginOperationError('redis: WRONGTYPE Operation against a key holding the wrong kind of value', {
+              hint: 'GET accepts strings, but user:1 is a hash',
+              suggested_statement: 'HGETALL user:1',
+            });
+          },
+        }),
+      }),
+    }),
+  );
+  await client.initialize();
+  await client.request('perk/v1/open', { target: 'kv:x' });
+  const error = await client.request('perk/v1/execute', { session_id: 1, statement: 'GET user:1' }).catch((e) => e);
+  assert.deepEqual(error.data, {
+    kind: 'operation',
+    method: 'perk/v1/execute',
+    hint: 'GET accepts strings, but user:1 is a hash',
+    suggested_statement: 'HGETALL user:1',
+  });
+  await server.close();
+});
+
 test('an omitted error method is filled with the wire method', async () => {
   const { server, client } = createServer(
     minimalDefinition({

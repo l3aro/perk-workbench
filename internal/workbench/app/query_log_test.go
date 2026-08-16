@@ -617,6 +617,46 @@ func TestAppendQueryLog_sensitiveEntriesRedactedInMemoryAndAtRest(t *testing.T) 
 	}
 }
 
+// TestAppendQueryLog_sensitiveFailureDropsAdvisories proves a sensitive
+// failed entry loses its backend error message and its advisory guidance
+// at append time: advisories are backend text that can name keys of the
+// redacted statement, exactly like the message, so neither is ever
+// rendered or persisted for a sensitive entry.
+func TestAppendQueryLog_sensitiveFailureDropsAdvisories(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	entry := queryLogEntry{
+		StartedAt:          time.Now(),
+		Statement:          "SET api_token 8f14e45fceea167a5a36dedd4bea2543",
+		Status:             "failed",
+		Message:            "redis: WRONGTYPE Operation against a key holding the wrong kind of value",
+		Hint:               "GET accepts strings, but api_token is a hash",
+		SuggestedStatement: "HGETALL api_token",
+		Replayable:         true,
+		Sensitive:          true,
+	}
+	model.appendQueryLog(entry)
+	got := model.queryLog.component.Entries[0]
+	if got.Statement != redactedStatement || got.Replayable {
+		t.Fatalf("sensitive entry = %#v, want the redacted marker, non-replayable", got)
+	}
+	if got.Message != "failed" {
+		t.Fatalf("failure message = %q, want the generic %q", got.Message, "failed")
+	}
+	if got.Hint != "" || got.SuggestedStatement != "" {
+		t.Fatalf("advisories survived a sensitive failure: hint %q, try %q", got.Hint, got.SuggestedStatement)
+	}
+	// At rest the store row carries the generic message, never backend
+	// error or advisory text.
+	loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 1 || loaded[0].Message != "failed" {
+		t.Fatalf("stored entry = %#v, want the generic failed message", loaded)
+	}
+}
+
 // TestAppendQueryLog_metadataRoundTrip proves metadata flows from a
 // native row-write result through the message into the persisted entry
 // without changing the statement selection (the native statement wins).

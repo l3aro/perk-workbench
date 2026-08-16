@@ -130,6 +130,61 @@ func TestRPCErrorToGoError_kindNormalization(t *testing.T) {
 	}
 }
 
+// TestRPCErrorToGoError_advisoryGuidance: optional hint and
+// suggested_statement survive the wire mapping as separate fields and
+// never enter the error text — the identity used for matching and
+// diagnostics stays exactly the stable format. Omitted, null, blank,
+// and non-string advisory values are ignored (empty).
+func TestRPCErrorToGoError_advisoryGuidance(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		data          string
+		wantHint      string
+		wantSuggested string
+	}{
+		{name: "advisories preserved", data: `{"kind":"operation","hint":"GET accepts strings, but user:1 is a hash","suggested_statement":"HGETALL user:1"}`, wantHint: "GET accepts strings, but user:1 is a hash", wantSuggested: "HGETALL user:1"},
+		{name: "data omitted", data: "", wantHint: "", wantSuggested: ""},
+		{name: "null data", data: `null`, wantHint: "", wantSuggested: ""},
+		{name: "string data", data: `"boom"`, wantHint: "", wantSuggested: ""},
+		{name: "array data", data: `[1,2]`, wantHint: "", wantSuggested: ""},
+		{name: "blank hint", data: `{"hint":""}`, wantHint: "", wantSuggested: ""},
+		{name: "blank suggested_statement", data: `{"suggested_statement":""}`, wantHint: "", wantSuggested: ""},
+		{name: "non-string hint", data: `{"hint":42}`, wantHint: "", wantSuggested: ""},
+		{name: "non-string suggested_statement", data: `{"suggested_statement":["HGETALL"]}`, wantHint: "", wantSuggested: ""},
+		{name: "hint only", data: `{"hint":"the key is a hash"}`, wantHint: "the key is a hash", wantSuggested: ""},
+		{name: "suggested only", data: `{"suggested_statement":"HGETALL user:1"}`, wantHint: "", wantSuggested: "HGETALL user:1"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rpcErr := &rpcError{Code: -32000, Message: "redis: WRONGTYPE Operation against a key holding the wrong kind of value"}
+			if test.data != "" {
+				rpcErr.Data = json.RawMessage(test.data)
+			}
+			err := rpcErrorToGoError(methodExecute, "pluginkv", rpcErr)
+			var pluginErr *Error
+			if !errors.As(err, &pluginErr) {
+				t.Fatalf("error = %T %v, want *plugin.Error", err, err)
+			}
+			if pluginErr.Hint != test.wantHint {
+				t.Fatalf("Hint = %q, want %q", pluginErr.Hint, test.wantHint)
+			}
+			if pluginErr.SuggestedStatement != test.wantSuggested {
+				t.Fatalf("SuggestedStatement = %q, want %q", pluginErr.SuggestedStatement, test.wantSuggested)
+			}
+			// Advisories never enter the error identity/message.
+			text := err.Error()
+			if strings.Contains(text, test.wantHint) && test.wantHint != "" {
+				t.Fatalf("error text %q embeds the hint %q", text, test.wantHint)
+			}
+			if strings.Contains(text, test.wantSuggested) && test.wantSuggested != "" {
+				t.Fatalf("error text %q embeds the suggested statement %q", text, test.wantSuggested)
+			}
+			if text != "perk/v1/execute: redis: WRONGTYPE Operation against a key holding the wrong kind of value (code -32000)" {
+				t.Fatalf("error text = %q, want the stable operation-error format", text)
+			}
+		})
+	}
+}
+
 // TestClient_structuredErrorProvenance drives the full wire path: a
 // structured RPC error with spoofed data.plugin/method surfaces as a
 // *Error carrying the host method and the identity retained via

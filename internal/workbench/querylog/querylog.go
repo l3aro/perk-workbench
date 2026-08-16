@@ -33,6 +33,18 @@ type Entry struct {
 	Replayable bool
 	// Sensitive marks a statement that must never be stored verbatim.
 	Sensitive bool
+	// Hint is optional backend-supplied advisory guidance explaining a
+	// failed execution (perk/v1 error data.hint). It is in-memory only —
+	// never persisted — and never merged into Message or any identity
+	// used for matching or diagnostics; the detail view renders it
+	// separately, labeled, and empty means absent.
+	Hint string
+	// SuggestedStatement is optional backend-supplied advisory guidance:
+	// a statement the user may try instead of the failed one (perk/v1
+	// error data.suggested_statement). Advisory only — the workbench
+	// never executes it. In-memory only, never persisted, never merged
+	// into Message; empty means absent.
+	SuggestedStatement string
 }
 
 // CanReplay reports whether the entry's statement may be copied or

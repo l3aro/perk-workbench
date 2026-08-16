@@ -740,10 +740,11 @@ cancellation code:
 
 Error responses have the JSON-RPC shape
 `{"jsonrpc":"2.0","id":<id>,"error":{"code":<number>,"message":<string>,"data":<object>}}`,
-where `data` is optional and carries provenance only, never control
-information. Exactly one of `result` or `error` is set per response.
+where `data` is optional and carries provenance plus advisory guidance
+only, never control information. Exactly one of `result` or `error` is
+set per response.
 
-**Structured provenance.** An error's `data` object may carry three
+**Structured provenance.** An error's `data` object may carry five
 string fields:
 
 | Field | Meaning |
@@ -751,6 +752,18 @@ string fields:
 | `kind` | Stable failure kind (see below). Unknown or blank kinds are treated as `operation`; malformed non-object `data` is ignored entirely. |
 | `plugin` | Advisory plugin identity. The host never trusts it: the identity it retains from a successful `perk/v1/initialize` handshake is authoritative and overrides this field; before that handshake it is empty. |
 | `method` | Advisory method name. The host always uses the actual request method instead — the method renders exactly once, never duplicated. |
+| `hint` | Optional advisory guidance explaining the failure. Non-control: the host renders it separately from the error (labeled `Hint:`) and never acts on it. Empty strings are omitted from the wire. |
+| `suggested_statement` | Optional advisory statement the user may try instead of the failed one (labeled `Try:`). Non-control: the host never executes it, never merges it into the error identity or message, and never uses it for matching or diagnostics. Empty strings are omitted from the wire. |
+
+The `hint` and `suggested_statement` fields are the protocol's only
+*actionable* guidance: they surface in the workbench query-log detail
+view next to the raw backend error, so a failed statement like `GET
+user:1` against a hash can report `Hint: GET accepts strings, but
+user:1 is a hash` and `Try: HGETALL user:1`. A plugin should derive them
+from the actual failure (e.g. inspecting the key type after a Redis
+`WRONGTYPE` reply) and must never fabricate a suggestion that changes
+the operation's meaning; the workbench never executes suggestions, and
+sensitive statements drop both fields with the error text.
 
 Stable `kind` values (mirrored as the `ErrorKind` constants in the Node
 SDK and the `plugin.Kind` enum in the Go host):
@@ -772,19 +785,24 @@ SDK and the `plugin.Kind` enum in the Go host):
 once) as a failed operation (query log, status line), and the plugin
 child keeps running. On the Go host the error is a `plugin.Error`
 (inspect with `errors.As`): `Code`, `Message`, the normalized `Kind`,
-the host-known `Plugin` (empty before initialize), and the host
-`Method`. Protocol violations are the only terminal failures. A result
-that does not decode into the expected DTO shape is also an operation
-error, never terminal.
+the host-known `Plugin` (empty before initialize), the host `Method`,
+and the optional advisory `Hint` and `SuggestedStatement` carried
+verbatim from the error data — the workbench renders the advisory fields
+separately, labeled, in the query-log detail view and never appends them
+to the error text. Protocol violations are the only terminal failures. A
+result that does not decode into the expected DTO shape is also an
+operation error, never terminal.
 
 **SDK-side mapping.** The Node SDK's `PluginServer` maps handler errors
 onto this envelope:
 
-- A thrown `PluginOperationError(message, {code, kind, plugin, method})`
-  replies with its integer `code` (default `-32000`) and `message` plus
-  `data` carrying `kind`/`plugin`/`method` (an omitted `method` is
-  filled with the wire method; an unknown or blank `kind` normalizes to
-  `operation`).
+- A thrown `PluginOperationError(message, {code, kind, plugin, method,
+  hint, suggested_statement})` replies with its integer `code` (default
+  `-32000`) and `message` plus `data` carrying `kind`/`plugin`/`method`
+  (an omitted `method` is filled with the wire method; an unknown or
+  blank `kind` normalizes to `operation`). Non-blank `hint` and
+  `suggested_statement` strings serialize into `data` as advisory
+  guidance; blank values are omitted.
 - A thrown `RequestCancelledError` replies `-32800` with
   `data: {"kind": "cancelled"}` — the cancellation code is unchanged.
 - Any other thrown error keeps the legacy behavior: `-32603` (or the
