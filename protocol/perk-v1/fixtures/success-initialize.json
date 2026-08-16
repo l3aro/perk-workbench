@@ -39,6 +39,18 @@
         "examples": [
           "GET key",
           "SET key value"
+        ],
+        "commands": [
+          {
+            "name": "GET",
+            "usage": "GET key",
+            "summary": "Get the string value stored at key"
+          },
+          {
+            "name": "SET",
+            "usage": "SET key value [NX|XX] [EX seconds|PX milliseconds]",
+            "summary": "Set the string value at key, optionally with expiry"
+          }
         ]
       },
       "write_capabilities": {

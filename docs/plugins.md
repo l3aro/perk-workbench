@@ -663,20 +663,34 @@ whether whole-document text editing is safe. The single defined format:
 `"application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed"`.
 
 **`QueryLanguage`** — `{name: string, editor_label: string, placeholder:
-string, lexer?: string, examples?: string[]}`. Advertises how the query
-editor presents this driver's statements: `name` is the language name,
-`editor_label` the editor tab label, `placeholder` the input placeholder,
-`lexer` an optional lexer hint the UI falls back from when blank or
-unknown (`"sql"`, `"javascript"`, …), and `examples` optional statements
-the driver's parser already accepts. `name`, `editor_label`, and
-`placeholder` must be nonblank after trimming; every `examples` entry
-must be nonblank. The host normalizes an omitted, null, or all-empty
-`query_language` to the legacy SQL default — `name: "SQL"`,
-`editor_label: "SQL"`, `placeholder: "Enter a query…"`, `lexer: "sql"` —
-before registration; a present-but-invalid advertisement is **rejected**
-at registration, never silently defaulted. The protocol version is
-unchanged, so existing plugins (which omit the field) load exactly as
-before.
+string, lexer?: string, examples?: string[], commands?: QueryCommand[]}`.
+Advertises how the query editor presents this driver's statements:
+`name` is the language name, `editor_label` the editor tab label,
+`placeholder` the input placeholder, `lexer` an optional lexer hint the
+UI falls back from when blank or unknown (`"sql"`, `"javascript"`, …),
+`examples` optional statements the driver's parser already accepts, and
+`commands` an optional static catalog the query editor completes from
+(`Ctrl+Space` in the Command tab; the editor inserts the chosen command
+name — it never executes it, and the host performs no dynamic schema
+calls). `name`, `editor_label`, and `placeholder` must be nonblank after
+trimming; every `examples` entry must be nonblank. Each `commands`
+entry is `{name: string, usage: string, summary: string}`: `name` is
+the canonical command name, `usage` a backend-native usage line, and
+`summary` a concise description — all three required, nonblank after
+trimming, and free of control characters; `name` must be ASCII letters,
+digits, or underscores (the exact charset the editor tokenizes, so every
+advertised name is completable — and lowercase folding is then a total
+case-insensitive equality); `name` ≤ 64 runes, `usage` ≤ 256 runes,
+`summary` ≤ 256 runes. Command names must be unique case-insensitively
+and the list is capped at 512 entries, so a plugin can never force an
+unbounded completion list or handshake frame.
+Empty/absent `commands` preserves the pre-catalog behavior exactly. The
+host normalizes an omitted, null, or all-empty `query_language` to the
+legacy SQL default — `name: "SQL"`, `editor_label: "SQL"`,
+`placeholder: "Enter a query…"`, `lexer: "sql"` — before registration;
+a present-but-invalid advertisement is **rejected** at registration,
+never silently defaulted. The protocol version is unchanged, so
+existing plugins (which omit the field) load exactly as before.
 
 ### Shared service DTOs
 

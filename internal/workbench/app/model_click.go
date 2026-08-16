@@ -71,6 +71,9 @@ func (m Model) handleLeftClick(x, y int, release bool) (tea.Model, tea.Cmd) {
 				m.layout.sidebarPressPending = true
 				return m.schemaClick(x, contentY)
 			case focusWorkspace:
+				if !release && m.completionClick(x, contentY) {
+					return m, nil
+				}
 				return m.handleWorkspaceClick(x, contentY)
 			case focusQueryLog:
 				return m.focusQueryLogClick(x, contentY)
@@ -129,6 +132,9 @@ func (m Model) handleLeftClick(x, y int, release bool) (tea.Model, tea.Cmd) {
 		}
 		if contentY < m.layout.workspaceHeight {
 			workspaceX := max(x-m.layout.schemaWidth, 0)
+			if !release && m.completionClick(workspaceX, contentY) {
+				return m, nil
+			}
 			return m.handleWorkspaceClick(workspaceX, contentY)
 		}
 		// contentY is relative to the pane title row: the title sits at
@@ -297,6 +303,52 @@ func (m Model) handleWorkspaceClick(x, y int) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// completionClick accepts a completion overlay item by mouse press: a
+// click on a visible suggestion row selects and accepts it, inserting or
+// replacing only the completed token and preserving the rest of the
+// statement — the same accept rule as Enter/Tab. The trailing release is
+// ignored (the press already acted), and a click outside the overlay
+// falls through to the normal workspace click handling. The overlay's
+// position mirrors queryPaneView: the workspace pane body starts at
+// contentY=1 (its border/title row is contentY=0), the query content at
+// contentY=3, the overlay box top is spliced at content line startLine
+// (contentY 3+startLine), and the suggestion rows follow below the
+// box's top border.
+func (m Model) completionClick(x, y int) bool {
+	if m.Tab != tabQuery || !m.queryLog.editor.completionVisible() {
+		return false
+	}
+	overlay := m.completionOverlay()
+	if overlay == "" {
+		return false
+	}
+	lines := strings.Split(overlay, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	startLine := max(m.completionCursorOffset()+2, 1)
+	// Suggestion row i sits at contentY = 3+startLine+1+i, so
+	// i = y - 4 - startLine in content coordinates.
+	row := y - 4 - startLine
+	visible, offset := m.completionView()
+	if row < 0 || row >= len(visible) {
+		return false
+	}
+	// The overlay's line 0 is the box top border; suggestion row i is
+	// its line i+1. Bounds-check the raw overlay line for clipped boxes.
+	lineIndex := row + 1
+	if lineIndex >= len(lines) {
+		return false
+	}
+	width := ansi.StringWidth(lines[lineIndex])
+	if x < 1 || x > width {
+		return false
+	}
+	m.queryLog.editor.completion.selected = offset + row
+	m.queryLog.editor.acceptVisibleCompletion()
+	return true
 }
 
 // schemaClick maps a schema-pane click to its item. A double-click on a

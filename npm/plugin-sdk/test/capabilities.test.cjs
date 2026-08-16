@@ -195,6 +195,93 @@ test('initialize omits an all-empty query_language like the host defaults it', a
   }
 });
 
+test('initialize result includes a normalized command catalog when advertised', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'kv',
+        display: 'KV',
+        targets: [{ prefix: 'kv:' }],
+        query_language: {
+          name: 'KV',
+          editor_label: 'Command',
+          placeholder: 'Enter a statement…',
+          commands: [
+            { name: 'GET', usage: 'GET key', summary: 'Get the value at key' },
+            { name: 'SET', usage: 'SET key value [NX|XX]', summary: 'Set the value at key' },
+          ],
+        },
+        write_capabilities: { row_writer: false },
+      },
+    }),
+  );
+  const result = await client.initialize();
+  assert.deepEqual(result.capabilities.query_language.commands, [
+    { name: 'GET', usage: 'GET key', summary: 'Get the value at key' },
+    { name: 'SET', usage: 'SET key value [NX|XX]', summary: 'Set the value at key' },
+  ]);
+  await server.close();
+});
+
+test('an empty command catalog is omitted from the wire like the host omitempty DTO', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'kv',
+        display: 'KV',
+        targets: [{ prefix: 'kv:' }],
+        query_language: {
+          name: 'KV',
+          editor_label: 'Command',
+          placeholder: 'Enter a statement…',
+          commands: [],
+        },
+        write_capabilities: { row_writer: false },
+      },
+    }),
+  );
+  const result = await client.initialize();
+  assert.ok(!('commands' in result.capabilities.query_language));
+  await server.close();
+});
+
+test('create rejects invalid command catalog metadata', () => {
+  const base = {
+    name: 'kv',
+    display: 'KV',
+    targets: [{ prefix: 'kv:' }],
+    query_language: {
+      name: 'KV',
+      editor_label: 'Command',
+      placeholder: 'Enter a statement…',
+    },
+    write_capabilities: { row_writer: false },
+  };
+  for (const [label, commands] of [
+    ['not an array', 'GET key'],
+    ['entry not an object', ['GET key']],
+    ['blank name', [{ name: '  ', usage: 'GET key', summary: 'Get' }]],
+    ['missing usage', [{ name: 'GET', summary: 'Get' }]],
+    ['blank summary', [{ name: 'GET', usage: 'GET key', summary: '' }]],
+    ['non-ASCII name', [{ name: 'GÉT', usage: 'GET key', summary: 'Get' }]],
+    ['control char in usage', [{ name: 'GET', usage: 'GET\nkey', summary: 'Get' }]],
+    ['name overlong', [{ name: 'A'.repeat(65), usage: 'GET key', summary: 'Get' }]],
+    ['usage overlong', [{ name: 'GET', usage: 'u'.repeat(257), summary: 'Get' }]],
+    ['summary overlong', [{ name: 'GET', usage: 'GET key', summary: 's'.repeat(257) }]],
+    ['duplicate case-insensitive names', [
+      { name: 'GET', usage: 'GET key', summary: 'Get' },
+      { name: 'get', usage: 'GET key', summary: 'Get' },
+    ]],
+    ['too many entries', Array.from({ length: 513 }, (_, i) => ({ name: `CMD${i}`, usage: `CMD${i} arg`, summary: 's' }))],
+  ]) {
+    assert.throws(
+      () => createServer(minimalDefinition({ capabilities: { ...base, query_language: { ...base.query_language, commands } } })),
+      (error) => /commands/.test(error && error.message),
+      `commands ${label} should be rejected`,
+    );
+  }
+});
+
 test('create rejects invalid query_language metadata', () => {
   const base = {
     name: 'kv',

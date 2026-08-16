@@ -49,6 +49,7 @@ type CompletionItem struct {
 	InsertText string         // text inserted on accept (defaults to Label)
 	Kind       CompletionKind // for display/label
 	Detail     string         // extra info shown alongside the label
+	Summary    string         // tertiary muted line shown after Detail
 }
 
 type completion struct {
@@ -140,6 +141,25 @@ func keywordItem(keyword string) CompletionItem {
 // bufferWordItem creates a buffer-word CompletionItem.
 func bufferWordItem(word string) CompletionItem {
 	return CompletionItem{Label: word, InsertText: word, Kind: KindBufferWord, Detail: "buffer"}
+}
+
+// commandCompletionItems builds the static completion candidates for a
+// language's advertised command catalog: the canonical name as label and
+// insert text, the usage line as detail, and the summary as the tertiary
+// line. The catalog is host-validated (nonblank, bounded, unique
+// case-insensitively), so the items need no further sanitization.
+func commandCompletionItems(commands []sharedsql.QueryCommand) []CompletionItem {
+	items := make([]CompletionItem, 0, len(commands))
+	for _, command := range commands {
+		items = append(items, CompletionItem{
+			Label:      command.Name,
+			InsertText: command.Name,
+			Kind:       KindCommand,
+			Detail:     command.Usage,
+			Summary:    command.Summary,
+		})
+	}
+	return items
 }
 
 // BuiltinFunctions returns SQL built-in function names keyed by product name.

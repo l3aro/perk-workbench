@@ -130,12 +130,32 @@ function requireString(value, label) {
   return value;
 }
 
+// Bounds every advertised query_language command entry must respect,
+// mirroring internal/sql/query_language.go. A plugin can never force an
+// unbounded completion list or handshake frame.
+const MAX_QUERY_COMMANDS = 512;
+const MAX_QUERY_COMMAND_NAME_RUNES = 64;
+const MAX_QUERY_COMMAND_USAGE_RUNES = 256;
+const MAX_QUERY_COMMAND_SUMMARY_RUNES = 256;
+
+const CONTROL_RE = /[\u0000-\u001F\u007F-\u009F]/;
+
+function requireControlFree(value, label) {
+  if (CONTROL_RE.test(value)) {
+    throw new TypeError(`${label} must not contain control characters`);
+  }
+}
+
+function runeLength(value) {
+  return Array.from(value).length;
+}
+
 // normalizeQueryLanguage makes the optional query_language shape
 // explicit: absent, null, or all-empty advertisements stay absent (the
 // host applies its legacy SQL default), while a present advertisement
 // must carry nonblank name/editor_label/placeholder and only nonblank
-// examples — mirroring the host's validation in
-// internal/database/drivers.go.
+// examples and valid command entries — mirroring the host's validation
+// in internal/sql/query_language.go.
 function normalizeQueryLanguage(queryLanguage) {
   if (queryLanguage === undefined || queryLanguage === null) {
     return undefined;
@@ -146,12 +166,14 @@ function normalizeQueryLanguage(queryLanguage) {
   const placeholder = queryLanguage.placeholder;
   const lexer = queryLanguage.lexer;
   const examples = queryLanguage.examples;
+  const commands = queryLanguage.commands;
   if (
     (name === undefined || name === '') &&
     (editorLabel === undefined || editorLabel === '') &&
     (placeholder === undefined || placeholder === '') &&
     (lexer === undefined || lexer === '') &&
-    (examples === undefined || (Array.isArray(examples) && examples.length === 0))
+    (examples === undefined || (Array.isArray(examples) && examples.length === 0)) &&
+    (commands === undefined || (Array.isArray(commands) && commands.length === 0))
   ) {
     return undefined;
   }
@@ -177,9 +199,74 @@ function normalizeQueryLanguage(queryLanguage) {
       }
     }
   }
+  let normalizedCommands;
+  if (commands !== undefined) {
+    normalizedCommands = normalizeQueryCommands(commands);
+  }
   const normalized = { name, editor_label: editorLabel, placeholder };
   if (lexer !== undefined) normalized.lexer = lexer;
   if (examples !== undefined) normalized.examples = [...examples];
+  // An empty command list is omitted like the Go host's omitempty DTO.
+  if (normalizedCommands !== undefined && normalizedCommands.length > 0) {
+    normalized.commands = normalizedCommands;
+  }
+  return normalized;
+}
+
+// normalizeQueryCommands makes the optional query_language.commands
+// shape explicit: every entry carries nonblank bounded control-free
+// name/usage/summary, names are unique case-insensitively, and the list
+// is capped. An undefined list stays undefined (omitted from the wire);
+// an empty array normalizes to an empty array.
+// Command names are ASCII letters/digits/underscores — the exact
+// charset the host editor tokenizes, so every advertised name is
+// completable — which also makes lowercase folding a total
+// case-insensitive equality.
+const COMMAND_NAME_RE = /^[A-Za-z0-9_]+$/;
+
+function normalizeQueryCommands(commands) {
+  if (!Array.isArray(commands)) {
+    throw new TypeError('capabilities.query_language.commands must be an array');
+  }
+  if (commands.length > MAX_QUERY_COMMANDS) {
+    throw new TypeError(`capabilities.query_language.commands must not exceed ${MAX_QUERY_COMMANDS} entries`);
+  }
+  const seen = new Set();
+  const normalized = [];
+  for (let i = 0; i < commands.length; i++) {
+    const entry = commands[i];
+    requireObject(entry, `capabilities.query_language.commands[${i}]`);
+    const commandName = entry.name;
+    const usage = entry.usage;
+    const summary = entry.summary;
+    if (typeof commandName !== 'string' || commandName.trim() === '') {
+      throw new TypeError(`capabilities.query_language.commands[${i}].name must be a nonblank string`);
+    }
+    if (!COMMAND_NAME_RE.test(commandName)) {
+      throw new TypeError(`capabilities.query_language.commands[${i}].name must be ASCII letters, digits, or underscores`);
+    }
+    if (runeLength(commandName) > MAX_QUERY_COMMAND_NAME_RUNES) {
+      throw new TypeError(`capabilities.query_language.commands[${i}].name must not exceed ${MAX_QUERY_COMMAND_NAME_RUNES} runes`);
+    }
+    for (const [field, value, maxRunes] of [
+      ['usage', usage, MAX_QUERY_COMMAND_USAGE_RUNES],
+      ['summary', summary, MAX_QUERY_COMMAND_SUMMARY_RUNES],
+    ]) {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new TypeError(`capabilities.query_language.commands[${i}].${field} must be a nonblank string`);
+      }
+      if (runeLength(value) > maxRunes) {
+        throw new TypeError(`capabilities.query_language.commands[${i}].${field} must not exceed ${maxRunes} runes`);
+      }
+      requireControlFree(value, `capabilities.query_language.commands[${i}].${field}`);
+    }
+    const key = commandName.toLowerCase();
+    if (seen.has(key)) {
+      throw new TypeError(`capabilities.query_language.commands names must be unique case-insensitively (duplicate ${commandName})`);
+    }
+    seen.add(key);
+    normalized.push({ name: commandName, usage, summary });
+  }
   return normalized;
 }
 

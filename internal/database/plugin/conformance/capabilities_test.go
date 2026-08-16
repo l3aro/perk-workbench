@@ -1,0 +1,70 @@
+package conformance
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/l3aro/perk-workbench/internal/database"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+)
+
+// TestValidateCapabilities_commandCatalog: the conformance runner's
+// capabilities validation enforces the same command-catalog invariants
+// as registration — nonblank bounded control-free name/usage/summary,
+// case-insensitively unique names, and a capped list — so a real plugin
+// handshake can never smuggle an unbounded completion list past the
+// suite.
+func TestValidateCapabilities_commandCatalog(t *testing.T) {
+	base := database.Capabilities{
+		Name:    "kv",
+		Display: "KV",
+		Targets: []database.TargetPattern{{Prefix: "kv:"}},
+	}
+	language := func(commands []database.QueryCommand) *database.QueryLanguage {
+		return &database.QueryLanguage{
+			Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…",
+			Commands: commands,
+		}
+	}
+	valid := func(commands []database.QueryCommand) error {
+		caps := base
+		caps.QueryLanguage = language(commands)
+		return validateCapabilities(caps)
+	}
+
+	if err := valid([]database.QueryCommand{
+		{Name: "GET", Usage: "GET key", Summary: "Get the value at key"},
+		{Name: "SET", Usage: "SET key value", Summary: "Set the value at key"},
+	}); err != nil {
+		t.Fatalf("valid catalog rejected: %v", err)
+	}
+
+	for _, test := range []struct {
+		name     string
+		commands []database.QueryCommand
+	}{
+		{name: "blank name", commands: []database.QueryCommand{{Name: " ", Usage: "GET key", Summary: "Get"}}},
+		{name: "blank usage", commands: []database.QueryCommand{{Name: "GET", Usage: "", Summary: "Get"}}},
+		{name: "blank summary", commands: []database.QueryCommand{{Name: "GET", Usage: "GET key", Summary: "  "}}},
+		{name: "control in usage", commands: []database.QueryCommand{{Name: "GET", Usage: "GET\nkey", Summary: "Get"}}},
+		{name: "non-ASCII name", commands: []database.QueryCommand{{Name: "ΣΕΤ", Usage: "SET key value", Summary: "Set"}}},
+		{name: "name overlong", commands: []database.QueryCommand{{Name: strings.Repeat("A", sharedsql.MaxQueryCommandNameRunes+1), Usage: "GET key", Summary: "Get"}}},
+		{name: "usage overlong", commands: []database.QueryCommand{{Name: "GET", Usage: strings.Repeat("u", sharedsql.MaxQueryCommandUsageRunes+1), Summary: "Get"}}},
+		{name: "summary overlong", commands: []database.QueryCommand{{Name: "GET", Usage: "GET key", Summary: strings.Repeat("s", sharedsql.MaxQueryCommandSummaryRunes+1)}}},
+		{name: "duplicate case-insensitive", commands: []database.QueryCommand{{Name: "GET", Usage: "GET key", Summary: "Get"}, {Name: "get", Usage: "GET key", Summary: "Get"}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := valid(test.commands); err == nil {
+				t.Fatal("invalid catalog accepted")
+			}
+		})
+	}
+
+	over := make([]database.QueryCommand, sharedsql.MaxQueryCommands+1)
+	for i := range over {
+		over[i] = database.QueryCommand{Name: "GET", Usage: "GET key", Summary: "Get"}
+	}
+	if err := valid(over); err == nil {
+		t.Fatal("over-cap catalog accepted")
+	}
+}

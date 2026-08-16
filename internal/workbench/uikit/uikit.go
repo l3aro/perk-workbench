@@ -30,6 +30,9 @@ const (
 	ScopeGlobal Scope = iota
 	ScopeView
 	ScopeForm
+	// ScopeEditor is the query editor's insert-mode scope: bindings that
+	// act on the focused statement editor (e.g. query.complete).
+	ScopeEditor
 )
 
 func (s Scope) String() string {
@@ -40,6 +43,8 @@ func (s Scope) String() string {
 		return "view"
 	case ScopeForm:
 		return "form"
+	case ScopeEditor:
+		return "editor"
 	default:
 		return "unknown"
 	}

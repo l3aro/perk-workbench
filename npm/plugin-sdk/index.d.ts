@@ -70,12 +70,30 @@ export interface WriteCapabilities {
 }
 
 /**
+ * One static command entry of a query language advertisement: canonical
+ * command name, a backend-native usage line, and a concise summary. All
+ * three are required, nonblank, bounded, and control-free; `name` must
+ * be ASCII letters/digits/underscores (the editor's token charset),
+ * names are unique case-insensitively, and the list is capped so a
+ * plugin can never force an unbounded completion list or handshake
+ * frame.
+ */
+export interface QueryCommand {
+  name: string;
+  usage: string;
+  summary: string;
+}
+
+/**
  * Query editor language for one driver: name, editor tab label, input
- * placeholder, optional lexer hint (the UI falls back when blank), and
- * optional example statements the driver's parser already accepts.
+ * placeholder, optional lexer hint (the UI falls back when blank),
+ * optional example statements the driver's parser already accepts, and
+ * an optional static command catalog for completion.
  * The host normalizes an omitted/null/all-empty advertisement to the
  * legacy SQL default; a present advertisement must carry nonblank
- * name/editor_label/placeholder and nonblank examples.
+ * name/editor_label/placeholder, nonblank examples, and valid command
+ * entries (nonblank bounded control-free name/usage/summary, unique
+ * case-insensitively, capped at 512).
  */
 export interface QueryLanguage {
   name: string;
@@ -83,6 +101,7 @@ export interface QueryLanguage {
   placeholder: string;
   lexer?: string;
   examples?: string[];
+  commands?: QueryCommand[];
 }
 
 export interface Capabilities {

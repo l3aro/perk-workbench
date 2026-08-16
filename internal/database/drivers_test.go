@@ -2,9 +2,11 @@ package database
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	godrv "github.com/go-sql-driver/mysql"
@@ -132,6 +134,16 @@ func TestRegister_invalidQueryLanguagePanics(t *testing.T) {
 		{name: "blank editor label", ql: QueryLanguage{Name: "SQL", Placeholder: "Enter a query…"}},
 		{name: "blank placeholder", ql: QueryLanguage{Name: "SQL", EditorLabel: "SQL"}},
 		{name: "blank example", ql: QueryLanguage{Name: "SQL", EditorLabel: "SQL", Placeholder: "Enter a query…", Examples: []string{"select 1", "  "}}},
+		{name: "blank command name", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "  ", Usage: "GET key", Summary: "Get"}}}},
+		{name: "blank command usage", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GET", Usage: " ", Summary: "Get"}}}},
+		{name: "blank command summary", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GET", Usage: "GET key", Summary: ""}}}},
+		{name: "control char in command name", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GE\nT", Usage: "GET key", Summary: "Get"}}}},
+		{name: "non-ASCII command name", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GÉT", Usage: "GET key", Summary: "Get"}}}},
+		{name: "command name too long", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: strings.Repeat("A", sharedsql.MaxQueryCommandNameRunes+1), Usage: "GET key", Summary: "Get"}}}},
+		{name: "command usage too long", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GET", Usage: strings.Repeat("u", sharedsql.MaxQueryCommandUsageRunes+1), Summary: "Get"}}}},
+		{name: "command summary too long", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GET", Usage: "GET key", Summary: strings.Repeat("s", sharedsql.MaxQueryCommandSummaryRunes+1)}}}},
+		{name: "duplicate command name", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: []QueryCommand{{Name: "GET", Usage: "GET key", Summary: "Get"}, {Name: "get", Usage: "GET key", Summary: "Get"}}}},
+		{name: "too many commands", ql: QueryLanguage{Name: "KV", EditorLabel: "Command", Placeholder: "Enter a command…", Commands: manyCommands(sharedsql.MaxQueryCommands + 1)}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			defer func() {
@@ -276,5 +288,46 @@ func TestBuildTarget_serializesPerDriver(t *testing.T) {
 	}
 	if _, ok := BuildTarget(Spec{Name: "nope"}, FormValues{Database: "/tmp/x.db"}); ok {
 		t.Fatal("BuildTarget(driver without form) succeeded, want none")
+	}
+}
+
+// manyCommands builds n distinct valid command entries for cap-boundary
+// tests.
+func manyCommands(n int) []QueryCommand {
+	commands := make([]QueryCommand, n)
+	for i := range commands {
+		commands[i] = QueryCommand{
+			Name:    fmt.Sprintf("CMD%d", i),
+			Usage:   fmt.Sprintf("CMD%d arg", i),
+			Summary: "summary",
+		}
+	}
+	return commands
+}
+
+// TestRegister_commandCatalogRoundTrip: a valid command catalog registers
+// and survives the driver registry unchanged, so the editor can build its
+// completion list straight from the advertisement.
+func TestRegister_commandCatalogRoundTrip(t *testing.T) {
+	open := func(context.Context, string) (sharedsql.Service, error) { return nil, nil }
+	language := QueryLanguage{
+		Name:        "KV",
+		EditorLabel: "Command",
+		Placeholder: "Enter a command…",
+		Commands: []QueryCommand{
+			{Name: "GET", Usage: "GET key", Summary: "Get the value at key"},
+			{Name: "SET", Usage: "SET key value", Summary: "Set the value at key"},
+		},
+	}
+	Register(Spec{
+		Name: "qlcatalog", Targets: []TargetPattern{{Prefix: "qlcatalog:"}},
+		Open: open, QueryLanguage: language,
+	})
+	spec, ok := ByName("qlcatalog")
+	if !ok {
+		t.Fatal("qlcatalog not registered")
+	}
+	if !reflect.DeepEqual(spec.QueryLanguage, language) {
+		t.Fatalf("qlcatalog query language = %+v, want %+v", spec.QueryLanguage, language)
 	}
 }

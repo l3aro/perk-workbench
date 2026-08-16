@@ -394,6 +394,42 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "commands": {
+          "type": "array",
+          "maxItems": 512,
+          "items": {
+            "$ref": "#/$defs/queryCommand"
+          }
+        }
+      }
+    },
+    "queryCommand": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "usage",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_]+$"
+        },
+        "usage": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
         }
       }
     },

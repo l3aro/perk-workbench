@@ -287,6 +287,11 @@ func BuildTarget(spec Spec, values FormValues) (string, bool) {
 // shared contract package and cross the plugin DTO boundary unchanged.
 type QueryLanguage = sharedsql.QueryLanguage
 
+// QueryCommand is one static completion entry of a query language
+// advertisement; the canonical type lives in the shared contract
+// package and crosses the plugin DTO boundary unchanged.
+type QueryCommand = sharedsql.QueryCommand
+
 // SQLQueryLanguage is the legacy SQL default every driver without an
 // explicit query language advertisement gets.
 var SQLQueryLanguage = sharedsql.SQLQueryLanguage
@@ -299,26 +304,14 @@ func isZeroQueryLanguage(ql QueryLanguage) bool {
 
 // validateQueryLanguage checks the invariant set every nonzero query
 // language advertisement must hold: name, editor label, and placeholder
-// must be nonblank after trimming, and every example must be nonblank.
-// A zero value is not an advertisement and passes.
+// must be nonblank after trimming, every example must be nonblank, and
+// every optional command entry must be nonblank, bounded, control-free,
+// and case-insensitively unique within the capped list. A zero value is
+// not an advertisement and passes. The invariant set lives in the
+// shared contract package so registration and the plugin conformance
+// runner can never drift apart.
 func validateQueryLanguage(ql QueryLanguage) error {
-	if isZeroQueryLanguage(ql) {
-		return nil
-	}
-	switch {
-	case strings.TrimSpace(ql.Name) == "":
-		return errors.New("query language needs a name")
-	case strings.TrimSpace(ql.EditorLabel) == "":
-		return fmt.Errorf("query language %q needs an editor label", ql.Name)
-	case strings.TrimSpace(ql.Placeholder) == "":
-		return fmt.Errorf("query language %q needs a placeholder", ql.Name)
-	}
-	for i, example := range ql.Examples {
-		if strings.TrimSpace(example) == "" {
-			return fmt.Errorf("query language %q example %d must not be blank", ql.Name, i)
-		}
-	}
-	return nil
+	return sharedsql.ValidateQueryLanguage(ql)
 }
 
 // normalizeQueryLanguage resolves a plugin's query_language

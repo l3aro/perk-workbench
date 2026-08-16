@@ -21,6 +21,7 @@ const (
 	scopeGlobal scope = uikit.ScopeGlobal
 	scopeView         = uikit.ScopeView
 	scopeForm         = uikit.ScopeForm
+	scopeEditor       = uikit.ScopeEditor
 )
 
 type commandDef struct {

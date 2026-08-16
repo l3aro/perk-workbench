@@ -10,6 +10,7 @@ var defaultDefs = []commandDef{
 	{id: "app.quit_dialog", scope: scopeGlobal, keys: []string{"ctrl+q"}, label: "quit with confirm"},
 	{id: "editor.external", scope: scopeGlobal, keys: []string{"ctrl+e"}, label: "edit"},
 	{id: "editor.complete", scope: scopeForm, keys: []string{"ctrl+space"}, label: "complete"},
+	{id: "query.complete", scope: scopeEditor, keys: []string{"ctrl+space"}, label: "complete"},
 	{id: "query.execute", scope: scopeGlobal, keys: []string{"f5", "ctrl+enter", "ctrl+s"}, label: "run"},
 	{id: "query.cancel", scope: scopeGlobal, keys: []string{"esc"}, label: "cancel"},
 	{id: "query.history", scope: scopeGlobal, keys: []string{"ctrl+r"}, label: "recall query"},

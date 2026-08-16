@@ -260,10 +260,111 @@ func sorted(list []string) []string {
 	return out
 }
 
-// TestPerkV1Schema_methodCoverage: every protocol method constant has a
-// params schema and a result schema (null for void methods; cancel is a
-// notification) in the schema's $defs/methods registry, and the
-// registry's propertyNames enum matches the constants exactly.
+// TestPerkV1Schema_queryCommandDef pins the canonical shape of a
+// query_language command entry: name/usage/summary are required, bounded,
+// and control-free in the schema itself, and queryLanguage references the
+// def from an optional capped array.
+func TestPerkV1Schema_queryCommandDef(t *testing.T) {
+	schema := parseObject(t, "schema.json", readJSONFile(t, filepath.Join(perkV1Dir(t), "schema.json")))
+	defs := schemaDefs(t, schema)
+	ql := defObject(t, defs, "queryLanguage")
+	commands, ok := propsOf(t, ql)["commands"].(map[string]any)
+	if !ok {
+		t.Fatal("queryLanguage has no commands property")
+	}
+	if commands["type"] != "array" {
+		t.Fatalf("commands type = %v, want array", commands["type"])
+	}
+	if maxItems, ok := commands["maxItems"].(float64); !ok || int(maxItems) != sharedsql.MaxQueryCommands {
+		t.Fatalf("commands maxItems = %v, want %d", commands["maxItems"], sharedsql.MaxQueryCommands)
+	}
+	itemRef, ok := commands["items"].(map[string]any)["$ref"].(string)
+	if !ok || itemRef != "#/$defs/queryCommand" {
+		t.Fatalf("commands items = %v, want the queryCommand def", commands["items"])
+	}
+	command := defObject(t, defs, "queryCommand")
+	if !reflect.DeepEqual(requiredOf(t, command), []string{"name", "usage", "summary"}) {
+		t.Fatalf("queryCommand required = %v", requiredOf(t, command))
+	}
+	for field, wantMax := range map[string]int{
+		"name": sharedsql.MaxQueryCommandNameRunes, "usage": sharedsql.MaxQueryCommandUsageRunes,
+		"summary": sharedsql.MaxQueryCommandSummaryRunes,
+	} {
+		prop, ok := propsOf(t, command)[field].(map[string]any)
+		if !ok {
+			t.Fatalf("queryCommand has no %s property", field)
+		}
+		if maxLength, ok := prop["maxLength"].(float64); !ok || int(maxLength) != wantMax {
+			t.Fatalf("%s maxLength = %v, want %d", field, prop["maxLength"], wantMax)
+		}
+		pattern, ok := prop["pattern"].(string)
+		if !ok || pattern == "" {
+			t.Fatalf("%s has no pattern", field)
+		}
+		if field == "name" {
+			// Names are ASCII letters/digits/underscores — the editor
+			// token charset — which also makes lowercase uniqueness
+			// total across the whole allowed input space.
+			if pattern != "^[A-Za-z0-9_]+$" {
+				t.Fatalf("name pattern = %q, want the ASCII token charset", pattern)
+			}
+			for _, value := range []string{"GET", "HGETALL", "SCAN2", "FOO_BAR"} {
+				if !asciiTokenPatternMatches(pattern, value) {
+					t.Fatalf("name pattern %q must accept %q", pattern, value)
+				}
+			}
+			for _, r := range []rune{'\n', 'é', 'σ', ' ', '-', 'İ'} {
+				if asciiTokenPatternMatches(pattern, string(r)) {
+					t.Fatalf("name pattern %q must reject %q", pattern, r)
+				}
+			}
+			continue
+		}
+		for _, r := range []rune{'\n', '\t', '\x00', '\x7f', '\u009f'} {
+			if controlFreePatternMatches(pattern, string(r)) {
+				t.Fatalf("%s pattern %q must reject control rune %q", field, pattern, r)
+			}
+		}
+		if !controlFreePatternMatches(pattern, "GET key") {
+			t.Fatalf("%s pattern %q must accept plain text", field, pattern)
+		}
+	}
+}
+
+// controlFreePatternMatches reports whether value matches the schema's
+// control-free pattern: no ASCII C0/C1 control or DEL rune. It
+// deliberately mirrors the JSON Schema regex semantics over runes
+// instead of invoking an external validator.
+func controlFreePatternMatches(pattern, value string) bool {
+	if pattern != "^[^\\u0000-\\u001F\\u007F-\\u009F]*$" {
+		return false
+	}
+	for _, r := range value {
+		if (r >= 0x00 && r <= 0x1F) || (r >= 0x7F && r <= 0x9F) {
+			return false
+		}
+	}
+	return true
+}
+
+// asciiTokenPatternMatches reports whether value matches the schema's
+// ASCII command-name pattern: one or more ASCII letters, digits, or
+// underscores, mirroring the JSON Schema regex over runes.
+func asciiTokenPatternMatches(pattern, value string) bool {
+	if pattern != "^[A-Za-z0-9_]+$" {
+		return false
+	}
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
 func TestPerkV1Schema_methodCoverage(t *testing.T) {
 	schema := parseObject(t, "schema.json", readJSONFile(t, filepath.Join(perkV1Dir(t), "schema.json")))
 	defs := schemaDefs(t, schema)

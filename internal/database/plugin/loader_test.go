@@ -585,11 +585,12 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	}
 	_ = loader.Close()
 
-	// A valid advertisement passes through to the registered spec.
+	// A valid advertisement passes through to the registered spec,
+	// including the optional static command catalog.
 	setEnv(t, "PERK_PLUGIN_NAME", "qlpass")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "qlpass:")
 	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE",
-		`{"name":"QL","editor_label":"Command","placeholder":"Enter a statement…","lexer":"plaintext","examples":["GET k","SET k v"]}`)
+		`{"name":"QL","editor_label":"Command","placeholder":"Enter a statement…","lexer":"plaintext","examples":["GET k","SET k v"],"commands":[{"name":"GET","usage":"GET key","summary":"Get the value at key"},{"name":"SET","usage":"SET key value","summary":"Set the value at key"}]}`)
 	shims = nil
 	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
 	if len(errs) != 0 {
@@ -602,6 +603,10 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 		Placeholder: "Enter a statement…",
 		Lexer:       "plaintext",
 		Examples:    []string{"GET k", "SET k v"},
+		Commands: []database.QueryCommand{
+			{Name: "GET", Usage: "GET key", Summary: "Get the value at key"},
+			{Name: "SET", Usage: "SET key value", Summary: "Set the value at key"},
+		},
 	}
 	if spec, ok := database.ByName("qlpass"); !ok {
 		t.Fatal("qlpass not registered")
@@ -610,7 +615,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	}
 
 	// Invalid nonzero metadata rejects the entry, never silently
-	// defaulting it.
+	// defaulting it — including an invalid command catalog.
 	setEnv(t, "PERK_PLUGIN_NAME", "qlbad")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "qlbad:")
 	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE", `{"name":"QL","placeholder":"Enter a statement…"}`)
@@ -624,6 +629,25 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	}
 	if _, ok := database.ByName("qlbad"); ok {
 		t.Fatal("qlbad registered despite invalid query language")
+	}
+	_ = loader.Close()
+
+	// A command catalog with a case-insensitively repeated name rejects
+	// the entry like any other invalid advertisement.
+	setEnv(t, "PERK_PLUGIN_NAME", "qlbadcmd")
+	setEnv(t, "PERK_PLUGIN_TARGETS", "qlbadcmd:")
+	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE",
+		`{"name":"QL","editor_label":"Command","placeholder":"Enter a statement…","commands":[{"name":"GET","usage":"GET key","summary":"Get"},{"name":"get","usage":"GET key","summary":"Get"}]}`)
+	shims = nil
+	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	if len(errs) != 1 {
+		t.Fatalf("duplicate-command Load errors = %v, want exactly one", errs)
+	}
+	if len(shims) != 0 {
+		t.Fatalf("duplicate-command Load registered %d drivers, want none", len(shims))
+	}
+	if _, ok := database.ByName("qlbadcmd"); ok {
+		t.Fatal("qlbadcmd registered despite duplicate command names")
 	}
 	_ = loader.Close()
 }

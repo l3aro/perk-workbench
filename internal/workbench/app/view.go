@@ -509,7 +509,16 @@ func (m Model) queryPaneView() string {
 		content = strings.Join(lines, "\n")
 	}
 
-	return content + "\n" + chrome.PaneStatus("", m.queryLog.resultsStatus, m.layout.tableViewportWidth)
+	// The query pane status line carries a small help cue while the
+	// active language advertises a command catalog: the configured
+	// completion key. Disabled bindings (no key) suppress the cue.
+	hint := ""
+	if len(m.editorLanguage().Commands) > 0 {
+		if key := m.keybindings.DisplayKey("query.complete"); key != "" {
+			hint = chrome.FormatFooterKey(key) + " complete"
+		}
+	}
+	return content + "\n" + chrome.PaneStatus(hint, m.queryLog.resultsStatus, m.layout.tableViewportWidth)
 }
 
 // queryEditorBox frames the query editor; its border color mirrors the

@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/log"
-	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
@@ -493,13 +492,25 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				case key.Code == tea.KeyDown || (key.Code == 'j' && key.Mod == tea.ModCtrl):
 					m.queryLog.editor.completion.move(1)
 				case key.Code == tea.KeyEnter || key.Code == tea.KeyTab:
-					m.queryLog.editor.acceptCompletion()
+					m.queryLog.editor.acceptVisibleCompletion()
 				default:
 					completionHandled = false
 				}
 				if completionHandled {
 					return m, nil
 				}
+			}
+			// Ctrl+Space completes the statement in insert mode. The
+			// bindings are capability-gated and mutually exclusive: the
+			// editor-scope query.complete opens the static command catalog
+			// (a no-op for languages without one — the key then falls
+			// through to SQL completion), and the form-scope editor.complete
+			// opens relational SQL completion (a no-op for non-SQL). A
+			// rebind of one binding never re-routes the other.
+			if m.overlay.formMode.Editing() &&
+				m.keybindings.Match(message, "query.complete", []scope{scopeEditor, scopeForm, scopeView, scopeGlobal}) &&
+				m.queryLog.editor.showCommandCompletion() {
+				return m, nil
 			}
 			if m.overlay.formMode.Editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
 				return m, m.startCompletion()
@@ -536,7 +547,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					return m, tea.Batch(command, m.startCompletion())
 				}
 				if m.queryLog.editor.completionVisible() {
-					m.queryLog.editor.completion.filter(sharedsql.CompletionPrefix(m.queryLog.editor.value))
+					m.queryLog.editor.refilter()
 				} else if isIdentStart(message.Text) {
 					m.queryLog.editor.completion = completion{}
 					return m, tea.Batch(command, m.startCompletion())

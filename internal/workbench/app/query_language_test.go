@@ -18,6 +18,14 @@ var testRedisLanguage = sharedsql.QueryLanguage{
 	Placeholder: "Enter a command…",
 	Lexer:       "redis",
 	Examples:    []string{"GET user:2"},
+	Commands: []sharedsql.QueryCommand{
+		{Name: "GET", Usage: "GET key", Summary: "Get the string value stored at key"},
+		{Name: "HGET", Usage: "HGET key field", Summary: "Get one field of the hash at key"},
+		{Name: "HGETALL", Usage: "HGETALL key", Summary: "Get all fields of the hash at key"},
+		{Name: "HSET", Usage: "HSET key field value", Summary: "Set one field of the hash at key"},
+		{Name: "PING", Usage: "PING", Summary: "Check that the connection is alive"},
+		{Name: "SELECT", Usage: "SELECT index", Summary: "Select the logical database"},
+	},
 }
 
 // TestOpen_appliesQueryLanguage: a successful open applies the matched
