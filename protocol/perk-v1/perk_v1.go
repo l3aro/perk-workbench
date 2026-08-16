@@ -73,3 +73,7 @@ func (Source) Manifest() ([]byte, error) { return Manifest() }
 
 // Fixture returns one embedded fixture frame by file name.
 func (Source) Fixture(name string) ([]byte, error) { return Fixture(name) }
+
+// FixtureNames returns every embedded fixture file name in sorted
+// order — the contract digest's fixture enumeration.
+func (Source) FixtureNames() ([]string, error) { return FixtureNames() }

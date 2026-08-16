@@ -132,6 +132,18 @@ go build ./cmd/perk-workbench
 gofmt -l cmd internal
 ```
 
+The build version is injected explicitly — never baked in:
+
+```bash
+go build -ldflags "-X main.version=<version>" ./cmd/perk-workbench
+perk-workbench --version
+```
+
+`--version` prints `perk-workbench <version>`; a build without the
+injection honestly reports `perk-workbench devel`. The injected
+version is carried into the plugin test evidence document
+(`host_version`), so release evidence names the exact host build.
+
 Demo databases for testing:
 
 ```bash

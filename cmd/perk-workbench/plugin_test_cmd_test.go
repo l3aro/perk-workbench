@@ -250,8 +250,18 @@ func TestPluginTest_goodPlugin(t *testing.T) {
 		t.Fatalf("plugin test = %d, stderr %q, want 0 with a JSON document", status, stderr)
 	}
 	var doc struct {
-		Entry string `json:"entry"`
-		Path  string `json:"path"`
+		EvidenceSchema   string `json:"evidence_schema"`
+		EvidenceVersion  int    `json:"evidence_version"`
+		ProtocolVersion  int    `json:"protocol_version"`
+		HostVersion      string `json:"host_version"`
+		ContractSHA256   string `json:"contract_sha256"`
+		Entry            string `json:"entry"`
+		Path             string `json:"path"`
+		ExecutableSHA256 string `json:"executable_sha256"`
+		Capabilities     struct {
+			Name    string `json:"name"`
+			Display string `json:"display"`
+		} `json:"capabilities"`
 		Error string `json:"error"`
 		Cases []struct {
 			Name     string   `json:"name"`
@@ -270,6 +280,28 @@ func TestPluginTest_goodPlugin(t *testing.T) {
 	}
 	if !doc.OK || doc.Error != "" || doc.Failed != 0 || doc.Passed != 16 {
 		t.Fatalf("doc = %+v, want 16 passed and no failures", doc)
+	}
+	// The evidence document carries the stable release fields: schema
+	// identity/version, protocol version, host build version (devel
+	// when not injected), the canonical contract digest, and the
+	// executable digest of the resolved path.
+	if doc.EvidenceSchema != "perk/v1/plugin-test-evidence.schema.json" || doc.EvidenceVersion != 1 {
+		t.Fatalf("evidence identity = %q/%d, want the canonical schema at version 1", doc.EvidenceSchema, doc.EvidenceVersion)
+	}
+	if doc.ProtocolVersion != 1 {
+		t.Fatalf("protocol version = %d, want 1", doc.ProtocolVersion)
+	}
+	if doc.HostVersion != "perk-workbench devel" {
+		t.Fatalf("host version = %q, want the honest uninjected build version", doc.HostVersion)
+	}
+	if len(doc.ContractSHA256) != 64 {
+		t.Fatalf("contract digest = %q, want 64 hex chars", doc.ContractSHA256)
+	}
+	if len(doc.ExecutableSHA256) != 64 {
+		t.Fatalf("executable digest = %q, want 64 hex chars", doc.ExecutableSHA256)
+	}
+	if doc.Capabilities.Name != "conftest" || doc.Capabilities.Display != "Conformance Helper" {
+		t.Fatalf("capabilities identity = %+v, want the helper's advertisement", doc.Capabilities)
 	}
 	if doc.Entry != helper || doc.Path != helper {
 		t.Fatalf("entry/path = %q/%q, want the resolved helper", doc.Entry, doc.Path)
@@ -318,10 +350,22 @@ func TestPluginTest_goodPlugin(t *testing.T) {
 		}
 	}
 
-	// Human output: one PASS line per case plus final counts.
+	// Human output: the protocol/host/contract/executable summary, one
+	// PASS line per case, and the final counts.
 	status, stdout, stderr = runCLI(t, "plugin", "test", helper)
 	if status != 0 || stderr != "" {
 		t.Fatalf("human plugin test = %d, stderr %q", status, stderr)
+	}
+	for _, want := range []string{
+		"protocol: perk/v1",
+		"host: perk-workbench devel",
+		"contract: sha256:",
+		"executable: sha256:",
+		"capabilities: conftest (Conformance Helper)",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("human stdout missing %q:\n%s", want, stdout)
+		}
 	}
 	if strings.Count(stdout, "PASS") != 16 {
 		t.Fatalf("human stdout has %d PASS lines, want 16:\n%s", strings.Count(stdout, "PASS"), stdout)

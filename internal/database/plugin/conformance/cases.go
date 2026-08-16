@@ -49,7 +49,7 @@ func (e *Engine) cases() []Case {
 		{
 			Name: caseInitialize,
 			Run: func(child *Child, until time.Time) error {
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				return child.ExpectQuiet(until, quiet)
@@ -85,7 +85,7 @@ func (e *Engine) cases() []Case {
 		{
 			Name: caseUnknownMethod,
 			Run: func(child *Child, until time.Time) error {
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				// The canonical invalid request: an unknown method the
@@ -107,7 +107,7 @@ func (e *Engine) cases() []Case {
 				if err := child.ExpectSilent(until, quiet); err != nil {
 					return err
 				}
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				return child.ExpectQuiet(until, quiet)
@@ -131,7 +131,7 @@ func (e *Engine) cases() []Case {
 				if frame.Error == nil {
 					return &CaseError{CategoryBehavior, "request before initialize: expected a JSON-RPC error, got a result"}
 				}
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				return child.ExpectQuiet(until, quiet)
@@ -155,7 +155,7 @@ func (e *Engine) cases() []Case {
 					return &CaseError{CategoryBehavior, fmt.Sprintf(
 						"first response id %d, want %d (in-order processing)", frame.ID, initID)}
 				}
-				if err := expectInitializeResult(frame); err != nil {
+				if err := e.expectInitializeResult(frame); err != nil {
 					return err
 				}
 				frame, err = child.Expect(until)
@@ -192,7 +192,7 @@ func (e *Engine) cases() []Case {
 				if err := child.ExpectSilent(until, quiet); err != nil {
 					return err
 				}
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				return child.ExpectQuiet(until, quiet)
@@ -246,7 +246,7 @@ func (e *Engine) cases() []Case {
 				// without weakening initialize params validation; the
 				// manifest-declared -32601 reply with the correct id is
 				// required.
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				frame, err := paddedInitialize(unknown, maxFrameBytes)
@@ -279,7 +279,7 @@ func (e *Engine) cases() []Case {
 		{
 			Name: caseCleanEOFShutdown,
 			Run: func(child *Child, until time.Time) error {
-				if err := sendAndExpectInitialize(child, until, init); err != nil {
+				if err := e.sendAndExpectInitialize(child, until, init); err != nil {
 					return err
 				}
 				// Clean EOF shutdown: stdin closes, the child exits 0

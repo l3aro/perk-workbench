@@ -55,8 +55,12 @@ Commands:
   test [--json] EXECUTABLE
       Run the perk/v1 conformance suite against one executable:
       fixture-driven protocol cases and generated transport cases, each
-      in a fresh child that is terminated when the case ends. Exit
-      status 1 when any case fails.
+      in a fresh child that is terminated when the case ends. --json
+      emits one self-contained release evidence document (evidence
+      schema/version, protocol and host versions, contract and
+      executable digests, capabilities identity, case results, final
+      pass/fail) suitable for release evidence. Exit status 1 when any
+      case fails.
 
 Options:
   --json       Machine-readable JSON on stdout; diagnostics for the

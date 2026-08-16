@@ -13,9 +13,15 @@ package conformance
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +38,26 @@ const (
 	CategoryTimeout  = "timeout"
 	CategoryShutdown = "shutdown"
 )
+
+// EvidenceSchema is the canonical identity of the evidence document
+// schema (protocol/perk-v1/plugin-test-evidence.schema.json). The
+// emitted evidence document names it so any consumer can validate the
+// document against the exact schema that produced it.
+const EvidenceSchema = "perk/v1/plugin-test-evidence.schema.json"
+
+// EvidenceVersion is the version of the evidence document shape this
+// binary emits. A future change to the document shape bumps this
+// version together with the schema asset.
+const EvidenceVersion = 1
+
+// CapabilitiesIdentity is the declarative identity of a plugin's
+// capability advertisement, captured from the initialize handshake —
+// no backend required. The v1 protocol advertises no implementation
+// version, so none is reported.
+type CapabilitiesIdentity struct {
+	Name    string `json:"name"`
+	Display string `json:"display,omitempty"`
+}
 
 // CaseError is one case failure with its stable category and message.
 // Messages are structural — raw protocol frames and request data are
@@ -55,17 +81,52 @@ type Result struct {
 	Stderr   []string      `json:"stderr,omitempty"`
 }
 
-// Document is the complete machine-readable outcome of one run. It
-// never carries connection targets, form values, credentials,
-// statements, or raw protocol frames.
+// Document is the complete machine-readable outcome of one run: a
+// self-contained release evidence document. It carries the stable
+// evidence fields (schema identity and version, perk protocol version,
+// host build version, canonical contract digest, executable digest and
+// resolved path, capabilities identity) plus the per-case results and
+// final counts. It never carries connection targets, form values,
+// credentials, statements, or raw protocol frames, and it is
+// deterministic except per-case durations and the path.
 type Document struct {
-	Entry  string   `json:"entry"`
-	Path   string   `json:"path,omitempty"`
-	Error  string   `json:"error,omitempty"` // suite-level failure (interrupt, setup, resolve)
-	Cases  []Result `json:"cases,omitempty"`
-	Passed int      `json:"passed"`
-	Failed int      `json:"failed"`
-	OK     bool     `json:"ok"`
+	EvidenceSchema   string                `json:"evidence_schema"`
+	EvidenceVersion  int                   `json:"evidence_version"`
+	ProtocolVersion  int                   `json:"protocol_version"`
+	HostVersion      string                `json:"host_version,omitempty"`
+	ContractSHA256   string                `json:"contract_sha256,omitempty"`
+	Entry            string                `json:"entry"`
+	Path             string                `json:"path,omitempty"`
+	ExecutableSHA256 string                `json:"executable_sha256,omitempty"`
+	Capabilities     *CapabilitiesIdentity `json:"capabilities,omitempty"`
+	Error            string                `json:"error,omitempty"` // suite-level failure (interrupt, setup, resolve, hash)
+	Cases            []Result              `json:"cases,omitempty"`
+	Passed           int                   `json:"passed"`
+	Failed           int                   `json:"failed"`
+	OK               bool                  `json:"ok"`
+}
+
+// NewDocument returns the base evidence document for one entry with
+// every stable field the engine can fill: the evidence schema identity
+// and version, the perk protocol version the host speaks, and the
+// canonical contract digest. HostVersion is filled by the CLI from the
+// host build version; Test fills the resolved path, executable digest,
+// capabilities identity, and the run results. It fails only when the
+// embedded contract assets cannot be read — no evidence document can
+// be produced then.
+func NewDocument(entry string) (Document, error) {
+	digest, err := ContractDigest(perkv1.Source{})
+	if err != nil {
+		return Document{}, err
+	}
+	return Document{
+		EvidenceSchema:  EvidenceSchema,
+		EvidenceVersion: EvidenceVersion,
+		ProtocolVersion: plugin.ProtocolVersion,
+		ContractSHA256:  digest,
+		Entry:           entry,
+		Cases:           []Result{},
+	}, nil
 }
 
 // Case is one named conformance case. Run receives the fresh child and
@@ -80,11 +141,12 @@ type Case struct {
 // it from the canonical embedded protocol assets; tests inject a fake
 // source through NewFrom to exercise manifest drift.
 type Engine struct {
-	src      source
-	manifest manifest
-	fixtures map[string][]byte
-	codes    map[string]int
-	methods  map[string]string
+	src          source
+	manifest     manifest
+	fixtures     map[string][]byte
+	codes        map[string]int
+	methods      map[string]string
+	capabilities *CapabilitiesIdentity // captured from the first validated initialize reply
 
 	// Timeout bounds one case end to end — its exchanges and its
 	// shutdown; a case that exceeds it fails. Default 30 seconds.
@@ -102,6 +164,7 @@ type source interface {
 	Schema() []byte
 	Manifest() ([]byte, error)
 	Fixture(name string) ([]byte, error)
+	FixtureNames() ([]string, error)
 }
 
 // manifest is the fixture manifest's document shape.
@@ -258,12 +321,98 @@ func (e *Engine) entry(file string) (manifestEntry, bool) {
 	return manifestEntry{}, false
 }
 
+// contractAssetNames enumerates the canonical contract asset set:
+// schema.json, fixtures/manifest.json, and every fixture frame, sorted
+// by name. Sorted enumeration keeps the digest independent of map or
+// directory iteration order.
+func contractAssetNames(src source) ([]string, error) {
+	names := []string{"schema.json", "fixtures/manifest.json"}
+	fixtures, err := src.FixtureNames()
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range fixtures {
+		names = append(names, "fixtures/"+name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// ContractDigest returns the canonical SHA-256 of the whole perk/v1
+// contract asset set: schema.json, fixtures/manifest.json, and every
+// fixture frame, hashed in sorted name order with explicit length
+// framing — each asset contributes "<name-length>:<name>" followed by
+// "<content-length>:<content>". Any drift in any asset, including a
+// rename, reorder, or content edit, changes the digest; the framing
+// makes concatenation boundaries unambiguous.
+func ContractDigest(src source) (string, error) {
+	names, err := contractAssetNames(src)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	for _, name := range names {
+		var content []byte
+		switch {
+		case name == "schema.json":
+			content = src.Schema()
+		case name == "fixtures/manifest.json":
+			content, err = src.Manifest()
+		default:
+			content, err = src.Fixture(strings.TrimPrefix(name, "fixtures/"))
+		}
+		if err != nil {
+			return "", fmt.Errorf("contract digest: %s: %w", name, err)
+		}
+		io.WriteString(hash, strconv.Itoa(len(name)))
+		hash.Write([]byte{':'})
+		io.WriteString(hash, name)
+		io.WriteString(hash, strconv.Itoa(len(content)))
+		hash.Write([]byte{':'})
+		hash.Write(content)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
 // Test runs every case against one resolved executable path. Each case
 // spawns a fresh child and terminates and reaps it before the next
 // starts; independent failures never stop later cases. A canceled
-// context stops the run between cases and fails it overall.
+// context stops the run between cases and fails it overall. The
+// returned document carries the stable evidence fields: the evidence
+// schema identity and version, the perk protocol version, the
+// canonical contract digest (from the engine's asset source), the
+// executable digest of the resolved path (when the file exists and is
+// readable), and the capabilities identity captured from the first
+// validated initialize reply. HostVersion is filled by the CLI.
 func (e *Engine) Test(ctx context.Context, entry, path string) Document {
-	doc := Document{Entry: entry, Path: path, Cases: []Result{}}
+	e.capabilities = nil
+	doc := Document{
+		EvidenceSchema:  EvidenceSchema,
+		EvidenceVersion: EvidenceVersion,
+		ProtocolVersion: plugin.ProtocolVersion,
+		Entry:           entry,
+		Path:            path,
+		Cases:           []Result{},
+	}
+	digest, err := ContractDigest(e.src)
+	if err != nil {
+		doc.Error = "contract digest: " + err.Error()
+		return doc
+	}
+	doc.ContractSHA256 = digest
+	if path != "" {
+		digest, err := plugin.SHA256File(path)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				doc.Error = "executable sha256: " + err.Error()
+				return doc
+			}
+			// A path that does not exist is left unhashed: the spawn
+			// failures of the cases below report it far more usefully.
+		} else {
+			doc.ExecutableSHA256 = digest
+		}
+	}
 	for _, c := range e.cases() {
 		if err := ctx.Err(); err != nil {
 			doc.Error = "interrupted"
@@ -278,6 +427,7 @@ func (e *Engine) Test(ctx context.Context, entry, path string) Document {
 		}
 	}
 	doc.OK = doc.Error == "" && doc.Failed == 0
+	doc.Capabilities = e.capabilities
 	return doc
 }
 
@@ -360,7 +510,7 @@ type initializeResult struct {
 
 // sendAndExpectInitialize sends the canonical initialize request and
 // verifies the success reply.
-func sendAndExpectInitialize(child *Child, until time.Time, frame []byte) error {
+func (e *Engine) sendAndExpectInitialize(child *Child, until time.Time, frame []byte) error {
 	if err := child.SendFixture(frame); err != nil {
 		return err
 	}
@@ -368,15 +518,16 @@ func sendAndExpectInitialize(child *Child, until time.Time, frame []byte) error 
 	if err != nil {
 		return err
 	}
-	return expectInitializeResult(response)
+	return e.expectInitializeResult(response)
 }
 
 // expectInitializeResult verifies one initialize reply: a success
 // carrying the exact protocol version and capabilities that pass the
 // registration invariants (the side-effect-free ValidateShim checks,
 // minus the registry-conflict half, which is global state a conformance
-// run must not depend on).
-func expectInitializeResult(frame Frame) error {
+// run must not depend on). A validated reply also captures the
+// plugin's capabilities identity for the evidence document.
+func (e *Engine) expectInitializeResult(frame Frame) error {
 	if frame.Error != nil {
 		return &CaseError{CategoryBehavior, fmt.Sprintf(
 			"initialize answered with error code %d: %s", frame.Error.Code, frame.Error.Message)}
@@ -391,6 +542,12 @@ func expectInitializeResult(frame Frame) error {
 	}
 	if err := validateCapabilities(result.Capabilities); err != nil {
 		return &CaseError{CategoryBehavior, fmt.Sprintf("initialize capabilities: %v", err)}
+	}
+	if e.capabilities == nil {
+		e.capabilities = &CapabilitiesIdentity{
+			Name:    result.Capabilities.Name,
+			Display: result.Capabilities.Display,
+		}
 	}
 	return nil
 }

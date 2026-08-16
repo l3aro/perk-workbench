@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/l3aro/perk-workbench/blob/main/protocol/perk-v1/plugin-test-evidence.schema.json",
+  "title": "perk-workbench plugin test evidence",
+  "description": "Machine-readable outcome document of `perk-workbench plugin test --json EXECUTABLE`: the self-contained release evidence for one external plugin against the perk/v1 conformance suite. The document is deterministic except per-case durations and the resolved executable path, and never carries credentials, connection targets, form values, statements, or raw protocol frames. Unknown members MUST be ignored (additive evolution, per protocol/perk-v1/policy.md); a future document shape bumps evidence_version.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "evidence_schema",
+    "evidence_version",
+    "protocol_version",
+    "host_version",
+    "contract_sha256",
+    "entry",
+    "passed",
+    "failed",
+    "ok"
+  ],
+  "properties": {
+    "evidence_schema": {
+      "type": "string",
+      "const": "perk/v1/plugin-test-evidence.schema.json"
+    },
+    "evidence_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "protocol_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "host_version": {
+      "type": "string",
+      "description": "Host build identity: \"perk-workbench <version>\", where <version> is injected at build time via -ldflags=-X main.version=... and \"devel\" when not injected.",
+      "pattern": "^perk-workbench "
+    },
+    "contract_sha256": {
+      "type": "string",
+      "description": "SHA-256 of the canonical perk/v1 contract asset set — schema.json, fixtures/manifest.json, and every fixture frame — in sorted name order with explicit length framing. Any asset drift changes this digest.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "entry": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string",
+      "description": "The resolved canonical executable path (filepath.Abs + EvalSymlinks) once resolution succeeded."
+    },
+    "executable_sha256": {
+      "type": "string",
+      "description": "SHA-256 of the canonical executable bytes — the fingerprint a release archive's binary must match.",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "capabilities": {
+      "$ref": "#/$defs/capabilitiesIdentity"
+    },
+    "error": {
+      "type": "string",
+      "description": "Suite-level failure (interrupt, setup, resolution, hashing) when the run could not complete."
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/caseResult"
+      }
+    },
+    "passed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ok": {
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "capabilitiesIdentity": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name"
+      ],
+      "description": "The plugin's advertised capabilities identity, captured from the initialize handshake (no backend required). The v1 protocol advertises no implementation version, so none is reported.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "display": {
+          "type": "string"
+        }
+      }
+    },
+    "caseResult": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "name",
+        "ok",
+        "duration"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "duration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "spawn",
+            "protocol",
+            "behavior",
+            "timeout",
+            "shutdown"
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

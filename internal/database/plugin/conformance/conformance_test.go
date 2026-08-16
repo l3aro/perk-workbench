@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	"github.com/l3aro/perk-workbench/protocol/perk-v1"
 )
 
@@ -333,6 +335,15 @@ func (f fakeSource) Fixture(name string) ([]byte, error) {
 	return frame, nil
 }
 
+func (f fakeSource) FixtureNames() ([]string, error) {
+	names := make([]string, 0, len(f.fixtures))
+	for name := range f.fixtures {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
 // canonicalAssets returns the embedded schema, manifest, and every
 // fixture frame inlined, so a fake source can drift in exactly one
 // dimension.
@@ -466,6 +477,153 @@ func fixturesWithout(t *testing.T, fixtures map[string][]byte, file string) map[
 		}
 	}
 	return out
+}
+
+// TestContractDigestDeterministicAndDriftSensitive: the canonical
+// contract digest is stable for identical assets and changes when any
+// asset drifts — the schema, the manifest, a fixture frame, or the
+// fixture set itself — and the explicit length framing makes
+// concatenation boundaries unambiguous.
+func TestContractDigestDeterministicAndDriftSensitive(t *testing.T) {
+	schema, raw, fixtures := canonicalAssets(t)
+	canonical := fakeSource{schema: schema, manifest: raw, fixtures: fixtures}
+
+	first, err := ContractDigest(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ContractDigest(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second || len(first) != 64 {
+		t.Fatalf("digest %q is not stable and 64 hex chars", first)
+	}
+	// The canonical fake source must agree with the real embedded
+	// source — both enumerate the same assets in the same order.
+	embedded, err := ContractDigest(perkv1.Source{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != embedded {
+		t.Fatalf("canonical fake digest %q != embedded digest %q", first, embedded)
+	}
+
+	drift := func(name string, source source) {
+		t.Helper()
+		got, err := ContractDigest(source)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if got == first {
+			t.Fatalf("%s: digest did not change", name)
+		}
+	}
+
+	// Schema drift.
+	drift("schema drift", fakeSource{
+		schema: append(append([]byte{}, schema...), '\n'), manifest: raw, fixtures: fixtures,
+	})
+	// Manifest drift.
+	drift("manifest drift", fakeSource{
+		schema: schema, manifest: append(append([]byte{}, raw...), '\n'), fixtures: fixtures,
+	})
+	// Fixture frame drift.
+	shifted := map[string][]byte{}
+	for name, frame := range fixtures {
+		shifted[name] = append(append([]byte{}, frame...), '\n')
+	}
+	drift("fixture drift", fakeSource{schema: schema, manifest: raw, fixtures: shifted})
+	// Fixture-set drift: a fixture added to the set changes the digest.
+	renamed := map[string][]byte{}
+	for name, frame := range fixtures {
+		renamed[name] = frame
+	}
+	renamed["extra-fixture.json"] = renamed["request-initialize.json"]
+	drift("fixture set drift", fakeSource{schema: schema, manifest: raw, fixtures: renamed})
+
+	// Length framing: two asset sets whose frames concatenate to the
+	// same bytes but at different boundaries must hash differently —
+	// the framing pins the boundaries, not just the concatenation.
+	base := fakeSource{
+		schema:   []byte("{}"),
+		manifest: []byte(`{"fixtures":[]}`),
+		fixtures: map[string][]byte{"a.json": []byte("ab"), "b.json": []byte("c")},
+	}
+	rebound := fakeSource{
+		schema:   []byte("{}"),
+		manifest: []byte(`{"fixtures":[]}`),
+		fixtures: map[string][]byte{"a.json": []byte("a"), "b.json": []byte("bc")},
+	}
+	framed, err := ContractDigest(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reframed, err := ContractDigest(rebound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if framed == reframed {
+		t.Fatal("digests ignore length framing: different boundaries hash identically")
+	}
+}
+
+// TestEvidenceDocumentStableFields: a passing run fills every stable
+// evidence field — evidence schema identity and version, the perk
+// protocol version, the canonical contract digest, the executable
+// digest of the resolved path, and the capabilities identity captured
+// from the initialize handshake.
+func TestEvidenceDocumentStableFields(t *testing.T) {
+	dir := t.TempDir()
+	helper := writeHelperScriptAt(t, dir)
+	helperEnv(t, nil)
+	engine := slowEngine(t)
+
+	doc := runSuite(t, engine, helper, nil)
+	if !doc.OK {
+		t.Fatalf("doc = %+v, want a passing run", doc)
+	}
+	if doc.EvidenceSchema != EvidenceSchema || doc.EvidenceVersion != EvidenceVersion {
+		t.Fatalf("evidence identity = %q/%d, want %q/%d", doc.EvidenceSchema, doc.EvidenceVersion, EvidenceSchema, EvidenceVersion)
+	}
+	if doc.ProtocolVersion != 1 {
+		t.Fatalf("protocol version = %d, want 1", doc.ProtocolVersion)
+	}
+	digest, err := ContractDigest(perkv1.Source{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.ContractSHA256 != digest {
+		t.Fatalf("contract digest = %q, want the canonical %q", doc.ContractSHA256, digest)
+	}
+	wantHash, err := plugin.SHA256File(helper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.ExecutableSHA256 != wantHash {
+		t.Fatalf("executable digest = %q, want %q", doc.ExecutableSHA256, wantHash)
+	}
+	if doc.Capabilities == nil || doc.Capabilities.Name != "conftest" || doc.Capabilities.Display != "Conformance Helper" {
+		t.Fatalf("capabilities identity = %+v, want the helper's advertisement", doc.Capabilities)
+	}
+}
+
+// TestEvidenceDocumentSpawnFailure: a run whose children never spawn
+// carries the stable evidence fields but no capabilities identity (no
+// initialize handshake ever succeeded) and no executable digest for a
+// nonexistent path.
+func TestEvidenceDocumentSpawnFailure(t *testing.T) {
+	engine := testEngine(t)
+	doc := runSuite(t, engine, filepath.Join(t.TempDir(), "no-such-executable"), nil)
+	if doc.OK || doc.Failed != 16 {
+		t.Fatalf("doc = %+v, want every case spawn-failed", doc)
+	}
+	if doc.EvidenceSchema != EvidenceSchema || doc.ProtocolVersion != 1 || len(doc.ContractSHA256) != 64 {
+		t.Fatalf("stable evidence fields missing: %+v", doc)
+	}
+	if doc.ExecutableSHA256 != "" || doc.Capabilities != nil {
+		t.Fatalf("spawn failure must not claim an executable digest or capabilities: %+v", doc)
+	}
 }
 
 // TestManifestCoherence pins the canonical embed: every fixture file is

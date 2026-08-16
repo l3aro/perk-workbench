@@ -42,11 +42,26 @@ Commands:
   plugin doctor [--json] [EXECUTABLE...]  Check configured plugins or given executables
   plugin test [--json] EXECUTABLE        Conformance-test one plugin over perk/v1
 
+Options:
+  --version, -v   Print the build version: "perk-workbench <version>"
+                  with <version> injected at build time via
+                  -ldflags "-X main.version=<version>", or
+                  "perk-workbench devel" when nothing was injected
+  -h, --help      Show this help
+
 Run "perk-workbench plugin --help" for plugin command help.
 `
 
+// hostVersion is the host build identity reported by --version and
+// carried by the plugin test evidence document: the version injected
+// at build time via -ldflags=-X main.version=<version>, or "devel"
+// when no injection happened. An uninjected build is honestly labeled.
+func hostVersion() string {
+	return "perk-workbench " + version
+}
+
 func versionOutput() string {
-	return "perk-workbench " + version + "\n"
+	return hostVersion() + "\n"
 }
 
 func parseTarget(args []string) (target string, readOnly bool, _ error) {

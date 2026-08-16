@@ -36,19 +36,49 @@ The contract has a canonical machine-readable companion:
   Boundary-sized (16 MiB) frames are deliberately not stored; conformance
   tests generate them.
 
-Compatibility rules for v1:
+### Compatibility policy
 
-- **Optional additive fields.** Every JSON object tolerates unknown
-  fields — the schema marks `additionalProperties: true` throughout — so
-  either side may add optional fields without a protocol version bump. A
-  receiver must ignore unknown fields.
-- **Stable enums and method names.** Enum values and the `perk/v1/<name>`
-  method constants are frozen for v1. Adding, renaming, or renumbering
-  them is a protocol change that requires a new version.
-- **`protocol_version`.** The initialize result must echo the requested
-  version (currently `1`); a different value rejects the plugin before
-  registration. `workbench_version` is informational — plugins must not
-  gate on its exact value.
+The full policy is the versioned asset `protocol/perk-v1/policy.md`
+(policy version 1); the rules, in brief:
+
+- **Unknown members MUST be ignored.** Every v1 JSON object tolerates
+  unknown members — the schema marks `additionalProperties: true`
+  throughout — so either side may add optional fields without a
+  protocol version bump. An implementation MUST ignore unknown
+  members: it must not reject a frame, change behavior, or fail a
+  session because of them.
+- **Additive changes are compatible.** Adding optional members,
+  method-independent metadata (for example the structured error `data`
+  provenance), and new *optional* capabilities (an optional write
+  interface, an optional query-language command) is additive: a
+  receiver that ignores unknown members stays interoperable, so no
+  protocol version bump is required.
+- **Stable enums and method names.** Enum values and the
+  `perk/v1/<name>` method constants are frozen for v1. Adding,
+  renaming, or renumbering them is a protocol change that requires a
+  new version.
+- **Breaking changes require perk/v2.** Changing a required field,
+  changing the meaning of an existing field, changing error codes or
+  error semantics, changing framing (frame size bound, encoding,
+  newline/id rules), or changing the behavior of an existing method is
+  breaking. A breaking change MUST move to a new `perk/v2` method
+  namespace and a new protocol version; v1 frames and semantics are
+  never altered in place.
+- **The host speaks exactly protocol 1 today.** The initialize result
+  must echo the requested `protocol_version` (currently `1`); a
+  different value rejects the plugin before registration.
+  `workbench_version` is informational — plugins must not gate on its
+  exact value. The host does not implement perk/v2.
+- **Prerelease expectations.** perk-workbench and perk/v1 plugins are
+  pre-1.0 software. v1 is a contract between a specific host build and
+  a specific plugin build, not a claim of global API stability beyond
+  this policy. Host releases SHOULD inject their build version
+  (`-ldflags "-X main.version=<version>"`; `perk-workbench --version`
+  reports it, and an uninjected build reports `devel` honestly).
+  Plugins SHOULD version their releases. The authoritative
+  compatibility evidence is the `plugin test` evidence document, whose
+  contract digest pins the exact schema, manifest, and fixture set a
+  plugin was verified against.
 - **Descriptive, not enforced.** The host never loads or evaluates the
   schema at runtime; it is a contract reference for tools and tests. The
   authoritative implementations remain the Go host and the Node SDK,
@@ -410,21 +440,56 @@ Limits:
 - Deliberately invalid input frames (malformed JSON, non-object JSON,
   invalid UTF-8, oversized frames) are constructed by the runner —
   they cannot exist as canonical fixtures.
-- `--json` emits exactly one document on stdout, pass or fail, and
-  nothing else; diagnostics for the invocation itself go to stderr only
-  when no document can be produced. Raw protocol frames and request
-  data are never reported. Each case result carries a stable name,
-  pass/fail, duration, failure category (`spawn`, `protocol`,
-  `behavior`, `timeout`, `shutdown`) with message, and the bounded
-  sanitized stderr tail.
+- `--json` emits exactly one self-contained release evidence document
+  on stdout, pass or fail, and nothing else; diagnostics for the
+  invocation itself go to stderr only when no document can be
+  produced. Raw protocol frames and request data are never reported.
+  The document is validated by
+  `protocol/perk-v1/plugin-test-evidence.schema.json` (version 1) and
+  carries the stable evidence fields:
+  - `evidence_schema` / `evidence_version` — the evidence document
+    shape (`perk/v1/plugin-test-evidence.schema.json`, version 1).
+  - `protocol_version` — the perk protocol version the host speaks
+    (exactly `1` today).
+  - `host_version` — the host build identity (`perk-workbench
+    <version>`; `<version>` is injected at build time via
+    `-ldflags "-X main.version=<version>"` and honestly reports
+    `devel` when nothing was injected).
+  - `contract_sha256` — SHA-256 of the canonical contract asset set
+    (schema + manifest + every fixture, in sorted name order with
+    explicit length framing); any asset drift changes the digest.
+  - `entry`, `path`, `executable_sha256` — the input entry, the
+    resolved canonical executable path, and the SHA-256 of its bytes
+    (the fingerprint a release archive's binary must match).
+  - `capabilities` — the plugin's advertised identity (name/display)
+    captured from the initialize handshake, no backend required; the
+    v1 protocol advertises no implementation version, so none is
+    reported.
+  - `error`, `cases`, `passed`, `failed`, `ok` — any suite-level
+    failure and the per-case results with the final counts.
+  The document is deterministic except per-case durations and the
+  path; it never carries a timestamp, credentials, connection targets,
+  form values, statements, or protocol frames. Each case result
+  carries a stable name, pass/fail, duration, failure category
+  (`spawn`, `protocol`, `behavior`, `timeout`, `shutdown`) with
+  message, and the bounded sanitized stderr tail. Human output prints
+  the same protocol/host/contract/executable summary before the case
+  lines.
 
 Examples:
 
 ```console
 $ perk-workbench plugin test --json ./perk-redis
 {
+  "evidence_schema": "perk/v1/plugin-test-evidence.schema.json",
+  "evidence_version": 1,
+  "protocol_version": 1,
+  "host_version": "perk-workbench 0.1.0",
+  "contract_sha256": "9f2c…64 hex chars…",
   "entry": "./perk-redis",
   "path": "/home/alice/.local/bin/perk-redis",
+  "executable_sha256": "7ab1…64 hex chars…",
+  "capabilities": {"name": "redis", "display": "Redis (Rust plugin)"},
   "cases": [
     {"name": "initialize", "ok": true, "duration": 12345678, "stderr": []},
     {"name": "wrong_jsonrpc", "ok": true, "duration": 2234567, "stderr": []},
@@ -436,7 +501,12 @@ $ perk-workbench plugin test --json ./perk-redis
 }
 $ perk-workbench plugin test ./perk-redis
 plugin test ./perk-redis:
+  protocol: perk/v1
+  host: perk-workbench 0.1.0
+  contract: sha256:9f2c…64 hex chars…
   path: /home/alice/.local/bin/perk-redis
+  executable: sha256:7ab1…64 hex chars…
+  capabilities: redis (Redis (Rust plugin))
   initialize               PASS  12ms
   wrong_jsonrpc            PASS   2ms
   ...
