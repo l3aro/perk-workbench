@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -63,6 +65,13 @@ type Config struct {
 	// or a path relative to the config file's directory. Nil or empty
 	// disables plugins.
 	Plugins []string `json:"plugins"`
+	// PluginTrust pins configured plugin executables to the lowercase
+	// SHA-256 digest of the exact bytes approved with `plugin add
+	// --approve`, keyed by the canonical absolute executable path. An
+	// entry without a record loads unpinned for compatibility; a record
+	// whose digest does not match the current bytes is refused at startup
+	// before anything spawns. Nil or empty keeps every entry unpinned.
+	PluginTrust map[string]string `json:"plugin_trust,omitempty"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -136,6 +145,23 @@ func LoadConfig(path string) (Config, error) {
 		if strings.ContainsRune(item, '\x00') {
 			pluginsErr = fmt.Errorf("config %q: plugins[%d] must not contain a NUL byte", path, i)
 			break
+		}
+	}
+	if pluginsErr == nil {
+		for key, digest := range config.PluginTrust {
+			switch {
+			case strings.TrimSpace(key) == "":
+				pluginsErr = fmt.Errorf("config %q: plugin_trust keys must not be blank", path)
+			case !filepath.IsAbs(key):
+				pluginsErr = fmt.Errorf("config %q: plugin_trust key %q must be an absolute path", path, key)
+			case strings.ContainsRune(key, '\x00'):
+				pluginsErr = fmt.Errorf("config %q: plugin_trust key must not contain a NUL byte", path)
+			case !validSHA256Digest(digest):
+				pluginsErr = fmt.Errorf("config %q: plugin_trust digest for %q must be 64 hexadecimal characters", path, key)
+			}
+			if pluginsErr != nil {
+				break
+			}
 		}
 	}
 	switch {
@@ -263,23 +289,50 @@ func validTableOpenTarget(value string) bool {
 	return false
 }
 
-// saveConfigValue rewrites config.json with a single key replaced, keeping
-// every other key byte-for-byte. A missing or empty file starts from the
-// built-in defaults.
-func saveConfigValue(path, key string, value any) error {
+// validSHA256Digest reports whether value is a SHA-256 digest: exactly
+// 64 hexadecimal characters. Both letter cases are accepted; digests
+// are compared case-insensitively everywhere.
+func validSHA256Digest(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+// readConfigRaw reads the config file as a JSON object map without
+// writing or validating anything: a missing or empty file yields nil
+// with no error, any other read/parse failure yields an error. The
+// mutating config operations use it so a missing config never gets
+// materialized by a read-only command.
+func readConfigRaw(path string) (map[string]json.RawMessage, error) {
 	contents, err := os.ReadFile(path)
-	var raw map[string]json.RawMessage
 	switch {
 	case err == nil && len(contents) > 0:
+		var raw map[string]json.RawMessage
 		if err := json.Unmarshal(contents, &raw); err != nil {
-			return fmt.Errorf("parsing config %q: %w", path, err)
+			return nil, fmt.Errorf("parsing config %q: %w", path, err)
 		}
+		return raw, nil
 	case err == nil:
-		// empty file: start from defaults
+		return nil, nil
 	default:
-		if !os.IsNotExist(err) {
-			return fmt.Errorf("reading config %q: %w", path, err)
+		if os.IsNotExist(err) {
+			return nil, nil
 		}
+		return nil, fmt.Errorf("reading config %q: %w", path, err)
+	}
+}
+
+// saveConfigValue rewrites config.json with a single key replaced, keeping
+// every other key byte-for-byte. A missing or empty file starts from the
+// built-in defaults. The write is atomic: a same-directory temporary file
+// is fsynced and renamed over the original, so a failure never corrupts
+// or partially overwrites the existing config.
+func saveConfigValue(path, key string, value any) error {
+	raw, err := readConfigRaw(path)
+	if err != nil {
+		return err
 	}
 	if raw == nil {
 		raw = defaultConfigValues()
@@ -293,10 +346,52 @@ func saveConfigValue(path, key string, value any) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	return writeConfigFileAtomic(path, data)
+}
+
+// writeConfigFileAtomic writes data to path via a same-directory
+// temporary file (mode 0600) that is fsynced and renamed over the
+// target, so a failure at any point leaves the original file intact.
+// The directory entry is fsynced best-effort so the rename itself is
+// durable. The temporary file is removed when the write fails.
+func writeConfigFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	tmp, err := os.CreateTemp(dir, ".config-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tmp.Close()
+			_ = os.Remove(name)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		return err
+	}
+	committed = true
+	if dirFile, err := os.Open(dir); err == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
+	}
+	return nil
 }
 
 func boolPtr(value bool) *bool { return &value }

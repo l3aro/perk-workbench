@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +36,22 @@ var spawnArgs []string
 // (children rejected at handshake or registration are terminated
 // immediately) and must be closed by the caller.
 func Load(ctx context.Context, configPath string, entries []string, register func(database.Shim) error) (*Loader, []error) {
+	return load(ctx, configPath, entries, nil, register)
+}
+
+// LoadPinned is Load with per-entry trust verification: immediately
+// before each child would be spawned, the entry's canonical path is
+// looked up in trust and the configured SHA-256 digest is verified
+// against the current bytes. A pinned entry whose digest cannot be
+// computed or does not match is refused at that point — the child never
+// executes — and contributes one error naming the entry with the
+// expected and actual digests; later entries still load. Entries
+// without a trust record load unpinned for compatibility.
+func LoadPinned(ctx context.Context, configPath string, entries []string, trust map[string]string, register func(database.Shim) error) (*Loader, []error) {
+	return load(ctx, configPath, entries, trust, register)
+}
+
+func load(ctx context.Context, configPath string, entries []string, trust map[string]string, register func(database.Shim) error) (*Loader, []error) {
 	loader := &Loader{sessions: map[*sessionProxy]struct{}{}}
 	var errs []error
 	seen := map[string]struct{}{}
@@ -48,6 +65,18 @@ func Load(ctx context.Context, configPath string, entries []string, register fun
 			continue // canonical duplicates are silently skipped
 		}
 		seen[path] = struct{}{}
+
+		if pin, pinned := trust[path]; pinned {
+			digest, err := SHA256File(path)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", entry, err))
+				continue
+			}
+			if !strings.EqualFold(digest, pin) {
+				errs = append(errs, fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", entry, pin, digest))
+				continue
+			}
+		}
 
 		client, err := spawn(path, spawnArgs...)
 		if err != nil {

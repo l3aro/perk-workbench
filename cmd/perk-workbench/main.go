@@ -35,6 +35,10 @@ Connect to a database and browse, query, and edit it.
 Commands:
   plugin list [--json]                    List configured plugin executables
   plugin inspect [--json] EXECUTABLE      Inspect one plugin over perk/v1
+  plugin add [--json] [--approve SHA256] EXECUTABLE
+                                          Preview or pin and enable a plugin
+  plugin remove [--json] NAME_OR_EXECUTABLE
+                                          Remove a configured plugin
   plugin doctor [--json] [EXECUTABLE...]  Check configured plugins or given executables
   plugin test [--json] EXECUTABLE        Conformance-test one plugin over perk/v1
 
@@ -271,9 +275,10 @@ func run(target string, readOnly bool) error {
 	app.SetAppConfig(config)
 	// External driver plugins load after config resolution and before the
 	// model is built, because the connection form enumerates registered
-	// drivers during construction. Rejected entries are logged and startup
-	// continues with the built-in drivers.
-	loader := loadPlugins(ctx, config.Plugins, database.RegisterShim)
+	// drivers during construction. Each pinned fingerprint is verified
+	// before its child spawns; rejected and drifted entries are logged
+	// and startup continues with the built-in drivers.
+	loader := loadPlugins(ctx, config, database.RegisterShim)
 	client, history, err := loadAI()
 	if err != nil {
 		return errors.Join(err, loader.Close())
@@ -306,12 +311,16 @@ func run(target string, readOnly bool) error {
 	return errors.Join(runErr, closeErr)
 }
 
-// loadPlugins starts every plugin child listed in config. Rejected
-// entries are logged and skipped: a broken plugin must never block
-// startup, which continues with the built-in drivers. The returned
-// loader is never nil and must be closed after the program exits.
-func loadPlugins(ctx context.Context, entries []string, register func(database.Shim) error) *plugin.Loader {
-	loader, errs := plugin.Load(ctx, app.ConfigPath(), entries, register)
+// loadPlugins starts every plugin child listed in config. Each pinned
+// fingerprint is verified inside the loader immediately before that
+// child spawns: an entry whose configured SHA-256 no longer matches the
+// current bytes is refused with a clear expected/actual drift error and
+// never executes. Rejected and drifted entries are logged and skipped:
+// a broken plugin must never block startup, which continues with the
+// built-in drivers. The returned loader is never nil and must be closed
+// after the program exits.
+func loadPlugins(ctx context.Context, config app.Config, register func(database.Shim) error) *plugin.Loader {
+	loader, errs := plugin.LoadPinned(ctx, app.ConfigPath(), config.Plugins, config.PluginTrust, register)
 	for _, err := range errs {
 		log.Error("loading plugin", err)
 	}

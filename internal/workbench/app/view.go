@@ -24,7 +24,7 @@ func (m Model) View() tea.View {
 	}
 	content := m.contentView()
 	fullContent := lipgloss.JoinVertical(lipgloss.Left, m.headerView(), content, footerStyle.Render(m.footer()))
-	if m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil {
+	if m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.overlay.pluginManager != nil {
 		canvas := uv.NewScreenBuffer(m.layout.width, m.layout.height)
 		screen.Clear(canvas)
 		uv.NewStyledString(fullContent).Draw(canvas, canvas.Bounds())
@@ -32,6 +32,12 @@ func (m Model) View() tea.View {
 			m.drawConfirmDialog(canvas, m.overlay.themePicker.content())
 		} else if m.overlay.tableTargetPicker != nil {
 			m.drawConfirmDialog(canvas, m.overlay.tableTargetPicker.content(m))
+		} else if m.overlay.pluginManager != nil {
+			if m.overlay.pluginManager.removeConfirm != nil {
+				m.overlay.pluginManager.removeConfirm.Draw(canvas)
+			} else {
+				m.drawConfirmDialog(canvas, m.pluginManagerContent())
+			}
 		} else {
 			m.overlay.commandPalette.paletteDraw(canvas, m.layout.width, m.layout.height)
 		}
@@ -188,7 +194,7 @@ func (m Model) activeConfirmation() *confirmationDialog {
 }
 
 func (m Model) hasOverlay() bool {
-	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.browse.component.CellEditor != nil || m.browse.component.DocumentEditor != nil || m.browse.component.CellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
+	return m.overlay.commandPalette.visible || m.overlay.themePicker != nil || m.overlay.tableTargetPicker != nil || m.overlay.pluginManager != nil || m.queryLog.component.Detail != nil || m.notifications.component.HistoryOpen() || m.notifications.component.DetailOpen() || m.overlay.explainPicker != nil || m.chat.component.HistoryPicker != nil || m.overlay.quitDialog != nil || m.browse.component.CellEditor != nil || m.browse.component.DocumentEditor != nil || m.browse.component.CellViewer != nil || m.overlay.contextMenu != nil || m.overlay.deleteConfirm != nil || m.hasConfirming()
 }
 
 func (m Model) confirmContent() string {

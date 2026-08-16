@@ -19,6 +19,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "theme.select":
 		m.overlay.themePicker = newThemePicker()
 		return m, nil
+	case "plugin.manage":
+		m.overlay.pluginManager = newPluginManager()
+		return m, nil
 	case "vim.toggle":
 		return m, m.toggleVimMode()
 	case "table.open_target":

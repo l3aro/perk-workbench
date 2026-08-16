@@ -63,6 +63,17 @@ files and credentials the workbench opens. `config.json` is the explicit
 **allowlist** — nothing is auto-discovered, nothing runs unless the user
 listed it there. Adding an entry is the user's explicit authorization.
 
+Entries added through `perk-workbench plugin add --approve` (or the TUI
+plugins flow) are **pinned**: the config records the lowercase SHA-256 of
+the exact executable bytes that were approved, and startup verifies that
+fingerprint immediately before spawning the child. A pinned executable
+whose bytes have changed since approval (a reinstall, a rebuild, a
+tampered file) is **refused** with a clear expected/actual drift error and
+never executes; the other configured plugins still load. Hand-written
+`plugins` entries without a pin load **unpinned** exactly as before, for
+backwards compatibility — `plugin list` and `plugin doctor` report them as
+such, and pinning them is one `plugin add --approve` away.
+
 ## Configuring plugins
 
 Plugins are listed in the workbench config file
@@ -71,6 +82,24 @@ Plugins are listed in the workbench config file
 ```json
 {"plugins":["perk-redis","/home/alice/projects/clickhouse-driver/node_modules/.bin/perk-clickhouse"]}
 ```
+
+`plugin add --approve` additionally writes a `plugin_trust` object that
+maps each pinned executable's **canonical absolute path** to its approved
+SHA-256 digest:
+
+```json
+{"plugins":["/home/alice/.local/bin/perk-redis"],
+ "plugin_trust":{"/home/alice/.local/bin/perk-redis":"0123…cdef"}}
+```
+
+The trust key is the same canonical path `plugins` entries resolve to
+(`filepath.Abs` + `EvalSymlinks`), so the pin survives any entry spelling
+that resolves to the same file. A `plugin_trust` digest must be 64
+hexadecimal characters and its key an absolute path; a malformed trust
+record fails config parsing, and a valid pin that does not match the
+current bytes is refused per entry at startup. `plugin add` persists the
+entry as its canonical absolute path, so the pin and the entry can never
+resolve apart.
 
 Resolution rules for one entry:
 
@@ -101,8 +130,11 @@ the built-in drivers (SQLite, MySQL, PostgreSQL, MongoDB) always start. A
 broken plugin never blocks startup. There is no auto-discovery of any
 kind: only allowlisted entries are ever spawned.
 
-Plugins load in config order: resolve → dedupe → spawn → handshake
-(`perk/v1/initialize`) → register. A plugin rejected at handshake (wrong
+Plugins load in config order: resolve → dedupe → verify pin → spawn →
+handshake (`perk/v1/initialize`) → register. A pinned executable whose
+digest no longer matches is refused at the verify step — its child is
+never spawned — and contributes one logged error naming the entry with
+the expected and actual digests. A plugin rejected at handshake (wrong
 protocol version) or registration (invalid capabilities, duplicate name,
 target-prefix overlap) is terminated immediately and contributes one
 logged error.
@@ -119,14 +151,17 @@ success, 1 plugin or operational failure, 2 usage error.
 - `plugin list [--json]` — reads the same config file and parser as
   startup and lists the configured entries in config order, resolving
   each with the exact startup resolution rules above **without spawning
-  anything**. An entry that cannot be resolved is reported per entry
-  (its `error` field / an `invalid:` line) and makes the exit status 1;
-  an empty config is successful and explicit (`[]` / `no plugins
-  configured`).
+  anything**. Each entry also reports its trust state: `unpinned`, or
+  `pinned` with the configured fingerprint (`trust` /
+  `expected_sha256` in JSON; `[unpinned]` / `[pinned sha256:…]` in human
+  output — list does not hash, it reports the configured pin). An entry
+  that cannot be resolved is reported per entry (its `error` field / an
+  `invalid:` line) and makes the exit status 1; an empty config is
+  successful and explicit (`[]` / `no plugins configured`).
 
   ```console
   $ perk-workbench plugin list
-  perk-redis -> /home/alice/.local/bin/perk-redis
+  perk-redis -> /home/alice/.local/bin/perk-redis [pinned sha256:0123…cdef]
   ./clickhouse-driver -> invalid: exec: "clickhouse-driver": executable file not found in $PATH
   ```
 
@@ -137,28 +172,87 @@ success, 1 plugin or operational failure, 2 usage error.
   capabilities plus the final diagnostic snapshot: canonical path, init
   duration, exit/running state, and the bounded stderr tail. It works
   for executables not listed in config; a bare name resolves through
-  PATH, a relative path against the working directory.
+  PATH, a relative path against the working directory. The report also
+  carries the fingerprint/trust state of the resolved canonical path:
+  `trust: match (sha256 …)` when the configured pin matches the current
+  bytes, `trust: unpinned` when no pin exists — and a **mismatch is
+  refused before the child spawns** (`phase: "trust"` in JSON, `trust:
+  FAILED` in human output, with the expected and actual digests), so a
+  drifted pinned executable never executes.
 
 - `plugin doctor [--json] [EXECUTABLE...]` — with no arguments checks
   every configured entry in order; with arguments checks exactly those
   executables. Each item runs the full
-  resolve/initialize/register/shutdown lifecycle independently — with
-  its own loader and validation-only registration, so duplicate
-  identities or overlapping target prefixes across items never mutate
-  or contaminate the global driver registry — and a failing item never
-  stops later ones. An interrupt (Ctrl-C) stops the check between items;
-  items already checked are still reported. The report marks the failing
-  phase per item
-  (`resolve`, `initialize`, `protocol`, `register`, or `shutdown`); the
-  overall exit status is 1 when any item fails.
+  resolve/verify-pin/initialize/register/shutdown lifecycle
+  independently — with its own loader and validation-only registration,
+  so duplicate identities or overlapping target prefixes across items
+  never mutate or contaminate the global driver registry — and a
+  failing item never stops later ones. An interrupt (Ctrl-C) stops the
+  check between items; items already checked are still reported. The
+  report marks the failing phase per item (`resolve`, `initialize`,
+  `protocol`, `register`, `trust`, or `shutdown`) and carries the
+  fingerprint/trust state (`unpinned`, `match`, `mismatch`); a pinned
+  executable whose bytes drifted fails its item with the `trust` phase
+  before the child spawns. The overall exit status is 1 when any item
+  fails.
 
   ```console
   $ perk-workbench plugin doctor
   plugin perk-redis:
     path: /home/alice/.local/bin/perk-redis
+    trust: match (sha256 0123…cdef)
     initialize: ok (12ms)
     capabilities: name=perk-redis display="Redis (plugin)" targets=[redis:] query_language=sql writes=none
     shutdown: ok
+  ```
+
+- `plugin add [--json] [--approve SHA256] EXECUTABLE` — the two-stage
+  pin flow. Without `--approve` it resolves the executable (bare names
+  through PATH, relative paths against the working directory), runs the
+  full inspect lifecycle, and fingerprints the canonical bytes: the
+  report shows the capabilities, the `sha256` fingerprint, `changed:
+  false`, and `pending: true`, and the **config is never touched** — not
+  even materialized when it does not exist. The output ends with
+  `NOT ENABLED: rerun with --approve <fingerprint>`; copying that exact
+  digest is the explicit approval. With `--approve <digest>` the
+  resolve/inspect/hash is repeated from scratch and fails closed when
+  the supplied digest does not exactly match the current bytes
+  (`phase: "trust"`, `changed: false`, nothing written); only then is
+  the plugin persisted atomically (same-directory temp + rename, mode
+  0600): the entry is appended as its canonical absolute path (or
+  replaces an existing entry resolving to the same file), the trust
+  record is set, and every unrelated config key survives. An approve
+  whose resulting state already matches reports `changed: false` and
+  rewrites nothing. Exit status 1 on any resolve/inspect/hash/persist
+  failure, 2 on usage errors.
+
+  ```console
+  $ perk-workbench plugin add perk-redis
+  plugin perk-redis:
+    path: /home/alice/.local/bin/perk-redis
+    trust: unpinned
+    initialize: ok (12ms)
+    capabilities: name=perk-redis display="Redis (plugin)" targets=[redis:] query_language=sql writes=none
+    shutdown: ok
+    sha256: 0123…cdef
+    NOT ENABLED: rerun with --approve 0123…cdef to pin and enable this plugin
+  ```
+
+- `plugin remove [--json] NAME_OR_EXECUTABLE` — atomically removes one
+  configured plugin and its trust record. The operand matches a
+  configured entry exactly (so an unresolvable entry can still be
+  removed by name), or an executable that resolves to **exactly one**
+  configured entry's canonical path; ambiguous matches — several
+  configured entries resolving to the same executable — fail instead of
+  removing multiple entries, as does an operand that matches nothing
+  (`not configured`). The rewrite is atomic, preserves every unrelated
+  key, and drops the trust record only when no remaining entry resolves
+  to the removed canonical path. The JSON report carries `entry`, the
+  canonical `path`, and `changed`; exit status 1 on failure.
+
+  ```console
+  $ perk-workbench plugin remove perk-redis
+  removed plugin "perk-redis" (/home/alice/.local/bin/perk-redis)
   ```
 
 - `plugin test [--json] EXECUTABLE` — resolves the executable and runs
@@ -181,8 +275,38 @@ same bounds as the TUI (newest 64 KiB / 100 lines) and shown only when
 non-empty; stdout protocol frames are never reported. Resolution bases
 differ by origin: config entries resolve relative to the config file's
 directory (bare names through PATH), while explicit
-`inspect`/`doctor`/`test` operands resolve against the working
+`inspect`/`doctor`/`test`/`add` operands resolve against the working
 directory (bare names through PATH).
+
+## Managing plugins in the TUI
+
+The workbench's command palette (`Ctrl+P`, or the `>_ Command` header
+button) offers **plugins**, the same registration and trust flow without
+leaving the terminal. The overlay is keyboard-driven like the other
+pickers (`j`/`k` or arrows to move, `enter` to select, `esc` to cancel).
+
+**Adding a plugin** walks two explicit stages, mirroring `plugin add`:
+
+1. *Add plugin* — type the executable path and press `enter`. The
+   manager asynchronously runs the same resolve, trust-check, inspect,
+   and hash lifecycle as the CLI preview.
+2. *Plugin preview* — before anything is enabled, the overlay shows the
+   canonical path, the advertised identity/display, target prefixes,
+   query language, write interfaces, and the lowercase SHA-256 of the
+   exact bytes — and nothing else: no form values, credentials,
+   statements, or plugin stderr ever appear. `enter` is the explicit
+   confirmation: the manager re-resolves, re-inspects, and re-hashes
+   with the previewed digest (bytes changed since the preview fail the
+   enable closed), then saves the pin atomically, states **`plugin
+   enabled; restart required`**, and closes. `esc` cancels without
+   touching config.
+
+**Removing a plugin** lists the configured entries; selecting one asks
+for explicit confirmation (`Yes`/`No`) before the entry and its trust
+record are removed atomically, with a **`plugin removed; restart
+required`** status. Neither flow mutates the live driver registry — a
+restart applies the change, so a pinned mismatch can never be enabled
+or loaded around.
 
 ## Conformance testing (`plugin test`)
 

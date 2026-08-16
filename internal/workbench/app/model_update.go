@@ -168,6 +168,9 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.overlay.pluginManager != nil {
+		return m.updatePluginManager(message)
+	}
 	if m.overlay.commandPalette.visible {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {
 			selectMsg, close, consumed := m.overlay.commandPalette.handleKey(keyPress)

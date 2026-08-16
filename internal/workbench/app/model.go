@@ -189,6 +189,7 @@ type overlayState struct {
 	commandPalette          *commandPalette
 	themePicker             *themePicker
 	tableTargetPicker       *tableTargetPicker
+	pluginManager           *pluginManager
 	quitDialog              *confirmationDialog
 	queryConfirmation       *queryConfirmation
 	explainPicker           *explainPicker

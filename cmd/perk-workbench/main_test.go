@@ -14,8 +14,10 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/l3aro/perk-workbench/internal/database"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/app"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 )
 
@@ -382,7 +384,7 @@ func TestLoadPlugins_logsRejectedEntriesAndStaysClosable(t *testing.T) {
 	defer log.SetNotifier(nil)
 
 	registered := false
-	loader := loadPlugins(context.Background(), []string{"./no-such-plugin"}, func(database.Shim) error {
+	loader := loadPlugins(context.Background(), app.Config{Plugins: []string{"./no-such-plugin"}}, func(database.Shim) error {
 		registered = true
 		return nil
 	})
@@ -403,6 +405,123 @@ func TestLoadPlugins_logsRejectedEntriesAndStaysClosable(t *testing.T) {
 	}
 	if !logged {
 		t.Fatalf("log entries = %v, want an error entry naming the rejected plugin", entries)
+	}
+}
+
+// TestLoadPlugins_refusesPinnedDriftBeforeSpawn: a configured pin whose
+// digest no longer matches the executable's bytes is refused with a
+// clear expected/actual error and the child is never spawned (proven by
+// the marker file), while other entries still load.
+func TestLoadPlugins_refusesPinnedDriftBeforeSpawn(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	log.SetLevel(log.LevelDebug)
+	defer log.SetLevel(log.LevelInfo)
+	var entries []log.Entry
+	log.SetNotifier(func(entry log.Entry) { entries = append(entries, entry) })
+	defer log.SetNotifier(nil)
+
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "events.log")
+	script := writePluginHelperScriptAt(t, filepath.Join(dir, "drift-plugin"))
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	t.Setenv("PERK_PLUGIN_MARKER", marker)
+	pin, err := plugin.SHA256File(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, append(contents, []byte("\n# drifted\n")...), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	registered := false
+	loader := loadPlugins(context.Background(), app.Config{
+		Plugins:     []string{script},
+		PluginTrust: map[string]string{script: pin},
+	}, func(database.Shim) error {
+		registered = true
+		return nil
+	})
+	if err := closeProgram(nil, loader, nil); err != nil {
+		t.Fatalf("closing the loader = %v", err)
+	}
+	if registered {
+		t.Fatal("register was called for a drifted pinned plugin; it must never execute")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("marker file exists (%v): a drifted child was spawned", err)
+	}
+	var drifted bool
+	for _, entry := range entries {
+		if entry.Level == log.LevelError && strings.Contains(entry.Message, "pinned executable changed: expected sha256 "+pin) && strings.Contains(entry.Message, "got ") && strings.Contains(entry.Message, "refusing to start") {
+			drifted = true
+		}
+	}
+	if !drifted {
+		t.Fatalf("log entries = %v, want a drift error with expected and actual digests", entries)
+	}
+}
+
+// TestLoadPlugins_spawnsMatchingPin: a pin that matches the current
+// bytes loads normally.
+func TestLoadPlugins_spawnsMatchingPin(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "events.log")
+	script := writePluginHelperScriptAt(t, filepath.Join(dir, "pinned-plugin"))
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	t.Setenv("PERK_PLUGIN_MARKER", marker)
+	digest, err := plugin.SHA256File(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	registered := false
+	loader := loadPlugins(context.Background(), app.Config{
+		Plugins:     []string{script},
+		PluginTrust: map[string]string{script: digest},
+	}, func(database.Shim) error {
+		registered = true
+		return nil
+	})
+	if err := closeProgram(nil, loader, nil); err != nil {
+		t.Fatalf("closing the loader = %v", err)
+	}
+	if !registered {
+		t.Fatal("matching pin did not register the plugin")
+	}
+	if starts := markerLineCount(t, marker, "start"); starts != 1 {
+		t.Fatalf("marker records %d child starts, want exactly the pinned one", starts)
+	}
+}
+
+// TestLoadPlugins_legacyUnpinnedEntryStillLoads: entries without a
+// trust record keep the pre-trust behavior — they load normally and
+// report no drift.
+func TestLoadPlugins_legacyUnpinnedEntryStillLoads(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "events.log")
+	script := writePluginHelperScriptAt(t, filepath.Join(dir, "legacy-plugin"))
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	t.Setenv("PERK_PLUGIN_MARKER", marker)
+
+	registered := false
+	loader := loadPlugins(context.Background(), app.Config{Plugins: []string{script}}, func(database.Shim) error {
+		registered = true
+		return nil
+	})
+	if err := closeProgram(nil, loader, nil); err != nil {
+		t.Fatalf("closing the loader = %v", err)
+	}
+	if !registered {
+		t.Fatal("unpinned legacy entry did not register")
+	}
+	if starts := markerLineCount(t, marker, "start"); starts != 1 {
+		t.Fatalf("marker records %d child starts, want exactly the legacy entry's", starts)
 	}
 }
 

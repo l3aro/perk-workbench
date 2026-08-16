@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -25,17 +24,34 @@ Commands:
   list [--json]
       List configured plugin entries in config order without spawning
       children. Each entry is resolved with the exact startup resolution
-      and allowlist; invalid entries are reported per entry. Exit status
-      1 when any entry is invalid.
+      and allowlist; invalid entries are reported per entry. Each entry
+      also reports its trust state (unpinned, or pinned with the
+      configured fingerprint). Exit status 1 when any entry is invalid.
   inspect [--json] EXECUTABLE
       Resolve, initialize, and validate one plugin over perk/v1, then
-      close it and report its capabilities and final diagnostic
-      snapshot. Works for executables not listed in config.
+      close it and report its capabilities, fingerprint/trust state,
+      and final diagnostic snapshot. Works for executables not listed
+      in config. A pinned executable whose bytes drifted is refused
+      before anything spawns.
   doctor [--json] [EXECUTABLE...]
       Run the full resolve/initialize/register/shutdown lifecycle for
       every configured entry, or exactly the given executables. Each
-      item runs independently and failures never stop later items. Exit
-      status 1 when any item fails.
+      item runs independently and failures never stop later items.
+      Pinned drift fails the item before its child spawns. Exit status
+      1 when any item fails.
+  add [--json] [--approve SHA256] EXECUTABLE
+      Resolve, inspect, and fingerprint one plugin: the report shows
+      the capabilities and the lowercase SHA-256 of the canonical
+      executable bytes, and the config is NOT touched. Rerun with
+      --approve <that exact digest> to pin and atomically persist the
+      plugin. With --approve the resolve/inspect/hash is repeated and
+      fails closed when the digest does not match the current bytes;
+      nothing is written on any failure.
+  remove [--json] NAME_OR_EXECUTABLE
+      Atomically remove one configured plugin and its trust record.
+      NAME_OR_EXECUTABLE matches a configured entry exactly, or an
+      executable that resolves to exactly one configured plugin;
+      ambiguous matches fail instead of removing multiple entries.
   test [--json] EXECUTABLE
       Run the perk/v1 conformance suite against one executable:
       fixture-driven protocol cases and generated transport cases, each
@@ -58,14 +74,31 @@ Exit status: 0 success, 1 plugin or operational failure, 2 usage error.
 // context derives from the process signals). Tests shorten the bound.
 var pluginInitTimeout = 30 * time.Second
 
-// Lifecycle phase names, stable in JSON and human output.
+// Lifecycle phase names, stable in JSON and human output. They mirror
+// the plugin package's inspect lifecycle plus the command-level
+// verification phases: trust (a pinned digest that cannot be verified
+// or does not match the current bytes) and hash (the fingerprint could
+// not be computed).
 const (
-	phaseResolve    = "resolve"
-	phaseInitialize = "initialize"
-	phaseProtocol   = "protocol"
-	phaseRegister   = "register"
-	phaseShutdown   = "shutdown"
-	phaseOK         = "ok"
+	phaseResolve    = plugin.PhaseResolve
+	phaseInitialize = plugin.PhaseInitialize
+	phaseProtocol   = plugin.PhaseProtocol
+	phaseRegister   = plugin.PhaseRegister
+	phaseShutdown   = plugin.PhaseShutdown
+	phaseOK         = plugin.PhaseOK
+	phaseTrust      = "trust"
+	phaseHash       = "hash"
+)
+
+// Trust states, stable in JSON and human output: unpinned (no trust
+// record), pinned (record present, verification not run — the list
+// command), match (record present and verified against the current
+// bytes), and mismatch (record present but the bytes drifted).
+const (
+	trustUnpinned = "unpinned"
+	trustPinned   = "pinned"
+	trustMatch    = "match"
+	trustMismatch = "mismatch"
 )
 
 // pluginReport is the per-item outcome of a plugin command: the input
@@ -81,10 +114,19 @@ type pluginReport struct {
 	// OK reports whether the full lifecycle succeeded.
 	OK bool `json:"ok"`
 	// Phase is the failing lifecycle phase — resolve, initialize,
-	// protocol, register, or shutdown — or "ok" when every phase passed.
+	// protocol, register, shutdown, or trust — or "ok" when every phase
+	// passed.
 	Phase string `json:"phase"`
 	// Error is the failure text when OK is false.
 	Error string `json:"error,omitempty"`
+	// Trust is the fingerprint/trust state: unpinned, match, or
+	// mismatch (list reports unpinned or pinned).
+	Trust string `json:"trust,omitempty"`
+	// SHA256 is the computed digest of the canonical executable bytes.
+	SHA256 string `json:"sha256,omitempty"`
+	// Expected is the pinned digest from the trust record when one
+	// exists.
+	Expected string `json:"expected_sha256,omitempty"`
 	// Capabilities is the driver advertisement once the initialize
 	// handshake succeeded: declarative identity, target patterns, form
 	// description, and write interfaces — never user-supplied values.
@@ -97,8 +139,8 @@ type pluginReport struct {
 
 // dispatchPlugin parses and runs one plugin subcommand, returning the
 // process exit status. --json is accepted before or after the
-// positional operands; unknown flags and malformed operand counts are
-// usage errors.
+// positional operands; --approve consumes the following argument;
+// unknown flags and malformed operand counts are usage errors.
 func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "perk-workbench plugin: missing command")
@@ -107,7 +149,7 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 	}
 	command := args[0]
 	switch command {
-	case "list", "inspect", "doctor", "test":
+	case "list", "inspect", "doctor", "add", "remove", "test":
 	case "--help", "-h":
 		fmt.Fprint(stdout, pluginUsage)
 		return 0
@@ -118,11 +160,21 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 	}
 
 	jsonOut := false
+	approve := ""
 	var operands []string
-	for _, arg := range args[1:] {
+	args = args[1:]
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		switch {
 		case arg == "--json":
 			jsonOut = true
+		case arg == "--approve":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				fmt.Fprintf(stderr, "perk-workbench plugin %s: --approve requires a SHA-256 digest\n", command)
+				return 2
+			}
+			i++
+			approve = args[i]
 		case arg == "--help" || arg == "-h":
 			fmt.Fprint(stdout, pluginUsage)
 			return 0
@@ -132,6 +184,11 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 		default:
 			operands = append(operands, arg)
 		}
+	}
+
+	if approve != "" && command != "add" {
+		fmt.Fprintf(stderr, "perk-workbench plugin %s: --approve is only valid with add\n", command)
+		return 2
 	}
 
 	switch command {
@@ -147,6 +204,18 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		return runPluginInspect(jsonOut, operands[0], stdout, stderr)
+	case "add":
+		if len(operands) != 1 {
+			fmt.Fprintln(stderr, "perk-workbench plugin add: expected exactly one executable")
+			return 2
+		}
+		return runPluginAdd(jsonOut, approve, operands[0], stdout, stderr)
+	case "remove":
+		if len(operands) != 1 {
+			fmt.Fprintln(stderr, "perk-workbench plugin remove: expected exactly one name or executable")
+			return 2
+		}
+		return runPluginRemove(jsonOut, operands[0], stdout, stderr)
 	case "test":
 		if len(operands) != 1 {
 			fmt.Fprintln(stderr, "perk-workbench plugin test: expected exactly one executable")
@@ -161,7 +230,8 @@ func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 // runPluginList reads the same config path and parser as startup and
 // reports the configured entries in config order, resolving each with
 // the exact startup resolution and allowlist without spawning anything.
-// An empty config is successful and explicit.
+// Each entry also reports its trust state: unpinned, or pinned with the
+// configured fingerprint. An empty config is successful and explicit.
 func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 	config, err := loadConfig()
 	if err != nil {
@@ -172,9 +242,11 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 
 	// listItem is the stable machine-readable shape of one entry.
 	type listItem struct {
-		Entry string `json:"entry"`
-		Path  string `json:"path,omitempty"`
-		Error string `json:"error,omitempty"`
+		Entry    string `json:"entry"`
+		Path     string `json:"path,omitempty"`
+		Trust    string `json:"trust,omitempty"`
+		Expected string `json:"expected_sha256,omitempty"`
+		Error    string `json:"error,omitempty"`
 	}
 	items := make([]listItem, 0, len(config.Plugins))
 	failed := false
@@ -186,6 +258,12 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 			failed = true
 		} else {
 			item.Path = path
+			if pin, pinned := config.PluginTrust[path]; pinned {
+				item.Trust = trustPinned
+				item.Expected = pin
+			} else {
+				item.Trust = trustUnpinned
+			}
 		}
 		items = append(items, item)
 	}
@@ -200,8 +278,10 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 	for _, item := range items {
 		if item.Error != "" {
 			fmt.Fprintf(stdout, "%s -> invalid: %s\n", item.Entry, item.Error)
+		} else if item.Trust == trustPinned {
+			fmt.Fprintf(stdout, "%s -> %s [pinned sha256:%s]\n", item.Entry, item.Path, item.Expected)
 		} else {
-			fmt.Fprintf(stdout, "%s -> %s\n", item.Entry, item.Path)
+			fmt.Fprintf(stdout, "%s -> %s [unpinned]\n", item.Entry, item.Path)
 		}
 	}
 	return exitCode(!failed)
@@ -209,14 +289,16 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 
 // runPluginInspect resolves one executable (not required to be in
 // config), runs it through the real loader lifecycle, and reports its
-// capabilities plus the final diagnostic snapshot.
+// capabilities plus the final diagnostic snapshot. A pinned executable
+// whose bytes drifted is refused before anything spawns; the trust
+// state of the resolved canonical path is reported either way.
 func runPluginInspect(jsonOut bool, entry string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, pluginInitTimeout)
 	defer cancel()
 
-	report := checkPlugin(ctx, entry, "")
+	report := checkPlugin(ctx, entry, "", app.ReadPluginTrust(app.ConfigPath()))
 	if jsonOut {
 		return emitJSON(stdout, report, exitCode(report.OK))
 	}
@@ -228,10 +310,12 @@ func runPluginInspect(jsonOut bool, entry string, stdout, stderr io.Writer) int 
 // the given executables. Each item runs the full lifecycle
 // independently, so duplicate identities or target prefixes across
 // items never mutate or contaminate the global driver registration;
-// failures never stop later items.
+// failures never stop later items. A pinned executable whose bytes
+// drifted fails its item before the child spawns.
 func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) int {
 	entries := operands
 	configPath := ""
+	trust := app.ReadPluginTrust(app.ConfigPath())
 	if len(operands) == 0 {
 		config, err := loadConfig()
 		if err != nil {
@@ -240,12 +324,16 @@ func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) 
 		}
 		entries = config.Plugins
 		configPath = app.ConfigPath()
+		trust = config.PluginTrust
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	reports, failed := checkPluginItems(ctx, entries, configPath, checkPlugin)
+	check := func(ctx context.Context, entry, configPath string) pluginReport {
+		return checkPlugin(ctx, entry, configPath, trust)
+	}
+	reports, failed := checkPluginItems(ctx, entries, configPath, check)
 
 	if jsonOut {
 		return emitJSON(stdout, reports, exitCode(!failed))
@@ -257,6 +345,144 @@ func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) 
 		printPluginReport(stdout, report)
 	}
 	return exitCode(!failed)
+}
+
+// pluginAddResult is the JSON document shape of `plugin add`. It embeds
+// the inspect report (entry, path, phases, capabilities, snapshot) and
+// adds the fingerprint and the config-mutation outcome: pending for the
+// two-stage preview (config untouched, rerun with --approve), changed
+// for an approve that persisted, false when the pin was already exact.
+type pluginAddResult struct {
+	pluginReport
+	SHA256  string `json:"sha256,omitempty"`
+	Changed bool   `json:"changed"`
+	Pending bool   `json:"pending,omitempty"`
+}
+
+// runPluginAdd implements the two-stage pin flow. Without --approve it
+// resolves, fully inspects, and fingerprints the executable and reports
+// the capabilities plus the lowercase SHA-256 of the canonical bytes,
+// WITHOUT touching config; the output tells the user to rerun with the
+// exact --approve digest. With --approve the resolve/inspect/hash is
+// repeated, the supplied digest must exactly match the current bytes
+// (fail closed otherwise), and only then is the plugin persisted
+// atomically. The preview never reads or materializes config.
+func runPluginAdd(jsonOut bool, approve, entry string, stdout, stderr io.Writer) int {
+	configPath := app.ConfigPath()
+	trust := app.ReadPluginTrust(configPath)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, pluginInitTimeout)
+	defer cancel()
+
+	report := checkPlugin(ctx, entry, "", trust)
+	digest := ""
+	if report.Phase == phaseOK {
+		var err error
+		digest, err = plugin.SHA256File(report.Path)
+		if err != nil {
+			report.OK = false
+			report.Phase = phaseHash
+			report.Error = err.Error()
+		}
+	}
+	result := pluginAddResult{pluginReport: report, Pending: approve == ""}
+	if digest != "" {
+		result.SHA256 = digest
+	}
+	if !report.OK {
+		if jsonOut {
+			return emitJSON(stdout, result, 1)
+		}
+		printPluginReport(stdout, result.pluginReport)
+		if result.SHA256 != "" {
+			fmt.Fprintf(stdout, "  sha256: %s\n", result.SHA256)
+		}
+		return 1
+	}
+
+	if approve == "" {
+		if jsonOut {
+			return emitJSON(stdout, result, 0)
+		}
+		printPluginReport(stdout, result.pluginReport)
+		fmt.Fprintf(stdout, "  sha256: %s\n", result.SHA256)
+		fmt.Fprintf(stdout, "  NOT ENABLED: rerun with --approve %s to pin and enable this plugin\n", result.SHA256)
+		return 0
+	}
+
+	if !strings.EqualFold(approve, result.SHA256) {
+		result.OK = false
+		result.Phase = phaseTrust
+		result.Error = fmt.Sprintf("sha256 mismatch: supplied %s, current executable is %s; nothing was changed", approve, result.SHA256)
+		if jsonOut {
+			return emitJSON(stdout, result, 1)
+		}
+		printPluginReport(stdout, result.pluginReport)
+		fmt.Fprintf(stdout, "  sha256: %s\n", result.SHA256)
+		return 1
+	}
+
+	changed, err := app.SavePlugin(configPath, report.Path, result.SHA256)
+	if err != nil {
+		if jsonOut {
+			result.OK = false
+			result.Error = err.Error()
+			return emitJSON(stdout, result, 1)
+		}
+		fmt.Fprintf(stderr, "perk-workbench plugin add: %v\n", err)
+		return 1
+	}
+	result.Changed = changed
+	if jsonOut {
+		return emitJSON(stdout, result, 0)
+	}
+	printPluginReport(stdout, result.pluginReport)
+	fmt.Fprintf(stdout, "  sha256: %s\n", result.SHA256)
+	if changed {
+		fmt.Fprintln(stdout, "  enabled: pinned (config updated)")
+	} else {
+		fmt.Fprintln(stdout, "  enabled: pinned (already configured)")
+	}
+	return 0
+}
+
+// pluginRemoveResult is the JSON document shape of `plugin remove`: the
+// removed config entry and its canonical path, and whether the config
+// was rewritten.
+type pluginRemoveResult struct {
+	Entry   string `json:"entry"`
+	Path    string `json:"path,omitempty"`
+	OK      bool   `json:"ok"`
+	Error   string `json:"error,omitempty"`
+	Changed bool   `json:"changed"`
+}
+
+// runPluginRemove atomically removes one configured plugin and its
+// trust record. NAME_OR_EXECUTABLE matches a configured entry exactly,
+// or an executable resolving to exactly one configured plugin;
+// ambiguous matches fail instead of removing multiple entries.
+func runPluginRemove(jsonOut bool, nameOrExecutable string, stdout, stderr io.Writer) int {
+	entry, canonical, changed, err := app.RemovePlugin(app.ConfigPath(), nameOrExecutable)
+	if err != nil {
+		result := pluginRemoveResult{Entry: nameOrExecutable, Error: err.Error()}
+		if jsonOut {
+			return emitJSON(stdout, result, 1)
+		}
+		fmt.Fprintf(stdout, "plugin remove: %v\n", err)
+		return 1
+	}
+	result := pluginRemoveResult{Entry: entry, Path: canonical, OK: true, Changed: changed}
+	if jsonOut {
+		return emitJSON(stdout, result, 0)
+	}
+	if canonical != "" {
+		fmt.Fprintf(stdout, "removed plugin %q (%s)\n", entry, canonical)
+	} else {
+		fmt.Fprintf(stdout, "removed plugin %q\n", entry)
+	}
+	return 0
 }
 
 // checkPluginItems runs the full plugin lifecycle for every entry in
@@ -286,19 +512,21 @@ func checkPluginItems(ctx context.Context, entries []string, configPath string, 
 	return reports, failed
 }
 
-// checkPlugin runs one plugin through the full resolve, initialize and
-// registration-validation, shutdown lifecycle with its own Loader, so
-// items never mutate or contaminate each other or the global driver
-// registry. configPath is the config file path used to resolve relative
-// entries ("" for explicit operands, which resolve against the working
-// directory). Registration validation uses the side-effect-free
-// database.ValidateShim — no global driver is ever installed. The
-// snapshot is taken after Loader.Close so it reflects the final
-// exit/running state, and it remains available because the loader
-// retains its clients.
-func checkPlugin(ctx context.Context, entry, configPath string) pluginReport {
+// checkPlugin runs one plugin through the full resolve, trust-verify,
+// initialize and registration-validation, shutdown lifecycle with its
+// own Loader, so items never mutate or contaminate each other or the
+// global driver registry. configPath is the config file path used to
+// resolve relative entries ("" for explicit operands, which resolve
+// against the working directory). Registration validation uses the
+// side-effect-free database.ValidateShim — no global driver is ever
+// installed. When the resolved canonical path has a trust record, its
+// digest is verified against the current bytes BEFORE the child is
+// spawned: a mismatch fails the item with the trust phase and the child
+// never executes. The snapshot is taken after Loader.Close so it
+// reflects the final exit/running state, and it remains available
+// because the loader retains its clients.
+func checkPlugin(ctx context.Context, entry, configPath string, trust map[string]string) pluginReport {
 	report := pluginReport{Entry: entry}
-
 	path, err := plugin.ResolveExecutable(entry, configPath)
 	if err != nil {
 		report.Phase = phaseResolve
@@ -307,62 +535,57 @@ func checkPlugin(ctx context.Context, entry, configPath string) pluginReport {
 	}
 	report.Path = path
 
-	var registerErr error
-	loader, errs := plugin.Load(ctx, configPath, []string{path}, func(shim database.Shim) error {
-		caps := shim.Capabilities()
-		report.Capabilities = &caps
-		registerErr = database.ValidateShim(shim)
-		return registerErr
-	})
-	closeErr := loader.Close()
-	snapshots := loader.Snapshots()
-	if len(snapshots) > 0 {
-		snapshot := snapshots[0]
-		report.Snapshot = &snapshot
-	}
-
-	switch {
-	case len(errs) > 0:
-		switch {
-		case registerErr != nil:
-			report.Phase = phaseRegister
-			report.Error = registerErr.Error()
-		case report.Snapshot != nil && !benignProtocolError(report.Snapshot.Error):
-			// The child hit a terminal protocol or process failure: a
-			// malformed response stream, a crash, or a premature exit
-			// mid-handshake. Its text is already part of the snapshot.
-			report.Phase = phaseProtocol
-			report.Error = report.Snapshot.Error
-		default:
-			report.Phase = phaseInitialize
-			report.Error = errors.Join(errs...).Error()
+	pin, pinned := trust[path]
+	if pinned {
+		digest, err := plugin.SHA256File(path)
+		if err != nil {
+			report.Trust = trustMismatch
+			report.Expected = pin
+			report.Phase = phaseTrust
+			report.Error = fmt.Sprintf("verifying pinned sha256: %v", err)
+			return report
 		}
-	case closeErr != nil:
-		report.Phase = phaseShutdown
-		report.Error = closeErr.Error()
-	default:
-		report.Phase = phaseOK
-		report.OK = true
+		report.SHA256 = digest
+		report.Expected = pin
+		if strings.EqualFold(digest, pin) {
+			report.Trust = trustMatch
+		} else {
+			report.Trust = trustMismatch
+			report.Phase = phaseTrust
+			report.Error = fmt.Sprintf("pinned executable changed: expected sha256 %s, got %s", pin, digest)
+			return report
+		}
+	} else {
+		report.Trust = trustUnpinned
 	}
-	return report
-}
 
-// benignProtocolError reports whether a snapshot's terminal error text
-// is the clean-close artifact rather than a protocol or process
-// failure: EOF on the response stream after a normal child exit, or the
-// client-closed marker a clean close leaves behind.
-func benignProtocolError(errText string) bool {
-	return errText == "" || errText == "EOF" || errText == "perk/v1: client closed"
+	insp := plugin.Inspect(ctx, path, configPath)
+	report.Phase = insp.Phase
+	report.Error = insp.Error
+	report.OK = insp.Phase == phaseOK
+	report.Capabilities = insp.Capabilities
+	report.Snapshot = insp.Snapshot
+	return report
 }
 
 // printPluginReport renders one plugin report as concise deterministic
 // human output, visibly separating resolution, initialize, protocol,
-// registration, and shutdown failures. The bounded stderr tail is shown
-// only when present.
+// registration, trust, and shutdown failures. The bounded stderr tail
+// is shown only when present.
 func printPluginReport(w io.Writer, report pluginReport) {
 	fmt.Fprintf(w, "plugin %s:\n", report.Entry)
 	if report.Path != "" {
 		fmt.Fprintf(w, "  path: %s\n", report.Path)
+	}
+	switch report.Trust {
+	case trustMatch:
+		fmt.Fprintf(w, "  trust: match (sha256 %s)\n", report.SHA256)
+	case trustMismatch:
+		fmt.Fprintf(w, "  trust: mismatch (expected %s, got %s)\n", report.Expected, report.SHA256)
+	case trustPinned:
+		fmt.Fprintf(w, "  trust: pinned (sha256 %s)\n", report.Expected)
+	case trustUnpinned:
+		fmt.Fprintln(w, "  trust: unpinned")
 	}
 	if report.OK {
 		if report.Snapshot != nil {

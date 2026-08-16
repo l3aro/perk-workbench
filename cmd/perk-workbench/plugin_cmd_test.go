@@ -367,8 +367,8 @@ func TestPluginList_configOrderAndResolution(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("stdout = %q, want two lines in config order", stdout)
 	}
-	if lines[0] != first+" -> "+first || lines[1] != second+" -> "+second {
-		t.Fatalf("stdout = %q, want %q and %q", stdout, first+" -> "+first, second+" -> "+second)
+	if lines[0] != first+" -> "+first+" [unpinned]" || lines[1] != second+" -> "+second+" [unpinned]" {
+		t.Fatalf("stdout = %q, want %q and %q", stdout, first+" -> "+first+" [unpinned]", second+" -> "+second+" [unpinned]")
 	}
 }
 
