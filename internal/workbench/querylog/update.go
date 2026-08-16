@@ -64,12 +64,13 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher) (
 		}
 		switch {
 		case keys.Match(keyPress, "query_log.yank", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			// Root resolves the copied text: sensitive entries' verbatim
+			// session statements live only in root's transient cache, so
+			// the copy decision is root-owned. The explain gate below
+			// stays here.
 			entry, ok := m.SelectedEntry()
 			if !ok {
 				return m, nil, nil
-			}
-			if !entry.CanReplay() {
-				return m, uikit.StatusChanged{Text: "not replayable"}, nil
 			}
 			return m, uikit.ClipboardRequested{Text: queryLogCell(entry, m.Column)}, nil
 		case keys.Match(keyPress, "query_log.explain", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):

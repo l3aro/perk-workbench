@@ -20,9 +20,14 @@ const queryLogLimit = querylog.Limit
 type queryLogEntry = querylog.Entry
 
 // redactedStatement is the stable marker persisted and rendered in place
-// of a sensitive statement; the verbatim text is never retained after the
-// decision point.
+// of a sensitive statement; the verbatim text may live only in the
+// bounded current-session transient cache that backs explicit copy.
 const redactedStatement = "[redacted]"
+
+// queryLogStatementColumn is the Statement column index in the query-log
+// table (Time, Status, Statement, Duration, Message), mirroring the
+// component's fixed column layout.
+const queryLogStatementColumn = 2
 
 // copyQueryLogStatement writes a statement through both OSC 52 and the
 // native system clipboard, covering terminals and desktop clipboard
@@ -64,13 +69,21 @@ func actionLogEntry(statement string, metadata *sharedsql.StatementMetadata, sta
 		entry.Status = "failed"
 		entry.Message = err.Error()
 	}
-	return withStatementMetadata(entry, metadata)
+	entry = withStatementMetadata(entry, metadata)
+	if err != nil && entry.Sensitive {
+		// A sensitive failure must not echo backend error text — Redis
+		// errors include the offending command and its arguments — so
+		// the default failed message fills in at append time.
+		entry.Message = ""
+	}
+	return entry
 }
 
 // appendQueryLog records one executed statement: it fills the default
 // message, applies the sensitive-entry policy — the verbatim statement is
-// never retained, in memory or at rest, and the entry is never replayable
-// — appends to the component (which caps and re-renders), and persists
+// retained only in the session transient cache (never in the component,
+// at rest, or in loaded entries), and the entry is never replayable —
+// appends to the component (which caps and re-renders), and persists
 // through the lazy store when a profile scope exists.
 func (m *Model) appendQueryLog(entry queryLogEntry) {
 	if entry.Message == "" {
@@ -83,15 +96,67 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 			entry.Message = "completed"
 		}
 	}
+	original := ""
 	if entry.Sensitive {
+		original = entry.Statement
 		entry.Statement = redactedStatement
 		entry.Replayable = false
+		// The failure message must never echo backend error text either
+		// (Redis errors include the offending command and its arguments).
+		if entry.Status == "failed" {
+			entry.Message = "failed"
+		}
 	}
 	m.queryLog.component.Append(entry)
+	// Keep the transient cache index-aligned with the component's entry
+	// list under the same cap: the cache slot holds the verbatim original
+	// for sensitive entries and stays empty for every other entry.
+	m.queryLog.transientStatements = append([]string{original}, m.queryLog.transientStatements...)
+	if len(m.queryLog.transientStatements) > len(m.queryLog.component.Entries) {
+		m.queryLog.transientStatements = m.queryLog.transientStatements[:len(m.queryLog.component.Entries)]
+	}
 	if store := m.queryLogStore(); store != nil {
 		_ = store.Append(m.connectionID, entry, queryLogLimit)
 	}
 	m.refreshChatFailedContext()
+}
+
+// queryLogYankText resolves the text a query-log copy action puts on the
+// clipboard. Statement cells copy the entry statement — for sensitive
+// entries the verbatim session original from the transient cache, never
+// the redacted marker; a loaded sensitive entry has no original and is
+// rejected. Non-statement cells copy their displayed text as-is.
+func (m Model) queryLogYankText(entry querylog.Entry) (string, bool) {
+	if m.queryLog.component.Column != queryLogStatementColumn {
+		return m.queryLog.component.SelectedCellText()
+	}
+	if entry.Sensitive {
+		return m.transientStatement(entry)
+	}
+	return entry.Statement, true
+}
+
+// transientStatement returns the session-only verbatim statement of the
+// sensitive entry under the table cursor, if appendQueryLog recorded one.
+// The cache is index-aligned with the component's entry list, so the
+// position association is collision-safe; loaded entries have no slot.
+func (m Model) transientStatement(entry querylog.Entry) (string, bool) {
+	index := m.queryLog.component.Page*m.queryLog.component.PageSize + m.queryLog.component.Table.Cursor()
+	if index < 0 || index >= len(m.queryLog.transientStatements) {
+		return "", false
+	}
+	original := m.queryLog.transientStatements[index]
+	return original, original != ""
+}
+
+// rowWriteFailureStatus renders a row-write failure status. A sensitive
+// write must not echo the backend error — Redis errors include the
+// offending command and its arguments — so it reports a generic failure.
+func rowWriteFailureStatus(verb string, metadata *sharedsql.StatementMetadata, err error) string {
+	if metadata != nil && metadata.Sensitive {
+		return verb + ": failed"
+	}
+	return safeText(fmt.Sprintf("%s: %v", verb, err))
 }
 
 // refreshChatFailedContext mirrors the newest failed query into the chat

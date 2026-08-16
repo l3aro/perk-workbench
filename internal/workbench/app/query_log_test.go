@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
-
-	"strings"
 
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
@@ -553,6 +554,13 @@ func TestActionLogEntry_resolvesStatementMetadata(t *testing.T) {
 	if entry.Language != "redis" || entry.Replayable {
 		t.Fatalf("language-only metadata entry = %#v, want language redis and not replayable", entry)
 	}
+	// A sensitive failure drops the backend error text entirely: Redis
+	// errors echo the offending command and its arguments.
+	echoing := fmt.Errorf("ERR unknown command %q", "SET key 1")
+	entry = actionLogEntry("SET key 1", &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), echoing, "completed")
+	if entry.Status != "failed" || entry.Message != "" {
+		t.Fatalf("sensitive failure entry = %#v, want failed status with no message", entry)
+	}
 }
 
 // TestAppendQueryLog_sensitiveEntriesRedactedInMemoryAndAtRest proves the
@@ -631,20 +639,55 @@ func TestAppendQueryLog_metadataRoundTrip(t *testing.T) {
 		t.Fatalf("persisted entry = %#v, want the metadata round trip", loaded)
 	}
 	// The chat context mirrors a failed statement; a sensitive failure
-	// must never leak the secret into it.
+	// must never leak the secret — or backend error text that echoes it —
+	// into the log, the chat context, or the status. The backend error
+	// here contains the full statement, like real Redis errors do.
 	model = readyModel(t)
 	model.connectionID = "conn-a"
 	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
-	updated, _ = model.Update(browseRowUpdatedMsg{statement: secret, metadata: &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, startedAt: time.Now(), err: errors.New("boom")})
+	echoing := fmt.Errorf("ERR unknown command %q", secret)
+	updated, _ = model.Update(browseRowUpdatedMsg{statement: secret, metadata: &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, startedAt: time.Now(), err: echoing})
 	model = updated.(Model)
 	if model.chat.component.LastFailedQuery != redactedStatement {
 		t.Fatalf("chat context = %q, want the redacted marker %q", model.chat.component.LastFailedQuery, redactedStatement)
 	}
+	if got := model.chat.component.LastFailedError; got != "failed" {
+		t.Fatalf("chat error context = %q, want the generic %q", got, "failed")
+	}
+	if got := model.queryLog.component.Entries[0].Message; got != "failed" {
+		t.Fatalf("in-memory failure message = %q, want the generic %q", got, "failed")
+	}
+	if got := model.Status; got != "updating row: failed" {
+		t.Fatalf("status = %q, want %q without backend error text", got, "updating row: failed")
+	}
+	for _, surface := range []string{model.Status, model.chat.component.LastFailedQuery, model.chat.component.LastFailedError, model.queryLog.component.Entries[0].Statement, model.queryLog.component.Entries[0].Message} {
+		if strings.Contains(surface, "api_token") {
+			t.Fatalf("sensitive failure leaked the statement into %q", surface)
+		}
+	}
+	if loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit); err != nil || len(loaded) != 1 || loaded[0].Message != "failed" {
+		t.Fatalf("persisted failure message = %#v (err %v), want the generic %q", loaded, err, "failed")
+	}
+	// A non-sensitive failure keeps the backend error text in status and
+	// message.
+	model = readyModel(t)
+	model.connectionID = "conn-a"
+	updated, _ = model.Update(browseRowUpdatedMsg{statement: "RENAME key user:2 user:3", metadata: &sharedsql.StatementMetadata{Language: "redis", Replayable: false}, startedAt: time.Now(), err: errors.New("boom")})
+	model = updated.(Model)
+	if got := model.Status; !strings.Contains(got, "boom") {
+		t.Fatalf("non-sensitive failure status = %q, want the backend error text", got)
+	}
+	if got := model.queryLog.component.Entries[0].Message; got != "boom" {
+		t.Fatalf("non-sensitive failure message = %q, want the backend error text", got)
+	}
 }
 
-// TestQueryLog_gatesNonReplayableEntries proves copy and explain are
-// no-ops with an explicit safe status for non-replayable (including
-// sensitive) entries, while rendering still shows the entry.
+// TestQueryLog_gatesNonReplayableEntries proves explain is a no-op with
+// an explicit safe status for non-replayable (including sensitive)
+// entries, that non-statement cell copy is unrestricted (the displayed
+// cell text carries no statement), and that rendering still shows the
+// entry. Statement-cell copy follows the newer policy in the yank tests
+// below.
 func TestQueryLog_gatesNonReplayableEntries(t *testing.T) {
 	build := func(t *testing.T, entry queryLogEntry) Model {
 		t.Helper()
@@ -659,14 +702,19 @@ func TestQueryLog_gatesNonReplayableEntries(t *testing.T) {
 	nonReplayable := queryLogEntry{Statement: "SET key 1", Status: "success", Replayable: false}
 	sensitive := queryLogEntry{Statement: "SET key 1", Status: "success", Replayable: true, Sensitive: true}
 
-	t.Run("yank", func(t *testing.T) {
+	t.Run("yank non-statement cell", func(t *testing.T) {
+		// The Time cell (column 0) carries no statement: it copies freely
+		// even for non-replayable and sensitive entries.
 		for name, entry := range map[string]queryLogEntry{"non-replayable": nonReplayable, "sensitive": sensitive} {
 			t.Run(name, func(t *testing.T) {
 				model := build(t, entry)
-				updated, _ := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+				updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 				model = updated.(Model)
-				if model.Status != "not replayable" {
-					t.Fatalf("yank status = %q, want %q", model.Status, "not replayable")
+				if model.Status != "copied to clipboard" {
+					t.Fatalf("yank status = %q, want %q", model.Status, "copied to clipboard")
+				}
+				if command == nil {
+					t.Fatal("yank command = nil, want clipboard command")
 				}
 			})
 		}
@@ -701,10 +749,13 @@ func TestQueryLog_gatesNonReplayableEntries(t *testing.T) {
 		if model.overlay.contextMenu == nil {
 			t.Fatal("comma did not open the query-log context menu")
 		}
-		updated, _ = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+		updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
 		model = updated.(Model)
-		if model.Status != "not replayable" {
-			t.Fatalf("context-menu yank status = %q, want %q", model.Status, "not replayable")
+		if model.Status != "copied to clipboard" {
+			t.Fatalf("context-menu yank status = %q, want %q", model.Status, "copied to clipboard")
+		}
+		if command == nil {
+			t.Fatal("context-menu yank command = nil, want clipboard command")
 		}
 	})
 	t.Run("renders", func(t *testing.T) {
@@ -713,4 +764,312 @@ func TestQueryLog_gatesNonReplayableEntries(t *testing.T) {
 			t.Fatalf("rendered statement = %q, want the entry rendered", got)
 		}
 	})
+}
+
+// queryLogFocused builds a model focused on the query-log pane with one
+// appended entry selected on row 0 (column 0).
+func queryLogFocused(t *testing.T, entry queryLogEntry) Model {
+	t.Helper()
+	model := resizeModel(readyModel(t), 100, 24)
+	model.Focus = focusQueryLog
+	model.queryLog.component.Table.Focus()
+	model.databaseInfo.Product = "SQLite"
+	model.appendQueryLog(entry)
+	model.queryLog.component.Table.SetCursor(0)
+	return model
+}
+
+// clipboardPayload executes the OSC 52 write inside a copy command and
+// returns the exact text it would put on the clipboard. copyQueryLogStatement
+// produces a command sequence whose SetClipboard write carries the text as a
+// string-kind message; the app batches that sequence with bookkeeping
+// commands (e.g. the notification dismiss tick), so the search descends
+// through batch/sequence messages. The native clipboard write in the
+// sequence's tail is a harmless no-op without a display.
+func clipboardPayload(t *testing.T, command tea.Cmd) string {
+	t.Helper()
+	payload, ok := clipboardPayloadIn(command)
+	if !ok {
+		t.Fatal("copy command carries no clipboard text")
+	}
+	return payload
+}
+
+// clipboardPayloadIn searches a command's message tree for the OSC 52
+// clipboard write, whose message is a string-kind type.
+func clipboardPayloadIn(command tea.Cmd) (string, bool) {
+	if command == nil {
+		return "", false
+	}
+	msg := command()
+	if msg == nil {
+		return "", false
+	}
+	value := reflect.ValueOf(msg)
+	if value.Kind() == reflect.String {
+		return value.String(), true
+	}
+	if value.Kind() != reflect.Slice {
+		return "", false
+	}
+	for index := 0; index < value.Len(); index++ {
+		element, ok := value.Index(index).Interface().(tea.Cmd)
+		if !ok {
+			continue
+		}
+		if payload, ok := clipboardPayloadIn(element); ok {
+			return payload, true
+		}
+	}
+	return "", false
+}
+
+// TestQueryLog_yank_sensitiveStatementCopiesSessionOriginal proves an
+// explicit copy of a sensitive entry's statement yields the exact
+// session original — through both the direct y key and the context menu —
+// while the component, rendering, and store keep only the redacted
+// marker, and chat context never receives the original.
+func TestQueryLog_yank_sensitiveStatementCopiesSessionOriginal(t *testing.T) {
+	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
+	entry := actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Replayable: true, Sensitive: true}, time.Now(), nil, "completed")
+
+	model := resizeModel(readyModel(t), 100, 24)
+	model.connectionID = "conn-a"
+	model.Focus = focusQueryLog
+	model.queryLog.component.Table.Focus()
+	model.databaseInfo.Product = "SQLite"
+	model.appendQueryLog(entry)
+	model.queryLog.component.Table.SetCursor(0)
+	if got := model.queryLog.component.Entries[0].Statement; got != redactedStatement {
+		t.Fatalf("in-memory statement = %q, want redacted marker %q", got, redactedStatement)
+	}
+
+	// When — direct y on the statement cell.
+	model.queryLog.component.Column = queryLogStatementColumn
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+
+	// Then — the exact original reaches the clipboard.
+	if model.Status != "copied to clipboard" {
+		t.Fatalf("yank status = %q, want %q", model.Status, "copied to clipboard")
+	}
+	if got := clipboardPayload(t, command); got != secret {
+		t.Fatalf("copied statement = %q, want the exact original %q", got, secret)
+	}
+	if got := model.queryLog.component.Entries[0].Statement; got != redactedStatement {
+		t.Fatalf("statement after copy = %q, want the marker still %q", got, redactedStatement)
+	}
+	if loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit); err != nil || len(loaded) != 1 || loaded[0].Statement != redactedStatement {
+		t.Fatalf("stored entry = %#v (err %v), want only the redacted marker", loaded, err)
+	}
+
+	// When — the same copy through the context menu.
+	model = queryLogFocused(t, entry)
+	model.queryLog.component.Column = queryLogStatementColumn
+	updated, _ = model.Update(tea.KeyPressMsg{Code: ',', Text: ","})
+	model = updated.(Model)
+	if model.overlay.contextMenu == nil {
+		t.Fatal("comma did not open the query-log context menu")
+	}
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	if got := clipboardPayload(t, command); got != secret {
+		t.Fatalf("context-menu copy = %q, want the exact original %q", got, secret)
+	}
+
+	// Chat context mirrors only the marker for a failed sensitive entry;
+	// the echoing backend error is never surfaced.
+	model = queryLogFocused(t, actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), fmt.Errorf("ERR unknown command %q", secret), "completed"))
+	if got := model.chat.component.LastFailedQuery; got != redactedStatement {
+		t.Fatalf("chat context = %q, want the redacted marker %q", got, redactedStatement)
+	}
+	if got := model.chat.component.LastFailedError; got != "failed" {
+		t.Fatalf("chat error context = %q, want the generic %q", got, "failed")
+	}
+}
+
+// TestQueryLog_yank_collisionSafeAssociation proves the transient cache
+// resolves each sensitive entry's own original even when two entries
+// share an identical timestamp (position-based association, never
+// timestamp identity).
+func TestQueryLog_yank_collisionSafeAssociation(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	started := time.Now()
+	model.appendQueryLog(actionLogEntry("SET first_secret 1", &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, started, nil, "completed"))
+	model.appendQueryLog(actionLogEntry("SET second_secret 2", &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, started, nil, "completed"))
+	if got := model.queryLog.component.Entries[0].StartedAt; got != started {
+		t.Fatalf("setup: entries must share one timestamp, got %v", got)
+	}
+
+	model.queryLog.component.Column = queryLogStatementColumn
+	model.queryLog.component.Table.SetCursor(0)
+	if text, ok := model.queryLogYankText(model.queryLog.component.Entries[0]); !ok || text != "SET second_secret 2" {
+		t.Fatalf("newest entry copy = %q (ok %t), want its own original", text, ok)
+	}
+	model.queryLog.component.Table.SetCursor(1)
+	if text, ok := model.queryLogYankText(model.queryLog.component.Entries[1]); !ok || text != "SET first_secret 1" {
+		t.Fatalf("older entry copy = %q (ok %t), want its own original", text, ok)
+	}
+}
+
+// TestQueryLog_yank_nonReplayableStatementCopiesWhenNotSensitive proves
+// a non-sensitive but non-replayable statement stays copyable while
+// explain remains blocked.
+func TestQueryLog_yank_nonReplayableStatementCopiesWhenNotSensitive(t *testing.T) {
+	statement := "RENAME key user:2 user:3"
+	model := queryLogFocused(t, queryLogEntry{Statement: statement, Status: "success", Replayable: false})
+	model.queryLog.component.Column = queryLogStatementColumn
+
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	if model.Status != "copied to clipboard" {
+		t.Fatalf("yank status = %q, want %q", model.Status, "copied to clipboard")
+	}
+	if got := clipboardPayload(t, command); got != statement {
+		t.Fatalf("copied statement = %q, want %q", got, statement)
+	}
+
+	// Explain stays blocked for the same entry.
+	model = queryLogFocused(t, queryLogEntry{Statement: statement, Status: "success", Replayable: false})
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+	if model.overlay.explainPicker != nil || model.Status != "not replayable" {
+		t.Fatalf("explain picker=%t status=%q, want no picker and %q", model.overlay.explainPicker != nil, model.Status, "not replayable")
+	}
+}
+
+// TestQueryLog_explain_blockedForSensitiveEntries proves sensitive
+// entries reject explain from the pane and from the detail overlay even
+// though their session statement is copyable.
+func TestQueryLog_explain_blockedForSensitiveEntries(t *testing.T) {
+	model := queryLogFocused(t, actionLogEntry("SET key secret", &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+	updated, _ := model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+	if model.overlay.explainPicker != nil || model.Status != "not replayable" {
+		t.Fatalf("pane explain picker=%t status=%q, want no picker and %q", model.overlay.explainPicker != nil, model.Status, "not replayable")
+	}
+
+	model.queryLog.component.Detail = &model.queryLog.component.Entries[0]
+	updated, _ = model.Update(tea.KeyPressMsg{Code: 'e', Text: "e"})
+	model = updated.(Model)
+	if model.overlay.explainPicker != nil || model.queryLog.component.Detail == nil || model.Status != "not replayable" {
+		t.Fatalf("detail explain picker=%t detail=%t status=%q, want no-op and %q", model.overlay.explainPicker != nil, model.queryLog.component.Detail == nil, model.Status, "not replayable")
+	}
+}
+
+// TestQueryLog_yank_loadedSensitiveEntryCannotRecoverOriginal proves a
+// persisted sensitive entry reloaded through the real open path keeps
+// only the redacted marker, holds no transient original, and rejects
+// copy.
+func TestQueryLog_yank_loadedSensitiveEntryCannotRecoverOriginal(t *testing.T) {
+	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	model.appendQueryLog(actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+
+	// Disconnect (scope reset) and reopen the same connection scope
+	// through the production open handler: loaded entries must carry no
+	// transient originals.
+	model.disconnect()
+	model.connectionID = "conn-a"
+	service, err := sqlite.Open(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := service.Close(); err != nil {
+			t.Errorf("closing reload service: %v", err)
+		}
+	})
+	model.openTag++
+	updated, _ := model.Update(databaseOpenedMsg{target: "reload.db", service: service, info: sharedsql.DatabaseInfo{}, reconnect: true, openTag: model.openTag})
+	model = updated.(Model)
+
+	if got := model.queryLog.component.Entries; len(got) != 1 || got[0].Statement != redactedStatement || !got[0].Sensitive {
+		t.Fatalf("reloaded entries = %#v, want one redacted sensitive entry", got)
+	}
+	if got := model.queryLog.transientStatements; len(got) != 1 || got[0] != "" {
+		t.Fatalf("transient cache after reload = %#v, want one empty slot", got)
+	}
+
+	model.Focus = focusQueryLog
+	model.queryLog.component.Table.Focus()
+	model.queryLog.component.Table.SetCursor(0)
+	model.queryLog.component.Column = queryLogStatementColumn
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	if model.Status != "not replayable" {
+		t.Fatalf("reloaded sensitive yank status = %q, want %q", model.Status, "not replayable")
+	}
+	if payload, ok := clipboardPayloadIn(command); ok {
+		t.Fatalf("reloaded sensitive yank put %q on the clipboard, want none", payload)
+	}
+	if text, ok := model.queryLogYankText(model.queryLog.component.Entries[0]); ok || strings.Contains(text, "api_token") {
+		t.Fatalf("reloaded sensitive statement resolvable: %q (ok %t), want rejection", text, ok)
+	}
+}
+
+// TestQueryLog_yank_transientCacheCappedAndAligned proves the transient
+// originals obey the same cap as the component list and stay
+// index-aligned with it under eviction.
+func TestQueryLog_yank_transientCacheCappedAndAligned(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	started := time.Now()
+	for index := 1; index <= queryLogLimit+1; index++ {
+		model.appendQueryLog(actionLogEntry(fmt.Sprintf("SET secret %d", index), &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, started.Add(time.Duration(index)*time.Second), nil, "completed"))
+	}
+	entries := model.queryLog.component.Entries
+	if len(entries) != queryLogLimit {
+		t.Fatalf("component entries = %d, want the %d cap", len(entries), queryLogLimit)
+	}
+	if got := len(model.queryLog.transientStatements); got != queryLogLimit {
+		t.Fatalf("transient cache = %d slots, want the %d cap", got, queryLogLimit)
+	}
+	for index := range entries {
+		want := fmt.Sprintf("SET secret %d", queryLogLimit+1-index)
+		if got := model.queryLog.transientStatements[index]; got != want {
+			t.Fatalf("cache slot %d = %q, want %q", index, got, want)
+		}
+	}
+	// The oldest retained row (index limit-1) copies its own original.
+	model.Focus = focusQueryLog
+	model.queryLog.component.Table.Focus()
+	model.queryLog.component.SetPage((queryLogLimit - 1) / defaultQueryLogPageSize)
+	model.queryLog.component.Table.SetCursor((queryLogLimit - 1) % defaultQueryLogPageSize)
+	model.queryLog.component.Column = queryLogStatementColumn
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'y', Text: "y"})
+	model = updated.(Model)
+	if got := clipboardPayload(t, command); got != "SET secret 2" {
+		t.Fatalf("oldest retained copy = %q, want %q", got, "SET secret 2")
+	}
+}
+
+// TestQueryLog_yank_cacheClearedOnScopeReset proves transient originals
+// die with the connection scope: disconnect empties the cache and a new
+// scope never sees the previous connection's statements.
+func TestQueryLog_yank_cacheClearedOnScopeReset(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	secretA := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
+	model.appendQueryLog(actionLogEntry(secretA, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+
+	model.disconnect()
+	if model.queryLog.transientStatements != nil {
+		t.Fatalf("transient cache after disconnect = %#v, want nil", model.queryLog.transientStatements)
+	}
+	if len(model.queryLog.component.Entries) != 0 {
+		t.Fatalf("component entries after disconnect = %d, want none", len(model.queryLog.component.Entries))
+	}
+
+	model.connectionID = "conn-b"
+	secretB := "SET other_token 2"
+	model.appendQueryLog(actionLogEntry(secretB, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+	if got := model.queryLog.transientStatements; len(got) != 1 || got[0] != secretB {
+		t.Fatalf("new-scope cache = %#v, want only %q", got, secretB)
+	}
+	if strings.Contains(strings.Join(model.queryLog.transientStatements, " "), "api_token") {
+		t.Fatal("new connection scope retained the previous connection's secret")
+	}
 }

@@ -51,12 +51,9 @@ func (m Model) updateContextMenu(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, nil
 			}
-			if !entry.CanReplay() {
-				m.setStatus("not replayable")
-				return m, nil
-			}
-			text, ok := m.queryLog.component.SelectedCellText()
+			text, ok := m.queryLogYankText(entry)
 			if !ok {
+				m.setStatus("not replayable")
 				return m, nil
 			}
 			m.setStatus("copied to clipboard")

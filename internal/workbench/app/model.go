@@ -151,6 +151,12 @@ type queryState struct {
 	resultsRaw            [][]*string
 	resultsStatus         string
 	resultsNumericColumns []bool
+	// transientStatements holds the verbatim statements of in-session
+	// sensitive entries, index-aligned with the component's entry list
+	// (an empty slot for every other entry). The original never appears
+	// in the component, the store, or loaded entries; explicit copy
+	// resolves it here, and the cache lives and dies with the scope.
+	transientStatements []string
 }
 
 // browseState owns the browse tab's root half: the browse component
@@ -464,13 +470,15 @@ func (m *Model) disconnect() {
 // result, completion data, validation tag, editor history, and the
 // query-log component, and closes the query-log store. The component is
 // cleared in place so its sized table survives the disconnect layout
-// pass.
+// pass. Transient sensitive originals die with the scope: they never
+// survive a connection or profile reset.
 func (s *queryState) reset() {
 	if s.store != nil {
 		_ = s.store.Close()
 		s.store = nil
 	}
 	s.component.Reset()
+	s.transientStatements = nil
 	s.history = nil
 	s.historyIndex = -1
 	s.editor.setValue("")

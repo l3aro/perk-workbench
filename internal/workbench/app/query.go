@@ -332,7 +332,7 @@ func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, t
 	}
 	if message.err != nil {
 		m.browse.component.Form.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("updating row: %v", message.err)))
+		m.setStatus(rowWriteFailureStatus("updating row", message.metadata, message.err))
 		return m, nil
 	}
 	m.browse.component.Form = browse.Form{}
@@ -370,7 +370,7 @@ func (m Model) updateInsertRowMsg(message insertRowMsg) (tea.Model, tea.Cmd) {
 	}
 	if message.err != nil {
 		m.browse.component.Form.Saving = false
-		m.setStatus(safeText(fmt.Sprintf("inserting row: %v", message.err)))
+		m.setStatus(rowWriteFailureStatus("inserting row", message.metadata, message.err))
 		return m, nil
 	}
 	m.browse.component.Form = browse.Form{}
@@ -480,7 +480,7 @@ func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
 		m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "deleted 1 row"))
 	}
 	if message.err != nil {
-		m.setStatus(safeText(fmt.Sprintf("deleting row: %v", message.err)))
+		m.setStatus(rowWriteFailureStatus("deleting row", message.metadata, message.err))
 		return m, nil
 	}
 	m.setStatus("row deleted")

@@ -315,11 +315,20 @@ func (m Model) applyQueryLogEvent(event uikit.Event, cmd tea.Cmd) (tea.Model, te
 		m.setStatus(uikit.SafeText(e.Text))
 		return m, cmd
 	case uikit.ClipboardRequested:
+		entry, ok := m.queryLog.component.SelectedEntry()
+		if !ok {
+			return m, cmd
+		}
+		text, ok := m.queryLogYankText(entry)
+		if !ok {
+			m.setStatus("not replayable")
+			return m, cmd
+		}
 		m.setStatus("copied to clipboard")
 		if cmd == nil {
-			return m, copyQueryLogStatement(e.Text)
+			return m, copyQueryLogStatement(text)
 		}
-		return m, tea.Batch(cmd, copyQueryLogStatement(e.Text))
+		return m, tea.Batch(cmd, copyQueryLogStatement(text))
 	case uikit.ExplainRequested:
 		picker := newExplainPicker(m.databaseInfo.Product, m.databaseInfo.Version, e.Statement, m.layout.tableViewportWidth)
 		if picker == nil {

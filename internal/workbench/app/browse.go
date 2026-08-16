@@ -331,7 +331,7 @@ func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea
 		m.appendQueryLog(actionLogEntry(msg.statement, msg.metadata, msg.startedAt, msg.err, "updated 1 row"))
 	}
 	if msg.err != nil {
-		m.setStatus(safeText(fmt.Sprintf("updating cell: %v", msg.err)))
+		m.setStatus(rowWriteFailureStatus("updating cell", msg.metadata, msg.err))
 		return m, nil
 	}
 	m.browse.component.CloseCellEditor()
@@ -416,7 +416,7 @@ func (m Model) updateDocumentEditorSaved(message documentEditorSavedMsg) (tea.Mo
 	}
 	if message.err != nil {
 		m.browse.component.DocumentSaveFailed()
-		m.setStatus(safeText(fmt.Sprintf("saving document: %v", message.err)))
+		m.setStatus(rowWriteFailureStatus("saving document", message.metadata, message.err))
 		return m, nil
 	}
 	m.browse.component.CloseDocumentEditor()

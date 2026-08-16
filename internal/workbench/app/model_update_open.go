@@ -64,7 +64,11 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	if store := m.queryLogStore(); store != nil {
-		m.queryLog.component.SetEntries(loadQueryLogEntries(store, m.connectionID))
+		entries := loadQueryLogEntries(store, m.connectionID)
+		m.queryLog.component.SetEntries(entries)
+		// Loaded entries never carry transient originals: a sensitive
+		// statement cannot be recovered after restart.
+		m.queryLog.transientStatements = make([]string, len(entries))
 	}
 	m.queryLog.component.SetPage(0)
 	if store := m.notificationStore(); store != nil {
