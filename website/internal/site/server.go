@@ -65,7 +65,7 @@ func New(version string) http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	fileServer := http.FileServer(http.FS(static))
+	fileServer := http.StripPrefix("/static/", http.FileServer(http.FS(static)))
 	mux.HandleFunc("/static/", func(w http.ResponseWriter, r *http.Request) {
 		if !methodAllowed(w, r) {
 			return
