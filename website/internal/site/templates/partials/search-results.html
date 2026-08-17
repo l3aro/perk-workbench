@@ -1,3 +1,11 @@
 {{ define "search-results" -}}
-<div class="search-results" id="search-results" aria-live="polite"></div>
+<div class="search-results" id="search-results" aria-live="polite">
+  {{- with .SearchMessage }}<p class="search-message">{{ . }}</p>{{ end }}
+  {{- range .Results }}
+  <article class="search-result">
+    <h2><a href="{{ .Path }}">{{ .Title }}</a></h2>
+    <p>{{ .Summary }}</p>
+  </article>
+  {{- end }}
+</div>
 {{- end }}
