@@ -1,0 +1,11 @@
+{{define "navigation"}}
+<nav id="site-navigation" class="site-navigation" aria-label="Primary navigation">
+  <a href="/"{{if eq .Path "/"}} aria-current="page"{{end}}>Home</a>
+  <a href="/docs/getting-started"{{if eq .Path "/docs/getting-started"}} aria-current="page"{{end}}>Getting started</a>
+  <a href="/docs/connections"{{if eq .Path "/docs/connections"}} aria-current="page"{{end}}>Connections</a>
+  <a href="/docs/workspace"{{if eq .Path "/docs/workspace"}} aria-current="page"{{end}}>Workspace</a>
+  <a href="/docs/ai"{{if eq .Path "/docs/ai"}} aria-current="page"{{end}}>AI</a>
+  <a href="/docs/plugins"{{if eq .Path "/docs/plugins"}} aria-current="page"{{end}}>Plugins</a>
+  <a href="/search"{{if eq .Path "/search"}} aria-current="page"{{end}}>Search</a>
+</nav>
+{{end}}

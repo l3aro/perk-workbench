@@ -1,24 +1,36 @@
-{{ define "base" -}}
+{{define "base"}}
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>{{ .Title }}</title>
+  <meta name="description" content="Perk Workbench — a terminal UI for exploring databases.">
+  <title>{{.Title}} · Perk Workbench</title>
   <link rel="stylesheet" href="/static/site.css">
   <script src="/static/vendor/htmx-4.0.0-beta5.min.js" defer></script>
 </head>
-<body class="site-body">
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
   <div class="site-shell">
-    <aside class="site-rail" aria-label="Site navigation">
-      <div class="site-rail__brand"><a href="/">Perk Workbench</a></div>
-      {{ block "navigation" . }}{{ end }}
-    </aside>
-    <main class="site-main" id="main-content">
-      {{ block "content" . }}{{ end }}
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Perk Workbench home">
+        <span class="brand-mark" aria-hidden="true">&gt;_</span>
+        <span>Perk Workbench</span>
+      </a>
+      <button class="nav-toggle" type="button" aria-controls="site-navigation" aria-expanded="false">
+        Menu
+      </button>
+      {{template "navigation" .}}
+    </header>
+    <main id="main-content" class="site-main">
+      {{block "content" .}}{{end}}
     </main>
+    <footer class="site-footer">
+      <span>Perk Workbench</span>
+      <span aria-hidden="true">·</span>
+      <span>A terminal UI for exploring databases</span>
+    </footer>
   </div>
 </body>
 </html>
-{{- end }}
+{{end}}
