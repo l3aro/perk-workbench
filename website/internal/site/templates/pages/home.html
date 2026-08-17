@@ -1,0 +1,48 @@
+{{define "content"}}
+<section class="home">
+  <section class="hero">
+    <p class="eyebrow">Representative interface</p>
+    <h1>A terminal UI for exploring databases</h1>
+    <p class="lede">Explore schemas, run queries, and inspect results from a focused terminal workflow built for database work.</p>
+    <p class="cta">
+      <code>npx perk-workbench path/to/database.db</code>
+      <a href="https://github.com/l3aro/perk-workbench">https://github.com/l3aro/perk-workbench</a>
+    </p>
+    <p class="note">This is not a web or GUI database client.</p>
+  </section>
+
+  <section class="terminal" aria-label="Representative interface">
+    <div class="terminal-frame">
+      <div class="terminal-header">
+        <span>Representative interface</span>
+        <div class="database-labels" aria-label="Supported databases">
+          <span>SQLite</span>
+          <span>MySQL</span>
+          <span>PostgreSQL</span>
+          <span>MongoDB</span>
+        </div>
+      </div>
+
+      <div class="terminal-body">
+        <aside class="schema-pane" aria-label="Schema">
+          <h2>Schema</h2>
+          <ul>
+            <li>artists</li>
+            <li>albums</li>
+            <li>tracks</li>
+          </ul>
+        </aside>
+
+        <section class="workspace-pane" aria-label="Workspace">
+          <h2>Workspace</h2>
+          <pre><code>SELECT * FROM artists LIMIT 5</code></pre>
+          <div class="results" aria-label="Results">
+            <div class="result-row"><span>AC/DC</span></div>
+            <div class="result-row"><span>Accept</span></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+</section>
+{{end}}
