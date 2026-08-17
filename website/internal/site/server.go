@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
-	"sort"
 	"strings"
 )
 
@@ -13,12 +12,12 @@ import (
 var embedded embed.FS
 
 type pageData struct {
-	Title        string
-	Path         string
-	Query        string
+	Title         string
+	Path          string
+	Query         string
 	SearchMessage string
-	Results      []Page
-	Version      string
+	Results       []Page
+	Version       string
 }
 
 func New(version string) http.Handler {
@@ -164,5 +163,3 @@ func containsKeyword(keywords []string, needle string) bool {
 	}
 	return false
 }
-
-var _ = sort.Strings
