@@ -1,11 +1,61 @@
 # Perk Workbench Site
 
-The independent website service for Perk Workbench.
+The independent website service for Perk Workbench. This Go module serves the
+product landing page, documentation pages, search, health status, and embedded
+static assets; it is separate from the terminal application.
 
-## Run
+## Prerequisites
+
+- Go 1.26.6
+
+## Run locally
+
+Start the server on the default port:
 
 ```bash
-go run ./cmd/perk-workbench-site
+PORT=8080 go run ./cmd/perk-workbench-site
 ```
 
-The server listens on port `8080` by default. Set `PORT` to a value from `1` through `65535` to choose another port.
+`PORT` is optional. When omitted, the server listens on port `8080`; valid
+values are `1` through `65535`.
+
+## Build
+
+Build a versioned binary with the version linker flag:
+
+```bash
+go build -ldflags "-X main.version=0.1.0" -o ./bin/perk-workbench-site ./cmd/perk-workbench-site
+```
+
+## Checks
+
+Run the same checks used by the repository workflow:
+
+```bash
+go test -race ./...
+go vet ./...
+gofmt -l cmd internal
+go build ./cmd/perk-workbench-site
+```
+
+`gofmt -l cmd internal` prints Go files that need formatting. The workflow
+fails when that command reports any files.
+
+## Routes
+
+- `/` — product landing page
+- `/docs/getting-started` — installation and first-query guide
+- `/docs/connections` — supported database connections
+- `/docs/workspace` — workspace navigation, queries, schemas, and results
+- `/docs/ai` — AI assistance overview
+- `/docs/plugins` — plugin and workspace-view overview
+- `/search?q=...` — case-insensitive catalogue search; HTMX requests receive a fragment
+- `/healthz` — health check
+- `/static/` — embedded CSS and vendor assets
+
+## Repository boundary
+
+This repository contains only the independent website module. It does not
+contain or modify the Perk Workbench source application or the sibling
+`perk-redis` repository. Changes to those repositories are outside this
+module's build and validation commands.
