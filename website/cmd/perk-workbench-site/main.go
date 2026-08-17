@@ -16,8 +16,10 @@ import (
 
 const defaultPort = 8080
 
+var version = "devel"
+
 func main() {
-	if err := run("devel"); err != nil {
+	if err := run(version); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
