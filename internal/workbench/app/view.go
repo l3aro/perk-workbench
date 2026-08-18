@@ -144,9 +144,19 @@ func renderHeaderButton(style lipgloss.Style, label string, width int) string {
 func (m Model) headerView() string {
 	logo := headerStyle.Render("PERK WORKBENCH")
 	width := headerButtonWidth()
+	if m.noQuit {
+		// Locked sessions keep the palette button at its own width; the
+		// quit button is not rendered at all.
+		width = ansi.StringWidth(headerButtonStyle.Render(headerButtonLabel))
+	}
 	button := renderHeaderButton(headerButtonStyle, headerButtonLabel, width)
-	quitButton := renderHeaderButton(headerQuitButtonStyle, headerQuitButtonLabel, width)
-	buttons := button + strings.Repeat(" ", headerButtonGap) + quitButton + strings.Repeat(" ", headerRightMargin)
+	var buttons string
+	if m.noQuit {
+		buttons = button + strings.Repeat(" ", headerRightMargin)
+	} else {
+		quitButton := renderHeaderButton(headerQuitButtonStyle, headerQuitButtonLabel, width)
+		buttons = button + strings.Repeat(" ", headerButtonGap) + quitButton + strings.Repeat(" ", headerRightMargin)
+	}
 	gap := max(m.layout.width-ansi.StringWidth(logo)-ansi.StringWidth(buttons), 0)
 	return logo + strings.Repeat(" ", gap) + buttons
 }
@@ -639,13 +649,14 @@ func (m Model) foreignKeysView() string {
 
 func (m Model) footer() string {
 	if m.State == stateConnection {
-		quitKey := m.keybindings.DisplayKey("app.quit")
-		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
-		return safeText("1 profiles | 2 form | tab controls | " + quitHint)
+		parts := []string{"1 profiles", "2 form", "tab controls"}
+		if !m.noQuit {
+			quitKey := m.keybindings.DisplayKey("app.quit")
+			parts = append(parts, chrome.FormatFooterKey(quitKey)+" quit")
+		}
+		return safeText(strings.Join(parts, " | "))
 	}
 	if m.State == stateReady {
-		quitKey := m.keybindings.DisplayKey("app.quit_dialog")
-		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
 		parts := []string{}
 		if m.ReadOnly {
 			parts = append(parts, "READONLY")
@@ -654,12 +665,18 @@ func (m Model) footer() string {
 			parts = append(parts, m.databaseInfo.Product+" "+m.databaseInfo.Version)
 		}
 		parts = append(parts, "f fullscreen", "^p palette")
-		parts = append(parts, quitHint)
+		if !m.noQuit {
+			quitKey := m.keybindings.DisplayKey("app.quit_dialog")
+			parts = append(parts, chrome.FormatFooterKey(quitKey)+" quit")
+		}
 		return safeText(strings.Join(parts, " | "))
 	}
-	quitKey := m.keybindings.DisplayKey("app.quit")
-	quitHint := chrome.FormatFooterKey(quitKey) + " quit"
-	return safeText(quitHint)
+	if !m.noQuit {
+		quitKey := m.keybindings.DisplayKey("app.quit")
+		quitHint := chrome.FormatFooterKey(quitKey) + " quit"
+		return safeText(quitHint)
+	}
+	return ""
 }
 
 func (m Model) modeBadge() string {

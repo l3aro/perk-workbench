@@ -69,18 +69,23 @@ type Model struct {
 	databaseInfo     sharedsql.DatabaseInfo
 	queryLanguage    sharedsql.QueryLanguage
 	keybindings      Keybindings
-	vimMode          bool
-	configPath       string
-	pluginControl    PluginControl
-	connection       connectionState
-	schema           schemaState
-	queryLog         queryState
-	browse           browseState
-	workspace        workspaceViewState
-	notifications    notificationState
-	overlay          overlayState
-	layout           layoutState
-	chat             chatState
+	// noQuit locks the session: every in-app quit affordance (Ctrl+C,
+	// Ctrl+Q, the header quit button, the palette quit entry, and the
+	// footer hints) is disabled. The program still exits when its context
+	// is cancelled, so the embedding host owns session teardown.
+	noQuit        bool
+	vimMode       bool
+	configPath    string
+	pluginControl PluginControl
+	connection    connectionState
+	schema        schemaState
+	queryLog      queryState
+	browse        browseState
+	workspace     workspaceViewState
+	notifications notificationState
+	overlay       overlayState
+	layout        layoutState
+	chat          chatState
 }
 
 // editorLanguage returns the active query editor language. A zero value
@@ -484,6 +489,16 @@ func (m *Model) Service() sharedsql.Service { return m.Database }
 
 func (m *Model) SetKeybindings(b Keybindings) {
 	m.keybindings = b
+	m.overlay.commandPalette = newCommandPalette(*m)
+}
+
+// SetNoQuit locks the session: every in-app quit affordance (Ctrl+C,
+// Ctrl+Q, the header quit button, the command-palette quit entry, and
+// the footer hints) is removed. The program still exits when its context
+// is cancelled, so the embedding host owns the session lifecycle.
+func (m *Model) SetNoQuit(noQuit bool) {
+	m.noQuit = noQuit
+	// Rebuild the palette so a locked session never lists the quit entry.
 	m.overlay.commandPalette = newCommandPalette(*m)
 }
 

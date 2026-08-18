@@ -28,7 +28,7 @@ import (
 // A bare build reports "devel".
 var version = "devel"
 
-const usage = `Usage: perk-workbench [--read-only] [database]
+const usage = `Usage: perk-workbench [--read-only] [--select] [--pin] [database]
 
 Connect to a database and browse, query, and edit it.
 
@@ -43,6 +43,13 @@ Commands:
   plugin test [--json] EXECUTABLE        Conformance-test one plugin over perk/v1
 
 Options:
+  --select           Choose a saved connection interactively from the CLI.
+                     Cannot be combined with a database target.
+  --pin              Lock the session: every in-app quit affordance
+                     (Ctrl+C, Ctrl+Q, the header quit button, the palette
+                     quit entry, the footer hints) is disabled. The
+                     program still exits when its context is cancelled,
+                     so the embedding host owns the session lifecycle.
   --version, -v   Print the build version: "perk-workbench <version>"
                   with <version> injected at build time via
                   -ldflags "-X main.version=<version>", or
@@ -64,23 +71,30 @@ func versionOutput() string {
 	return hostVersion() + "\n"
 }
 
-func parseTarget(args []string) (target string, readOnly bool, _ error) {
+func parseTarget(args []string) (target string, readOnly, selectMode, pin bool, _ error) {
 	nonFlags := make([]string, 0, len(args))
 	for _, a := range args {
 		switch a {
 		case "--read-only", "-r":
 			readOnly = true
+		case "--select":
+			selectMode = true
+		case "--pin":
+			pin = true
 		default:
 			nonFlags = append(nonFlags, a)
 		}
 	}
+	if selectMode && len(nonFlags) > 0 {
+		return "", false, false, false, fmt.Errorf("--select cannot be combined with a database target")
+	}
 	switch len(nonFlags) {
 	case 0:
-		return "", readOnly, nil
+		return "", readOnly, selectMode, pin, nil
 	case 1:
-		return nonFlags[0], readOnly, nil
+		return nonFlags[0], readOnly, selectMode, pin, nil
 	default:
-		return "", false, fmt.Errorf("expected zero or one target, got %d", len(nonFlags))
+		return "", false, false, false, fmt.Errorf("expected zero or one target, got %d", len(nonFlags))
 	}
 }
 
@@ -247,10 +261,29 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "plugin" {
 		return dispatchPlugin(args[1:], stdout, stderr)
 	}
-	target, readOnly, err := parseTarget(args)
+	target, readOnly, selectMode, pin, err := parseTarget(args)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
+	}
+	if selectMode {
+		// CLI-selected connection; --pin (if given) locks the session so
+		// the embedding host (e.g. a demo website over xterm.js) owns the
+		// session lifecycle.
+		selected, err := selectConnection(stderr)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		if selected == "" {
+			// The user cancelled the picker; nothing ran.
+			return 0
+		}
+		if err := run(selected, readOnly, pin); err != nil {
+			fmt.Fprintln(stderr, err)
+			return 1
+		}
+		return 0
 	}
 	if target == "" {
 		// .env in the working directory is a fallback for unset variables;
@@ -260,7 +293,7 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 			target = envTarget
 		}
 	}
-	if err := run(target, readOnly); err != nil {
+	if err := run(target, readOnly, pin); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
@@ -271,7 +304,7 @@ func main() {
 	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(target string, readOnly bool) error {
+func run(target string, readOnly, noQuit bool) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -301,6 +334,9 @@ func run(target string, readOnly bool) error {
 
 	model := app.New(target, ctx, database.Open, readOnly)
 	model.SetKeybindings(keybindings)
+	if noQuit {
+		model.SetNoQuit(true)
+	}
 	// The loader is the live plugin lifecycle controller: the Plugins
 	// manager's Status view and Restart act through it, and the app
 	// never owns child processes.

@@ -28,16 +28,24 @@ func (m Model) handleLeftClick(x, y int, release bool) (tea.Model, tea.Cmd) {
 		// confirmation dialog, the palette button left of it (separated by a
 		// fixed gap) opens the command palette; the margin cell between the
 		// quit button and the right edge does nothing. Both buttons share
-		// one width. Callers only route here when no overlay is open. The
-		// dialog's actions are safe in every state (Disconnect just closes
-		// the database if one is open), so unlike the Ctrl+Q keybinding it
-		// opens regardless of form or running state.
+		// one width; locked sessions omit the quit button entirely and the
+		// palette button takes the rightmost slot. Callers only route here
+		// when no overlay is open. The dialog's actions are safe in every
+		// state (Disconnect just closes the database if one is open), so
+		// unlike the Ctrl+Q keybinding it opens regardless of form or
+		// running state.
 		width := headerButtonWidth()
+		if m.noQuit {
+			width = ansi.StringWidth(headerButtonStyle.Render(headerButtonLabel))
+		}
 		quitX := m.layout.width - headerRightMargin - width
-		if x >= quitX && x < quitX+width {
+		paletteX := quitX - headerButtonGap - width
+		if m.noQuit {
+			paletteX = quitX
+		} else if x >= quitX && x < quitX+width {
 			return m.openQuitDialog(), nil
 		}
-		if x >= quitX-headerButtonGap-width && x < quitX-headerButtonGap {
+		if x >= paletteX && x < paletteX+width {
 			m.overlay.commandPalette = newCommandPalette(m)
 			m.overlay.commandPalette.visible = true
 		}

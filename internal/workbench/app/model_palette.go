@@ -46,6 +46,9 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 		m.commitTheme(themeSolarized)
 		return m, nil
 	case "app.quit":
+		if m.noQuit {
+			return m, nil
+		}
 		return m, tea.Quit
 	case "editor.external":
 		if cmd, handled := m.openExternalEditor(); handled {

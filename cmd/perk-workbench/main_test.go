@@ -283,6 +283,8 @@ func TestParseTarget(t *testing.T) {
 		args       []string
 		wantTarget string
 		wantRO     bool
+		wantSelect bool
+		wantPin    bool
 		wantErr    bool
 	}{
 		{name: "accepts no target", args: nil, wantTarget: ""},
@@ -291,12 +293,20 @@ func TestParseTarget(t *testing.T) {
 		{name: "accepts read-only flag", args: []string{"--read-only", "db.sqlite"}, wantTarget: "db.sqlite", wantRO: true},
 		{name: "accepts short read-only flag", args: []string{"-r", "db.sqlite"}, wantTarget: "db.sqlite", wantRO: true},
 		{name: "accepts read-only without target", args: []string{"--read-only"}, wantTarget: "", wantRO: true},
+		{name: "accepts select flag", args: []string{"--select"}, wantSelect: true},
+		{name: "accepts select with read-only", args: []string{"--select", "--read-only"}, wantRO: true, wantSelect: true},
+		{name: "accepts pin flag", args: []string{"--pin"}, wantPin: true},
+		{name: "accepts pin with target", args: []string{"--pin", "db.sqlite"}, wantTarget: "db.sqlite", wantPin: true},
+		{name: "accepts pin with read-only", args: []string{"--read-only", "--pin"}, wantRO: true, wantPin: true},
+		{name: "accepts select with pin", args: []string{"--select", "--pin"}, wantSelect: true, wantPin: true},
+		{name: "rejects select with target", args: []string{"--select", "db.sqlite"}, wantErr: true},
+		{name: "rejects select with pin and target", args: []string{"--select", "--pin", "db.sqlite"}, wantErr: true},
 		{name: "rejects two targets", args: []string{"first.db", "second.db"}, wantErr: true},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, readOnly, err := parseTarget(test.args)
+			got, readOnly, selectMode, pin, err := parseTarget(test.args)
 
 			if test.wantErr {
 				if err == nil {
@@ -312,6 +322,12 @@ func TestParseTarget(t *testing.T) {
 			}
 			if readOnly != test.wantRO {
 				t.Fatalf("parseTarget() readOnly = %v, want %v", readOnly, test.wantRO)
+			}
+			if selectMode != test.wantSelect {
+				t.Fatalf("parseTarget() selectMode = %v, want %v", selectMode, test.wantSelect)
+			}
+			if pin != test.wantPin {
+				t.Fatalf("parseTarget() pin = %v, want %v", pin, test.wantPin)
 			}
 		})
 	}

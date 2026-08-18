@@ -220,6 +220,11 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.overlay.quitDialog = nil
 		switch action {
 		case "quit":
+			if m.noQuit {
+				// A locked session must never quit from inside the app,
+				// even through a dialog that predates the lock.
+				return m, nil
+			}
 			return m, tea.Quit
 		case "disconnect":
 			m.disconnect()
@@ -397,7 +402,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.overlay.commandPalette.visible = true
 			return m, nil
 		}
-		quit := m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
+		quit := !m.noQuit && m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
 			!(m.queryEditorActive() && m.overlay.formMode.Editing()) &&
@@ -409,7 +414,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.State == stateReady && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
+		if m.State == stateReady && !m.noQuit && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
 			!m.hasOverlay() && !m.formActive() && !m.Running() {
 			return m.openQuitDialog(), nil
 		}
