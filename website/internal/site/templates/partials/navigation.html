@@ -1,6 +1,7 @@
 {{define "navigation"}}
 <nav class="docs-nav" aria-label="Documentation">
   <a href="/"{{if eq .Path "/"}} aria-current="page"{{end}}>Home</a>
+  <a href="/demo"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Live demo</a>
   <a href="/docs/getting-started"{{if eq .Path "/docs/getting-started"}} aria-current="page"{{end}}>Getting started</a>
   <a href="/docs/connections"{{if eq .Path "/docs/connections"}} aria-current="page"{{end}}>Connections</a>
   <a href="/docs/workspace"{{if eq .Path "/docs/workspace"}} aria-current="page"{{end}}>Workspace</a>

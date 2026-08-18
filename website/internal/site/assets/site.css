@@ -14,6 +14,20 @@
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+@font-face {
+  font-family: "DejaVuSansM Nerd Font Mono";
+  src: url("/static/fonts/DejaVuSansMNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DejaVuSansM Nerd Font Mono";
+  src: url("/static/fonts/DejaVuSansMNerdFontMono-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
 * { box-sizing: border-box; }
 
 html { background: var(--bg); }
@@ -75,6 +89,7 @@ a:hover { color: #bae6fd; }
 
 .site-main { width: min(100%, 80rem); margin: 0 auto; padding: 3rem clamp(1.25rem, 5vw, 5rem) 6rem; }
 .site-main > * { max-width: 58rem; }
+.site-main > .demo-wide { max-width: none; }
 .eyebrow { color: var(--good); font: 700 .78rem/1.3 ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
 h1, h2, h3 { line-height: 1.12; letter-spacing: -.04em; }
 h1 { max-width: 12ch; margin: .5rem 0 1.5rem; font-size: clamp(2.6rem, 7vw, 5.6rem); }
@@ -139,6 +154,26 @@ pre code { color: inherit; }
   color: var(--muted);
   font-size: .9rem;
 }
+
+.demo-terminal {
+  width: 100%;
+  height: min(76vh, 42rem);
+  overflow: hidden;
+  border: 1px solid #475569;
+  border-radius: .75rem;
+  background: #10141b;
+  box-shadow: var(--shadow);
+}
+
+.demo-terminal .xterm {
+  height: 100%;
+  padding: .75rem;
+  font-family: "DejaVuSansM Nerd Font Mono", monospace;
+}
+
+.demo-terminal .xterm-viewport { background: #10141b; }
+
+.demo-terminal-status { margin-top: .75rem; }
 
 @media (max-width: 48rem) {
   .site-topbar { gap: .35rem 1rem; padding: .75rem 1.25rem; }

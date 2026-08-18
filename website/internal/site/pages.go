@@ -20,6 +20,13 @@ func PageCatalogue() []Page {
 			Keywords: []string{"database", "SQL", "terminal", "Bubble Tea", "Perk Workbench"},
 		},
 		{
+			Path:     "/demo",
+			Title:    "Live demo",
+			Summary:  "Run queries against the Chinook SQLite demo in the real Perk Workbench terminal, read-only.",
+			Template: "pages/demo.html",
+			Keywords: []string{"demo", "live", "terminal", "SQLite", "Chinook", "read-only"},
+		},
+		{
 			Path:     "/docs/getting-started",
 			Title:    "Getting Started",
 			Summary:  "Install Perk Workbench, open a database, and run your first query from the terminal.",

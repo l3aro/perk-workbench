@@ -19,6 +19,20 @@ PORT=8080 go run ./cmd/perk-workbench-site
 `PORT` is optional. When omitted, the server listens on port `8080`; valid
 values are `1` through `65535`.
 
+## Live terminal demo
+
+The `/demo` page streams the real Bubble Tea application into a browser
+terminal (xterm.js) over a WebSocket. Each session spawns the TUI against the
+embedded Chinook SQLite demo database in read-only mode with an isolated
+config directory.
+
+Set `PERK_WORKBENCH_BIN` when running outside Docker and the `perk-workbench`
+binary is not on `PATH`:
+
+```bash
+PERK_WORKBENCH_BIN=/path/to/perk-workbench PORT=8080 go run ./cmd/perk-workbench-site
+```
+
 ## Build
 
 Build a versioned binary with the version linker flag:
@@ -44,6 +58,8 @@ fails when that command reports any files.
 ## Routes
 
 - `/` — product landing page
+- `/demo` — live read-only terminal demo against the Chinook SQLite database
+- `/ws/tui` — WebSocket bridge that runs the real TUI in a PTY (used by `/demo`)
 - `/docs/getting-started` — installation and first-query guide
 - `/docs/connections` — supported database connections
 - `/docs/workspace` — workspace navigation, queries, schemas, and results
@@ -51,7 +67,7 @@ fails when that command reports any files.
 - `/docs/plugins` — plugin and workspace-view overview
 - `/search?q=...` — case-insensitive catalogue search; HTMX requests receive a fragment
 - `/healthz` — health check
-- `/static/` — embedded CSS and vendor assets
+- `/static/` — embedded CSS, fonts, and vendor assets
 
 ## Repository boundary
 

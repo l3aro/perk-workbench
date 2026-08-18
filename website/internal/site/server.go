@@ -39,10 +39,17 @@ func New(version string) http.Handler {
 
 	for _, page := range pages {
 		switch page.Path {
-		case "/", "/docs/getting-started", "/docs/connections", "/docs/workspace", "/docs/ai", "/docs/plugins":
+		case "/", "/demo", "/docs/getting-started", "/docs/connections", "/docs/workspace", "/docs/ai", "/docs/plugins":
 			route(page.Path, page)
 		}
 	}
+
+	mux.HandleFunc("/ws/tui", func(w http.ResponseWriter, r *http.Request) {
+		if !methodAllowed(w, r) {
+			return
+		}
+		newTerminalServer().ServeHTTP(w, r)
+	})
 
 	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
 		if !methodAllowed(w, r) {
