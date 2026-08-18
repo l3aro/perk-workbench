@@ -19,6 +19,21 @@ PORT=8080 go run ./cmd/perk-workbench-site
 `PORT` is optional. When omitted, the server listens on port `8080`; valid
 values are `1` through `65535`.
 
+## Styles
+
+The site uses Tailwind CSS 4. Edit `css/site.css` (theme tokens, base styles,
+component classes) and the templates in `internal/site/templates`, then
+regenerate the embedded stylesheet:
+
+```bash
+npm ci
+npm run css
+```
+
+`npm run css` compiles `css/site.css` to the minified, committed
+`internal/site/assets/site.css` served at `/static/site.css`. `npm run
+css:watch` rebuilds on change during development.
+
 ## Run with Docker Compose
 
 The default Compose configuration routes the site through Traefik without

@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+@source "../internal/site/templates";
+
+@theme {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --color-canvas: #0b1020;
+  --color-panel: #111827;
+  --color-line: #334155;
+  --color-muted: #94a3b8;
+  --color-ink: #f8fafc;
+  --color-accent: #7dd3fc;
+  --color-accent-strong: #38bdf8;
+  --color-good: #86efac;
+  --color-warning: #facc15;
+
+  --shadow-deep: 0 24px 70px rgb(0 0 0 / 32%);
+}
+
+@font-face {
+  font-family: "DejaVuSansM Nerd Font Mono";
+  src: url("/static/fonts/DejaVuSansMNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DejaVuSansM Nerd Font Mono";
+  src: url("/static/fonts/DejaVuSansMNerdFontMono-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+@layer base {
+  html {
+    background: var(--color-canvas);
+  }
+
+  body {
+    min-width: 18rem;
+    color: var(--color-ink);
+    background:
+      radial-gradient(circle at top right, rgb(30 64 175 / 18%), transparent 34rem),
+      var(--color-canvas);
+    line-height: 1.6;
+  }
+
+  code,
+  pre,
+  kbd {
+    font-family: var(--font-mono);
+  }
+
+  code {
+    color: #bae6fd;
+  }
+
+  pre code {
+    color: inherit;
+  }
+
+  pre {
+    overflow-x: auto;
+    padding: 1rem 1.15rem;
+    border: 1px solid var(--color-line);
+    border-radius: 0.35rem;
+    color: #dbeafe;
+    background: #070b16;
+    box-shadow: var(--shadow-deep);
+  }
+
+  a {
+    @apply text-accent underline-offset-[0.18em];
+  }
+
+  a:hover {
+    @apply text-sky-200;
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.12;
+    letter-spacing: -0.04em;
+  }
+
+  :focus-visible {
+    @apply outline-[3px] outline-warning outline-offset-4;
+  }
+}
+
+@layer components {
+  .site-main > * {
+    @apply max-w-[58rem];
+  }
+
+  .demo-wide {
+    max-width: none;
+  }
+
+  .eyebrow {
+    @apply font-mono text-[0.78rem] font-bold uppercase leading-[1.3] tracking-[0.12em] text-good;
+  }
+
+  .lede {
+    @apply max-w-[52ch] text-[clamp(1.1rem,2vw,1.35rem)] text-slate-300;
+  }
+
+  .docs-nav {
+    @apply flex flex-wrap items-center gap-1 max-[30rem]:gap-[0.1rem];
+  }
+
+  .docs-nav a {
+    @apply inline-block rounded-[0.35rem] px-[0.7rem] py-[0.45rem] text-muted no-underline hover:bg-sky-400/10 hover:text-ink max-md:px-[0.55rem] max-md:py-[0.4rem] max-[30rem]:px-[0.45rem] max-[30rem]:py-[0.35rem];
+  }
+
+  .docs-nav a[aria-current="page"] {
+    @apply bg-sky-400/10 text-ink;
+  }
+
+  .demo-terminal {
+    @apply h-[min(76vh,42rem)] w-full overflow-hidden rounded-xl border border-slate-600 bg-[#10141b] shadow-deep;
+  }
+
+  .demo-terminal .xterm {
+    height: 100%;
+    padding: 0.75rem;
+    font-family: "DejaVuSansM Nerd Font Mono", var(--font-mono);
+  }
+
+  .demo-terminal .xterm-viewport {
+    background: #10141b;
+  }
+
+  .demo-terminal-status {
+    @apply mt-3;
+  }
+}

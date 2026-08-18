@@ -11,14 +11,14 @@
   {{block "head" .}}{{end}}
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Skip to content</a>
-  <header class="site-topbar">
-    <div class="site-topbar__brand"><a href="/">Perk Workbench</a></div>
+  <a class="absolute -left-[9999px] top-0 z-[1000] bg-[#111] px-3 py-2 text-white focus:left-3 focus:top-3" href="#main-content">Skip to content</a>
+  <header class="sticky top-0 z-10 flex flex-wrap items-center gap-x-7 gap-y-2 border-b border-line bg-canvas/90 px-[clamp(1.25rem,5vw,5rem)] py-3.5 backdrop-blur max-md:gap-x-4 max-md:gap-y-1 max-md:px-5 max-md:py-3 max-[30rem]:grid">
+    <div class="font-mono font-bold tracking-[-0.04em] before:content-['~/'] before:text-good"><a class="text-ink no-underline" href="/">Perk Workbench</a></div>
     {{template "navigation" .}}
   </header>
-  <main class="site-main" id="main-content">
+  <main class="site-main mx-auto w-full max-w-[80rem] px-[clamp(1.25rem,5vw,5rem)] pt-12 pb-24 max-md:pt-8" id="main-content">
     {{block "content" .}}{{end}}
-    <footer class="site-footer">
+    <footer class="mt-12 border-t border-line py-6 text-muted">
       <span>Perk Workbench</span>
       <span>Terminal-native database exploration</span>
     </footer>

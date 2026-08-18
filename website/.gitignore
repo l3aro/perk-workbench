@@ -1,6 +1,7 @@
 /bin/
 /dist/
 /coverage.out
+/node_modules/
 /perk-workbench-site
 .env
 .env.*

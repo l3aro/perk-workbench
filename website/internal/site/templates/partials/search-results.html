@@ -1,10 +1,10 @@
 {{ define "search-results" -}}
-<div class="search-results" id="search-results" aria-live="polite">
+<div class="search-results mt-5 grid gap-3" id="search-results" aria-live="polite">
   {{- with .SearchMessage }}<p class="search-message">{{ . }}</p>{{ end }}
   {{- range .Results }}
-  <article class="search-result">
-    <h2><a href="{{ .Path }}">{{ .Title }}</a></h2>
-    <p>{{ .Summary }}</p>
+  <article class="search-result rounded border border-line bg-panel p-4">
+    <h2 class="m-0 text-[1.2rem]"><a href="{{ .Path }}">{{ .Title }}</a></h2>
+    <p class="mt-1.5 text-muted">{{ .Summary }}</p>
   </article>
   {{- end }}
 </div>

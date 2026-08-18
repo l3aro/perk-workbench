@@ -1,0 +1,12 @@
+{
+  "name": "perk-workbench-site",
+  "private": true,
+  "scripts": {
+    "css": "tailwindcss -i css/site.css -o internal/site/assets/site.css --minify",
+    "css:watch": "tailwindcss -i css/site.css -o internal/site/assets/site.css --watch"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "tailwindcss": "4.3.3"
+  }
+}

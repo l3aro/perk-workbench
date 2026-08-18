@@ -7,18 +7,18 @@
 {{define "content" -}}
 <header>
   <p class="eyebrow">Live demo / read-only</p>
-  <h1>Try the real TUI</h1>
+  <h1 class="mt-2 mb-6 max-w-[12ch] text-[clamp(2.6rem,7vw,5.6rem)]">Try the real TUI</h1>
   <p class="lede">A live Perk Workbench terminal streams here from the server, connected to the Chinook SQLite demo database in read-only mode.</p>
 </header>
 
 <section class="demo-wide" aria-labelledby="terminal-title">
-  <h2 id="terminal-title">Interactive terminal</h2>
+  <h2 id="terminal-title" class="mt-12 text-[clamp(1.7rem,3vw,2.5rem)]">Interactive terminal</h2>
   <div id="demo-terminal" class="demo-terminal" aria-label="Live Perk Workbench terminal"></div>
-  <p class="note">The query editor is focused automatically. Type a query and press <kbd>F5</kbd> to run it. Read-only connection: queries cannot modify the demo database. Your session ends when you leave the page.</p>
+  <p class="note demo-terminal-status">The query editor is focused automatically. Type a query and press <kbd>F5</kbd> to run it. Read-only connection: queries cannot modify the demo database. Your session ends when you leave the page.</p>
 </section>
 
 <section aria-labelledby="queries-title">
-  <h2 id="queries-title">Try these queries</h2>
+  <h2 id="queries-title" class="mt-12 text-[clamp(1.7rem,3vw,2.5rem)]">Try these queries</h2>
   <pre><code>SELECT * FROM artists LIMIT 5;</code></pre>
   <pre><code>SELECT t.Name, al.Title
 FROM tracks t
