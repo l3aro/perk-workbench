@@ -2,3 +2,7 @@
 /dist/
 /coverage.out
 /perk-workbench-site
+.env
+.env.*
+!.env.example
+compose.override.yaml

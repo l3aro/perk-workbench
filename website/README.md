@@ -19,6 +19,41 @@ PORT=8080 go run ./cmd/perk-workbench-site
 `PORT` is optional. When omitted, the server listens on port `8080`; valid
 values are `1` through `65535`.
 
+## Run with Docker Compose
+
+The default Compose configuration routes the site through Traefik without
+publishing the application port on the host. The image builds both this site
+and the Perk Workbench TUI from the sibling `source/` repository, so the build
+context is the parent workspace directory. Ensure the shared Traefik network
+exists:
+
+```bash
+docker network create traefik_proxy
+```
+
+Copy the environment template to `.env` and set the hostname used by the
+Traefik router:
+
+```bash
+cp .env.example .env
+```
+
+Docker Compose loads `.env` automatically from the project directory. Start the
+site with:
+
+```bash
+docker compose up --build
+```
+
+The `compose.override.yaml` file adds the Traefik labels automatically. Set
+`TRAEFIK_NETWORK` when the shared network uses a different name. Traefik
+forwards to the container's internal port `8080`; `/healthz` is used for the
+container healthcheck. Stop it with:
+
+```bash
+docker compose down
+```
+
 ## Live terminal demo
 
 The `/demo` page streams the real Bubble Tea application into a browser
