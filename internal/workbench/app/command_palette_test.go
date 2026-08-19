@@ -643,8 +643,8 @@ func TestThemePicker_commitsPreviewedTheme(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig = %v", err)
 	}
-	if config.Theme != "nord" {
-		t.Fatalf("persisted theme = %q, want %q", config.Theme, "nord")
+	if config.DarkTheme != "nord" {
+		t.Fatalf("persisted dark theme = %q, want %q", config.DarkTheme, "nord")
 	}
 }
 

@@ -81,7 +81,7 @@ func TestLoadConfig_pluginTrustValidation(t *testing.T) {
 func TestSavePlugin_appendsAndPinsAtomically(t *testing.T) {
 	snapshotAppConfig(t)
 	digest := strings.Repeat("cd", 32)
-	path := writeConfigFile(t, `{"theme": "nord", "unknown_future_key": {"nested": 1}}`)
+	path := writeConfigFile(t, `{"dark_theme": "nord", "unknown_future_key": {"nested": 1}}`)
 	executable := writeExecutableAt(t, filepath.Join(t.TempDir(), "perk-redis"))
 
 	before, err := os.ReadFile(path)
@@ -217,7 +217,7 @@ func TestRemovePlugin_byExactEntry(t *testing.T) {
 	dir := t.TempDir()
 	executable := writeExecutableAt(t, filepath.Join(dir, "perk-redis"))
 	digest := strings.Repeat("23", 32)
-	path := writeConfigFile(t, `{"theme": "nord", "plugins": ["`+executable+`"], "plugin_trust": {"`+executable+`": "`+digest+`"}}`)
+	path := writeConfigFile(t, `{"dark_theme": "nord", "plugins": ["`+executable+`"], "plugin_trust": {"`+executable+`": "`+digest+`"}}`)
 
 	entry, canonical, changed, err := RemovePlugin(path, executable)
 	if err != nil || !changed {
@@ -243,8 +243,8 @@ func TestRemovePlugin_byExactEntry(t *testing.T) {
 	if strings.Contains(string(raw), "plugin_trust") {
 		t.Fatalf("config still carries plugin_trust: %s", raw)
 	}
-	if !strings.Contains(string(raw), `"theme": "nord"`) {
-		t.Fatalf("config lost the unrelated theme key: %s", raw)
+	if !strings.Contains(string(raw), `"dark_theme": "nord"`) {
+		t.Fatalf("config lost the unrelated dark_theme key: %s", raw)
 	}
 }
 

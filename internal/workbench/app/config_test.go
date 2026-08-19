@@ -26,7 +26,7 @@ func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("default config file not written: %v", err)
 	}
-	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"theme": "ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`, `"plugins": []`} {
+	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"appearance": "dark"`, `"auto_theme": true`, `"dark_theme": "ocean"`, `"light_theme": "light-ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`, `"plugins": []`} {
 		if !strings.Contains(string(contents), want) {
 			t.Fatalf("default config = %q, want it to contain %q", contents, want)
 		}
@@ -44,7 +44,7 @@ func TestLoadConfig_reads_values(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig = %v, want nil error", err)
 	}
-	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, Theme: "nord", LogLevel: "warn"}
+	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, DarkTheme: "nord", LightTheme: "light-ocean", AutoTheme: boolPtr(false), LogLevel: "warn"}
 	if !reflect.DeepEqual(config, want) {
 		t.Fatalf("LoadConfig = %#v, want %#v", config, want)
 	}
@@ -59,7 +59,9 @@ func TestLoadConfig_rejects_invalid(t *testing.T) {
 		`{"notification_retention_days": -1}`,
 		`{"notification_timeout_seconds": -1}`,
 		`{"notification_timeout_seconds": 86401}`,
-		`{"theme": "vaporwave"}`,
+		`{"appearance": "lightish"}`,
+		`{"dark_theme": "light-ocean"}`,
+		`{"light_theme": "ocean"}`,
 		`{"log_level": "verbose"}`,
 		`{"table_open_target": "columns"}`,
 		`{"plugins": ["  "]}`,
@@ -85,7 +87,7 @@ func TestSetAppConfig_applies_defaults_to_new_models(t *testing.T) {
 		setTheme(originalTheme)
 	})
 
-	SetAppConfig(Config{BrowsePageSize: 50, QueryLogPageSize: 7, QueryLogRetentionDays: 90, ReadOnly: true, Theme: "nord"})
+	SetAppConfig(Config{BrowsePageSize: 50, QueryLogPageSize: 7, QueryLogRetentionDays: 90, ReadOnly: true, DarkTheme: "nord"})
 	model := New("", context.Background(), testOpen, false)
 
 	if model.browse.component.PageSize != 50 {
@@ -192,7 +194,7 @@ func TestSaveTheme_preservesUnknownKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := SaveTheme(path, "nord"); err != nil {
+	if err := SaveTheme(path, themeNord); err != nil {
 		t.Fatalf("SaveTheme = %v", err)
 	}
 
@@ -204,8 +206,11 @@ func TestSaveTheme_preservesUnknownKeys(t *testing.T) {
 	if err := json.Unmarshal(contents, &raw); err != nil {
 		t.Fatalf("saved config = %q, not valid JSON: %v", contents, err)
 	}
-	if got := string(raw["theme"]); got != `"nord"` {
-		t.Fatalf("theme = %s, want %q", got, "nord")
+	if got := string(raw["dark_theme"]); got != `"nord"` {
+		t.Fatalf("dark_theme = %s, want %q", got, "nord")
+	}
+	if _, ok := raw["theme"]; ok {
+		t.Fatalf("saved config still holds the legacy theme key: %q", contents)
 	}
 	if got := string(raw["browse_page_size"]); got != "50" {
 		t.Fatalf("browse_page_size = %s, want 50 (dropped on rewrite)", got)

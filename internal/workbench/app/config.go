@@ -39,9 +39,21 @@ type Config struct {
 	// ReadOnly opens every connection read-only by default. The
 	// per-connection form toggle still opts a connection back to read-write.
 	ReadOnly bool `json:"read_only"`
-	// Theme is the startup theme: one of ocean, nord, monokai, dracula,
-	// catppuccin, solarized.
-	Theme string `json:"theme"`
+	// Appearance is the effective light/dark theme: "light" or "dark".
+	// Omitted or empty keeps the built-in default (dark). While auto_theme
+	// is enabled it is the fallback used when system detection is
+	// unavailable and the value resolved into when auto is turned off.
+	Appearance string `json:"appearance"`
+	// AutoTheme follows the system light/dark appearance at startup.
+	// Omitted means enabled (the built-in default).
+	AutoTheme *bool `json:"auto_theme"`
+	// DarkTheme is the theme used while appearance is dark: one of the
+	// dark-scheme themes (ocean, nord, monokai, dracula, catppuccin,
+	// solarized).
+	DarkTheme string `json:"dark_theme"`
+	// LightTheme is the theme used while appearance is light: one of the
+	// light-scheme themes (light-ocean, light-nord, ...).
+	LightTheme string `json:"light_theme"`
 	// VimMode enables modal vim-style editing: normal mode navigates with
 	// j/k-style keys and insert mode (i/Enter) types. Disabled, the focused
 	// input is always editable — click to type, no mode switch. Omitted
@@ -86,12 +98,7 @@ var appConfig Config
 func SetAppConfig(config Config) {
 	appConfig = config
 	log.SetLevel(logLevelFromConfig(config.LogLevel))
-	for _, choice := range themeChoices {
-		if appTheme(config.Theme) == choice {
-			setTheme(choice)
-			return
-		}
-	}
+	applyAppearanceConfig(config)
 }
 
 // logLevelFromConfig maps the config log_level value to the log package
@@ -164,6 +171,13 @@ func LoadConfig(path string) (Config, error) {
 			}
 		}
 	}
+	if migrated, err := migrateLegacyConfig(path, &config); err != nil {
+		return Config{}, err
+	} else if migrated {
+		// The migrated fields were validated by construction; fall through
+		// to the remaining checks below.
+		_ = migrated
+	}
 	switch {
 	case pluginsErr != nil:
 		return Config{}, pluginsErr
@@ -179,8 +193,12 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("config %q: notification_timeout_seconds must be non-negative, got %d", path, config.NotificationTimeoutSeconds)
 	case config.NotificationTimeoutSeconds > maxNotificationTimeoutSeconds:
 		return Config{}, fmt.Errorf("config %q: notification_timeout_seconds must be at most %d, got %d", path, maxNotificationTimeoutSeconds, config.NotificationTimeoutSeconds)
-	case config.Theme != "" && !validTheme(config.Theme):
-		return Config{}, fmt.Errorf("config %q: theme %q is not one of %v", path, config.Theme, themeNames())
+	case config.Appearance != "" && !validAppearance(config.Appearance):
+		return Config{}, fmt.Errorf("config %q: appearance %q is not one of %v", path, config.Appearance, appearanceNames())
+	case config.DarkTheme != "" && !validDarkTheme(config.DarkTheme):
+		return Config{}, fmt.Errorf("config %q: dark_theme %q is not one of %v", path, config.DarkTheme, darkThemeNames())
+	case config.LightTheme != "" && !validLightTheme(config.LightTheme):
+		return Config{}, fmt.Errorf("config %q: light_theme %q is not one of %v", path, config.LightTheme, lightThemeNames())
 	case config.LogLevel != "" && !validLogLevel(config.LogLevel):
 		return Config{}, fmt.Errorf("config %q: log_level %q is not one of %v", path, config.LogLevel, logLevelNames())
 	case config.TableOpenTarget != "" && !validTableOpenTarget(config.TableOpenTarget):
@@ -198,15 +216,6 @@ func tableOpenTargetNames() []string {
 	return names
 }
 
-func validTheme(name string) bool {
-	for _, choice := range themeChoices {
-		if appTheme(name) == choice {
-			return true
-		}
-	}
-	return false
-}
-
 // logLevelNames returns the accepted log_level values.
 func logLevelNames() []string {
 	return []string{"debug", "info", "warn", "error"}
@@ -221,24 +230,182 @@ func validLogLevel(value string) bool {
 	return false
 }
 
+// themeNames returns the accepted theme names across both schemes.
 func themeNames() []string {
-	names := make([]string, len(themeChoices))
-	for i, choice := range themeChoices {
+	all := allThemes()
+	names := make([]string, len(all))
+	for i, choice := range all {
 		names[i] = string(choice)
 	}
 	return names
 }
 
-// SaveTheme persists a theme choice into config.json, replacing only the
-// theme key and preserving every other key byte-for-byte — including
-// unknown or future fields the Config struct does not model. A missing or
-// empty file starts from the built-in defaults.
-func SaveTheme(path, theme string) error {
-	if err := saveConfigValue(path, "theme", theme); err != nil {
+// validTheme reports whether name is any known theme.
+func validTheme(name string) bool {
+	for _, choice := range allThemes() {
+		if appTheme(name) == choice {
+			return true
+		}
+	}
+	return false
+}
+
+// darkThemeNames returns the accepted dark-scheme theme names.
+func darkThemeNames() []string {
+	all := darkThemes()
+	names := make([]string, len(all))
+	for i, choice := range all {
+		names[i] = string(choice)
+	}
+	return names
+}
+
+// lightThemeNames returns the accepted light-scheme theme names.
+func lightThemeNames() []string {
+	all := lightThemes()
+	names := make([]string, len(all))
+	for i, choice := range all {
+		names[i] = string(choice)
+	}
+	return names
+}
+
+// validDarkTheme reports whether name is a dark-scheme theme.
+func validDarkTheme(name string) bool {
+	for _, choice := range darkThemes() {
+		if appTheme(name) == choice {
+			return true
+		}
+	}
+	return false
+}
+
+// validLightTheme reports whether name is a light-scheme theme.
+func validLightTheme(name string) bool {
+	for _, choice := range lightThemes() {
+		if appTheme(name) == choice {
+			return true
+		}
+	}
+	return false
+}
+
+// appearanceNames returns the accepted appearance values.
+func appearanceNames() []string {
+	return []string{"dark", "light"}
+}
+
+// validAppearance reports whether value is a legal appearance.
+func validAppearance(value string) bool {
+	for _, name := range appearanceNames() {
+		if value == name {
+			return true
+		}
+	}
+	return false
+}
+
+// saveThemeValue persists one theme slot (dark_theme or light_theme) into
+// config.json, preserving every other key byte-for-byte — including unknown
+// or future fields the Config struct does not model. A missing or empty file
+// starts from the built-in defaults.
+func saveThemeValue(path, key, theme string) error {
+	if err := saveConfigValue(path, key, theme); err != nil {
 		return err
 	}
-	appConfig.Theme = theme // keep the resolved config in sync
+	if key == "light_theme" {
+		appConfig.LightTheme = theme
+	} else {
+		appConfig.DarkTheme = theme
+	}
 	return nil
+}
+
+// SaveTheme persists a theme choice into config.json under the slot key for
+// its scheme (dark_theme or light_theme), preserving every other key.
+func SaveTheme(path string, name appTheme) error {
+	key := "dark_theme"
+	if themeScheme(name) == schemeLight {
+		key = "light_theme"
+	}
+	return saveThemeValue(path, key, string(name))
+}
+
+// SaveAppearance persists the explicit appearance into config.json,
+// preserving every other key.
+func SaveAppearance(path, appearance string) error {
+	if err := saveConfigValue(path, "appearance", appearance); err != nil {
+		return err
+	}
+	appConfig.Appearance = appearance // keep the resolved config in sync
+	return nil
+}
+
+// SaveAutoTheme persists the follow-system toggle into config.json,
+// preserving every other key.
+func SaveAutoTheme(path string, enabled bool) error {
+	if err := saveConfigValue(path, "auto_theme", enabled); err != nil {
+		return err
+	}
+	appConfig.AutoTheme = boolPtr(enabled) // keep the resolved config in sync
+	return nil
+}
+
+// migrateLegacyConfig upgrades a pre-appearance config file that used a
+// single "theme" key. The legacy theme becomes the dark slot (old themes
+// were all dark), auto-following is disabled (the old behavior was a fixed
+// theme), the light slot takes the default light theme, and the legacy key
+// is dropped. Unknown keys are preserved. Returns true when the file was
+// rewritten.
+func migrateLegacyConfig(path string, config *Config) (bool, error) {
+	raw, err := readConfigRaw(path)
+	if err != nil || raw == nil {
+		return false, err
+	}
+	legacy, ok := raw["theme"]
+	if !ok {
+		return false, nil
+	}
+	var name string
+	if err := json.Unmarshal(legacy, &name); err != nil {
+		return false, fmt.Errorf("config %q: theme %q: %w", path, string(legacy), err)
+	}
+	if !validDarkTheme(name) {
+		name = string(themeOcean)
+	}
+	if config.DarkTheme == "" {
+		config.DarkTheme = name
+	}
+	if config.LightTheme == "" {
+		config.LightTheme = string(themeLightOcean)
+	}
+	if config.AutoTheme == nil {
+		config.AutoTheme = boolPtr(false)
+	}
+	delete(raw, "theme")
+	setJSONKey(raw, "dark_theme", config.DarkTheme)
+	setJSONKey(raw, "light_theme", config.LightTheme)
+	setJSONKey(raw, "auto_theme", false)
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return false, err
+	}
+	if err := writeConfigFileAtomic(path, data); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// setJSONKey sets raw[key] to the JSON encoding of value unless the key
+// already exists, preserving an explicit user value over the migration
+// default.
+func setJSONKey(raw map[string]json.RawMessage, key string, value any) {
+	if _, ok := raw[key]; ok {
+		return
+	}
+	if b, err := json.Marshal(value); err == nil {
+		raw[key] = b
+	}
 }
 
 // SaveVimMode persists the vim-mode toggle into config.json, replacing only
@@ -448,7 +615,10 @@ func defaultConfigValues() map[string]json.RawMessage {
 		QueryLogRetentionDays:      defaultQueryLogRetentionDays,
 		NotificationRetentionDays:  defaultNotificationRetentionDays,
 		NotificationTimeoutSeconds: defaultNotificationTimeoutSeconds,
-		Theme:                      string(themeOcean),
+		Appearance:                 "dark",
+		AutoTheme:                  boolPtr(true),
+		DarkTheme:                  string(themeOcean),
+		LightTheme:                 string(themeLightOcean),
 		VimMode:                    boolPtr(true),
 		NerdFont:                   boolPtr(true),
 		LogLevel:                   "info",

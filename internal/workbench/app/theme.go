@@ -74,6 +74,68 @@ var (
 	userMessageStyle, userMessageAccentStyle                                                       lipgloss.Style
 )
 
+// runtimeScheme is the effective appearance this session (system-derived or
+// explicit). runtimeTheme is the active theme resolved from the matching
+// config slot.
+var (
+	runtimeScheme scheme
+	runtimeTheme  appTheme
+	// detectedScheme holds the system light/dark result captured at startup
+	// for auto-following. Empty until detection runs.
+	detectedScheme scheme
+)
+
+// applyAppearanceConfig resolves the effective appearance and active theme
+// from config and applies it to the UI. Called by SetAppConfig.
+func applyAppearanceConfig(config Config) {
+	runtimeScheme = resolveScheme(config)
+	runtimeTheme = themeForScheme(runtimeScheme, config)
+	setTheme(runtimeTheme)
+}
+
+// resolveScheme determines the effective appearance: when auto-following is
+// enabled (the default) it prefers system detection, falling back to the
+// persisted appearance and then dark; otherwise it uses the persisted
+// appearance directly.
+func resolveScheme(config Config) scheme {
+	if config.AutoTheme != nil && !*config.AutoTheme {
+		return schemeForAppearance(config.Appearance)
+	}
+	if detectedScheme != "" {
+		return detectedScheme
+	}
+	return schemeForAppearance(config.Appearance)
+}
+
+// schemeForAppearance maps an appearance string to a scheme, defaulting to
+// dark for empty or unknown values (validation has already rejected
+// non-empty unknown values).
+func schemeForAppearance(value string) scheme {
+	if value == string(schemeLight) {
+		return schemeLight
+	}
+	return schemeDark
+}
+
+// themeForScheme picks the configured slot theme for an appearance, falling
+// back to that scheme's default when the slot is empty or holds a theme name
+// whose scheme does not match (a hand-edited config): the slot is repaired,
+// never accepted as-is.
+func themeForScheme(s scheme, config Config) appTheme {
+	if s == schemeLight {
+		name := appTheme(config.LightTheme)
+		if validTheme(string(name)) && themeScheme(name) == schemeLight {
+			return name
+		}
+		return themeLightOcean
+	}
+	name := appTheme(config.DarkTheme)
+	if validTheme(string(name)) && themeScheme(name) == schemeDark {
+		return name
+	}
+	return themeOcean
+}
+
 func init() { setTheme(themeOcean) }
 
 func setTheme(name appTheme) {
@@ -202,11 +264,13 @@ func indexIcons(indexes []sharedsql.IndexKind) string {
 // in the status line without reverting the applied theme.
 func (m *Model) commitTheme(name appTheme) {
 	m.applyTheme(name)
+	runtimeTheme = name
+	runtimeScheme = themeScheme(name)
 	if m.configPath == "" {
 		m.setStatus("theme: " + string(name))
 		return
 	}
-	if err := SaveTheme(m.configPath, string(name)); err != nil {
+	if err := SaveTheme(m.configPath, name); err != nil {
 		m.setStatus("theme: " + string(name) + " (not saved: " + err.Error() + ")")
 		return
 	}
