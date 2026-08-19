@@ -1,6 +1,8 @@
 package app
 
 import (
+	"math"
+	"strconv"
 	"strings"
 
 	"charm.land/huh/v2"
@@ -112,6 +114,67 @@ func resolveScheme(config Config) scheme {
 // non-empty unknown values).
 func schemeForAppearance(value string) scheme {
 	if value == string(schemeLight) {
+		return schemeLight
+	}
+	return schemeDark
+}
+
+// SetSystemAppearance records the system light/dark appearance captured at
+// startup so auto-following can resolve it. Call it before SetAppConfig when
+// auto_theme is enabled. An empty value is ignored so that unavailable
+// detection leaves the fallback (persisted appearance, then dark) untouched.
+func SetSystemAppearance(value string) {
+	if value == "" {
+		return
+	}
+	detectedScheme = schemeForAppearance(value)
+}
+
+// AppearanceFromBackground converts a terminal-reported background color to
+// a light/dark appearance using the WCAG-relative luminance of the linearized
+// sRGB channels. Payload is the rune payload of an OSC 11 response, e.g.
+// "rgb:1c1c/1c1c/1c1c". An unparseable or empty payload yields "".
+func AppearanceFromBackground(payload string) string {
+	s := schemeFromBackground(payload)
+	if s == "" {
+		return ""
+	}
+	return string(s)
+}
+
+func schemeFromBackground(payload string) scheme {
+	payload = strings.TrimPrefix(payload, "rgb:")
+	parts := strings.Split(payload, "/")
+	if len(parts) != 3 {
+		return ""
+	}
+	var luminanceOf = [3]float64{0.2126, 0.7152, 0.0722}
+	var lum float64
+	for i, part := range parts {
+		n, err := strconv.ParseUint(part, 16, 32)
+		if err != nil {
+			return ""
+		}
+		var comp float64
+		switch len(part) {
+		case 4:
+			comp = float64(n) / 65535.0
+		case 2:
+			comp = float64(n) / 255.0
+		case 1:
+			comp = float64(n) / 15.0
+		default:
+			return ""
+		}
+		linear := comp
+		if comp <= 0.03928 {
+			linear = comp / 12.92
+		} else {
+			linear = math.Pow((comp+0.055)/1.055, 2.4)
+		}
+		lum += luminanceOf[i] * linear
+	}
+	if math.IsNaN(lum) || lum >= 0.5 {
 		return schemeLight
 	}
 	return schemeDark
@@ -330,6 +393,54 @@ func (m *Model) setAppearance(s scheme) {
 		// Auto-following: a mid-session flip is a temporary override; the
 		// next launch resolves system appearance again. Do not persist it.
 		m.setStatus("appearance: " + string(s) + " (system until restart)")
+		return
+	}
+	if err := SaveAppearance(m.configPath, string(s)); err != nil {
+		m.setStatus("appearance: " + string(s) + " (not saved: " + err.Error() + ")")
+		return
+	}
+	m.setStatus("appearance: " + string(s))
+}
+
+// commitAppearance applies an explicit appearance-mode choice ("auto",
+// "light", or "dark") and persists it. This is the only path that re-enables
+// auto-following once toggleAppearance has turned it off.
+func (m *Model) commitAppearance(value string) {
+	switch {
+	case value == "auto":
+		appConfig.AutoTheme = boolPtr(true)
+		applyAppearanceConfig(appConfig)
+		runtimeScheme = resolveScheme(appConfig)
+		runtimeTheme = themeForScheme(runtimeScheme, appConfig)
+		if m.configPath == "" {
+			m.setStatus("appearance: auto (follow system)")
+			return
+		}
+		if err := SaveAutoTheme(m.configPath, true); err != nil {
+			m.setStatus("appearance: auto (not saved: " + err.Error() + ")")
+			return
+		}
+		m.setStatus("appearance: auto (follow system)")
+	case value == string(schemeLight) || value == string(schemeDark):
+		m.setExplicitAppearance(schemeForAppearance(value))
+	}
+}
+
+// setExplicitAppearance turns off auto-following and pins the appearance,
+// persisting both so the choice is durable across launches.
+func (m *Model) setExplicitAppearance(s scheme) {
+	theme := themeForScheme(s, appConfig)
+	m.applyTheme(theme)
+	runtimeScheme = s
+	runtimeTheme = theme
+	appConfig.AutoTheme = boolPtr(false)
+	appConfig.Appearance = string(s)
+	if m.configPath == "" {
+		m.setStatus("appearance: " + string(s))
+		return
+	}
+	if err := SaveAutoTheme(m.configPath, false); err != nil {
+		m.setStatus("appearance: " + string(s) + " (not saved: " + err.Error() + ")")
 		return
 	}
 	if err := SaveAppearance(m.configPath, string(s)); err != nil {

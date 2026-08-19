@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/go-sql-driver/mysql"
@@ -320,6 +321,12 @@ func run(target string, readOnly, noQuit bool) error {
 	if err != nil {
 		return err
 	}
+	// Auto-following (the default) resolves the effective appearance from
+	// the system theme at startup. Detection is best-effort: on failure it
+	// returns "" and SetAppConfig falls back to the persisted appearance.
+	if config.AutoTheme == nil || *config.AutoTheme {
+		app.SetSystemAppearance(detectSystemAppearance())
+	}
 	app.SetAppConfig(config)
 	// External driver plugins load after config resolution and before the
 	// model is built, because the connection form enumerates registered
@@ -380,6 +387,66 @@ func loadPlugins(ctx context.Context, config app.Config, register func(database.
 		log.Error("loading plugin", err)
 	}
 	return loader
+}
+
+// detectSystemAppearance asks the terminal for its background color via the
+// OSC 11 query and derives a light/dark appearance. It returns "" whenever
+// detection is unavailable: no controlling tty, the terminal does not answer
+// within a short window, or the reply cannot be parsed. Callers fall back to
+// the persisted appearance in that case, so a failed query never forces a
+// wrong theme.
+func detectSystemAppearance() string {
+	tty, err := os.Open("/dev/tty")
+	if err != nil {
+		return ""
+	}
+	defer tty.Close()
+	out, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return ""
+	}
+	defer out.Close()
+	if _, err := out.WriteString("\x1b]11;?\x1b\\"); err != nil {
+		return ""
+	}
+	result := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 64)
+		n, readErr := tty.Read(buf)
+		if readErr != nil && n == 0 {
+			result <- ""
+			return
+		}
+		result <- string(buf[:n])
+	}()
+	select {
+	case raw := <-result:
+		return app.AppearanceFromBackground(parseOSC11Payload(raw))
+	case <-time.After(400 * time.Millisecond):
+		return ""
+	}
+}
+
+// parseOSC11Payload extracts the rune payload of an OSC 11 background-color
+// response (the text between "]11;" and its terminator) from a raw byte
+// read. It tolerates leading echoes and a BEL or ST terminator.
+func parseOSC11Payload(raw string) string {
+	i := strings.Index(raw, "]11;")
+	if i < 0 {
+		return ""
+	}
+	payload := raw[i+4:]
+	for _, term := range []string{"\x07", "\x1b\\", "\x1b", "\n", "\r"} {
+		if j := strings.Index(payload, term); j >= 0 {
+			payload = payload[:j]
+			break
+		}
+	}
+	payload = strings.TrimSpace(payload)
+	if strings.HasPrefix(payload, "rgb:") {
+		return payload
+	}
+	return ""
 }
 
 // The loader is the production PluginControl: live statuses, restart,

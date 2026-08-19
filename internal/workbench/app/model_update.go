@@ -144,6 +144,35 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyTheme(m.overlay.themePicker.theme())
 		return m, nil
 	}
+	if m.overlay.appearancePicker != nil {
+		keyPress, ok := message.(tea.KeyPressMsg)
+		if !ok {
+			return m, nil
+		}
+		switch keyPress.Key().Code {
+		case tea.KeyEscape:
+			m.overlay.appearancePicker = nil
+			return m, nil
+		case tea.KeyEnter:
+			m.commitAppearance(m.overlay.appearancePicker.value())
+			m.overlay.appearancePicker = nil
+			return m, nil
+		case tea.KeyUp:
+			m.overlay.appearancePicker.move(-1)
+		case tea.KeyDown:
+			m.overlay.appearancePicker.move(1)
+		default:
+			switch keyPress.Keystroke() {
+			case "j":
+				m.overlay.appearancePicker.move(1)
+			case "k":
+				m.overlay.appearancePicker.move(-1)
+			default:
+				return m, nil
+			}
+		}
+		return m, nil
+	}
 	if m.overlay.tableTargetPicker != nil {
 		keyPress, ok := message.(tea.KeyPressMsg)
 		if !ok {

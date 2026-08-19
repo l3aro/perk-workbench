@@ -591,3 +591,21 @@ func TestPluginRegistration_isVisibleToConnectionForm(t *testing.T) {
 		t.Fatalf("form titles for %q = %v, want the shim's Reggie Key field", name, form.FieldTitles())
 	}
 }
+
+func TestParseOSC11Payload(t *testing.T) {
+	for _, tc := range []struct {
+		raw, want string
+	}{
+		{"\x1b]11;rgb:1c1c/1c1c/1c1c\x1b\\", "rgb:1c1c/1c1c/1c1c"},
+		{"prefix\x1b]11;rgb:ffff/ffff/ffff\x1b\\trailing", "rgb:ffff/ffff/ffff"},
+		{"\x1b]11;rgb:1c1c/1c1c/1c1c\x07", "rgb:1c1c/1c1c/1c1c"}, // BEL terminator
+		{"  \x1b]11;rgb:2e2e/3434/4040\x1b\\  ", "rgb:2e2e/3434/4040"},
+		{"no sequence here", ""},
+		{"\x1b]11;notanrgb\x1b\\", ""},
+		{"", ""},
+	} {
+		if got := parseOSC11Payload(tc.raw); got != tc.want {
+			t.Fatalf("parseOSC11Payload(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}

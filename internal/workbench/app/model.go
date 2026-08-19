@@ -237,6 +237,7 @@ type notificationState struct {
 type overlayState struct {
 	commandPalette          *commandPalette
 	themePicker             *themePicker
+	appearancePicker        *appearancePicker
 	tableTargetPicker       *tableTargetPicker
 	pluginManager           *pluginManager
 	quitDialog              *confirmationDialog

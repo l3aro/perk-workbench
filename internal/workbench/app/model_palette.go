@@ -19,6 +19,12 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 	case "theme.select":
 		m.overlay.themePicker = newThemePicker()
 		return m, nil
+	case "appearance.toggle":
+		m.toggleAppearance()
+		return m, nil
+	case "appearance.select":
+		m.overlay.appearancePicker = newAppearancePicker()
+		return m, nil
 	case "plugin.manage":
 		m.overlay.pluginManager = newPluginManager()
 		return m, nil
