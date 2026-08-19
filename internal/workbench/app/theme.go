@@ -9,6 +9,49 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
+// scheme is the light/dark appearance that picks the active theme slot.
+type scheme string
+
+const (
+	schemeDark  scheme = "dark"
+	schemeLight scheme = "light"
+)
+
+// themeScheme reports the appearance family a theme name belongs to. Every
+// theme carries exactly one scheme, so a theme slot and the palette it
+// renders can never disagree about the effective appearance.
+func themeScheme(name appTheme) scheme {
+	switch name {
+	case themeLightOcean, themeLightNord, themeLightMonokai, themeLightDracula, themeLightCatppuccin, themeLightSolarized:
+		return schemeLight
+	default:
+		return schemeDark
+	}
+}
+
+// darkThemes lists the dark-scheme themes in picker order.
+func darkThemes() []appTheme {
+	return []appTheme{themeOcean, themeNord, themeMonokai, themeDracula, themeCatppuccin, themeSolarized}
+}
+
+// lightThemes lists the light-scheme themes in picker order.
+func lightThemes() []appTheme {
+	return []appTheme{themeLightOcean, themeLightNord, themeLightMonokai, themeLightDracula, themeLightCatppuccin, themeLightSolarized}
+}
+
+// allThemes lists every theme, dark first then light.
+func allThemes() []appTheme {
+	return append(darkThemes(), lightThemes()...)
+}
+
+// themesForScheme returns the theme list shown for an appearance.
+func themesForScheme(s scheme) []appTheme {
+	if s == schemeLight {
+		return lightThemes()
+	}
+	return darkThemes()
+}
+
 var (
 	activeTheme                                                                                    = themeOcean
 	colorCanvas, colorPanel, colorStripe                                                           string

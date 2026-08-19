@@ -31,6 +31,16 @@ const (
 	themeNord       appTheme = "nord"
 	themeMonokai    appTheme = "monokai"
 	themeSolarized  appTheme = "solarized"
+
+	// Light variants of the same named families, tagged with the light
+	// scheme so appearance-driven slot selection and picker grouping stay
+	// consistent.
+	themeLightOcean      appTheme = "light-ocean"
+	themeLightDracula    appTheme = "light-dracula"
+	themeLightCatppuccin appTheme = "light-catppuccin"
+	themeLightNord       appTheme = "light-nord"
+	themeLightMonokai    appTheme = "light-monokai"
+	themeLightSolarized  appTheme = "light-solarized"
 )
 
 func safeText(input string) string { return sharedsql.SanitizeDisplay(input) }
