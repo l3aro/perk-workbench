@@ -192,8 +192,23 @@ func TestPluginAdd_approvePinsAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"theme": "nord"`) {
-		t.Fatalf("config lost the theme key: %s", raw)
+	// The legacy "theme" key is migrated to the appearance slots on load:
+	// it becomes dark_theme (old themes were dark), auto_theme is disabled,
+	// and the light slot takes the default. Unknown keys must survive.
+	if !strings.Contains(string(raw), `"dark_theme": "nord"`) {
+		t.Fatalf("config lost the migrated dark_theme: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"auto_theme": false`) {
+		t.Fatalf("config lost the migrated auto_theme: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"light_theme": "light-ocean"`) {
+		t.Fatalf("config lost the migrated light_theme: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"future_key"`) {
+		t.Fatalf("config lost future_key: %s", raw)
+	}
+	if strings.Contains(string(raw), `"theme": "nord"`) {
+		t.Fatalf("config still contains legacy theme key after migration: %s", raw)
 	}
 
 	// Idempotent re-approve: nothing changes on disk.
