@@ -2,16 +2,19 @@ package app
 
 import "strings"
 
-var themeChoices = []appTheme{themeOcean, themeNord, themeMonokai, themeDracula, themeCatppuccin, themeSolarized}
-
+// themePicker lists the themes of the effective appearance (the active
+// scheme's slot), so a selection always commits a theme whose scheme matches
+// the scheme it will be stored under.
 type themePicker struct {
+	themes   []appTheme
 	original appTheme
 	selected int
 }
 
 func newThemePicker() *themePicker {
-	picker := &themePicker{original: activeTheme}
-	for i, theme := range themeChoices {
+	themes := themesForScheme(runtimeScheme)
+	picker := &themePicker{themes: themes, original: activeTheme, selected: 0}
+	for i, theme := range themes {
 		if theme == activeTheme {
 			picker.selected = i
 			break
@@ -21,18 +24,18 @@ func newThemePicker() *themePicker {
 }
 
 func (p *themePicker) theme() appTheme {
-	return themeChoices[p.selected]
+	return p.themes[p.selected]
 }
 
 func (p *themePicker) move(delta int) {
-	p.selected = max(0, min(p.selected+delta, len(themeChoices)-1))
+	p.selected = max(0, min(p.selected+delta, len(p.themes)-1))
 }
 
 func (p *themePicker) content() string {
 	var content strings.Builder
-	content.WriteString(headerStyle.Render(" Theme "))
+	content.WriteString(headerStyle.Render(" Theme — " + string(runtimeScheme) + " "))
 	content.WriteString("\n\n")
-	for i, theme := range themeChoices {
+	for i, theme := range p.themes {
 		prefix := "  "
 		label := string(theme)
 		if i == p.selected {

@@ -300,6 +300,45 @@ func (m *Model) applyTheme(name appTheme) {
 	}
 }
 
+// toggleAppearance flips the effective appearance between light and dark,
+// applying the theme of the other scheme's slot. The flip is durable (persists
+// the new appearance) only while auto-following is off; while auto_theme is
+// enabled it is a session-only override that the next launch's system
+// detection wins back, so it never rewrites the persisted appearance.
+// Persistence is best-effort: a failure is shown in the status line without
+// reverting the flip.
+func (m *Model) toggleAppearance() {
+	other := schemeLight
+	if runtimeScheme == schemeLight {
+		other = schemeDark
+	}
+	m.setAppearance(other)
+}
+
+// setAppearance applies an appearance to the UI and persists it when the
+// choice is durable (auto-following is off).
+func (m *Model) setAppearance(s scheme) {
+	theme := themeForScheme(s, appConfig)
+	m.applyTheme(theme)
+	runtimeScheme = s
+	runtimeTheme = theme
+	if m.configPath == "" {
+		m.setStatus("appearance: " + string(s))
+		return
+	}
+	if appConfig.AutoTheme == nil || *appConfig.AutoTheme {
+		// Auto-following: a mid-session flip is a temporary override; the
+		// next launch resolves system appearance again. Do not persist it.
+		m.setStatus("appearance: " + string(s) + " (system until restart)")
+		return
+	}
+	if err := SaveAppearance(m.configPath, string(s)); err != nil {
+		m.setStatus("appearance: " + string(s) + " (not saved: " + err.Error() + ")")
+		return
+	}
+	m.setStatus("appearance: " + string(s))
+}
+
 func applyFormTheme(forms ...*huh.Form) {
 	for _, form := range forms {
 		if form != nil {
