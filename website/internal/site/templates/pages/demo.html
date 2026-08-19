@@ -1,7 +1,6 @@
 {{define "head"}}
-<link rel="stylesheet" href="/static/vendor/xterm-5.3.0.css">
-<script src="/static/vendor/xterm-5.3.0.min.js" defer></script>
-<script src="/static/demo.js" defer></script>
+{{range cssAssets "demo"}}<link rel="stylesheet" href="{{.}}">{{end}}
+<script type="module" src="{{asset "demo"}}"></script>
 {{end}}
 
 {{define "content" -}}
@@ -12,8 +11,13 @@
 </header>
 
 <section class="demo-wide" aria-labelledby="terminal-title">
-  <h2 id="terminal-title" class="mt-12 text-[clamp(1.7rem,3vw,2.5rem)]">Interactive terminal</h2>
-  <div id="demo-terminal" class="demo-terminal" aria-label="Live Perk Workbench terminal"></div>
+  <div id="demo-fullscreen" class="demo-fullscreen">
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <h2 id="terminal-title" class="text-[clamp(1.7rem,3vw,2.5rem)]">Interactive terminal</h2>
+      <button id="demo-fullscreen-btn" type="button" class="cursor-pointer rounded border border-line bg-panel px-3.5 py-2 font-mono text-[0.78rem] font-bold uppercase tracking-[0.12em] text-muted hover:border-slate-400 hover:text-ink">Fullscreen</button>
+    </div>
+    <div id="demo-terminal" class="demo-terminal" aria-label="Live Perk Workbench terminal"></div>
+  </div>
   <p class="note demo-terminal-status">The query editor is focused automatically. Type a query and press <kbd>F5</kbd> to run it. Read-only connection: queries cannot modify the demo database. Your session ends when you leave the page.</p>
 </section>
 

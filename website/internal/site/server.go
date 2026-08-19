@@ -2,14 +2,77 @@ package site
 
 import (
 	"embed"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"net/http"
 	"strings"
 )
 
-//go:embed templates assets
+//go:embed all:templates all:assets
 var embedded embed.FS
+
+// assetEntry mirrors the fields of a Vite build manifest entry
+// (assets/dist/.vite/manifest.json). File paths are relative to the dist
+// directory; the server prefixes /static/ when emitting URLs.
+type assetEntry struct {
+	File string   `json:"file"`
+	Name string   `json:"name"`
+	CSS  []string `json:"css"`
+}
+
+type assetManifest map[string]assetEntry
+
+// loadAssetManifest reads the manifest written by the frontend build. It
+// panics on failure so a stale or missing build fails at startup, never at
+// request time.
+func loadAssetManifest() assetManifest {
+	data, err := fs.ReadFile(embedded, "assets/dist/.vite/manifest.json")
+	if err != nil {
+		panic(fmt.Errorf("read frontend asset manifest: %w", err))
+	}
+	var manifest assetManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		panic(fmt.Errorf("parse frontend asset manifest: %w", err))
+	}
+	return manifest
+}
+
+func (m assetManifest) entry(name string) (assetEntry, error) {
+	for _, entry := range m {
+		if entry.Name == name {
+			return entry, nil
+		}
+	}
+	return assetEntry{}, fmt.Errorf("frontend asset %q not found in manifest", name)
+}
+
+// assetFuncs exposes the hashed asset URLs to templates. Vite content-hashes
+// every build output, so a changed frontend file automatically gets a new URL
+// and the /static/ handler can serve those files with immutable caching.
+func assetFuncs(m assetManifest) template.FuncMap {
+	return template.FuncMap{
+		"asset": func(name string) (string, error) {
+			entry, err := m.entry(name)
+			if err != nil {
+				return "", err
+			}
+			return "/static/" + entry.File, nil
+		},
+		"cssAssets": func(name string) ([]string, error) {
+			entry, err := m.entry(name)
+			if err != nil {
+				return nil, err
+			}
+			urls := make([]string, 0, len(entry.CSS))
+			for _, css := range entry.CSS {
+				urls = append(urls, "/static/"+css)
+			}
+			return urls, nil
+		},
+	}
+}
 
 type pageData struct {
 	Title         string
@@ -23,6 +86,7 @@ type pageData struct {
 func New(version string) http.Handler {
 	mux := http.NewServeMux()
 	pages := PageCatalogue()
+	assets := loadAssetManifest()
 
 	route := func(path string, page Page) {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +97,7 @@ func New(version string) http.Handler {
 			if !methodAllowed(w, r) {
 				return
 			}
-			renderPage(w, r, version, page)
+			renderPage(w, r, version, page, assets)
 		})
 	}
 
@@ -55,7 +119,7 @@ func New(version string) http.Handler {
 		if !methodAllowed(w, r) {
 			return
 		}
-		renderSearch(w, r, version, pages)
+		renderSearch(w, r, version, pages, assets)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if !methodAllowed(w, r) {
@@ -66,6 +130,22 @@ func New(version string) http.Handler {
 		if r.Method == http.MethodGet {
 			_, _ = w.Write([]byte("ok\n"))
 		}
+	})
+
+	// Built bundles (dist) are served under /static/assets/ with a content
+	// hash in the filename: safe to cache forever. Everything else under
+	// /static/ (fonts, images) must be revalidated.
+	buildFiles, err := fs.Sub(embedded, "assets/dist")
+	if err != nil {
+		panic(err)
+	}
+	buildServer := http.StripPrefix("/static/", http.FileServer(http.FS(buildFiles)))
+	mux.HandleFunc("/static/assets/", func(w http.ResponseWriter, r *http.Request) {
+		if !methodAllowed(w, r) {
+			return
+		}
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		buildServer.ServeHTTP(w, r)
 	})
 
 	static, err := fs.Sub(embedded, "assets")
@@ -93,8 +173,8 @@ func methodAllowed(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func renderPage(w http.ResponseWriter, r *http.Request, version string, page Page) {
-	t := template.Must(template.ParseFS(embedded,
+func renderPage(w http.ResponseWriter, r *http.Request, version string, page Page, assets assetManifest) {
+	t := template.Must(template.New("base").Funcs(assetFuncs(assets)).ParseFS(embedded,
 		"templates/base.html",
 		"templates/partials/navigation.html",
 		"templates/partials/search-results.html",
@@ -110,7 +190,7 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 	}
 }
 
-func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages []Page) {
+func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages []Page, assets assetManifest) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	data := pageData{
 		Title:   "Search",
@@ -127,7 +207,7 @@ func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages 
 		}
 	}
 
-	t := template.Must(template.ParseFS(embedded,
+	t := template.Must(template.New("base").Funcs(assetFuncs(assets)).ParseFS(embedded,
 		"templates/base.html",
 		"templates/partials/navigation.html",
 		"templates/partials/search-results.html",

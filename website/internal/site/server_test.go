@@ -171,22 +171,87 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
-func TestStaticCSS(t *testing.T) {
+func TestStaticAssets(t *testing.T) {
 	t.Parallel()
 
-	req := httptest.NewRequest("GET", "/static/site.css", nil)
-	recorder := httptest.NewRecorder()
-	New("test").ServeHTTP(recorder, req)
-	if recorder.Code != 200 {
-		t.Fatalf("status = %d, want 200", recorder.Code)
+	server := New("test")
+	manifest := loadAssetManifest()
+
+	// Every entry the templates reference must resolve and be served with
+	// immutable caching, because Vite content-hashes the filenames.
+	for _, name := range []string{"site", "app", "demo"} {
+		entry, err := manifest.entry(name)
+		if err != nil {
+			t.Fatalf("manifest entry %q: %v", name, err)
+		}
+		for _, file := range append([]string{entry.File}, entry.CSS...) {
+			path := "/static/" + file
+			req := httptest.NewRequest("GET", path, nil)
+			recorder := httptest.NewRecorder()
+			server.ServeHTTP(recorder, req)
+
+			if recorder.Code != 200 {
+				t.Fatalf("%s: status = %d, want 200", path, recorder.Code)
+			}
+			if recorder.Body.Len() == 0 {
+				t.Fatalf("%s: empty body", path)
+			}
+			if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+				t.Errorf("%s: cache control = %q, want immutable", path, got)
+			}
+		}
 	}
-	if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/css") {
-		t.Fatalf("content type = %q, want text/css", got)
+}
+
+func TestPagesUseHashedAssets(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	manifest := loadAssetManifest()
+
+	stylesheet, err := manifest.entry("site")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if recorder.Body.Len() == 0 {
-		t.Fatal("CSS response is empty")
+	app, err := manifest.entry("app")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := recorder.Header().Get("Cache-Control"); got != "no-cache" {
-		t.Fatalf("cache control = %q, want no-cache", got)
+	demo, err := manifest.entry("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		path  string
+		entry assetEntry
+	}{
+		{path: "/", entry: app},
+		{path: "/demo", entry: demo},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			recorder := httptest.NewRecorder()
+			server.ServeHTTP(recorder, req)
+
+			body := recorder.Body.String()
+			if strings.Contains(body, "?v=") {
+				t.Error("page still uses a manual version query string")
+			}
+			if !strings.Contains(body, "/static/"+stylesheet.File) {
+				t.Error("page does not reference the hashed stylesheet")
+			}
+			if !strings.Contains(body, "/static/"+tt.entry.File) {
+				t.Errorf("page does not reference the hashed %q bundle", tt.entry.Name)
+			}
+			if tt.path == "/demo" {
+				for _, css := range demo.CSS {
+					if !strings.Contains(body, "/static/"+css) {
+						t.Errorf("demo page does not reference its CSS chunk %s", css)
+					}
+				}
+			}
+		})
 	}
 }

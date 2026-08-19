@@ -7,32 +7,49 @@ static assets; it is separate from the terminal application.
 ## Prerequisites
 
 - Go 1.26.6
+- Node.js 22 (when rebuilding the frontend)
 
 ## Run locally
 
-Start the server on the default port:
+Build the frontend bundles first (see below), then start the server:
 
 ```bash
+npm run build
 PORT=8080 go run ./cmd/perk-workbench-site
 ```
 
 `PORT` is optional. When omitted, the server listens on port `8080`; valid
 values are `1` through `65535`.
 
-## Styles
+## Frontend build
 
-The site uses Tailwind CSS 4. Edit `css/site.css` (theme tokens, base styles,
-component classes) and the templates in `internal/site/templates`, then
-regenerate the embedded stylesheet:
+The site's frontend is built with Vite + Tailwind CSS 4. Sources live in
+`frontend/`:
+
+- `site.css` — Tailwind theme tokens, base styles, and component classes
+- `app.js` — site-wide behaviours (bundles HTMX for search)
+- `demo.js` — the live terminal demo (bundles xterm.js)
+
+Build the bundles:
 
 ```bash
 npm ci
-npm run css
+npm run build
 ```
 
-`npm run css` compiles `css/site.css` to the minified, committed
-`internal/site/assets/site.css` served at `/static/site.css`. `npm run
-css:watch` rebuilds on change during development.
+Vite compiles the sources to `internal/site/assets/dist`, content-hashing every
+filename (`assets/site-d41d8cd9.css`, `assets/demo-b6f3a2e1.js`, …) and writing
+`.vite/manifest.json` with the mapping. Any frontend change therefore produces
+new URLs automatically; the Go server reads the embedded manifest at startup
+and emits those hashed URLs into the templates, so stale caches can never serve
+an old bundle for a new page.
+
+`internal/site/assets/dist` is a generated, gitignored artifact. The server
+reads its embedded manifest at startup, so a fresh checkout must run
+`npm run build` before any `go run` or `go test`. CI builds the frontend first
+for the same reason, and the Dockerfile produces dist in a Node stage so the
+image builds without it being in the repo. `npm run watch` rebuilds on change
+during development (restart `go run` to pick up the new embed).
 
 ## Run with Docker Compose
 
@@ -93,17 +110,21 @@ go build -ldflags "-X main.version=0.1.0" -o ./bin/perk-workbench-site ./cmd/per
 
 ## Checks
 
-Run the same checks used by the repository workflow:
+Run the same checks used by the repository workflow (frontend build first, so
+the embedded bundles exist for the Go steps):
 
 ```bash
+npm ci
+npm run build
 go test -race ./...
 go vet ./...
 gofmt -l cmd internal
 go build ./cmd/perk-workbench-site
 ```
 
-`gofmt -l cmd internal` prints Go files that need formatting. The workflow
-fails when that command reports any files.
+`gofmt -l cmd internal` prints Go files that need formatting. `dist` is
+gitignored, so there is no committed copy to drift from; CI always builds it
+fresh immediately before compiling Go.
 
 ## Routes
 
@@ -117,7 +138,7 @@ fails when that command reports any files.
 - `/docs/plugins` — plugin and workspace-view overview
 - `/search?q=...` — case-insensitive catalogue search; HTMX requests receive a fragment
 - `/healthz` — health check
-- `/static/` — embedded CSS, fonts, and vendor assets
+- `/static/` — embedded fonts and images; `/static/assets/` serves the content-hashed frontend bundles with immutable caching
 
 ## Repository boundary
 

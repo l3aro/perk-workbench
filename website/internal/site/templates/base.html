@@ -6,8 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Perk Workbench — a terminal UI for exploring databases.">
   <title>{{if .Title}}{{.Title}} · {{end}}Perk Workbench</title>
-  <link rel="stylesheet" href="/static/site.css">
-  <script src="/static/vendor/htmx-4.0.0-beta5.min.js" defer></script>
+  <link rel="stylesheet" href="{{asset "site"}}">
+  <script src="{{asset "app"}}" defer></script>
   {{block "head" .}}{{end}}
 </head>
 <body>

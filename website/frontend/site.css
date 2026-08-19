@@ -134,6 +134,30 @@
     background: #10141b;
   }
 
+  .demo-fullscreen {
+    margin-top: 3rem;
+  }
+
+  .demo-fullscreen.is-fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0;
+    padding: 0.75rem;
+    overflow: hidden;
+    background: var(--color-canvas);
+  }
+
+  .demo-fullscreen.is-fullscreen .demo-terminal {
+    flex: 1 1 auto;
+    height: auto;
+    border: none;
+    border-radius: 0;
+  }
+
   .demo-terminal-status {
     @apply mt-3;
   }

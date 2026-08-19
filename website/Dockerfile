@@ -1,4 +1,11 @@
 # syntax=docker/dockerfile:1
+FROM node:22-alpine AS frontend-build
+WORKDIR /src
+COPY website/package.json website/package-lock.json ./
+RUN npm ci
+COPY website/ ./
+RUN npm run build
+
 FROM golang:1.26.6-alpine AS tui-build
 WORKDIR /src
 COPY source/go.mod source/go.sum ./
@@ -11,6 +18,9 @@ WORKDIR /src
 COPY website/go.mod website/go.sum ./
 RUN go mod download
 COPY website/ ./
+# The frontend bundles are generated (not committed); produce them in a Node
+# stage and hand the dist into the Go build so go:embed sees them.
+COPY --from=frontend-build /src/internal/site/assets/dist ./internal/site/assets/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/perk-workbench-site ./cmd/perk-workbench-site
 
 FROM alpine:3.22

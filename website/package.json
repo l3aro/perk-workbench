@@ -1,12 +1,18 @@
 {
   "name": "perk-workbench-site",
   "private": true,
+  "type": "module",
   "scripts": {
-    "css": "tailwindcss -i css/site.css -o internal/site/assets/site.css --minify",
-    "css:watch": "tailwindcss -i css/site.css -o internal/site/assets/site.css --watch"
+    "build": "vite build",
+    "watch": "vite build --watch"
+  },
+  "dependencies": {
+    "@xterm/xterm": "5.5.0",
+    "htmx.org": "4.0.0-beta5"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "4.3.3",
-    "tailwindcss": "4.3.3"
+    "@tailwindcss/vite": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "vite": "^7.3.6"
   }
 }

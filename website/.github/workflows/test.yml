@@ -14,6 +14,20 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # The generated frontend bundles are gitignored. The server loads the
+      # embedded manifest at startup, so build them before the Go test step.
+      - name: Build frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Set up Go 1.26.6
         uses: actions/setup-go@v6
         with:

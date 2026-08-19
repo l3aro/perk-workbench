@@ -1,6 +1,6 @@
 /bin/
-/dist/
 /coverage.out
+/internal/site/assets/dist/
 /node_modules/
 /perk-workbench-site
 .env
