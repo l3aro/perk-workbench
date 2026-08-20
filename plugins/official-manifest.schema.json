@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/l3aro/perk-workbench/plugins/official-manifest.schema.json",
+  "title": "Perk Workbench official plugin release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "protocol", "tested_host_commit", "plugins"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "protocol": { "const": 1 },
+    "tested_host_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "plugins": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/plugin" }
+    }
+  },
+  "$defs": {
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repository", "release_tag", "protocol", "tested_ref", "targets"],
+      "properties": {
+        "name": { "enum": ["sqlite", "mysql", "postgres", "mongodb"] },
+        "repository": { "type": "string", "format": "uri-reference", "minLength": 1 },
+        "release_tag": { "type": "string", "minLength": 1 },
+        "protocol": { "const": 1 },
+        "tested_ref": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "targets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["darwin/amd64", "darwin/arm64", "linux/amd64", "linux/arm64", "windows/amd64"],
+          "properties": {
+            "darwin/amd64": { "$ref": "#/$defs/asset" },
+            "darwin/arm64": { "$ref": "#/$defs/asset" },
+            "linux/amd64": { "$ref": "#/$defs/asset" },
+            "linux/arm64": { "$ref": "#/$defs/asset" },
+            "windows/amd64": { "$ref": "#/$defs/asset" }
+          }
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "asset_url", "asset_sha256", "target", "executable", "executable_sha256"],
+      "properties": {
+        "status": { "enum": ["pending", "verified"] },
+        "asset_url": { "type": ["string", "null"] },
+        "asset_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["goos", "goarch"],
+          "properties": {
+            "goos": { "enum": ["darwin", "linux", "windows"] },
+            "goarch": { "enum": ["amd64", "arm64"] }
+          }
+        },
+        "executable": { "type": "string", "minLength": 1 },
+        "executable_sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
