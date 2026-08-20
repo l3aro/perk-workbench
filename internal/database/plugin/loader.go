@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -184,7 +185,7 @@ func resolvePluginExecutable(entry, configPath string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", resolved)
 	}
-	if info.Mode().Perm()&0o111 == 0 {
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		return "", fmt.Errorf("%s is not executable", resolved)
 	}
 	return resolved, nil
