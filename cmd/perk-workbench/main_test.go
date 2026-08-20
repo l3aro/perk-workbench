@@ -652,6 +652,64 @@ func TestOfficialPluginEntries_disabledSidecarIsNotResolved(t *testing.T) {
 	}
 }
 
+func TestLoadPlugins_honorsDisabledOfficialSidecars(t *testing.T) {
+	restore := installOfficialManifestFixture(t)
+	defer restore()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	t.Setenv("PERK_PLUGIN_NAME", "sqlite")
+	t.Setenv("PERK_PLUGIN_TARGETS", "sqlite:")
+	marker := filepath.Join(t.TempDir(), "events.log")
+	t.Setenv("PERK_PLUGIN_MARKER", marker)
+
+	sqlitePath := filepath.Join(filepath.Dir(testOfficialHostPath(t)), "plugins", "perk-sqlite")
+	writePluginHelperScriptAt(t, sqlitePath)
+	digest, err := plugin.SHA256File(sqlitePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest officialManifest
+	if err := json.Unmarshal(officialManifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for i := range manifest.Plugins {
+		if manifest.Plugins[i].Name != "sqlite" {
+			continue
+		}
+		asset := manifest.Plugins[i].Targets[runtime.GOOS+"/"+runtime.GOARCH]
+		asset.ExecutableSHA256 = &digest
+		manifest.Plugins[i].Targets[runtime.GOOS+"/"+runtime.GOARCH] = asset
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	officialManifestData = data
+
+	registered := false
+	loader, err := loadOfficialAndConfiguredPlugins(context.Background(), app.Config{
+		DisabledOfficialPlugins: []string{"mysql", "postgres", "mongodb"},
+	}, func(database.Shim) error {
+		registered = true
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("loadOfficialAndConfiguredPlugins = %v, want nil error", err)
+	}
+	if loader == nil {
+		t.Fatal("loadOfficialAndConfiguredPlugins returned a nil loader")
+	}
+	if err := loader.Close(); err != nil {
+		t.Fatalf("closing loader = %v", err)
+	}
+	if !registered {
+		t.Fatal("enabled sqlite sidecar did not register")
+	}
+	if starts := markerLineCount(t, marker, "start"); starts != 1 {
+		t.Fatalf("marker records %d child starts, want only the enabled sqlite sidecar", starts)
+	}
+}
+
 func TestOfficialPluginEntries_failsClosedForDigestAndPendingMetadata(t *testing.T) {
 	restore := installOfficialManifestFixture(t)
 	defer restore()

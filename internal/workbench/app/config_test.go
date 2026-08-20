@@ -369,3 +369,33 @@ func TestLoadConfig_plugins(t *testing.T) {
 		t.Fatalf("Plugins = %v, want nil for null", config.Plugins)
 	}
 }
+
+func TestLoadConfig_rejectsDisabledOfficialPlugins(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{
+			name:     "duplicate",
+			contents: `{"disabled_official_plugins": ["sqlite", "sqlite"]}`,
+			want:     "is duplicated",
+		},
+		{
+			name:     "unknown",
+			contents: `{"disabled_official_plugins": ["redis"]}`,
+			want:     "is not one of",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.json")
+			if err := os.WriteFile(path, []byte(test.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("LoadConfig(%s) = %v, want error containing %q", test.contents, err, test.want)
+			}
+		})
+	}
+}

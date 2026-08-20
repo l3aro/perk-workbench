@@ -548,7 +548,7 @@ func validSHA256(value string) bool {
 // before configured user entries. Official preflight, handshake, and
 // registration failures abort startup; user entry failures are diagnostics.
 func loadOfficialAndConfiguredPlugins(ctx context.Context, config app.Config, register func(database.Shim) error) (*plugin.Loader, error) {
-	officialEntries, officialTrust, err := officialPluginEntries(nil)
+	officialEntries, officialTrust, err := officialPluginEntries(config.DisabledOfficialPlugins)
 	if err != nil {
 		return nil, err
 	}
