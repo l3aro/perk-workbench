@@ -21,27 +21,41 @@ export function parseReleaseTag(tag) {
 }
 
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', ...options });
+  const { allowFailure = false, ...spawnOptions } = options;
+  const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', ...spawnOptions });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed:\n${result.stderr}`);
+  if (!allowFailure && result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed:\n${result.stderr}`);
   return result.stdout;
+}
+
+function archiveVersion(name, archive) {
+  const prefix = `${name}-`;
+  if (!archive.startsWith(prefix) || !archive.endsWith('.tgz')) return null;
+  const version = archive.slice(prefix.length, -'.tgz'.length);
+  return tagPattern.test(`v${version}`) ? version : null;
+}
+
+function packageVersionAvailable(name, version, view) {
+  return view('npm', ['view', `${name}@${version}`, 'version'], { allowFailure: true }).trim() === version;
+}
+
+export function publishPackages(archives, distTag, publish = run, view = run) {
+  const publishArchives = [...platformPackages, 'perk-workbench-plugin-sdk', 'perk-workbench'].map((name) => {
+    const matches = archives
+      .map((archive) => ({ archive, version: archiveVersion(name, archive) }))
+      .filter(({ version }) => version !== null);
+    if (matches.length !== 1) throw new Error(`Expected one archive for ${name}, found ${matches.length}`);
+    return { ...matches[0], name };
+  });
+  for (const { archive, name, version } of publishArchives) {
+    if (packageVersionAvailable(name, version, view)) continue;
+    publish('npm', ['publish', join(output, archive), '--provenance', '--access', 'public', '--tag', distTag]);
+  }
 }
 
 function assertCleanWorktree() {
   const status = run('git', ['status', '--porcelain']);
   if (status.trim()) throw new Error('Refusing to publish from a dirty worktree');
-}
-
-export function publishPackages(archives, distTag, publish = run) {
-  const publishArchives = [...platformPackages, 'perk-workbench-plugin-sdk', 'perk-workbench'].map((name) => {
-    const versionPrefix = new RegExp(`^${name}-(?:0|[1-9]\\d*)\\.`);
-    const matches = archives.filter((archive) => versionPrefix.test(archive) && archive.endsWith('.tgz'));
-    if (matches.length !== 1) throw new Error(`Expected one archive for ${name}, found ${matches.length}`);
-    return matches[0];
-  });
-  for (const archive of publishArchives) {
-    publish('npm', ['publish', join(output, archive), '--provenance', '--access', 'public', '--tag', distTag]);
-  }
 }
 
 async function packageArchives(version) {
