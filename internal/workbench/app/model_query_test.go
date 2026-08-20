@@ -11,7 +11,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/database/plugin"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
@@ -28,7 +28,7 @@ func TestExecute_success_message_populates_results(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	requestID := model.StartQueryForTest(context.Background())
-	result := sqlite.Result{
+	result := sharedsql.Result{
 		Columns:      []string{"name", "note"},
 		Rows:         [][]*string{{stringPointer("projects"), nil}},
 		RowsAffected: 1,
@@ -70,7 +70,7 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 		requestID := startQuery(t, &model)
 
 		// When
-		updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{}})
+		updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{}})
 		model = updated.(Model)
 
 		// Then
@@ -85,7 +85,7 @@ func TestMessages_empty_metadata_replaces_prior_headers(t *testing.T) {
 		model.browse.component.Table.SetRows([]table.Row{{"prior", "row"}})
 
 		// When
-		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{}})
+		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sharedsql.Result{}})
 		model = updated.(Model)
 
 		// Then
@@ -181,7 +181,7 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 		requestID := startQuery(t, &model)
 
 		// When
-		updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
+		updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
 		model = updated.(Model)
 
 		// Then
@@ -202,7 +202,7 @@ func TestMessages_populated_metadata_replaces_prior_rows(t *testing.T) {
 		model.browse.component.Table.SetRows([]table.Row{{"prior", "row"}})
 
 		// When
-		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
+		updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sharedsql.Result{Columns: []string{"ID", "Name", "State"}, Rows: [][]*string{{stringPointer("2"), stringPointer("next"), stringPointer("ready")}}}})
 		model = updated.(Model)
 
 		// Then
@@ -226,7 +226,7 @@ func TestBrowse_status_shows_position_within_page(t *testing.T) {
 	model.browse.component.Table.SetCursor(6)
 
 	// When
-	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: rows, HasMore: true}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sharedsql.Result{Rows: rows, HasMore: true}})
 	model = updated.(Model)
 
 	// Then
@@ -243,7 +243,7 @@ func TestBrowse_status_fresh_load_reports_first_position(t *testing.T) {
 	rows := make([][]*string, defaultBrowsePageSize)
 
 	// When
-	updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{Rows: rows, HasMore: true}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 0, result: sharedsql.Result{Rows: rows, HasMore: true}})
 	model = updated.(Model)
 
 	// Then — the position never reads 0 of N on a nonempty page.
@@ -258,7 +258,7 @@ func TestBrowse_status_empty_page_reports_zero_position(t *testing.T) {
 	model.SelectedTable, model.BrowsePage = "projects", 2
 
 	// When
-	updated, _ := model.Update(browseTableMsg{table: "projects", page: 2, result: sqlite.Result{Rows: nil, HasMore: false}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 2, result: sharedsql.Result{Rows: nil, HasMore: false}})
 	model = updated.(Model)
 
 	// Then
@@ -348,7 +348,7 @@ func TestExecute_cancellation_rejects_later_success(t *testing.T) {
 	model.CancelQuery()
 
 	// When
-	updated, command := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{Rows: [][]*string{{stringPointer("late")}}}})
+	updated, command := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{Rows: [][]*string{{stringPointer("late")}}}})
 	model = updated.(Model)
 
 	// Then
@@ -379,7 +379,7 @@ func TestExecute_stale_older_request_message_is_ignored(t *testing.T) {
 	requestID := startQuery(t, &model)
 
 	// When
-	updated, command := model.Update(querySucceededMsg{requestID: requestID - 1, result: sqlite.Result{Rows: [][]*string{{stringPointer("stale")}}}})
+	updated, command := model.Update(querySucceededMsg{requestID: requestID - 1, result: sharedsql.Result{Rows: [][]*string{{stringPointer("stale")}}}})
 	model = updated.(Model)
 
 	// Then
@@ -781,7 +781,7 @@ func assertResultsPlaceholder(t *testing.T, resultTable table.Model) {
 func TestSQL_y_yanks_focused_cell_value(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := startQuery(t, &model)
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sharedsql.Result{
 		Columns: []string{"name", "note"},
 		Rows: [][]*string{{
 			stringPointer("projects"),
@@ -826,7 +826,7 @@ func TestSQL_y_yanks_focused_cell_value(t *testing.T) {
 func TestSQL_y_ignored_without_focus_or_during_edit(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := startQuery(t, &model)
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sharedsql.Result{
 		Columns:         []string{"name"},
 		Rows:            [][]*string{{stringPointer("projects")}},
 		UntruncatedRows: [][]*string{{stringPointer("projects")}},

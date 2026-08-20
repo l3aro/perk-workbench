@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func TestBrowsePager_clickNextLoadsFollowingPage(t *testing.T) {
@@ -124,7 +124,7 @@ func TestBrowsePager_clickPrevWorksOnEmptyPage(t *testing.T) {
 	model.focusActiveTable()
 	// The last page loaded no rows (e.g. rows were deleted since the
 	// previous load); Prev stays enabled and must still page back.
-	updated, _ := model.Update(browseTableMsg{table: "items", page: 1, tag: model.browse.component.PageTag, result: sqlite.Result{Columns: []string{"id", "name"}}})
+	updated, _ := model.Update(browseTableMsg{table: "items", page: 1, tag: model.browse.component.PageTag, result: sharedsql.Result{Columns: []string{"id", "name"}}})
 	model = updated.(Model)
 	if rows := model.browse.component.Table.Rows(); len(rows) != 0 {
 		t.Fatalf("fixture: browse rows = %d, want an empty page", len(rows))

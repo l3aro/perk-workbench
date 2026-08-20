@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -96,7 +95,7 @@ func TestStructureForm_barConfirmationDismissKeepsBarFocus(t *testing.T) {
 }
 
 func TestStructureForm_usesHuhControlsForColumnEditing(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if form.Form == nil {
 		t.Fatal("column editor did not create a Huh form")
 	}
@@ -170,7 +169,7 @@ func TestStructureForm_newColumnDiscardWithoutChangesClosesWithoutConfirmation(t
 	// Given — new column form open, no edits made
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
@@ -193,7 +192,7 @@ func TestStructureForm_newColumnDiscardWithoutChangesClosesWithoutConfirmation(t
 // pristine form stays unchanged.
 func TestColumnForm_clearingDefaultCountsAsChange(t *testing.T) {
 	// Given — column with a non-empty default
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "status", Type: "TEXT", DefaultValue: stringPointer("active")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "status", Type: "TEXT", DefaultValue: stringPointer("active")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if form.HasChanges() {
 		t.Fatal("pristine form reported changes")
 	}
@@ -211,7 +210,7 @@ func TestColumnForm_clearingDefaultCountsAsChange(t *testing.T) {
 // baseline: a default that is only whitespace must not make an untouched
 // form look changed, while clearing it still does.
 func TestColumnForm_whitespaceDefaultStaysPristine(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "note", Type: "TEXT", DefaultValue: stringPointer(" ")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "note", Type: "TEXT", DefaultValue: stringPointer(" ")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if form.HasChanges() {
 		t.Fatal("pristine whitespace-default form reported changes")
 	}
@@ -330,7 +329,7 @@ func TestStructureForm_blankNameCannotReachConfirmation(t *testing.T) {
 }
 
 func TestStructureForm_preservesParameterizedColumnChange(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true, DefaultValue: ptr("0")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "amount", Type: "NUMERIC (10,2)", Nullable: true, DefaultValue: ptr("0")}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if !equalStrings(form.Values.Parameters, []string{"10", "2"}) {
 		t.Fatalf("parameters = %#v", form.Values.Parameters)
 	}
@@ -362,7 +361,7 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (name TEXT)"); err != nil {
 		t.Fatalf("creating table: %v", err)
 	}
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = resolveColumnCommand(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
 	if !model.overlay.formMode.Editing() {
 		t.Fatalf("vim-off edit opened mode = %d, want insert", model.overlay.formMode.Mode)
@@ -377,7 +376,7 @@ func TestStructureForm_vimOffEditColumnEntersInsert(t *testing.T) {
 	// With vim mode on the same flow must stay in normal mode.
 	model = readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ = model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ = model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = resolveColumnCommand(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
 	if model.overlay.formMode.Editing() {
 		t.Fatalf("vim-on edit opened mode = %d, want normal", model.overlay.formMode.Mode)
@@ -453,7 +452,7 @@ func openColumn(t *testing.T, name, typeName string) Model {
 	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items ("+name+" "+typeName+")"); err != nil {
 		t.Fatalf("creating table: %v", err)
 	}
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: name, Type: typeName, Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: name, Type: typeName, Nullable: true}}})
 	model = updateColumn(updated.(Model), tea.KeyPressMsg{Code: tea.KeyEnter})
 	_ = model.schema.component.Structure.ColumnForm.Form.Init()
 	return model
@@ -496,21 +495,21 @@ func equalStrings(left, right []string) bool {
 func ptr[T any](value T) *T { return &value }
 
 func TestStructureForm_attributesFieldIsSeededFromColumnInfo(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", Attributes: "GENERATED STORED", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INTEGER", Attributes: "GENERATED STORED", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if form.Values.Attributes != "GENERATED STORED" {
 		t.Fatalf("form attributes = %q, want GENERATED STORED", form.Values.Attributes)
 	}
 }
 
 func TestStructureForm_fieldCountIncludesAttributes(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	if want := len(form.Values.Parameters) + 5; form.FieldCount() != want {
 		t.Fatalf("fieldCount() = %d, want %d", form.FieldCount(), want)
 	}
 }
 
 func TestStructureForm_attributesFieldIsSelectWhenTypeDeclaresOptions(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "BIGINT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
 	_ = form.Form.Init()
 
 	for range form.FieldCount() - 1 {
@@ -526,7 +525,7 @@ func TestStructureForm_attributesFieldIsSelectWhenTypeDeclaresOptions(t *testing
 }
 
 func TestStructureForm_attributesFieldStaysInputWithoutOptions(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "name", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	_ = form.Form.Init()
 
 	for range form.FieldCount() - 1 {
@@ -538,7 +537,7 @@ func TestStructureForm_attributesFieldStaysInputWithoutOptions(t *testing.T) {
 }
 
 func TestStructureForm_attributesSelectRebuildsWhenTypeChanges(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "value", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "value", Type: "TEXT"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
 	form.SelectType(2, nil) // BIGINT
 	form.RebuildForm()
 	_ = form.Form.Init()
@@ -552,7 +551,7 @@ func TestStructureForm_attributesSelectRebuildsWhenTypeChanges(t *testing.T) {
 }
 
 func TestStructureForm_attributesSelectPreservesSeededValueOutsideOptions(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "BIGINT", Attributes: "IDENTITY ALWAYS"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "BIGINT", Attributes: "IDENTITY ALWAYS"}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "PostgreSQL"}))
 	if got, want := form.Values.Attributes, "IDENTITY ALWAYS"; got != want {
 		t.Fatalf("form attributes = %q, want %q", got, want)
 	}
@@ -578,7 +577,7 @@ func typeIndexByName(t *testing.T, types []sharedsql.ColumnType, name string) in
 
 func TestStructureForm_attributesResetWhenTypeChangeDropsOption(t *testing.T) {
 	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INT"}, types)
 	form.SetKeys(DefaultKeybindings())
 	form.Values.Attributes = "AUTO_INCREMENT"
 
@@ -598,7 +597,7 @@ func TestStructureForm_attributesResetWhenTypeChangeDropsOption(t *testing.T) {
 
 func TestStructureForm_attributesKeptWhenTypeChangeKeepsOption(t *testing.T) {
 	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INT"}, types)
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INT"}, types)
 	form.SetKeys(DefaultKeybindings())
 	form.Values.Attributes = "AUTO_INCREMENT"
 
@@ -610,7 +609,7 @@ func TestStructureForm_attributesKeptWhenTypeChangeKeepsOption(t *testing.T) {
 
 func TestStructureForm_attributesKeptWhenTypeChangeIsFreeText(t *testing.T) {
 	types := sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "MySQL"})
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "VARCHAR(50)"}, types)
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "name", Type: "VARCHAR(50)"}, types)
 	form.Values.Attributes = "COMMENT 'updated'"
 
 	form.SelectType(typeIndexByName(t, types, "TEXT"), nil)
@@ -620,7 +619,7 @@ func TestStructureForm_attributesKeptWhenTypeChangeIsFreeText(t *testing.T) {
 }
 
 func TestStructureForm_navigationReachesAttributesField(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	_ = form.Form.Init()
 
 	for range form.FieldCount() - 1 {
@@ -632,7 +631,7 @@ func TestStructureForm_navigationReachesAttributesField(t *testing.T) {
 }
 
 func TestStructureForm_changeIncludesAttributesWhenEdited(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	form.Values.Attributes = "GENERATED STORED"
 	change, err := form.Change()
 	if err != nil {
@@ -647,7 +646,7 @@ func TestStructureForm_changeIncludesAttributesWhenEdited(t *testing.T) {
 }
 
 func TestStructureForm_changeOmitsAttributesWhenUnchanged(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED VIRTUAL", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED VIRTUAL", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	change, err := form.Change()
 	if err != nil {
 		t.Fatalf("change() error = %v", err)
@@ -658,7 +657,7 @@ func TestStructureForm_changeOmitsAttributesWhenUnchanged(t *testing.T) {
 }
 
 func TestStructureForm_changeIncludesEmptyAttributesWhenCleared(t *testing.T) {
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED STORED", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "price", Type: "DECIMAL(10,2)", Attributes: "GENERATED STORED", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	form.Values.Attributes = ""
 	change, err := form.Change()
 	if err != nil {
@@ -694,7 +693,7 @@ func TestStructureForm_aKeyOpensEmptyColumnForm(t *testing.T) {
 	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)"); err != nil {
 		t.Fatalf("creating table: %v", err)
 	}
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
 
@@ -746,7 +745,7 @@ func TestAddColumnFlow_fullEndToEnd(t *testing.T) {
 	if _, err := model.Database.Execute(model.appContext, "INSERT INTO items (name) VALUES ('first')"); err != nil {
 		t.Fatalf("inserting row: %v", err)
 	}
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
 	model.Focus = focusWorkspace
 

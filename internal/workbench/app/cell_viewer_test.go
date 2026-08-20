@@ -10,7 +10,7 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/ultraviolet/screen"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
@@ -20,7 +20,7 @@ func TestCellViewer_opens_for_SQL_results(t *testing.T) {
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
 	longValue := "\x1b[31mred\x1b[0m " + strings.Repeat("x", 200) + "\nnew line\x07"
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sharedsql.Result{
 		Columns: []string{"note"},
 		Rows: [][]*string{{
 			stringPointer("short"),
@@ -100,7 +100,7 @@ func TestCellViewer_opens_for_Browse_selected_column(t *testing.T) {
 	model.Focus = focusWorkspace
 	model.Tab = tabBrowse
 	model.SelectedTable = "projects"
-	model.browse.component.Result = sqlite.Result{
+	model.browse.component.Result = sharedsql.Result{
 		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer("target-value"), stringPointer("active")}},
 	}
 	model.browse.component.Table.SetColumns(tableColumns([]string{"id", "name", "state"}, []table.Row{{"1", "target-value", "active"}}))
@@ -131,7 +131,7 @@ func TestCellViewer_not_opened_during_SQL_edit(t *testing.T) {
 	// Given SQL editor editing mode with focused results
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sharedsql.Result{
 		Columns: []string{"note"},
 		Rows:    [][]*string{{stringPointer("data")}},
 	}})
@@ -155,7 +155,7 @@ func TestCellViewer_resizes_on_window_size(t *testing.T) {
 	// Given an active cell viewer
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sharedsql.Result{
 		Columns: []string{"note"},
 		Rows:    [][]*string{{stringPointer("value")}},
 		UntruncatedRows: [][]*string{{
@@ -194,7 +194,7 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	// Given ready SQL with focused results
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 'test'", result: sharedsql.Result{
 		Columns: []string{"note"},
 		Rows:    [][]*string{{stringPointer("palette-value")}},
 		UntruncatedRows: [][]*string{{
@@ -236,7 +236,7 @@ func TestCellViewer_palette_opens_and_shows_in_context(t *testing.T) {
 	model.browse.component.CellViewer = nil
 	model.Tab = tabBrowse
 	model.SelectedTable = "projects"
-	model.browse.component.Result = sqlite.Result{
+	model.browse.component.Result = sharedsql.Result{
 		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer("browse-palette")}},
 	}
 	model.browse.component.Table.SetColumns(tableColumns([]string{"id", "name"}, []table.Row{{"1", "browse-palette"}}))

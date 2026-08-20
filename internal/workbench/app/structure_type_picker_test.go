@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -15,7 +14,7 @@ func TestStructureForm_typeListRendersAfterHeightIsSet(t *testing.T) {
 	// height was still unknown, and huh's group only shrinks fields, so the
 	// type select's option list stayed frozen at a single row forever.
 	// The list must render once the real height is applied.
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	form.SetWidth(72)
 	form.SetHeight(20)
 	for _, message := range executeCommandAll(form.Form.Init()) {
@@ -35,7 +34,7 @@ func TestStructureForm_typeListRendersAfterHeightIsSet(t *testing.T) {
 
 func TestStructureForm_typeChoicesShowFriendlyLabels(t *testing.T) {
 	// Given
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "INTEGER", PrimaryKey: 1}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 	options := form.TypeChoices()
 
 	// When/Then — every option keeps the SQL type as its value but shows a
@@ -60,7 +59,7 @@ func TestStructureForm_typeChoicesFallBackToNameWithoutLabel(t *testing.T) {
 	// Given — an existing column whose type is unknown to the catalog: the
 	// form prepends a synthetic option carrying only the raw name.
 	types := append([]sharedsql.ColumnType{{Name: "CUSTOM"}}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"})...)
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "id", Type: "CUSTOM", PrimaryKey: 1}, types)
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "id", Type: "CUSTOM", PrimaryKey: 1}, types)
 	form.SetKeys(DefaultKeybindings())
 
 	// When

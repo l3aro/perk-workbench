@@ -9,7 +9,6 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -40,7 +39,7 @@ func TestResults_cellNavigation_movesColumns_and_revealsSelection(t *testing.T) 
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT first, second, third, fourth, fifth, sixth, seventh, eighth", result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT first, second, third, fourth, fifth, sixth, seventh, eighth", result: sharedsql.Result{
 		Columns: []string{"first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth"},
 		Rows: [][]*string{{
 			stringPointer(strings.Repeat("first ", 20)),
@@ -97,7 +96,7 @@ func TestTableCellNavigation_wideColumn_revealsItsHead(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"id", "payload"},
 		Rows:    [][]*string{{stringPointer("1"), stringPointer(strings.Repeat("x", 300))}},
 	}})
@@ -424,7 +423,7 @@ func TestBrowse_mouseClickUsesRenderedRow(t *testing.T) {
 	updated, _ := model.Update(browseTableMsg{
 		table: "items",
 		page:  0,
-		result: sqlite.Result{
+		result: sharedsql.Result{
 			Columns: []string{"name"},
 			Rows: [][]*string{
 				{stringPointer("first-rendered-row")},
@@ -603,7 +602,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 	t.Run("structure click on data row selects that row", func(t *testing.T) {
 		model := resizeModel(readyModel(t), 100, 24)
 		model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
-		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{
 			{Name: "id", Type: "INTEGER", PrimaryKey: 1},
 			{Name: "name", Type: "TEXT", Nullable: true},
 			{Name: "category", Type: "TEXT"},
@@ -623,7 +622,7 @@ func TestSchemaTable_mouseClick_selectsRow(t *testing.T) {
 	t.Run("structure click with form active does not select row", func(t *testing.T) {
 		model := resizeModel(readyModel(t), 100, 24)
 		model.SelectedTable, model.Tab = "items", tabStructure
-		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{
 			{Name: "name", Type: "TEXT", Nullable: true},
 		}})
 		model = updated.(Model)
@@ -755,7 +754,7 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 	t.Run("structure double click opens column edit form", func(t *testing.T) {
 		model := resizeModel(readyModel(t), 100, 24)
 		model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
-		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{
 			{Name: "id", Type: "INTEGER", PrimaryKey: 1},
 			{Name: "name", Type: "TEXT", Nullable: true},
 		}})
@@ -821,7 +820,7 @@ func TestSchemaTable_doubleClick_opensEditForm(t *testing.T) {
 	t.Run("first click on another tab at same position stays selection-only", func(t *testing.T) {
 		model := resizeModel(readyModel(t), 100, 24)
 		model.SelectedTable, model.Tab, model.Focus = "items", tabStructure, focusWorkspace
-		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{
+		updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{
 			{Name: "id", Type: "INTEGER", PrimaryKey: 1},
 			{Name: "name", Type: "TEXT", Nullable: true},
 		}})

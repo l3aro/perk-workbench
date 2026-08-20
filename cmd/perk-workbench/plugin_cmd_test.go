@@ -635,7 +635,6 @@ func TestPluginInspect_failures(t *testing.T) {
 		{name: "malformed stdout", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "malformed"}, wantPhase: "protocol", wantError: "malformed response frame"},
 		{name: "crash during initialize", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "crash"}, wantPhase: "protocol", wantError: "exit status 3"},
 		{name: "registration rejects empty name", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "bad_caps"}, wantPhase: "register", wantError: "needs a name"},
-		{name: "registration rejects duplicate built-in", env: map[string]string{"PERK_PLUGIN_NAME": "sqlite", "PERK_PLUGIN_TARGETS": "sqlite:"}, wantPhase: "register", wantError: "registered twice"},
 		{name: "resolve failure", env: nil, wantPhase: "resolve", wantError: "no such file"},
 	}
 	for _, test := range tests {

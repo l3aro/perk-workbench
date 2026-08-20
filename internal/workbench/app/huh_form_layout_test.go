@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
@@ -18,7 +17,7 @@ func TestHuhForms_renderDeterministicallyWithinNarrowAndWideWidths(t *testing.T)
 		view func(int) string
 	}{
 		{name: "column", view: func(width int) string {
-			form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
+			form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(sharedsql.DatabaseInfo{Product: "SQLite"}))
 			form.SetWidth(width)
 			return form.View()
 		}},
@@ -94,7 +93,7 @@ func TestHuhForms_openAfterResizeUsesCurrentLayoutWidth(t *testing.T) {
 			model := resizeModel(readyModel(t), width, 24)
 			model.SelectedTable = "items"
 			model.schema.component.Structure.Columns = []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}
-			model.browse.component.Result = sqlite.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
+			model.browse.component.Result = sharedsql.Result{Columns: []string{"id"}, Rows: [][]*string{{stringPointer("1")}}}
 			model.browse.component.Table.SetCursor(0)
 
 			// When

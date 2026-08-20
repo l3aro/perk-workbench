@@ -9,7 +9,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
@@ -721,7 +721,7 @@ func TestResults_jk_and_arrows_move_the_selected_row(t *testing.T) {
 	model.Focus = focusSchema
 	model.schema.component.List.SetItems([]list.Item{schema.Item{Name: "main", Root: true}})
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"ID"},
 		Rows: [][]*string{
 			{stringPointer("1")},
@@ -756,7 +756,7 @@ func TestResults_left_and_right_select_wide_table_cells_without_changing_row(t *
 	model := readyModel(t)
 	model = resizeModel(model, 100, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column"},
 		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to exceed the viewport"), stringPointer("third value"), stringPointer("fourth value"), stringPointer("fifth value")}},
 	}})
@@ -869,7 +869,7 @@ func TestResults_l_scrolls_after_returning_to_SQL(t *testing.T) {
 	model := resizeModel(readyModel(t), 80, 24)
 	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column"},
 		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to overflow viewport"), stringPointer("third value"), stringPointer("fourth value")}},
 	}})
@@ -905,7 +905,7 @@ func TestResults_l_scrolls_a_visible_distance(t *testing.T) {
 	// Given
 	model := resizeModel(readyModel(t), 80, 24)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column"},
 		Rows:    [][]*string{{stringPointer(strings.Repeat("first ", 20)), stringPointer("second value that is wide enough to overflow viewport"), stringPointer("third value"), stringPointer("fourth value")}},
 	}})
@@ -927,7 +927,7 @@ func TestResults_l_scrolls_visible_empty_results(t *testing.T) {
 	model := resizeModel(readyModel(t), 80, 24)
 	beginInsert(model.overlay.formMode, model.queryLog.editor)
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"first column", "second column", "third column", "fourth column", "fifth column", "sixth column", "seventh column", "eighth column"},
 	}})
 	model = updated.(Model)
@@ -953,7 +953,7 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 			setup: func(model Model) Model {
 				model.SelectedTable, model.Tab = "projects", tabStructure
 				model.focusActiveTable()
-				updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{{Name: "id"}, {Name: "name"}}})
+				updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sharedsql.ColumnInfo{{Name: "id"}, {Name: "name"}}})
 				model = updated.(Model)
 				model.schema.component.Structure.Table.SetCursor(1)
 				return model
@@ -964,7 +964,7 @@ func TestStructureAndBrowse_jk_and_arrows_move_the_selected_row(t *testing.T) {
 			setup: func(model Model) Model {
 				model.SelectedTable, model.Tab = "projects", tabBrowse
 				model.focusActiveTable()
-				updated, _ := model.Update(browseTableMsg{table: "projects", page: model.BrowsePage, result: sqlite.Result{Columns: []string{"ID"}, Rows: [][]*string{{stringPointer("1")}, {stringPointer("2")}}}})
+				updated, _ := model.Update(browseTableMsg{table: "projects", page: model.BrowsePage, result: sharedsql.Result{Columns: []string{"ID"}, Rows: [][]*string{{stringPointer("1")}, {stringPointer("2")}}}})
 				model = updated.(Model)
 				model.browse.component.Table.SetCursor(1)
 				return model

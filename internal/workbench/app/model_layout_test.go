@@ -12,7 +12,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -311,7 +310,7 @@ func TestResize_results_reflows_loaded_titles_without_replacing_rows(t *testing.
 	model := readyModel(t)
 	requestID := model.StartQueryForTest(context.Background())
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sqlite.Result{
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, result: sharedsql.Result{
 		Columns: []string{"ID", "Name", "Status"},
 		Rows: [][]*string{
 			{stringPointer("1"), stringPointer("first"), nil},
@@ -334,12 +333,12 @@ func TestResize_browse_and_structure_reflow_loaded_titles_without_replacing_rows
 	model := readyModel(t)
 	model.SelectedTable = "projects"
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{
+	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sharedsql.ColumnInfo{
 		{Name: "id", Type: "INTEGER", PrimaryKey: 1, Indexes: []sharedsql.IndexKind{sharedsql.IndexPrimaryKey}},
 		{Name: "name", Type: "TEXT", Attributes: "GENERATED STORED", Nullable: true, Indexes: []sharedsql.IndexKind{sharedsql.IndexUnique, sharedsql.IndexRegular}},
 	}})
 	model = updated.(Model)
-	updated, _ = model.Update(browseTableMsg{table: "projects", page: 0, result: sqlite.Result{
+	updated, _ = model.Update(browseTableMsg{table: "projects", page: 0, result: sharedsql.Result{
 		Columns: []string{"id", "name", "state"},
 		Rows:    [][]*string{{stringPointer("1"), stringPointer("first"), stringPointer("open")}},
 	}})
@@ -474,7 +473,7 @@ func TestResize_wide_browse_table_does_not_wrap_inside_workspace_pane(t *testing
 	model.SelectedTable, model.Tab = "customers", tabBrowse
 	model.focusActiveTable()
 	model = resizeModel(model, 160, 24)
-	updated, _ := model.Update(browseTableMsg{table: "customers", page: 0, result: sqlite.Result{
+	updated, _ := model.Update(browseTableMsg{table: "customers", page: 0, result: sharedsql.Result{
 		Columns: []string{"CustomerId", "FirstName", "LastName", "Company", "Address", "City", "State", "Country", "PostalCode", "Phone", "Fax", "Email", "SupportRepId"},
 		Rows: [][]*string{{
 			stringPointer("7"),
@@ -524,7 +523,7 @@ func TestStructureTable_selected_empty_primary_key_preserves_final_cell(t *testi
 	// Given
 	model := readyModel(t)
 	model = resizeModel(model, 100, 24)
-	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "projects", columns: []sharedsql.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
 
 	// Then
@@ -562,7 +561,7 @@ func TestWorkspaceView_separatesTabsAndContent(t *testing.T) {
 	model := readyModel(t)
 	model = resizeModel(model, 100, 24)
 	model.Tab = tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}}})
 	model = updated.(Model)
 
 	lines := strings.Split(ansi.Strip(model.workspaceView()), "\n")

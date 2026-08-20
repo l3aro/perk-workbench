@@ -13,6 +13,145 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
+var officialTestSQLLanguage = SQLQueryLanguage
+
+var officialTestMongoLanguage = QueryLanguage{
+	Name:        "MongoDB",
+	EditorLabel: "Command",
+	Placeholder: "Enter a mongosh statement…",
+	Lexer:       "javascript",
+	Examples: []string{
+		`db.restaurants.find({"borough": "Bronx"}).limit(5)`,
+		`db.restaurants.countDocuments({"cuisine": "Chinese"})`,
+		`show collections`,
+	},
+}
+
+type officialTestService struct {
+	sharedsql.Service
+	product string
+}
+
+func (s *officialTestService) Close() error { return nil }
+
+func (s *officialTestService) Info() sharedsql.DatabaseInfo {
+	return sharedsql.DatabaseInfo{Product: s.product, Version: "test"}
+}
+
+func (s *officialTestService) ListSchema(context.Context) ([]sharedsql.SchemaObject, error) {
+	return nil, nil
+}
+
+type officialTestShim struct {
+	caps  Capabilities
+	build func(FormValues) (string, bool)
+}
+
+func (s officialTestShim) Capabilities() Capabilities { return s.caps }
+
+func (s officialTestShim) BuildTarget(values FormValues) (string, bool) {
+	return s.build(values)
+}
+
+func (s officialTestShim) Open(context.Context, string) (sharedsql.Service, error) {
+	return &officialTestService{product: s.caps.Display}, nil
+}
+
+func TestMain(m *testing.M) {
+	for _, shim := range officialTestShims() {
+		if err := RegisterShim(shim); err != nil {
+			panic(err)
+		}
+	}
+	os.Exit(m.Run())
+}
+
+func officialTestShims() []Shim {
+	return []Shim{
+		officialTestShim{
+			caps: Capabilities{
+				Name: "sqlite", Display: "SQLite", QueryLanguage: &officialTestSQLLanguage,
+				Form: &FormSpec{Fields: []FormField{{
+					Key: "target", Title: "Target*", Kind: FormInput,
+					Placeholder: "path/to/database.db or :memory:",
+					Validate:    FormRequired, Error: "target is required",
+				}}},
+			},
+			build: func(values FormValues) (string, bool) {
+				return strings.TrimSpace(values.Database), true
+			},
+		},
+		officialTestShim{
+			caps: Capabilities{
+				Name: "mysql", Display: "MySQL", Targets: []TargetPattern{{Prefix: "mysql:"}},
+				QueryLanguage: &officialTestSQLLanguage,
+				Form: &FormSpec{
+					Prefix: "mysql:",
+					Fields: []FormField{
+						{Key: "host", Title: "Host", Kind: FormInput, Placeholder: "localhost"},
+						{Key: "port", Title: "Port", Kind: FormInput, Default: "3306", Validate: FormPort, Error: "port must be between 1 and 65535"},
+						{Key: "username", Title: "Username*", Kind: FormInput, Validate: FormRequired, Error: "username is required"},
+						{Key: "password", Title: "Password", Kind: FormPassword},
+						{Key: "database", Title: "Database", Kind: FormInput, Placeholder: "Optional"},
+						{Key: "tls", Title: "TLS", Kind: FormSelect, Options: []FormOption{
+							{Label: "Verify certificate", Value: "true"},
+							{Label: "Encrypt, don't verify certificate", Value: "skip-verify"},
+							{Label: "Don't encrypt", Value: "false"},
+						}},
+					},
+				},
+			},
+			build: func(values FormValues) (string, bool) {
+				tls := values.TLS
+				if tls == "" {
+					tls = "false"
+				}
+				return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?tls=%s", values.User, values.Pass, values.Host, values.Port, values.Database, tls), true
+			},
+		},
+		officialTestShim{
+			caps: Capabilities{
+				Name: "postgres", Display: "PostgreSQL",
+				Targets: []TargetPattern{
+					{Prefix: "postgres://", KeepTarget: true},
+					{Prefix: "postgresql://", KeepTarget: true},
+					{Prefix: "postgres:"},
+				},
+				QueryLanguage: &officialTestSQLLanguage,
+				Form: &FormSpec{
+					Prefix: "postgres:",
+					Fields: []FormField{
+						{Key: "host", Title: "Host", Kind: FormInput, Placeholder: "localhost"},
+						{Key: "port", Title: "Port", Kind: FormInput, Default: "5432", Validate: FormPort, Error: "port must be between 1 and 65535"},
+						{Key: "username", Title: "Username*", Kind: FormInput, Validate: FormRequired, Error: "username is required"},
+						{Key: "password", Title: "Password", Kind: FormPassword},
+						{Key: "database", Title: "Database", Kind: FormInput, Placeholder: "Optional"},
+						{Key: "tls", Title: "TLS", Kind: FormSelect, Options: []FormOption{
+							{Label: "Verify certificate", Value: "verify-full"},
+							{Label: "Encrypt, don't verify certificate", Value: "require"},
+							{Label: "Don't encrypt", Value: "disable"},
+						}},
+					},
+				},
+			},
+			build: func(values FormValues) (string, bool) {
+				return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s", values.User, values.Pass, values.Host, values.Port, values.Database, values.TLS), true
+			},
+		},
+		officialTestShim{
+			caps: Capabilities{
+				Name: "mongodb", Display: "MongoDB", QueryLanguage: &officialTestMongoLanguage,
+				Targets: []TargetPattern{
+					{Prefix: "mongo:"},
+					{Prefix: "mongodb://", KeepTarget: true},
+					{Prefix: "mongodb+srv://", KeepTarget: true},
+				},
+			},
+			build: func(FormValues) (string, bool) { return "", false },
+		},
+	}
+}
+
 func TestMatch_routesTargetForms(t *testing.T) {
 	tests := []struct {
 		name              string

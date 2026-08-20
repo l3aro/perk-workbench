@@ -8,7 +8,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
@@ -51,7 +50,7 @@ func (c *toolWriteClient) Complete(_ context.Context, req ai.Request) (ai.Respon
 
 func TestChat_assistantWrite_approve(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -151,7 +150,7 @@ func TestChat_assistantWrite_approve(t *testing.T) {
 
 func TestChat_assistantWrite_decline(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -221,7 +220,7 @@ func TestChat_assistantWrite_decline(t *testing.T) {
 
 func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -326,7 +325,7 @@ func TestChat_assistantWrite_failedThenCorrected(t *testing.T) {
 // Escape — now in normal mode — declines the write and interrupts the agent.
 func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -417,7 +416,7 @@ func TestChat_assistantWrite_escapeExitsInsertFirst(t *testing.T) {
 
 func TestChat_assistantWrite_readOnly(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -447,7 +446,7 @@ func TestChat_assistantWrite_readOnly(t *testing.T) {
 // invisible dialog.
 func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -503,7 +502,7 @@ func TestChat_assistantWrite_confirmationRenders(t *testing.T) {
 
 func TestChat_assistantWrite_yolo(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}

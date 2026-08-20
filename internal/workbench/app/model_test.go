@@ -11,14 +11,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/database"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
-var testOpen OpenDatabase = database.Open
+var testOpen OpenDatabase = openTestDatabase
 
 func TestOpen_existing_target_populates_schema(t *testing.T) {
 	// Given
@@ -31,7 +29,7 @@ func TestOpen_existing_target_populates_schema(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatalf("closing fixture database file: %v", err)
 	}
-	service, err := sqlite.Open(ctx, target)
+	service, err := openTestSQLite(ctx, target)
 	if err != nil {
 		t.Fatalf("opening fixture database: %v", err)
 	}
@@ -390,7 +388,7 @@ func TestSchemaClick_selectsTheRenderedTable(t *testing.T) {
 
 func readyModel(t *testing.T) Model {
 	t.Helper()
-	service, err := sqlite.Open(context.Background(), ":memory:")
+	service, err := openTestSQLite(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -442,7 +440,7 @@ func TestConnectionProfiles_successfulOpenPathsRecordOneProfile(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatalf("closing fixture database file: %v", err)
 	}
-	service, err := sqlite.Open(context.Background(), target)
+	service, err := openTestSQLite(context.Background(), target)
 	if err != nil {
 		t.Fatalf("opening fixture database: %v", err)
 	}
@@ -542,7 +540,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatalf("closing A file: %v", err)
 	}
-	service, err := sqlite.Open(context.Background(), aPath)
+	service, err := openTestSQLite(context.Background(), aPath)
 	if err != nil {
 		t.Fatalf("opening A: %v", err)
 	}

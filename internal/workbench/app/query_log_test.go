@@ -13,7 +13,6 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
@@ -24,7 +23,7 @@ func TestQueryLog_records_completions_newest_first_and_limits_entries(t *testing
 	started := time.Date(2026, time.July, 22, 9, 0, 0, 0, time.UTC)
 
 	requestID := model.StartQueryForTest(context.Background())
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 1", startedAt: started, result: sqlite.Result{Rows: [][]*string{{stringPointer("1")}}, Duration: time.Millisecond}})
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 1", startedAt: started, result: sharedsql.Result{Rows: [][]*string{{stringPointer("1")}}, Duration: time.Millisecond}})
 	model = updated.(Model)
 
 	requestID = model.StartQueryForTest(context.Background())
@@ -303,7 +302,7 @@ func TestQueryLog_records_browse_page_load(t *testing.T) {
 	model.SelectedTable, model.BrowsePage = "projects", 1
 
 	// When
-	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sqlite.Result{Rows: [][]*string{{stringPointer("second")}}, Duration: 2 * time.Millisecond}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", page: 1, result: sharedsql.Result{Rows: [][]*string{{stringPointer("second")}}, Duration: 2 * time.Millisecond}})
 	model = updated.(Model)
 
 	// Then
@@ -332,7 +331,7 @@ func TestQueryLog_records_structure_and_index_actions(t *testing.T) {
 	if _, err := model.Database.Execute(model.appContext, "CREATE TABLE items (name TEXT)"); err != nil {
 		t.Fatalf("creating table: %v", err)
 	}
-	form := schema.NewColumnForm(sqlite.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(model.databaseInfo))
+	form := schema.NewColumnForm(sharedsql.ColumnInfo{Name: "name", Type: "TEXT", Nullable: true}, sharedsql.ColumnTypes(model.databaseInfo))
 	form.SetKeys(DefaultKeybindings())
 	model.schema.component.Structure.ColumnForm = form
 	model.schema.component.Structure.ColumnForm.Values.Name = "title"
@@ -411,7 +410,7 @@ func TestQueryLog_shows_browse_message(t *testing.T) {
 	model.SelectedTable = "projects"
 
 	// When
-	updated, _ := model.Update(browseTableMsg{table: "projects", result: sqlite.Result{Rows: [][]*string{{stringPointer("one")}, {stringPointer("two")}}}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", result: sharedsql.Result{Rows: [][]*string{{stringPointer("one")}, {stringPointer("two")}}}})
 	model = updated.(Model)
 
 	// Then
@@ -1013,7 +1012,7 @@ func TestQueryLog_yank_loadedSensitiveEntryCannotRecoverOriginal(t *testing.T) {
 	// transient originals.
 	model.disconnect()
 	model.connectionID = "conn-a"
-	service, err := sqlite.Open(context.Background(), ":memory:")
+	service, err := openTestSQLite(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}

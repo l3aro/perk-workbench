@@ -23,14 +23,14 @@ func TestConnectionOptions(t *testing.T) {
 	if len(options) != 2 {
 		t.Fatalf("connectionOptions() options = %d, want 2 (unusable profiles skipped)", len(options))
 	}
-	if got := options[0].Key; !strings.Contains(got, "Local") || !strings.Contains(got, "SQLite") || !strings.Contains(got, "/tmp/a.db") {
-		t.Fatalf("option[0] key = %q, want Local/SQLite/path", got)
+	if got := options[0].Key; !strings.Contains(got, "Local") || !strings.Contains(got, "sqlite") || !strings.Contains(got, "/tmp/a.db") {
+		t.Fatalf("option[0] key = %q, want Local/sqlite/path before sidecar load", got)
 	}
 	if options[0].Value != "/tmp/a.db" {
 		t.Fatalf("option[0] value = %q, want /tmp/a.db", options[0].Value)
 	}
-	if got := options[1].Key; !strings.Contains(got, "Remote") || !strings.Contains(got, "MySQL") || !strings.Contains(got, "[READONLY]") {
-		t.Fatalf("option[1] key = %q, want Remote/MySQL/[READONLY]", got)
+	if got := options[1].Key; !strings.Contains(got, "Remote") || !strings.Contains(got, "mysql") || !strings.Contains(got, "[READONLY]") {
+		t.Fatalf("option[1] key = %q, want Remote/mysql/[READONLY] before sidecar load", got)
 	}
 	if options[1].Value != "mysql:alice@tcp(db.example.test:3306)/app" {
 		t.Fatalf("option[1] value = %q, want the mysql DSN", options[1].Value)

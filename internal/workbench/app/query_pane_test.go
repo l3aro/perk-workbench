@@ -9,7 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func TestWideLayout_renders_query_log_in_its_own_pane(t *testing.T) {
@@ -40,7 +40,7 @@ func TestWideLayout_shows_completed_query_in_lower_pane(t *testing.T) {
 	requestID := model.StartQueryForTest(context.Background())
 
 	// When
-	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 1", startedAt: time.Now(), result: sqlite.Result{Duration: time.Millisecond}})
+	updated, _ := model.Update(querySucceededMsg{requestID: requestID, statement: "SELECT 1", startedAt: time.Now(), result: sharedsql.Result{Duration: time.Millisecond}})
 	model = updated.(Model)
 
 	// Then
@@ -56,7 +56,7 @@ func TestWideLayout_sizes_browse_table_inside_upper_pane(t *testing.T) {
 
 	// When
 	model = resizeModel(model, 160, 24)
-	updated, _ := model.Update(browseTableMsg{table: "projects", result: sqlite.Result{Rows: [][]*string{{stringPointer("first")}}}})
+	updated, _ := model.Update(browseTableMsg{table: "projects", result: sharedsql.Result{Rows: [][]*string{{stringPointer("first")}}}})
 	model = updated.(Model)
 
 	// Then

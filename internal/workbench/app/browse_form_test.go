@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
@@ -502,9 +501,9 @@ func readyBrowseModel(t *testing.T) Model {
 	if _, err := model.Database.Execute(model.appContext, "INSERT INTO items (id, name) VALUES (2, 'second')"); err != nil {
 		t.Fatalf("inserting row: %v", err)
 	}
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "id", Type: "INTEGER", PrimaryKey: 1}, {Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
-	updated, _ = model.Update(browseTableMsg{table: "items", page: 0, result: sqlite.Result{Columns: []string{"id", "name"}, Rows: [][]*string{{stringPointer("1"), stringPointer("first")}, {stringPointer("2"), stringPointer("second")}}}})
+	updated, _ = model.Update(browseTableMsg{table: "items", page: 0, result: sharedsql.Result{Columns: []string{"id", "name"}, Rows: [][]*string{{stringPointer("1"), stringPointer("first")}, {stringPointer("2"), stringPointer("second")}}}})
 	model = updated.(Model)
 	model.browse.component.Table.SetCursor(0)
 	return model
@@ -533,7 +532,7 @@ func TestBrowse_y_yanks_full_value_not_display_trimmed(t *testing.T) {
 	model.browse.component.SelectedColumn = 1 // select the "name" column
 	model.browse.component.Table.SetCursor(0)
 	full := strings.Repeat("x", 400)
-	model.browse.component.Result = sqlite.Result{
+	model.browse.component.Result = sharedsql.Result{
 		Columns:         []string{"id", "name"},
 		Rows:            [][]*string{{stringPointer("1"), stringPointer(cellText(full))}, {stringPointer("2"), stringPointer("second")}},
 		UntruncatedRows: [][]*string{{stringPointer("1"), stringPointer(full)}, {stringPointer("2"), stringPointer("second")}},

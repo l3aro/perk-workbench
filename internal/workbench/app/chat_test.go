@@ -18,7 +18,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
@@ -1333,7 +1332,7 @@ func driveToolRoundToCompletion(t *testing.T, model Model, cmd tea.Cmd) Model {
 func TestChat_runsToolRoundThenDeliversFinalAnswer(t *testing.T) {
 	// Set up model with a real in-memory SQLite database.
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -1396,7 +1395,7 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 			model := New(":memory:", context.Background(), nil, false)
 			model.State = stateReady
 			ctx := context.Background()
-			service, err := sqlite.Open(ctx, ":memory:")
+			service, err := openTestSQLite(ctx, ":memory:")
 			if err != nil {
 				t.Fatalf("opening test service: %v", err)
 			}
@@ -1462,7 +1461,7 @@ func TestChat_rendersTableWithinViewportWidth(t *testing.T) {
 
 func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}
@@ -1505,7 +1504,7 @@ func TestChat_exhaustedToolRoundsForcesAnswer(t *testing.T) {
 
 func TestChat_toolDeadlineFinalizesOnFreshContext(t *testing.T) {
 	ctx := context.Background()
-	service, err := sqlite.Open(ctx, ":memory:")
+	service, err := openTestSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("opening test service: %v", err)
 	}

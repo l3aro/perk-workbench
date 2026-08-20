@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/l3aro/perk-workbench/internal/drivers/sqlite"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
 func TestFormMode_normalSQLTextDoesNotMutateHuhValue(t *testing.T) {
@@ -88,7 +88,7 @@ func TestFormMode_normalEscapeOpensExistingDiscard(t *testing.T) {
 	// Given
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
@@ -133,7 +133,7 @@ func TestFormMode_confirmEnterDoesNotEnterInsert(t *testing.T) {
 	// Given — column form open, discard confirmation showing
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
 	// Press Enter → opens column form (deferred Init cmd but form exists immediately)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -174,7 +174,7 @@ func TestFormMode_confirmEnterDefaultYes_closesForm(t *testing.T) {
 	// Given — column form open, discard confirmation showing ("Yes" selected)
 	model := readyModel(t)
 	model.SelectedTable, model.Tab = "items", tabStructure
-	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sqlite.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
+	updated, _ := model.Update(tableInfoMsg{table: "items", columns: []sharedsql.ColumnInfo{{Name: "name", Type: "TEXT", Nullable: true}}})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
