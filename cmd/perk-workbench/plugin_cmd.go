@@ -105,6 +105,16 @@ const (
 	trustMismatch = "mismatch"
 )
 
+const (
+	pluginSourceOfficial = "official"
+	pluginSourceUser     = "user"
+)
+
+type pluginCommandEntry struct {
+	entry  string
+	source string
+}
+
 // pluginReport is the per-item outcome of a plugin command: the input
 // entry, the resolved canonical path, the failing lifecycle phase, and
 // the structured diagnostics. It is also the JSON document shape, so
@@ -112,7 +122,8 @@ const (
 // carries target or form values, credentials, statements, or stdout
 // protocol frames: the lifecycle below never exchanges them.
 type pluginReport struct {
-	Entry string `json:"entry"`
+	Entry  string `json:"entry"`
+	Source string `json:"source,omitempty"`
 	// Path is the canonical executable path once resolution succeeded.
 	Path string `json:"path,omitempty"`
 	// OK reports whether the full lifecycle succeeded.
@@ -243,26 +254,32 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 		return 1
 	}
 	configPath := app.ConfigPath()
+	entries, trust, err := configuredPluginCommandEntries(config)
+	if err != nil {
+		fmt.Fprintf(stderr, "perk-workbench plugin list: %v\n", err)
+		return 1
+	}
 
 	// listItem is the stable machine-readable shape of one entry.
 	type listItem struct {
 		Entry    string `json:"entry"`
+		Source   string `json:"source"`
 		Path     string `json:"path,omitempty"`
 		Trust    string `json:"trust,omitempty"`
 		Expected string `json:"expected_sha256,omitempty"`
 		Error    string `json:"error,omitempty"`
 	}
-	items := make([]listItem, 0, len(config.Plugins))
+	items := make([]listItem, 0, len(entries))
 	failed := false
-	for _, entry := range config.Plugins {
-		item := listItem{Entry: entry}
-		path, err := plugin.ResolveExecutable(entry, configPath)
+	for _, entry := range entries {
+		item := listItem{Entry: entry.entry, Source: entry.source}
+		path, err := plugin.ResolveExecutable(entry.entry, configPath)
 		if err != nil {
 			item.Error = err.Error()
 			failed = true
 		} else {
 			item.Path = path
-			if pin, pinned := config.PluginTrust[path]; pinned {
+			if pin, pinned := trust[path]; pinned {
 				item.Trust = trustPinned
 				item.Expected = pin
 			} else {
@@ -281,11 +298,11 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 	}
 	for _, item := range items {
 		if item.Error != "" {
-			fmt.Fprintf(stdout, "%s -> invalid: %s\n", item.Entry, item.Error)
+			fmt.Fprintf(stdout, "%s [%s] -> invalid: %s\n", item.Entry, item.Source, item.Error)
 		} else if item.Trust == trustPinned {
-			fmt.Fprintf(stdout, "%s -> %s [pinned sha256:%s]\n", item.Entry, item.Path, item.Expected)
+			fmt.Fprintf(stdout, "%s [%s] -> %s [pinned sha256:%s]\n", item.Entry, item.Source, item.Path, item.Expected)
 		} else {
-			fmt.Fprintf(stdout, "%s -> %s [unpinned]\n", item.Entry, item.Path)
+			fmt.Fprintf(stdout, "%s [%s] -> %s [unpinned]\n", item.Entry, item.Source, item.Path)
 		}
 	}
 	return exitCode(!failed)
@@ -320,22 +337,31 @@ func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) 
 	entries := operands
 	configPath := ""
 	trust := app.ReadPluginTrust(app.ConfigPath())
+	sources := pluginSourceMap(entries, pluginSourceUser)
 	if len(operands) == 0 {
 		config, err := loadConfig()
 		if err != nil {
 			fmt.Fprintf(stderr, "perk-workbench plugin doctor: %v\n", err)
 			return 1
 		}
-		entries = config.Plugins
+		configuredEntries, configuredTrust, err := configuredPluginCommandEntries(config)
+		if err != nil {
+			fmt.Fprintf(stderr, "perk-workbench plugin doctor: %v\n", err)
+			return 1
+		}
+		entries = commandEntryNames(configuredEntries)
 		configPath = app.ConfigPath()
-		trust = config.PluginTrust
+		trust = configuredTrust
+		sources = commandEntrySources(configuredEntries)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	check := func(ctx context.Context, entry, configPath string) pluginReport {
-		return checkPlugin(ctx, entry, configPath, trust)
+		report := checkPlugin(ctx, entry, configPath, trust)
+		report.Source = sources[entry]
+		return report
 	}
 	reports, failed := checkPluginItems(ctx, entries, configPath, check)
 
@@ -349,6 +375,52 @@ func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) 
 		printPluginReport(stdout, report)
 	}
 	return exitCode(!failed)
+}
+
+func configuredPluginCommandEntries(config app.Config) ([]pluginCommandEntry, map[string]string, error) {
+	officialEntries, officialTrust, err := officialPluginEntries(config.DisabledOfficialPlugins)
+	if err != nil {
+		return nil, nil, err
+	}
+	entries := make([]pluginCommandEntry, 0, len(officialEntries)+len(config.Plugins))
+	for _, entry := range officialEntries {
+		entries = append(entries, pluginCommandEntry{entry: entry, source: pluginSourceOfficial})
+	}
+	for _, entry := range config.Plugins {
+		entries = append(entries, pluginCommandEntry{entry: entry, source: pluginSourceUser})
+	}
+	trust := make(map[string]string, len(officialTrust)+len(config.PluginTrust))
+	for entry, digest := range officialTrust {
+		trust[entry] = digest
+	}
+	for entry, digest := range config.PluginTrust {
+		trust[entry] = digest
+	}
+	return entries, trust, nil
+}
+
+func commandEntryNames(entries []pluginCommandEntry) []string {
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.entry)
+	}
+	return names
+}
+
+func commandEntrySources(entries []pluginCommandEntry) map[string]string {
+	sources := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		sources[entry.entry] = entry.source
+	}
+	return sources
+}
+
+func pluginSourceMap(entries []string, source string) map[string]string {
+	sources := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		sources[entry] = source
+	}
+	return sources
 }
 
 // pluginAddResult is the JSON document shape of `plugin add`. It embeds
@@ -578,6 +650,9 @@ func checkPlugin(ctx context.Context, entry, configPath string, trust map[string
 // is shown only when present.
 func printPluginReport(w io.Writer, report pluginReport) {
 	fmt.Fprintf(w, "plugin %s:\n", report.Entry)
+	if report.Source != "" {
+		fmt.Fprintf(w, "  source: %s\n", report.Source)
+	}
 	if report.Path != "" {
 		fmt.Fprintf(w, "  path: %s\n", report.Path)
 	}

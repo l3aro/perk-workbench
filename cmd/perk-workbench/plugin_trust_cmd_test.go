@@ -20,7 +20,7 @@ func writeTrustConfig(t *testing.T, plugins []string, trust map[string]string) s
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := map[string]any{}
+	config := map[string]any{"disabled_official_plugins": []string{"sqlite", "mysql", "postgres", "mongodb"}}
 	if plugins != nil {
 		config["plugins"] = plugins
 	}
@@ -487,10 +487,10 @@ func TestPluginList_reportsTrustState(t *testing.T) {
 	if status != 0 || stderr != "" {
 		t.Fatalf("human list = %d, stderr %q", status, stderr)
 	}
-	if !strings.Contains(stdout, first+" -> "+first+" [pinned sha256:"+digest+"]") {
+	if !strings.Contains(stdout, first+" [user] -> "+first+" [pinned sha256:"+digest+"]") {
 		t.Fatalf("human stdout = %q, want the pinned fingerprint line", stdout)
 	}
-	if !strings.Contains(stdout, second+" -> "+second+" [unpinned]") {
+	if !strings.Contains(stdout, second+" [user] -> "+second+" [unpinned]") {
 		t.Fatalf("human stdout = %q, want the unpinned line", stdout)
 	}
 }
@@ -524,7 +524,10 @@ func TestPluginInspect_trustMatchAndMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	trust := map[string]string{match: digest, drifted: pin}
-	data, err := json.Marshal(map[string]any{"plugin_trust": trust})
+	data, err := json.Marshal(map[string]any{
+		"disabled_official_plugins": []string{"sqlite", "mysql", "postgres", "mongodb"},
+		"plugin_trust":              trust,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,8 +595,9 @@ func TestPluginDoctor_pinnedMismatchFailsItemBeforeSpawn(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, err := json.Marshal(map[string]any{
-		"plugins":      []string{good, drifted},
-		"plugin_trust": map[string]string{drifted: pin},
+		"disabled_official_plugins": []string{"sqlite", "mysql", "postgres", "mongodb"},
+		"plugins":                   []string{good, drifted},
+		"plugin_trust":              map[string]string{drifted: pin},
 	})
 	if err != nil {
 		t.Fatal(err)

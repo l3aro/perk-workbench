@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/l3aro/perk-workbench/internal/database"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 )
 
 // runCLI invokes dispatch with captured stdout/stderr and returns the
@@ -37,9 +39,27 @@ func writeConfig(t *testing.T, plugins []string) string {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := map[string]any{}
+	config := map[string]any{"disabled_official_plugins": []string{"sqlite", "mysql", "postgres", "mongodb"}}
 	if plugins != nil {
 		config["plugins"] = plugins
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return configDir
+}
+
+func writePluginConfig(t *testing.T, config map[string]any) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	configDir := filepath.Join(dir, "perk-workbench")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
 	data, err := json.Marshal(config)
 	if err != nil {
@@ -357,7 +377,10 @@ func TestPluginList_configOrderAndResolution(t *testing.T) {
 	dir := t.TempDir()
 	first := writeExecutableAt(t, filepath.Join(dir, "first-plugin"))
 	second := writeExecutableAt(t, filepath.Join(dir, "second-plugin"))
-	writeConfig(t, []string{first, second})
+	writePluginConfig(t, map[string]any{
+		"disabled_official_plugins": []string{"sqlite", "mysql", "postgres", "mongodb"},
+		"plugins":                   []string{first, second},
+	})
 
 	status, stdout, stderr := runCLI(t, "plugin", "list")
 	if status != 0 || stderr != "" {
@@ -367,29 +390,86 @@ func TestPluginList_configOrderAndResolution(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("stdout = %q, want two lines in config order", stdout)
 	}
-	if lines[0] != first+" -> "+first+" [unpinned]" || lines[1] != second+" -> "+second+" [unpinned]" {
-		t.Fatalf("stdout = %q, want %q and %q", stdout, first+" -> "+first+" [unpinned]", second+" -> "+second+" [unpinned]")
+	wantFirst := first + " [user] -> " + first + " [unpinned]"
+	wantSecond := second + " [user] -> " + second + " [unpinned]"
+	if lines[0] != wantFirst || lines[1] != wantSecond {
+		t.Fatalf("stdout = %q, want %q and %q", stdout, wantFirst, wantSecond)
 	}
 }
 
-func TestPluginList_emptyConfigIsExplicit(t *testing.T) {
+func TestPluginList_defaultOfficialEntries(t *testing.T) {
+	restore := installOfficialManifestFixture(t)
+	defer restore()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // no config.json: defaults materialize
 
 	status, stdout, stderr := runCLI(t, "plugin", "list")
-	if status != 0 || stderr != "" || stdout != "no plugins configured\n" {
+	if status != 0 || stderr != "" {
 		t.Fatalf("list = %d, stdout %q, stderr %q", status, stdout, stderr)
+	}
+	for _, name := range []string{"sqlite", "mysql", "postgres", "mongodb"} {
+		want := filepath.Join(filepath.Dir(testOfficialHostPath(t)), "plugins", "perk-"+name)
+		if !strings.Contains(stdout, want+" [official] -> "+want+" [pinned sha256:") {
+			t.Fatalf("stdout = %q, want official pinned line for %s", stdout, name)
+		}
 	}
 
 	status, stdout, stderr = runCLI(t, "plugin", "list", "--json")
 	if status != 0 || stderr != "" {
 		t.Fatalf("list --json = %d, stderr %q", status, stderr)
 	}
-	var items []map[string]any
+	var items []struct {
+		Entry    string `json:"entry"`
+		Source   string `json:"source"`
+		Path     string `json:"path"`
+		Trust    string `json:"trust"`
+		Expected string `json:"expected_sha256"`
+	}
 	if err := json.Unmarshal([]byte(stdout), &items); err != nil {
 		t.Fatalf("stdout %q is not JSON: %v", stdout, err)
 	}
-	if len(items) != 0 {
-		t.Fatalf("list --json = %v, want an empty array", items)
+	if len(items) != 4 {
+		t.Fatalf("items = %+v, want default four official plugins", items)
+	}
+	for i, name := range []string{"sqlite", "mysql", "postgres", "mongodb"} {
+		wantPath := filepath.Join(filepath.Dir(testOfficialHostPath(t)), "plugins", "perk-"+name)
+		if items[i].Entry != wantPath || items[i].Path != wantPath || items[i].Source != pluginSourceOfficial || items[i].Trust != trustPinned || items[i].Expected == "" {
+			t.Fatalf("items[%d] = %+v, want pinned official %s", i, items[i], wantPath)
+		}
+	}
+}
+
+func TestPluginList_disabledOfficialOmittedAndUserSourcePreserved(t *testing.T) {
+	restore := installOfficialManifestFixture(t)
+	defer restore()
+	user := writeExecutableAt(t, filepath.Join(t.TempDir(), "user-plugin"))
+	writePluginConfig(t, map[string]any{
+		"disabled_official_plugins": []string{"postgres"},
+		"plugins":                   []string{user},
+	})
+
+	status, stdout, stderr := runCLI(t, "plugin", "list", "--json")
+	if status != 0 || stderr != "" {
+		t.Fatalf("list = %d, stderr %q", status, stderr)
+	}
+	var items []struct {
+		Entry  string `json:"entry"`
+		Source string `json:"source"`
+		Trust  string `json:"trust"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &items); err != nil {
+		t.Fatalf("stdout %q is not JSON: %v", stdout, err)
+	}
+	if len(items) != 4 {
+		t.Fatalf("items = %+v, want three official entries plus one user entry", items)
+	}
+	for _, item := range items {
+		if strings.Contains(item.Entry, "perk-postgres") {
+			t.Fatalf("disabled postgres was listed: %+v", items)
+		}
+	}
+	last := items[len(items)-1]
+	if last.Entry != user || last.Source != pluginSourceUser || last.Trust != trustUnpinned {
+		t.Fatalf("last item = %+v, want unpinned user plugin", last)
 	}
 }
 
@@ -525,7 +605,7 @@ func TestPluginList_reportsInvalidEntries(t *testing.T) {
 	if status != 1 || stderr != "" {
 		t.Fatalf("human list = %d, stderr %q, want 1", status, stderr)
 	}
-	if !strings.Contains(stdout, missing+" -> invalid:") || !strings.Contains(stdout, noexec+" -> invalid:") {
+	if !strings.Contains(stdout, missing+" [user] -> invalid:") || !strings.Contains(stdout, noexec+" [user] -> invalid:") {
 		t.Fatalf("human stdout = %q, want per-entry invalid lines", stdout)
 	}
 }
@@ -782,6 +862,58 @@ func TestPluginDoctor_mixedResultsContinueInOrder(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "plugin "+helper+":") || !strings.Contains(stdout, "resolve: FAILED") {
 		t.Fatalf("human stdout = %q, want every item with the resolve failure visible", stdout)
+	}
+}
+
+func TestPluginDoctor_configuredOfficialAndUserSources(t *testing.T) {
+	restore := installOfficialManifestFixture(t)
+	defer restore()
+	installOfficialPluginHelpers(t)
+	user := setupPluginHelper(t, nil)
+	writePluginConfig(t, map[string]any{
+		"disabled_official_plugins": []string{"postgres"},
+		"plugins":                   []string{user},
+	})
+
+	status, stdout, stderr := runCLI(t, "plugin", "doctor", "--json")
+	if status != 0 || stderr != "" {
+		t.Fatalf("doctor = %d, stderr %q", status, stderr)
+	}
+	var reports []pluginReport
+	if err := json.Unmarshal([]byte(stdout), &reports); err != nil {
+		t.Fatalf("stdout %q is not JSON: %v", stdout, err)
+	}
+	if len(reports) != 4 {
+		t.Fatalf("reports = %+v, want three official entries plus one user entry", reports)
+	}
+	for _, report := range reports {
+		if strings.Contains(report.Entry, "perk-postgres") {
+			t.Fatalf("disabled postgres was checked: %+v", reports)
+		}
+		if !report.OK || report.Phase != phaseOK {
+			t.Fatalf("report = %+v, want ok", report)
+		}
+		if report.Source == pluginSourceOfficial {
+			if report.Trust != trustMatch || report.SHA256 == "" || report.Expected == "" || report.SHA256 != report.Expected {
+				t.Fatalf("official report = %+v, want matching verified digest", report)
+			}
+			continue
+		}
+		if report.Entry == user && report.Source == pluginSourceUser && report.Trust == trustUnpinned {
+			continue
+		}
+		t.Fatalf("report = %+v, want official or user source", report)
+	}
+
+	status, stdout, stderr = runCLI(t, "plugin", "doctor")
+	if status != 0 || stderr != "" {
+		t.Fatalf("human doctor = %d, stderr %q", status, stderr)
+	}
+	if !strings.Contains(stdout, "source: official") || !strings.Contains(stdout, "source: user") || !strings.Contains(stdout, "trust: match (sha256 ") {
+		t.Fatalf("human stdout = %q, want source and digest trust lines", stdout)
+	}
+	if strings.Contains(stdout, "perk-postgres") {
+		t.Fatalf("human stdout = %q, disabled postgres must be omitted", stdout)
 	}
 }
 
@@ -1071,6 +1203,33 @@ func writeExecutableAt(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func installOfficialPluginHelpers(t *testing.T) {
+	t.Helper()
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	host := testOfficialHostPath(t)
+	var manifest officialManifest
+	if err := json.Unmarshal(officialManifestData, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	for i := range manifest.Plugins {
+		name := manifest.Plugins[i].Name
+		path := filepath.Join(filepath.Dir(host), "plugins", "perk-"+name)
+		writePluginHelperScriptAt(t, path)
+		digest, err := plugin.SHA256File(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		asset := manifest.Plugins[i].Targets[runtime.GOOS+"/"+runtime.GOARCH]
+		asset.ExecutableSHA256 = &digest
+		manifest.Plugins[i].Targets[runtime.GOOS+"/"+runtime.GOARCH] = asset
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	officialManifestData = data
 }
 
 // TestPluginReport_neverCarriesCredentialMaterial pins the report shape:
