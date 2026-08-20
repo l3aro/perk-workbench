@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -70,5 +71,13 @@ func TestSplitUTF8_keepsIncompleteRunesPending(t *testing.T) {
 	valid, rest = splitUTF8([]byte("abc"))
 	if string(valid) != "abc" || len(rest) != 0 {
 		t.Fatalf("ascii split = %q rest %v", valid, rest)
+	}
+}
+
+func TestDemoCommandArgs_pinsReadOnlySession(t *testing.T) {
+	got := demoCommandArgs("/tmp/chinook.db")
+	want := []string{"--read-only", "--pin", "/tmp/chinook.db"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("demoCommandArgs() = %#v, want %#v", got, want)
 	}
 }

@@ -90,12 +90,16 @@ docker compose down
 
 The `/demo` page streams the real Bubble Tea application into a browser
 terminal (xterm.js) over a WebSocket. Each session spawns the TUI against the
-embedded Chinook SQLite demo database in read-only mode with an isolated
-config directory.
+embedded Chinook SQLite demo database in read-only, pinned mode with an
+isolated config directory. Pinned mode removes every in-app quit affordance;
+the website owns the session lifecycle and stops it when the browser
+connection closes.
 
-Set `PERK_WORKBENCH_BIN` when running outside Docker and the `perk-workbench`
-binary is not on `PATH`:
+The Docker image builds the demo TUI as `v0.10.1` and starts it with both
+`--read-only` and `--pin`.
 
+Set `PERK_WORKBENCH_BIN` to a `v0.10.1` (or newer) `perk-workbench`
+binary when running outside Docker and the binary is not on `PATH`:
 ```bash
 PERK_WORKBENCH_BIN=/path/to/perk-workbench PORT=8080 go run ./cmd/perk-workbench-site
 ```

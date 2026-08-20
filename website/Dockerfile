@@ -11,7 +11,7 @@ WORKDIR /src
 COPY source/go.mod source/go.sum ./
 RUN go mod download
 COPY source/ ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/perk-workbench ./cmd/perk-workbench
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=v0.10.1" -o /out/perk-workbench ./cmd/perk-workbench
 
 FROM golang:1.26.6-alpine AS site-build
 WORKDIR /src

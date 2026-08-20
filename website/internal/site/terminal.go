@@ -60,8 +60,8 @@ func extractDemoDB() (string, error) {
 }
 
 // terminalServer bridges a browser xterm.js session to the real Perk Workbench
-// Bubble Tea application running in a PTY against the demo database in
-// read-only mode. Each WebSocket connection gets its own isolated session.
+// Bubble Tea application running in a read-only, pinned session against the
+// demo database. Each WebSocket connection gets its own isolated session.
 type terminalServer struct {
 	// bin is the perk-workbench binary; empty resolves "perk-workbench" on PATH.
 	bin string
@@ -73,6 +73,10 @@ type terminalServer struct {
 // points at the TUI binary when it is not on PATH.
 func newTerminalServer() *terminalServer {
 	return &terminalServer{bin: os.Getenv("PERK_WORKBENCH_BIN")}
+}
+
+func demoCommandArgs(db string) []string {
+	return []string{"--read-only", "--pin", db}
 }
 
 type terminalMessage struct {
@@ -115,7 +119,7 @@ func (s *terminalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(home)
 
-	cmd := exec.Command(bin, "--read-only", db)
+	cmd := exec.Command(bin, demoCommandArgs(db)...)
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+home,
