@@ -17,7 +17,16 @@
     {{template "navigation" .}}
   </header>
   <main class="site-main mx-auto w-full max-w-[80rem] px-[clamp(1.25rem,5vw,5rem)] pt-12 pb-24 max-md:pt-8" id="main-content">
-    {{block "content" .}}{{end}}
+    {{if .Docs}}
+    <div class="docs-layout">
+      {{template "docs-sidebar" .}}
+      <div class="docs-content">
+        {{block "content" .}}{{end}}
+      </div>
+    </div>
+    {{else}}
+      {{block "content" .}}{{end}}
+    {{end}}
     <footer class="mt-12 border-t border-line py-6 text-muted">
       <span>Perk Workbench</span>
       <span>Terminal-native database exploration</span>

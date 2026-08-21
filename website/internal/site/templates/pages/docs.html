@@ -1,0 +1,29 @@
+{{define "content"}}
+<header>
+  <p class="eyebrow">Documentation</p>
+  <h1 class="mt-2 mb-6 max-w-[12ch] text-[clamp(2.6rem,7vw,5.6rem)]">Perk Workbench docs</h1>
+  <p class="lede">Everything you need to install Perk Workbench, connect to data, work with queries, and extend the terminal-native workspace.</p>
+</header>
+<section class="mt-12 grid gap-4 sm:grid-cols-2" aria-label="Documentation topics">
+  <a class="rounded border border-line bg-panel p-5 no-underline hover:border-accent-strong" href="/docs/getting-started">
+    <h2 class="text-xl text-ink">Getting started</h2>
+    <p class="mt-2 text-muted">Install the CLI and run your first query.</p>
+  </a>
+  <a class="rounded border border-line bg-panel p-5 no-underline hover:border-accent-strong" href="/docs/connections">
+    <h2 class="text-xl text-ink">Connections</h2>
+    <p class="mt-2 text-muted">Connect to SQLite, MySQL, PostgreSQL, or MongoDB.</p>
+  </a>
+  <a class="rounded border border-line bg-panel p-5 no-underline hover:border-accent-strong" href="/docs/workspace">
+    <h2 class="text-xl text-ink">Workspace</h2>
+    <p class="mt-2 text-muted">Navigate schemas, queries, results, and shortcuts.</p>
+  </a>
+  <a class="rounded border border-line bg-panel p-5 no-underline hover:border-accent-strong" href="/docs/ai">
+    <h2 class="text-xl text-ink">AI</h2>
+    <p class="mt-2 text-muted">Use AI assistance without leaving the terminal.</p>
+  </a>
+  <a class="rounded border border-line bg-panel p-5 no-underline hover:border-accent-strong" href="/docs/plugins">
+    <h2 class="text-xl text-ink">Plugins</h2>
+    <p class="mt-2 text-muted">Extend Perk Workbench with the plugin protocol.</p>
+  </a>
+</section>
+{{end}}

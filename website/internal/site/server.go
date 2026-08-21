@@ -77,6 +77,7 @@ func assetFuncs(m assetManifest) template.FuncMap {
 type pageData struct {
 	Title         string
 	Path          string
+	Docs          bool
 	Query         string
 	SearchMessage string
 	Results       []Page
@@ -103,7 +104,7 @@ func New(version string) http.Handler {
 
 	for _, page := range pages {
 		switch page.Path {
-		case "/", "/demo", "/docs/getting-started", "/docs/connections", "/docs/workspace", "/docs/ai", "/docs/plugins":
+		case "/", "/demo", "/docs", "/docs/getting-started", "/docs/connections", "/docs/workspace", "/docs/ai", "/docs/plugins":
 			route(page.Path, page)
 		}
 	}
@@ -172,11 +173,11 @@ func methodAllowed(w http.ResponseWriter, r *http.Request) bool {
 	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 	return false
 }
-
 func renderPage(w http.ResponseWriter, r *http.Request, version string, page Page, assets assetManifest) {
 	t := template.Must(template.New("base").Funcs(assetFuncs(assets)).ParseFS(embedded,
 		"templates/base.html",
 		"templates/partials/navigation.html",
+		"templates/partials/docs-sidebar.html",
 		"templates/partials/search-results.html",
 		"templates/"+page.Template,
 	))
@@ -185,7 +186,7 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 	if r.Method == http.MethodHead {
 		return
 	}
-	if err := t.ExecuteTemplate(w, "base", pageData{Title: page.Title, Path: page.Path, Version: version}); err != nil {
+	if err := t.ExecuteTemplate(w, "base", pageData{Title: page.Title, Path: page.Path, Docs: strings.HasPrefix(page.Path, "/docs"), Version: version}); err != nil {
 		return
 	}
 }
@@ -195,6 +196,7 @@ func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages 
 	data := pageData{
 		Title:   "Search",
 		Path:    "/search",
+		Docs:    true,
 		Query:   q,
 		Version: version,
 	}
@@ -206,10 +208,10 @@ func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages 
 			data.SearchMessage = "No results found"
 		}
 	}
-
 	t := template.Must(template.New("base").Funcs(assetFuncs(assets)).ParseFS(embedded,
 		"templates/base.html",
 		"templates/partials/navigation.html",
+		"templates/partials/docs-sidebar.html",
 		"templates/partials/search-results.html",
 		"templates/pages/search.html",
 	))

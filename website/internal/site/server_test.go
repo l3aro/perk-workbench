@@ -14,13 +14,15 @@ func TestRoutes(t *testing.T) {
 		title string
 	}{
 		{path: "/", title: "Perk Workbench"},
+		{path: "/demo", title: "Live demo"},
+		{path: "/docs", title: "Documentation"},
 		{path: "/docs/getting-started", title: "Getting Started"},
 		{path: "/docs/connections", title: "Connections"},
 		{path: "/docs/workspace", title: "Workspace"},
 		{path: "/docs/ai", title: "AI"},
 		{path: "/docs/plugins", title: "Plugins"},
-	}
 
+	}
 	server := New("test")
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -42,6 +44,39 @@ func TestRoutes(t *testing.T) {
 				t.Errorf("body does not contain aria-current page marker")
 			}
 		})
+	}
+}
+
+func TestDocumentationNavigation(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	req := httptest.NewRequest("GET", "/docs", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, req)
+
+	body := recorder.Body.String()
+	primaryStart := strings.Index(body, `<nav class="docs-nav" aria-label="Primary">`)
+	if primaryStart < 0 {
+		t.Fatal("primary navigation is missing")
+	}
+	primaryEnd := strings.Index(body[primaryStart:], "</nav>")
+	if primaryEnd < 0 {
+		t.Fatal("primary navigation is not closed")
+	}
+	primary := body[primaryStart : primaryStart+primaryEnd]
+	for _, href := range []string{`href="/"`, `href="/demo"`, `href="/docs"`} {
+		if !strings.Contains(primary, href) {
+			t.Errorf("primary navigation does not contain %s", href)
+		}
+	}
+	for _, href := range []string{`href="/docs/getting-started"`, `href="/docs/connections"`, `href="/docs/workspace"`, `href="/docs/ai"`, `href="/docs/plugins"`, `href="/search"`} {
+		if strings.Contains(primary, href) {
+			t.Errorf("primary navigation unexpectedly contains %s", href)
+		}
+	}
+	if !strings.Contains(body, `<aside class="docs-sidebar" aria-label="Documentation sections">`) {
+		t.Fatal("documentation sidebar is missing")
 	}
 }
 
