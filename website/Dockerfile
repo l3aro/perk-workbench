@@ -6,12 +6,14 @@ RUN npm ci
 COPY website/ ./
 RUN npm run build
 
-FROM golang:1.26.6-alpine AS tui-build
-WORKDIR /src
-COPY source/go.mod source/go.sum ./
-RUN go mod download
-COPY source/ ./
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=v0.10.1" -o /out/perk-workbench ./cmd/perk-workbench
+FROM node:22-alpine AS tui-build
+# The demo TUI comes from the official npm release, pinned to 0.9.0.
+# npm installs a JS launcher plus the native binary as a nested optional
+# dependency; only the native binary ships into the final Alpine image.
+RUN npm install -g --prefix /tui perk-workbench@0.9.0 \
+ && find /tui/lib/node_modules/perk-workbench/node_modules \
+      -path '*/bin/perk-workbench' -type f \
+      -exec cp {} /tui/perk-workbench \;
 
 FROM golang:1.26.6-alpine AS site-build
 WORKDIR /src
@@ -25,9 +27,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/perk-workbench-sit
 
 FROM alpine:3.22
 RUN addgroup -S app && adduser -S -G app app
-COPY --from=tui-build /out/perk-workbench /usr/local/bin/perk-workbench
 COPY --from=site-build /out/perk-workbench-site /usr/local/bin/perk-workbench-site
-USER app
+COPY --from=tui-build /tui/perk-workbench /usr/local/bin/perk-workbench
 EXPOSE 8080
 ENV PORT=8080
 ENTRYPOINT ["/usr/local/bin/perk-workbench-site"]
