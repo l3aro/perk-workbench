@@ -105,6 +105,7 @@ type pluginRestartMsg struct {
 	identifier string
 	err        error
 	reconnect  bool
+	pluginID   string
 	target     string
 }
 
@@ -119,26 +120,20 @@ type pluginRestartMsg struct {
 // the old generation normally fails with the expected terminal
 // dead-child error (its client was already closed by the swap); that is
 // never allowed to turn the successful recovery into a failure, while a
-// genuinely relevant close error is logged for diagnostics.
-func (m Model) pluginRestartCmd(identifier string, service sharedsql.Service, target string, reconnect bool) tea.Cmd {
+func (m Model) pluginRestartCmd(identifier, pluginID string, service sharedsql.Service, target string, reconnect bool) tea.Cmd {
 	appCtx := m.appContext
 	control := m.pluginControl
 	secrets := m.connectionSecrets(target)
 	return func() tea.Msg {
 		if err := control.Restart(appCtx, identifier); err != nil {
-			// The message carries the known restart target so the model
-			// goroutine can scrub it from the failure text.
-			return pluginRestartMsg{identifier: identifier, err: err, target: target}
+			return pluginRestartMsg{identifier: identifier, err: err, pluginID: pluginID, target: target}
 		}
 		if reconnect && service != nil {
 			if err := service.Close(); err != nil && !plugin.IsTerminal(err) {
-				// The close error is plugin-provided text: redact and
-				// scrub the target before it reaches the log and the
-				// notification pipeline.
 				log.Error("close superseded plugin session", errors.New(scrubPluginTarget(redactCredentials(err.Error(), secrets), target)))
 			}
 		}
-		return pluginRestartMsg{identifier: identifier, reconnect: reconnect, target: target}
+		return pluginRestartMsg{identifier: identifier, reconnect: reconnect, pluginID: pluginID, target: target}
 	}
 }
 
@@ -307,6 +302,7 @@ func (m Model) updatePluginManager(message tea.Msg) (tea.Model, tea.Cmd) {
 			// the manager and reconnect the same target through the
 			// normal async open path.
 			m.overlay.pluginManager = nil
+			m.connectionPlugin = msg.pluginID
 			m.setStatus("plugin restarted; reconnecting")
 			return m, m.openTarget(msg.target)
 		}
@@ -368,7 +364,7 @@ func (m Model) updatePluginManager(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		manager.busy = true
 		manager.err = ""
-		return m, m.pluginRestartCmd(status.Entry, m.Database, target, reconnect)
+		return m, m.pluginRestartCmd(status.Entry, m.connectionPlugin, m.Database, target, reconnect)
 	}
 
 	keyPress, ok := message.(tea.KeyPressMsg)

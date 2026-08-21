@@ -123,7 +123,7 @@ func openTestSQLite(ctx context.Context, target string) (*testSQLiteService, err
 	return &testSQLiteService{db: db, foreignKeys: make(map[string][]sharedsql.ForeignKeyInfo), indexes: make(map[string][]sharedsql.IndexInfo)}, nil
 }
 
-func openTestDatabase(ctx context.Context, target string) (sharedsql.Opened, error) {
+func openTestDatabase(ctx context.Context, _ string, target string) (sharedsql.Opened, error) {
 	if target != ":memory:" {
 		if _, err := filepath.EvalSymlinks(target); err != nil {
 			return sharedsql.Opened{}, err

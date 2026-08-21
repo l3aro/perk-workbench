@@ -33,7 +33,7 @@ var testRedisLanguage = sharedsql.QueryLanguage{
 // workspace tab label.
 func TestOpen_appliesQueryLanguage(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	model := New("redis:svc", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("redis:svc", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{
 			Service:       &stubService{},
 			Info:          sharedsql.DatabaseInfo{Product: "Redis", Version: "fake"},

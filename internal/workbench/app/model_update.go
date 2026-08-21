@@ -750,6 +750,10 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if message.dir {
 			return m, readDirectory(message.target)
 		}
+		m.connectionPlugin = message.pluginID
+		if m.connectionPlugin == "" {
+			m.connectionPlugin = "sqlite"
+		}
 		m.BeginOpening(message.target, "opening database")
 		// The opening transition surfaces as a Debug log notification
 		// (visible only when log_level allows it), not as a plain status

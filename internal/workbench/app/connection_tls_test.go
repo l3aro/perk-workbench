@@ -14,6 +14,7 @@ func TestConnectionForm_rendersMySQLTLSChoices(t *testing.T) {
 	// Given
 	form := connection.NewForm()
 	form.Values.Driver = driverMySQL
+	form.Values.Plugin = "mysql"
 	form.Rebuild()
 	_ = form.Huh.Init()
 
@@ -31,6 +32,7 @@ func TestConnectionForm_rendersMySQLTLSChoices(t *testing.T) {
 func TestConnectionForm_rendersPostgreSQLTLSChoices(t *testing.T) {
 	form := connection.NewForm()
 	form.Values.Driver = driverPostgreSQL
+	form.Values.Plugin = "postgres"
 	form.Rebuild()
 	_ = form.Huh.Init()
 
@@ -45,6 +47,7 @@ func TestConnectionForm_rendersPostgreSQLTLSChoices(t *testing.T) {
 func TestConnectionForm_defaultsPostgreSQLTLSToDisabled(t *testing.T) {
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "127.0.0.1", "5432"
+	form.Values.Plugin = "postgres"
 
 	target := form.TargetValue()
 	if !strings.Contains(target, "sslmode=disable") {

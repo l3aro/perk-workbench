@@ -18,7 +18,7 @@ func TestOpenRoutesMongoTarget(t *testing.T) {
 		t.Skip("PERK_WORKBENCH_TEST_MONGO_URI not set; skipping live MongoDB routing test")
 	}
 	for _, target := range []string{uri, "mongo:" + uri} {
-		opened, err := Open(context.Background(), target)
+		opened, err := Open(context.Background(), "mongodb", target)
 		if err != nil {
 			t.Fatalf("Open(%q) error = %v", target, err)
 		}
@@ -52,7 +52,7 @@ func TestOpen_sqliteFallbackCarriesSQLQueryLanguage(t *testing.T) {
 	if err := os.WriteFile(target, nil, 0o600); err != nil {
 		t.Fatalf("creating fixture database: %v", err)
 	}
-	opened, err := Open(context.Background(), target)
+	opened, err := Open(context.Background(), "sqlite", target)
 	if err != nil {
 		t.Fatalf("Open(%q) error = %v", target, err)
 	}

@@ -22,6 +22,7 @@ func TestConnectionForm_buildsMySQLDSNFromSeparateFields(t *testing.T) {
 	// Given
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "2001:db8::1", "3307"
+	form.Values.Plugin = "mysql"
 	form.Values.User, form.Values.Pass, form.Values.Target = "alice", "secret", "app"
 
 	// When
@@ -43,6 +44,7 @@ func TestConnectionForm_buildsMySQLDSNWithSelectedTLSMode(t *testing.T) {
 	// Given
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.Plugin = "mysql"
 	form.Values.User, form.Values.MySQLTLS = "root", mysqlTLSSkipVerify
 
 	// When
@@ -60,6 +62,7 @@ func TestConnectionForm_buildsMySQLDSNWithSelectedTLSMode(t *testing.T) {
 func TestConnectionForm_buildsPostgreSQLDSNWithSelectedTLSMode(t *testing.T) {
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "127.0.0.1", "5432"
+	form.Values.Plugin = "postgres"
 	form.Values.User, form.Values.Target, form.Values.PostgreSQLTLS = "alice", "app", postgresTLSEncrypt
 
 	target, err := url.Parse(form.TargetValue())
@@ -82,6 +85,7 @@ func TestConnectionForm_blankHostAndPortUseDefaults(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			form := connection.NewForm()
 			form.Values.Driver = test.driver
+			form.Values.Plugin = string(test.driver)
 			form.Values.User = "alice"
 
 			if err := form.Validate(); err != nil {
@@ -121,6 +125,7 @@ func TestConnectionForm_rendersDriverSpecificRequiredFields(t *testing.T) {
 			// Given
 			form := connection.NewForm()
 			form.Values.Driver = test.driver
+			form.Values.Plugin = string(test.driver)
 			form.Rebuild()
 			_ = form.Huh.Init()
 
@@ -153,6 +158,7 @@ func TestConnectionForm_validatesRequiredDriverFields(t *testing.T) {
 			// Given
 			form := connection.NewForm()
 			form.Values.Driver = test.driver
+			form.Values.Plugin = string(test.driver)
 			if test.set != nil {
 				test.set(form.Values)
 			}
@@ -455,6 +461,7 @@ func TestConnectionForm_rejectsInvalidConnectionWithoutClearingValues(t *testing
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Form.Focus = connectionFocusForm
 	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Host = driverMySQL, ""
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User, model.connection.component.Form.Values.Target = "not-a-port", "alice", "app"
 
 	// When
@@ -515,11 +522,12 @@ func TestConnectionForm_opensSQLiteConnection(t *testing.T) {
 func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 	// Given
 	var openedTarget string
-	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, target string) (sharedsql.Opened, error) {
 		openedTarget = target
 		return sharedsql.Opened{}, nil
 	}, false)
 	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Host = driverMySQL, "localhost"
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.Target = "3306", "app"
 	model.connection.component.Form.Values.User = "alice"
 
@@ -539,6 +547,7 @@ func TestConnectionForm_opensMySQLConnection(t *testing.T) {
 func TestConnectionForm_buildsPostgreSQLURLFromSeparateFields(t *testing.T) {
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "2001:db8::1", "5433"
+	form.Values.Plugin = "postgres"
 	form.Values.User, form.Values.Pass, form.Values.Target = "alice", "secret", "app data"
 
 	target, err := url.Parse(form.TargetValue())
@@ -553,11 +562,12 @@ func TestConnectionForm_buildsPostgreSQLURLFromSeparateFields(t *testing.T) {
 
 func TestConnectionForm_opensPostgreSQLConnection(t *testing.T) {
 	var openedTarget string
-	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, target string) (sharedsql.Opened, error) {
 		openedTarget = target
 		return sharedsql.Opened{}, nil
 	}, false)
 	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Host = driverPostgreSQL, "localhost"
+	model.connection.component.Form.Values.Plugin = "postgres"
 	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.Target = "5432", "app"
 	model.connection.component.Form.Values.User = "alice"
 
@@ -578,6 +588,7 @@ func TestConnectionForm_recordsRemoteConnectionProfile(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Profiles = nil
 	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Target = driverMySQL, "app"
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User = "db.example.test", "3307", "alice"
 	model.connection.component.Form.Values.Pass = "secret"
 	model.connection.component.Form.Values.MySQLTLS = mysqlTLSSkipVerify
@@ -643,6 +654,7 @@ func TestConnectionForm_f5AllowsBlankMySQLDatabase(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Form.Focus = connectionFocusForm
 	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User = "localhost", "3306", "alice"
 	_ = model.connection.component.Form.Rebuild()
 
@@ -661,6 +673,7 @@ func TestConnectionForm_f5AllowsBlankPostgreSQLDatabase(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Form.Focus = connectionFocusForm
 	model.connection.component.Form.Values.Driver = driverPostgreSQL
+	model.connection.component.Form.Values.Plugin = "postgres"
 	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User = "localhost", "5432", "alice"
 	_ = model.connection.component.Form.Rebuild()
 
@@ -714,6 +727,7 @@ func TestConnectionForm_resolvesEnvVarPassword(t *testing.T) {
 	t.Setenv("PERK_TEST_DB_PASS", "resolved-secret")
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.Plugin = "mysql"
 	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "${PERK_TEST_DB_PASS}", "app"
 	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
@@ -732,6 +746,7 @@ func TestConnectionForm_resolvesFilePassword(t *testing.T) {
 	}
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.Plugin = "mysql"
 	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "file://"+passFile, "app"
 	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
@@ -746,6 +761,7 @@ func TestConnectionForm_resolvesPostgresEnvVarPassword(t *testing.T) {
 	t.Setenv("PG_PASS", "pg-resolved")
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverPostgreSQL, "db.example.test", "5432"
+	form.Values.Plugin = "postgres"
 	form.Values.User, form.Values.Pass, form.Values.Target = "analyst", "${PG_PASS}", "analytics"
 	target := form.TargetValue()
 	if !strings.Contains(target, "pg-resolved") {
@@ -759,6 +775,7 @@ func TestConnectionForm_resolvesPostgresEnvVarPassword(t *testing.T) {
 func TestConnectionForm_doesNotResolveLiteralPassword(t *testing.T) {
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.Plugin = "mysql"
 	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "literal-secret", "app"
 	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {
@@ -772,6 +789,7 @@ func TestConnectionForm_doesNotResolveLiteralPassword(t *testing.T) {
 func TestConnectionForm_resolvesMissingEnvVarToEmpty(t *testing.T) {
 	form := connection.NewForm()
 	form.Values.Driver, form.Values.Host, form.Values.Port = driverMySQL, "127.0.0.1", "3306"
+	form.Values.Plugin = "mysql"
 	form.Values.User, form.Values.Pass, form.Values.Target = "admin", "${MISSING_VAR}", "app"
 	dsn, err := mysql.ParseDSN(form.TargetValue())
 	if err != nil {

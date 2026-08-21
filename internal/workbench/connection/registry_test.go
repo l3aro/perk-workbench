@@ -12,23 +12,31 @@ import (
 )
 
 type connectionTestShim struct {
-	caps  database.Capabilities
-	build func(database.FormValues) (string, bool)
+	caps    database.Capabilities
+	build   func(database.FormValues) (string, bool)
+	product string
 }
 
 func (s connectionTestShim) Capabilities() database.Capabilities { return s.caps }
 func (s connectionTestShim) BuildTarget(values database.FormValues) (string, bool) {
 	return s.build(values)
 }
-func (connectionTestShim) Open(context.Context, string) (sharedsql.Service, error) {
-	return &connectionTestService{}, nil
+func (s connectionTestShim) Open(context.Context, string) (sharedsql.Service, error) {
+	return &connectionTestService{product: s.product}, nil
 }
 
-type connectionTestService struct{ sharedsql.Service }
+type connectionTestService struct {
+	sharedsql.Service
+	product string
+}
 
 func (*connectionTestService) Close() error { return nil }
-func (*connectionTestService) Info() sharedsql.DatabaseInfo {
-	return sharedsql.DatabaseInfo{Product: "test", Version: "test"}
+func (s *connectionTestService) Info() sharedsql.DatabaseInfo {
+	product := s.product
+	if product == "" {
+		product = "test"
+	}
+	return sharedsql.DatabaseInfo{Product: product, Version: "test"}
 }
 func (*connectionTestService) ListSchema(context.Context) ([]sharedsql.SchemaObject, error) {
 	return nil, nil

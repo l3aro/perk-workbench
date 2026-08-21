@@ -20,11 +20,16 @@ type shim struct {
 	client atomic.Pointer[Client]
 	caps   database.Capabilities
 	loader *Loader
+	source string
 }
 
+// PluginSource lets the database registry retain loader metadata for
+// presentation. It does not change the child-process boundary.
+func (s *shim) PluginSource() string { return s.source }
+
 // newShim builds a shim bound to client.
-func newShim(client *Client, caps database.Capabilities, loader *Loader) *shim {
-	s := &shim{caps: caps, loader: loader}
+func newShim(client *Client, caps database.Capabilities, loader *Loader, source string) *shim {
+	s := &shim{caps: caps, loader: loader, source: source}
 	s.client.Store(client)
 	return s
 }

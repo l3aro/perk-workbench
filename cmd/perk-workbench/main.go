@@ -270,26 +270,7 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	if selectMode {
-		// CLI-selected connection; --pin (if given) locks the session so
-		// the embedding host (e.g. a demo website over xterm.js) owns the
-		// session lifecycle.
-		selected, err := selectConnection(stderr)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		if selected == "" {
-			// The user cancelled the picker; nothing ran.
-			return 0
-		}
-		if err := run(selected, readOnly, pin); err != nil {
-			fmt.Fprintln(stderr, err)
-			return 1
-		}
-		return 0
-	}
-	if target == "" {
+	if target == "" && !selectMode {
 		// .env in the working directory is a fallback for unset variables;
 		// real environment variables take precedence and a CLI target
 		// overrides everything.
@@ -297,7 +278,7 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 			target = envTarget
 		}
 	}
-	if err := run(target, readOnly, pin); err != nil {
+	if err := run(target, selectMode, "", readOnly, pin, stderr); err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
@@ -308,7 +289,11 @@ func main() {
 	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(target string, readOnly, noQuit bool) error {
+// run starts the TUI host. selectFromProfiles resolves the connection from
+// the saved-profile picker after the configured plugins are loaded, so a
+// uniquely served legacy profile can be resolved (and persisted) against the
+// live registry; ambiguous legacy records are never offered and never opened.
+func run(target string, selectFromProfiles bool, selectedPlugin string, readOnly, noQuit bool, feedback io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -333,7 +318,25 @@ func run(target string, readOnly, noQuit bool) error {
 	app.SetAppConfig(config)
 
 	loader := loadPlugins(ctx, config, database.RegisterShim)
-
+	pluginID := selectedPlugin
+	switch {
+	case selectFromProfiles:
+		selected, err := selectConnection(feedback)
+		if err != nil {
+			return errors.Join(err, loader.Close())
+		}
+		if selected.Target == "" {
+			// The user aborted the picker; nothing ran.
+			return loader.Close()
+		}
+		target, pluginID = selected.Target, selected.Plugin
+	case target != "":
+		var err error
+		pluginID, err = database.ResolvePlugin(target)
+		if err != nil {
+			return errors.Join(err, loader.Close())
+		}
+	}
 	client, history, err := loadAI()
 	if err != nil {
 		return errors.Join(err, loader.Close())
@@ -341,6 +344,7 @@ func run(target string, readOnly, noQuit bool) error {
 
 	model := app.New(target, ctx, database.Open, readOnly)
 	model.SetKeybindings(keybindings)
+	model.SetPluginID(pluginID)
 	if noQuit {
 		model.SetNoQuit(true)
 	}

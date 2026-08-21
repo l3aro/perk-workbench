@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
+	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/browse"
@@ -62,10 +63,9 @@ type Model struct {
 	openTag          uint64
 	connectionID     string
 	// connectionTarget is the full opener target (driver prefix intact)
-	// of the current connection, captured at open time; the workflow's
-	// Target holds the stripped target once opened. It is what a plugin
-	// restart reconnects after recovering the child.
+	// of the current connection, captured at open time.
 	connectionTarget string
+	connectionPlugin string
 	databaseInfo     sharedsql.DatabaseInfo
 	queryLanguage    sharedsql.QueryLanguage
 	keybindings      Keybindings
@@ -301,8 +301,7 @@ type contextMenuModel struct {
 }
 
 type databaseOpenedMsg struct {
-	// requested is the full opener target (driver prefix intact) that
-	// produced this open; the workflow keeps only the stripped target.
+	pluginID      string
 	requested     string
 	target        string
 	service       sharedsql.Service
@@ -310,7 +309,7 @@ type databaseOpenedMsg struct {
 	objects       []sharedsql.SchemaObject
 	queryLanguage sharedsql.QueryLanguage
 	workspace     *sharedsql.WorkspaceCapability
-	reconnect     bool // sidebar database switch: no new connection profile
+	reconnect     bool
 	openTag       uint64
 	err           error
 }
@@ -322,12 +321,13 @@ type directoryReadMsg struct {
 }
 
 type pickerSelectionMsg struct {
-	target string
-	dir    bool
-	err    error
+	pluginID string
+	target   string
+	dir      bool
+	err      error
 }
 
-type OpenDatabase func(context.Context, string) (sharedsql.Opened, error)
+type OpenDatabase func(context.Context, string, string) (sharedsql.Opened, error)
 
 func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly bool) Model {
 	model := Model{
@@ -377,21 +377,29 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	model.notifications.path, _ = notificationPath()
 	model.connection.component.Path, _ = profile.Path()
 	model.configPath = ConfigPath()
-	var migrated bool
+	model.connectionPlugin = model.connection.component.Form.Values.Plugin
+	if target != "" {
+		if pluginID, err := database.ResolvePlugin(target); err == nil {
+			model.connectionPlugin = pluginID
+			model.connection.component.Form.SelectPlugin(pluginID)
+		}
+	}
 	profiles, migrated, secretFail := profile.Load(model.connection.component.Path)
+	for index := range profiles {
+		if profiles[index].Plugin != "" {
+			continue
+		}
+		candidates := database.PluginsByDriver(string(profiles[index].Driver))
+		if len(candidates) == 1 {
+			profiles[index].Plugin = candidates[0].PluginID
+			migrated = true
+		}
+	}
 	model.connection.component.SetProfiles(profiles)
 	if migrated && !secretFail {
-		// Best-effort: persist the assigned legacy profile IDs immediately.
-		// Skipped when a stored secret could not be decrypted: Save
-		// refuses to rewrite undecryptable blobs (fail closed, never
-		// destructive), so nothing is persisted until the user re-enters
-		// the affected password.
 		model.connection.component.Save()
 	}
 	if secretFail {
-		// Surface the load failure state: the affected profile's stored
-		// password could not be decrypted and will not be rewritten
-		// until the user re-enters it.
 		model.setStatus("a saved profile's password could not be decrypted; re-enter it to save")
 	}
 	// Route every logged event into the notification popup pipeline.
@@ -400,7 +408,6 @@ func New(target string, ctx context.Context, openDatabase OpenDatabase, readOnly
 	schema.SetNerdFont(appConfig.NerdFont == nil || *appConfig.NerdFont)
 	return model
 }
-
 func (m Model) openTarget(target string) tea.Cmd { return m.openTargetWith(target, false) }
 
 // reopenTarget mirrors openTarget for sidebar database switching: the open
@@ -409,12 +416,14 @@ func (m Model) reopenTarget(target string) tea.Cmd { return m.openTargetWith(tar
 
 func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 	tag := m.openTag
+	pluginID := m.connectionPlugin
 	return func() tea.Msg {
-		opened, err := m.openDatabase(m.appContext, target)
+		opened, err := m.openDatabase(m.appContext, pluginID, target)
 		if err != nil {
-			return databaseOpenedMsg{requested: target, err: err, reconnect: reconnect, openTag: tag}
+			return databaseOpenedMsg{pluginID: pluginID, requested: target, err: err, reconnect: reconnect, openTag: tag}
 		}
 		return databaseOpenedMsg{
+			pluginID:      pluginID,
 			requested:     target,
 			target:        opened.Target,
 			service:       opened.Service,
@@ -426,6 +435,15 @@ func (m Model) openTargetWith(target string, reconnect bool) tea.Cmd {
 			openTag:       tag,
 		}
 	}
+}
+
+// SetPluginID selects the plugin used by the initial direct-target open.
+func (m *Model) SetPluginID(pluginID string) {
+	if pluginID == "" {
+		return
+	}
+	m.connectionPlugin = pluginID
+	_ = m.connection.component.Form.SelectPlugin(pluginID)
 }
 
 // reconnectDatabase switches a PostgreSQL session to another database on

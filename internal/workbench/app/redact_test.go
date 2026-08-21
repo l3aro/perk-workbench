@@ -19,7 +19,7 @@ import (
 // credentialOpen returns an OpenDatabase whose errors echo the target,
 // the worst case a plugin or driver error could produce.
 func credentialOpen(target string) OpenDatabase {
-	return func(_ context.Context, opened string) (sharedsql.Opened, error) {
+	return func(_ context.Context, _ string, opened string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{}, fmt.Errorf("connect refused: %s", opened)
 	}
 }
@@ -143,6 +143,7 @@ func TestOpenFailure_redactsCredentialsAcrossSurfaces(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), credentialOpen(""), false)
 	model.connection.component.Form.Values.Driver = driverPostgreSQL
+	model.connection.component.Form.Values.Plugin = "postgres"
 	model.connection.component.Form.Values.Name = "Prod"
 	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port = "db.example.test", "5432"
 	model.connection.component.Form.Values.User, model.connection.component.Form.Values.Pass = "alice", "secret-pw-9"
@@ -232,6 +233,7 @@ func TestConnectionTestFailure_redactsErrorBeforeLog(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), credentialOpen(""), false)
 	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Name = "Prod"
 	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port = "db.example.test", "3306"
 	model.connection.component.Form.Values.User, model.connection.component.Form.Values.Pass = "alice", "secret-pw-9"

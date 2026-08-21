@@ -22,9 +22,10 @@ import (
 // requests actions.
 type Event interface{ isEvent() }
 
-// OpenRequested asks the root to open the given target with the current
-// form profile. Reconnect is reserved for sidebar database switches.
+// OpenRequested asks the root to open the given target with the selected
+// plugin and current form profile. Reconnect is reserved for sidebar switches.
 type OpenRequested struct {
+	Plugin    string
 	Target    string
 	Profile   profile.Profile
 	Reconnect bool
@@ -32,8 +33,11 @@ type OpenRequested struct {
 
 func (OpenRequested) isEvent() {}
 
-// TestRequested asks the root to test-connect the given target.
-type TestRequested struct{ Target string }
+// TestRequested asks the root to test-connect the given target through plugin.
+type TestRequested struct {
+	Plugin string
+	Target string
+}
 
 func (TestRequested) isEvent() {}
 
@@ -61,14 +65,11 @@ type Form struct {
 	extras map[string]*string
 }
 
-// FormValues holds the editable form fields. ID is the opaque profile
-// scope: never displayed or user-edited. Extras carries driver-specific
-// fields beyond the fixed set, persisted in the profile.
-// Undecryptable mirrors profile.Profile.Undecryptable through an edit
-// round-trip: a field still holding its retained undecryptable blob is
-// refused by Save until the user re-enters it.
+// FormValues holds the editable connection fields. Plugin is the selected
+// plugin instance; Driver remains its non-unique database family.
 type FormValues struct {
 	ID            string
+	Plugin        string
 	Driver        Driver
 	Name, Target  string
 	Host, Port    string
@@ -81,11 +82,38 @@ type FormValues struct {
 	Undecryptable map[string]string
 }
 
-// NewForm builds a fresh connection form with the disabled TLS defaults.
+// NewForm builds a fresh connection form with the disabled TLS defaults and
+// the first registered plugin selected.
 func NewForm() Form {
-	form := Form{Values: &FormValues{MySQLTLS: MySQLTLSDisabled, PostgreSQLTLS: PostgreSQLTLSDisabled, Action: ActionTest}, Width: 80}
+	values := &FormValues{
+		MySQLTLS:      MySQLTLSDisabled,
+		PostgreSQLTLS: PostgreSQLTLSDisabled,
+		Action:        ActionTest,
+	}
+	if plugins := database.FormPlugins(); len(plugins) > 0 {
+		values.Plugin = plugins[0].PluginID
+		values.Driver = Driver(plugins[0].Driver)
+	}
+	form := Form{Values: values, Width: 80}
 	_ = form.Rebuild()
 	return form
+}
+func (f Form) selectedSpec() (database.Spec, bool) {
+	if pluginID := strings.TrimSpace(f.Values.Plugin); pluginID != "" {
+		spec, ok := database.ByPlugin(pluginID)
+		if !ok {
+			return database.Spec{}, false
+		}
+		if driver := strings.TrimSpace(string(f.Values.Driver)); driver != "" && spec.Driver != driver {
+			return database.Spec{}, false
+		}
+		return spec, true
+	}
+	candidates := database.PluginsByDriver(string(f.Values.Driver))
+	if len(candidates) == 1 {
+		return candidates[0], true
+	}
+	return database.Spec{}, false
 }
 
 // SetFocus switches the pane focus; leaving the form blurs its field.
@@ -98,10 +126,10 @@ func (f *Form) SetFocus(index int) tea.Cmd {
 }
 
 // FieldTitles lists the rendered titles of every connection form field in
-// render order; the layout follows the selected driver's spec.
+// render order; the layout follows the selected plugin's spec.
 func (f Form) FieldTitles() []string {
-	titles := []string{"Driver", "Name"}
-	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+	titles := []string{"Plugin", "Name"}
+	if spec, ok := f.selectedSpec(); ok && spec.Form != nil {
 		for _, field := range spec.Form.Fields {
 			titles = append(titles, field.Title)
 		}
@@ -113,8 +141,8 @@ func (f Form) FieldTitles() []string {
 }
 
 func (f Form) fieldKeys() []string {
-	keys := []string{"driver", "name"}
-	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+	keys := []string{"plugin", "name"}
+	if spec, ok := f.selectedSpec(); ok && spec.Form != nil {
 		for _, field := range spec.Form.Fields {
 			keys = append(keys, field.Key)
 		}
@@ -149,14 +177,14 @@ func (f *Form) FocusField(field int) tea.Cmd {
 	return nil
 }
 
-// Rebuild rebuilds the huh form for the current driver's spec layout.
+// Rebuild rebuilds the huh form for the current plugin's spec layout.
 func (f *Form) Rebuild() tea.Cmd {
 	f.extras = map[string]*string{}
 	fields := []huh.Field{
-		f.driverSelect(),
+		f.pluginSelect(),
 		uikit.NewEditableInput(huh.NewInput().Key("name").Title("Name").Placeholder("Local database").Value(&f.Values.Name), &f.Values.Name),
 	}
-	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+	if spec, ok := f.selectedSpec(); ok && spec.Form != nil {
 		for _, field := range spec.Form.Fields {
 			fields = append(fields, f.buildField(field))
 		}
@@ -175,14 +203,18 @@ func (f *Form) Rebuild() tea.Cmd {
 	return f.Huh.Init()
 }
 
-// driverSelect builds the Driver select from the registered form drivers.
-func (f *Form) driverSelect() huh.Field {
-	drivers := database.FormDrivers()
-	options := make([]huh.Option[Driver], len(drivers))
-	for i, spec := range drivers {
-		options[i] = huh.NewOption(spec.Display, Driver(spec.Name))
+// pluginSelect lists plugin instances rather than database families.
+func (f *Form) pluginSelect() huh.Field {
+	plugins := database.FormPlugins()
+	options := make([]huh.Option[string], len(plugins))
+	for i, spec := range plugins {
+		suffix := spec.PluginID
+		if spec.Source == "builtin" {
+			suffix = "Built-in"
+		}
+		options[i] = huh.NewOption(spec.Display+" · "+suffix, spec.PluginID)
 	}
-	return huh.NewSelect[Driver]().Key("driver").Title("Driver").Options(options...).Value(&f.Values.Driver)
+	return huh.NewSelect[string]().Key("plugin").Title("Plugin").Options(options...).Value(&f.Values.Plugin)
 }
 
 // buildField maps one spec field to its huh widget. Fields outside the
@@ -274,11 +306,12 @@ func (f *Form) UpdateHuh(message tea.Msg) (tea.Cmd, Event) {
 		return nil, nil
 	}
 	driver := f.Values.Driver
+	pluginID := f.Values.Plugin
 	model, command := f.Huh.Update(message)
 	f.Huh = model.(*huh.Form)
 	f.flushExtras()
-	if f.Values.Driver != driver {
-		return f.SelectDriver(f.Values.Driver), nil
+	if f.Values.Plugin != pluginID || f.Values.Driver != driver {
+		return f.SelectPlugin(f.Values.Plugin), nil
 	}
 	if f.Huh.State != huh.StateCompleted {
 		return command, nil
@@ -287,25 +320,30 @@ func (f *Form) UpdateHuh(message tea.Msg) (tea.Cmd, Event) {
 	rebuild := f.Rebuild()
 	switch action {
 	case ActionTest:
-		return rebuild, TestRequested{Target: f.ConnectionTarget()}
+		return rebuild, TestRequested{Target: f.ConnectionTarget(), Plugin: f.Values.Plugin}
 	case ActionConnect:
-		return rebuild, OpenRequested{Target: f.ConnectionTarget(), Profile: f.Profile()}
+		return rebuild, OpenRequested{Target: f.ConnectionTarget(), Plugin: f.Values.Plugin, Profile: f.Profile()}
 	}
 	return rebuild, nil
 }
 
-// SelectDriver applies a driver change: a port holding another driver's
-// well-known default follows the new driver's default, then the form
-// rebuilds for the new driver's layout.
-func (f *Form) SelectDriver(driver Driver) tea.Cmd {
-	f.Values.Driver = driver
+// SelectPlugin applies a plugin change and rebuilds the form for its family.
+func (f *Form) SelectPlugin(pluginID string) tea.Cmd {
+	spec, ok := database.ByPlugin(pluginID)
+	if !ok {
+		f.Values.Plugin = ""
+		f.Values.Driver = ""
+		return f.Rebuild()
+	}
+	f.Values.Plugin = spec.PluginID
+	f.Values.Driver = Driver(spec.Driver)
 	newDefault := f.defaultPort()
 	if newDefault != "" {
-		for _, spec := range database.FormDrivers() {
-			if spec.Name == string(driver) {
+		for _, other := range database.FormPlugins() {
+			if other.PluginID == pluginID {
 				continue
 			}
-			if other := portDefault(spec); other != "" && f.Values.Port == other {
+			if port := portDefault(other); port != "" && f.Values.Port == port {
 				f.Values.Port = newDefault
 				break
 			}
@@ -328,19 +366,22 @@ func portDefault(spec database.Spec) string {
 	return ""
 }
 
-// selectLabels lists the option labels of the Driver or TLS select in
-// render order, from the driver specs.
+// selectLabels lists option labels for the Plugin or TLS select.
 func (f Form) selectLabels(key string) []string {
 	switch key {
-	case "driver":
-		drivers := database.FormDrivers()
-		labels := make([]string, len(drivers))
-		for i, spec := range drivers {
-			labels[i] = spec.Display
+	case "plugin":
+		plugins := database.FormPlugins()
+		labels := make([]string, len(plugins))
+		for i, spec := range plugins {
+			suffix := spec.PluginID
+			if spec.Source == "builtin" {
+				suffix = "Built-in"
+			}
+			labels[i] = spec.Display + " · " + suffix
 		}
 		return labels
 	case "tls":
-		if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+		if spec, ok := f.selectedSpec(); ok && spec.Form != nil {
 			for _, field := range spec.Form.Fields {
 				if field.Key == "tls" {
 					labels := make([]string, len(field.Options))
@@ -356,7 +397,7 @@ func (f Form) selectLabels(key string) []string {
 }
 
 // SelectOptionAt maps a click on the rendered form view to an option row
-// of the Driver or TLS select. It returns the field key and option index,
+// of the Plugin or TLS select. It returns the field key and option index,
 // or ("", -1) when the click misses every option row. Huh's select fields
 // do not handle mouse clicks, so the app picks the option itself: option
 // rows render below the select's title line, long option keys are
@@ -384,7 +425,7 @@ func (f Form) SelectOptionAt(view string, viewLine int) (string, int) {
 		if key == "" {
 			continue
 		}
-		if key != "driver" && key != "tls" {
+		if key != "plugin" && key != "tls" {
 			break // a different field owns this line
 		}
 		for option, label := range f.selectLabels(key) {
@@ -415,20 +456,16 @@ func selectLineIsOption(line, label string, width int) bool {
 	return false
 }
 
-// ApplySelectOption sets the clicked select's value and rebuilds the form
-// so the selection highlight follows (huh renders the cursor from its own
-// state). A TLS click restores focus to the TLS field; the driver rebuild
-// resets focus to the first field, matching the keyboard path.
 func (f *Form) ApplySelectOption(field string, option int) tea.Cmd {
 	switch field {
-	case "driver":
-		drivers := database.FormDrivers()
-		if option < 0 || option >= len(drivers) {
+	case "plugin":
+		plugins := database.FormPlugins()
+		if option < 0 || option >= len(plugins) {
 			return nil
 		}
-		return f.SelectDriver(Driver(drivers[option].Name))
+		return f.SelectPlugin(plugins[option].PluginID)
 	case "tls":
-		spec, ok := database.ByName(string(f.Values.Driver))
+		spec, ok := f.selectedSpec()
 		if !ok || spec.Form == nil {
 			return nil
 		}
@@ -440,9 +477,10 @@ func (f *Form) ApplySelectOption(field string, option int) tea.Cmd {
 				return nil
 			}
 			value := specField.Options[option].Value
-			if f.Values.Driver == DriverMySQL {
+			switch spec.Driver {
+			case string(profile.DriverMySQL):
 				f.Values.MySQLTLS = MySQLTLS(value)
-			} else {
+			case string(profile.DriverPostgreSQL):
 				f.Values.PostgreSQLTLS = PostgreSQLTLS(value)
 			}
 			break
@@ -515,10 +553,16 @@ func (f *Form) SetHeight(height int) {
 	}
 }
 
-// DriverName returns the display label of the selected driver.
+// DriverName returns the display label of the selected plugin's family.
 func (f Form) DriverName() string {
-	if spec, ok := database.ByName(string(f.Values.Driver)); ok {
+	if spec, ok := f.selectedSpec(); ok {
 		return spec.Display
+	}
+	if driver := strings.TrimSpace(string(f.Values.Driver)); driver != "" {
+		if specs := database.PluginsByDriver(driver); len(specs) > 0 {
+			return specs[0].Display
+		}
+		return driver
 	}
 	return "SQLite"
 }
@@ -532,9 +576,9 @@ func (f Form) HostValue() string {
 	return "localhost"
 }
 
-// defaultPort returns the well-known port for the selected driver.
+// defaultPort returns the well-known port for the selected plugin.
 func (f Form) defaultPort() string {
-	if spec, ok := database.ByName(string(f.Values.Driver)); ok {
+	if spec, ok := f.selectedSpec(); ok {
 		return portDefault(spec)
 	}
 	return ""
@@ -552,10 +596,14 @@ func (f Form) PortValue() string {
 
 // tlsValue returns the selected TLS mode as the wire string.
 func (f Form) tlsValue() string {
-	switch f.Values.Driver {
-	case DriverMySQL:
+	spec, ok := f.selectedSpec()
+	if !ok {
+		return ""
+	}
+	switch spec.Driver {
+	case string(profile.DriverMySQL):
 		return string(f.Values.MySQLTLS)
-	case DriverPostgreSQL:
+	case string(profile.DriverPostgreSQL):
 		return string(f.Values.PostgreSQLTLS)
 	}
 	return ""
@@ -581,12 +629,10 @@ func (f Form) fieldValue(key string) string {
 	}
 }
 
-// TargetValue builds the driver-specific opener target from the form
-// values, resolving secret references. The driver's registered target
-// builder serializes the values; unknown drivers fall back to the raw
-// target field.
+// TargetValue builds the selected plugin's opener target body from the form
+// values, resolving secret references.
 func (f Form) TargetValue() string {
-	spec, ok := database.ByName(string(f.Values.Driver))
+	spec, ok := f.selectedSpec()
 	if !ok || spec.Form == nil {
 		return strings.TrimSpace(f.Values.Target)
 	}
@@ -655,11 +701,16 @@ func hasPasswordField(fields []database.FormField) bool {
 	return false
 }
 
-// Validate checks the required fields for the selected driver, per its
-// spec's validation rules.
+// Validate checks the selected plugin's advertised field rules.
 func (f Form) Validate() error {
-	spec, ok := database.ByName(string(f.Values.Driver))
-	if !ok || spec.Form == nil {
+	if strings.TrimSpace(f.Values.Plugin) == "" && len(database.PluginsByDriver(string(f.Values.Driver))) != 1 {
+		return errors.New("select a plugin")
+	}
+	spec, ok := f.selectedSpec()
+	if !ok {
+		return errors.New("select a plugin")
+	}
+	if spec.Form == nil {
 		return nil
 	}
 	for _, field := range spec.Form.Fields {
@@ -682,10 +733,10 @@ func (f Form) ConnectionName() string {
 }
 
 // ConnectionTarget returns the full opener target for the current values:
-// server drivers gain their URL scheme prefix.
+// the selected plugin's form prefix remains intact for explicit routing.
 func (f Form) ConnectionTarget() string {
 	target := f.TargetValue()
-	if spec, ok := database.ByName(string(f.Values.Driver)); ok && spec.Form != nil {
+	if spec, ok := f.selectedSpec(); ok && spec.Form != nil {
 		return spec.Form.Prefix + target
 	}
 	return target
@@ -695,6 +746,7 @@ func (f Form) ConnectionTarget() string {
 // without an identity (record assigns one).
 func (f Form) Profile() profile.Profile {
 	p := profile.Profile{
+		Plugin:   f.Values.Plugin,
 		Driver:   f.Values.Driver,
 		Name:     f.ConnectionName(),
 		Target:   strings.TrimSpace(f.Values.Target),

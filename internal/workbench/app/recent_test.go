@@ -11,6 +11,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/database"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
@@ -20,6 +22,7 @@ func TestConnectionProfiles_persistUnnamedSQLiteTargets(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Name = driverSQLite, ""
+	model.connection.component.Form.Values.Plugin = "sqlite"
 	model.connection.component.Form.Values.Target = "/tmp/alpha.db"
 	model.recordConnection("")
 	model.connection.component.Form.Values.Target = "/tmp/beta.db"
@@ -57,6 +60,7 @@ func TestConnectionProfiles_persistRemoteFieldsWithoutPassword(t *testing.T) {
 	path := filepath.Join(dir, "perk-workbench", "connections.json")
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Form.Values.Driver, model.connection.component.Form.Values.Name = driverPostgreSQL, "Reporting"
+	model.connection.component.Form.Values.Plugin = "postgres"
 	model.connection.component.Form.Values.Target, model.connection.component.Form.Values.Host = "analytics", "db.example.test"
 	model.connection.component.Form.Values.Port, model.connection.component.Form.Values.User, model.connection.component.Form.Values.Pass = "5432", "analyst", "secret"
 	model.recordConnection("")
@@ -647,4 +651,80 @@ func TestConnectionScreen_profilesPaneStaysListAfterEdit(t *testing.T) {
 	if got := strings.Count(view, "Target*"); got != 1 {
 		t.Fatalf("form content occurrences = %d, want 1 (mirrored into the Profiles pane): %q", got, view)
 	}
+}
+func TestLegacyProfilePluginMigrationUniqueAndAmbiguous(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := profile.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := profile.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := profile.Profile{
+		ID: id, Driver: profile.DriverPostgreSQL, Name: "Unique",
+		Target: "app", Host: "localhost", Port: "5432", User: "alice",
+	}
+	if err := profile.Save(path, []profile.Profile{legacy}); err != nil {
+		t.Fatal(err)
+	}
+	_ = New("", context.Background(), testOpen, false)
+	migrated, _, _ := profile.Load(path)
+	if len(migrated) != 1 || migrated[0].Plugin != "postgres" {
+		t.Fatalf("unique migration = %#v, want postgres plugin persisted", migrated)
+	}
+
+	legacy.ID, legacy.Driver, legacy.Name = mustTestProfileID(t), profile.DriverMySQL, "Ambiguous"
+	legacy.Host, legacy.Port, legacy.User = "localhost", "3306", "alice"
+	if err := profile.Save(path, []profile.Profile{legacy}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RegisterShim(appRegistryShim{
+		caps: database.Capabilities{
+			Name: "mysql-cloud-legacy", Driver: "mysql", Display: "MySQL Cloud",
+			Targets: []database.TargetPattern{{Prefix: "mysql:"}},
+			Form: &database.FormSpec{Prefix: "mysql:", Fields: []database.FormField{
+				{Key: "host", Title: "Host", Kind: database.FormInput},
+			}},
+		},
+		build: func(values database.FormValues) (string, bool) { return values.Host, true },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ambiguous, _, _ := profile.Load(path)
+	if len(ambiguous) != 1 || ambiguous[0].Plugin != "" {
+		t.Fatalf("ambiguous migration = %#v, want blank plugin preserved", ambiguous)
+	}
+	rawBefore, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	openCalls := 0
+	opener := func(ctx context.Context, pluginID, target string) (sharedsql.Opened, error) {
+		openCalls++
+		return testOpen(ctx, pluginID, target)
+	}
+	model := New("", context.Background(), opener, false)
+	model.loadRecentConnectionValues(ambiguous[0])
+	msg := model.testConnection()().(connectionTestMsg)
+	if msg.err == nil || !strings.Contains(msg.err.Error(), "select a plugin") || openCalls != 0 {
+		t.Fatalf("ambiguous legacy test = err %v, opens %d, want selection error and zero opens", msg.err, openCalls)
+	}
+	rawAfter, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rawBefore) != string(rawAfter) {
+		t.Fatal("ambiguous legacy profile was rewritten")
+	}
+}
+
+func mustTestProfileID(t *testing.T) string {
+	t.Helper()
+	id, err := profile.NewID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }

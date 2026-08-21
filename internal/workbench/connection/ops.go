@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
@@ -12,10 +13,13 @@ import (
 // invalid field after a failed validation attempt.
 type ValidationMsg struct{}
 
-// Same reports whether two profiles describe the same connection: SQLite
-// profiles match by resolved target, server profiles by name.
+// Same reports whether two profiles describe the same connection. Plugin
+// identity is part of the scope; legacy profiles without it compare by family.
 func Same(left, right profile.Profile) bool {
 	if left.Driver != right.Driver {
+		return false
+	}
+	if left.Plugin != "" && right.Plugin != "" && left.Plugin != right.Plugin {
 		return false
 	}
 	if left.Driver == DriverSQLite {
@@ -24,16 +28,18 @@ func Same(left, right profile.Profile) bool {
 	return left.Name == right.Name
 }
 
-// Record saves the form's current credentials as a recent profile.
 // openedTarget is the target that was actually opened (Connect after
 // updateOpen, or the target a successful Test just verified); for SQLite
 // it wins over the form value, so Connect records the resolved file while
 // Test records the form target and never picks up a previously connected
-// root target. readOnly is the root's current read-only default.
+// root target.
 func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, error) {
 	driver := m.Form.Values.Driver
-	if driver == "" {
-		driver = DriverSQLite
+	pluginID := strings.TrimSpace(m.Form.Values.Plugin)
+	if pluginID == "" {
+		if candidates := database.PluginsByDriver(string(driver)); len(candidates) == 1 {
+			pluginID = candidates[0].PluginID
+		}
 	}
 	target := strings.TrimSpace(m.Form.Values.Target)
 	name := strings.TrimSpace(m.Form.Values.Name)
@@ -48,6 +54,7 @@ func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, err
 		name = m.Form.ConnectionName()
 	}
 	connection := profile.Profile{
+		Plugin:   pluginID,
 		Driver:   driver,
 		Name:     name,
 		Target:   target,
@@ -112,8 +119,8 @@ func (m *Model) Record(openedTarget string, readOnly bool) (profile.Profile, err
 // LoadValues copies a saved profile into the connection form's values,
 // normalizing empty TLS modes to the disabled defaults.
 func (m *Model) LoadValues(connection profile.Profile) {
-	m.Form.Values.Driver, m.Form.Values.Name, m.Form.Values.Target = connection.Driver, connection.Name, connection.Target
 	m.Form.Values.ID = connection.ID
+	m.Form.Values.Plugin, m.Form.Values.Driver, m.Form.Values.Name, m.Form.Values.Target = connection.Plugin, connection.Driver, connection.Name, connection.Target
 	m.Form.Values.Host, m.Form.Values.Port, m.Form.Values.User = connection.Host, connection.Port, connection.User
 	m.Form.Values.MySQLTLS = connection.MySQLTLS
 	if m.Form.Values.MySQLTLS == "" {

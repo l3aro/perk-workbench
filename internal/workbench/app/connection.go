@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/log"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
@@ -44,8 +45,9 @@ const (
 type connectionActionMsg struct{ action string }
 
 type connectionTestMsg struct {
-	err    error
-	target string // target that was tested; persisted when the test succeeds
+	pluginID string
+	err      error
+	target   string // target that was tested; persisted when the test succeeds
 }
 
 func sequenceConnectionAction(init tea.Cmd, action string) tea.Cmd {
@@ -78,8 +80,11 @@ func (m *Model) selectedRecentConnection() (profile.Profile, bool) {
 
 // loadRecentConnectionValues copies a saved profile into the connection
 // form's values, normalizing empty TLS modes to the disabled defaults.
-func (m *Model) loadRecentConnectionValues(connection profile.Profile) {
-	m.connection.component.LoadValues(connection)
+func (m *Model) loadRecentConnectionValues(saved profile.Profile) {
+	m.connection.component.LoadValues(saved)
+	if saved.Plugin != "" {
+		m.connectionPlugin = saved.Plugin
+	}
 }
 
 func (m *Model) editSelectedRecentConnection() tea.Cmd {
@@ -117,44 +122,49 @@ func (m *Model) deleteRecentConnection(connection profile.Profile) {
 	m.connection.component.Delete(connection)
 	m.setStatus("deleted " + safeText(connection.Name))
 }
-
 func (m *Model) newConnection() tea.Cmd {
-	m.connection.component.Form.Values = &connectionFormValues{MySQLTLS: mysqlTLSDisabled, PostgreSQLTLS: postgresTLSDisabled, Action: connectionActionTest}
+	values := &connectionFormValues{
+		MySQLTLS: mysqlTLSDisabled, PostgreSQLTLS: postgresTLSDisabled, Action: connectionActionTest,
+	}
+	plugins := database.FormPlugins()
+	if sqlite, ok := database.ByPlugin("sqlite"); ok && sqlite.Form != nil {
+		values.Plugin, values.Driver = sqlite.PluginID, connectionDriver(sqlite.Driver)
+	} else if len(plugins) > 0 {
+		values.Plugin, values.Driver = plugins[0].PluginID, connectionDriver(plugins[0].Driver)
+	}
+	m.connection.component.Form.Values = values
 	command := m.connection.component.Form.Rebuild()
 	m.connection.component.Form.Focus = connectionFocusForm
 	m.overlay.formMode.Mode = formModeNormal
 	m.setStatus("new connection")
 	return m.openForm(command, m.connection.component.Form.FocusForm)
 }
-
 func (m Model) testConnection() tea.Cmd {
+	pluginID := m.connection.component.Form.Values.Plugin
 	target := m.connection.component.ConnectionTarget()
 	return func() tea.Msg {
 		if err := m.connection.component.Form.Validate(); err != nil {
-			return connectionTestMsg{err: err}
+			return connectionTestMsg{pluginID: pluginID, err: err, target: target}
 		}
 		ctx, cancel := context.WithTimeout(m.appContext, 5*time.Second)
 		defer cancel()
-		opened, err := m.openDatabase(ctx, target)
+		opened, err := m.openDatabase(ctx, pluginID, target)
 		if err != nil {
-			return connectionTestMsg{err: err, target: target}
+			return connectionTestMsg{pluginID: pluginID, err: err, target: target}
 		}
-		return connectionTestMsg{err: opened.Service.Close(), target: target}
+		return connectionTestMsg{pluginID: pluginID, err: opened.Service.Close(), target: target}
 	}
 }
-
 func (m Model) openConnection() (tea.Model, tea.Cmd) {
 	if err := m.connection.component.Form.Validate(); err != nil {
 		m.setStatus(safeText(err.Error()))
 		return m, nil
 	}
 	m.ReadOnly = m.connection.component.Form.Values.ReadOnly
-	target := m.connection.component.ConnectionTarget()
+	pluginID := m.connection.component.Form.Values.Plugin
+	target := m.connection.component.Form.ConnectionTarget()
+	m.connectionPlugin = pluginID
 	m.BeginOpening(target, "opening "+safeText(m.connection.component.Form.ConnectionName()))
-	// The opening transition surfaces as a Debug log notification (visible
-	// only when log_level allows it), not as a plain status popup. It is
-	// also transient: it logs before the connection profile exists, so it
-	// never binds history to a scope.
 	m.notifications.skipStatusPopup = true
 	m.notifications.skipNotificationPersist = true
 	log.Debug("opening " + safeText(m.connection.component.Form.ConnectionName()))
@@ -189,6 +199,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// A successful test stands in for the removed Save button: the
 		// form's current credentials become the saved profile.
+		m.connectionPlugin = test.pluginID
 		if err := m.recordConnection(test.target); err != nil {
 			m.setStatus(safeText("saving connection profile: " + err.Error()))
 			return m, nil

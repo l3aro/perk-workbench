@@ -477,7 +477,7 @@ func (s *createDatabaseStub) ListIndexesAll(context.Context) (map[string][]share
 // given server product (MySQL or PostgreSQL).
 func serverProductModel(t *testing.T, product string, stub *createDatabaseStub) Model {
 	t.Helper()
-	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{Service: stub, Info: sharedsql.DatabaseInfo{Product: product, Version: "16"}}, nil
 	}, false)
 	model.queryLog.path = t.TempDir() + "/data.db"
@@ -514,7 +514,7 @@ func TestSchemaCreateDatabase_ignoredForSQLite(t *testing.T) {
 }
 
 func TestPostgresTree_connectedRootRecognizedWithoutSchemas(t *testing.T) {
-	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{}, nil
 	}, false)
 	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
@@ -775,7 +775,7 @@ func TestPostgresTree_schemaToggleCollapsesTables(t *testing.T) {
 func reconnectPostgresModel(t *testing.T) (Model, *[]string) {
 	t.Helper()
 	opened := &[]string{}
-	model := New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, target string) (sharedsql.Opened, error) {
 		*opened = append(*opened, target)
 		return sharedsql.Opened{Service: &createDatabaseStub{}, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
 	}, false)
@@ -936,7 +936,7 @@ func TestPostgresTree_reconnectDoesNotRecordProfile(t *testing.T) {
 }
 
 func TestPostgresTree_failedSwitchKeepsCurrentSession(t *testing.T) {
-	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{}, errors.New("boom")
 	}, false)
 	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
@@ -992,7 +992,7 @@ func TestPostgresTree_secondSwitchWhilePendingIsIgnored(t *testing.T) {
 
 func TestPostgresTree_disconnectWhileSwitchPendingDropsCompletion(t *testing.T) {
 	service := &closeTrackingService{Service: &createDatabaseStub{}}
-	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{Service: service, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
 	}, false)
 	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"
@@ -1030,7 +1030,7 @@ func TestPostgresTree_successfulSwitchClosesPreviousSession(t *testing.T) {
 	oldService := &closeTrackingService{Service: &createDatabaseStub{}}
 	newService := &closeTrackingService{Service: &createDatabaseStub{}}
 	opens := 1
-	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		opens++
 		if opens == 1 {
 			return sharedsql.Opened{Service: oldService, Info: sharedsql.DatabaseInfo{Product: "PostgreSQL", Version: "16"}}, nil
@@ -1071,7 +1071,7 @@ func TestPostgresTree_successfulSwitchClosesPreviousSession(t *testing.T) {
 }
 
 func TestPostgresTargetFor_escapesDatabaseNameOnce(t *testing.T) {
-	model := New("", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{}, nil
 	}, false)
 	model.Target = "postgres://alice:secret@db.example.test:5433/employees?sslmode=disable"

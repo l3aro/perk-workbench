@@ -15,7 +15,7 @@ type RecentProfile struct {
 	profile.Profile
 }
 
-func (c RecentProfile) FilterValue() string { return c.Name + " " + c.Target }
+func (c RecentProfile) FilterValue() string { return c.Name + " " + c.Target + " " + c.Plugin }
 func (c RecentProfile) Title() string       { return uikit.SafeText(c.Name) }
 func (c RecentProfile) Description() string {
 	desc := ""
@@ -24,6 +24,9 @@ func (c RecentProfile) Description() string {
 	} else {
 		desc = uikit.SafeText(c.driverName() + ": " + c.Target)
 	}
+	if len(database.PluginsByDriver(string(c.Driver))) > 1 && c.Plugin != "" {
+		desc += " · " + uikit.SafeText(c.Plugin)
+	}
 	if c.ReadOnly {
 		desc += " [READONLY]"
 	}
@@ -31,8 +34,13 @@ func (c RecentProfile) Description() string {
 }
 
 func (c RecentProfile) driverName() string {
-	if spec, ok := database.ByName(string(c.Driver)); ok {
-		return spec.Display
+	if c.Plugin != "" {
+		if spec, ok := database.ByPlugin(c.Plugin); ok {
+			return spec.Display
+		}
+	}
+	if specs := database.PluginsByDriver(string(c.Driver)); len(specs) > 0 {
+		return specs[0].Display
 	}
 	return string(c.Driver)
 }

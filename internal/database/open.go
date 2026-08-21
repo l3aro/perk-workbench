@@ -4,32 +4,66 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"os"
 	"path/filepath"
-
-	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"strings"
 )
 
-// Open connects to target and returns its schema for the initial workbench view.
-// The driver group routes the target form to a registered driver; anything
-// without a registered target form opens as SQLite after path resolution.
-// The returned Opened carries the matched driver's query language (the
-// SQLite fallback carries the legacy SQL default) and workspace tab
-// capability.
-func Open(ctx context.Context, target string) (sharedsql.Opened, error) {
-	if spec, dsn, ok := Match(target); ok {
-		return open(ctx, dsn, spec.Open, spec.QueryLanguage, spec.Workspace)
-	}
-
-	resolved, err := resolveSQLiteTarget(target)
-	if err != nil {
-		return sharedsql.Opened{}, err
-	}
-	sqliteSpec, ok := ByName("sqlite")
+// Open connects to target through the explicitly selected plugin ID and
+// returns its schema for the initial workbench view.
+func Open(ctx context.Context, pluginID, target string) (sharedsql.Opened, error) {
+	spec, ok := ByPlugin(pluginID)
 	if !ok {
-		return sharedsql.Opened{}, errors.New("sqlite driver not registered")
+		if pluginID == "sqlite" {
+			return sharedsql.Opened{}, errors.New("sqlite plugin not registered")
+		}
+		return sharedsql.Opened{}, fmt.Errorf("database plugin %q not registered", pluginID)
 	}
-	return open(ctx, resolved, sqliteSpec.Open, sqliteSpec.QueryLanguage, sqliteSpec.Workspace)
+	dsn := target
+	matches := Matches(target)
+	for _, match := range matches {
+		if match.Spec.PluginID == pluginID {
+			dsn = match.DSN
+			break
+		}
+	}
+	if spec.PluginID == "sqlite" && len(matches) == 0 {
+		var err error
+		dsn, err = resolveSQLiteTarget(target)
+		if err != nil {
+			return sharedsql.Opened{}, err
+		}
+	}
+	return open(ctx, dsn, spec.Open, spec.QueryLanguage, spec.Workspace)
+}
+
+// ResolvePlugin deterministically chooses the plugin for a direct target.
+// Unprefixed targets use the sqlite plugin; a prefixed target must have
+// exactly one matching plugin instance.
+func ResolvePlugin(target string) (string, error) {
+	matches := Matches(target)
+	switch len(matches) {
+	case 1:
+		return matches[0].Spec.PluginID, nil
+	case 2:
+		return "", ambiguousTargetError(matches)
+	case 0:
+		if _, ok := ByPlugin("sqlite"); !ok {
+			return "", errors.New("sqlite plugin not registered")
+		}
+		return "sqlite", nil
+	default:
+		return "", ambiguousTargetError(matches)
+	}
+}
+
+func ambiguousTargetError(matches []targetMatch) error {
+	ids := make([]string, len(matches))
+	for i, match := range matches {
+		ids[i] = match.Spec.PluginID
+	}
+	return fmt.Errorf("database target is ambiguous; matching plugins: %s; open the connection form or invoke --select", strings.Join(ids, ", "))
 }
 
 func open(ctx context.Context, target string, openService func(context.Context, string) (sharedsql.Service, error), language sharedsql.QueryLanguage, workspace *sharedsql.WorkspaceCapability) (sharedsql.Opened, error) {

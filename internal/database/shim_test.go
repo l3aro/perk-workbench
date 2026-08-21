@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/l3aro/perk-workbench/internal/database"
@@ -67,50 +66,41 @@ func TestRegisterShim_makesDriverIndistinguishable(t *testing.T) {
 	if err := database.RegisterShim(fakeRedisShim{}); err != nil {
 		t.Fatalf("RegisterShim: %v", err)
 	}
-
-	spec, ok := database.ByName("redis")
+	spec, ok := database.ByPlugin("redis")
 	if !ok {
 		t.Fatal("redis not registered after RegisterShim")
 	}
 	if spec.Display != "Redis" || spec.Form == nil || len(spec.Targets) != 2 {
 		t.Fatalf("redis spec = %+v, want display, form, and two target forms", spec)
 	}
-
-	drivers := database.FormDrivers()
-	if len(drivers) < 4 {
-		t.Fatalf("FormDrivers = %d drivers, want the built-ins plus redis", len(drivers))
+	plugins := database.FormPlugins()
+	if len(plugins) < 4 {
+		t.Fatalf("FormPlugins = %d plugins, want built-ins plus redis", len(plugins))
 	}
-	if drivers[0].Name != "sqlite" || drivers[1].Name != "mysql" || drivers[2].Name != "postgres" {
-		t.Fatalf("built-in driver order = %v, want sqlite/mysql/postgres first", driverNames(drivers[:3]))
+	if plugins[len(plugins)-1].PluginID != "redis" {
+		t.Fatalf("last plugin = %q, want redis", plugins[len(plugins)-1].PluginID)
 	}
-	if drivers[len(drivers)-1].Name != "redis" {
-		t.Fatalf("last driver = %q, want redis appended after the built-ins", drivers[len(drivers)-1].Name)
+	matches := database.Matches("redis:svc:6379")
+	if len(matches) != 1 || matches[0].Spec.PluginID != "redis" || matches[0].DSN != "svc:6379" {
+		t.Fatalf("Matches(redis:) = %+v, want redis with label stripped", matches)
 	}
-
-	matched, dsn, ok := database.Match("redis:svc:6379")
-	if !ok || matched.Name != "redis" || dsn != "svc:6379" {
-		t.Fatalf("Match(redis:) = %q/%q/%t, want redis with label stripped", matched.Name, dsn, ok)
+	matches = database.Matches("redis://svc:6379")
+	if len(matches) != 1 || matches[0].Spec.PluginID != "redis" || matches[0].DSN != "redis://svc:6379" {
+		t.Fatalf("Matches(redis://) = %+v, want redis with scheme kept", matches)
 	}
-	matched, dsn, ok = database.Match("redis://svc:6379")
-	if !ok || matched.Name != "redis" || dsn != "redis://svc:6379" {
-		t.Fatalf("Match(redis://) = %q/%q/%t, want redis with scheme kept", matched.Name, dsn, ok)
+	if len(database.Matches("plain.db")) != 0 {
+		t.Fatal("Matches(plain.db) matched, want the SQLite fallback to own it")
 	}
-	if _, _, ok := database.Match("plain.db"); ok {
-		t.Fatal("Match(plain.db) matched, want the SQLite fallback to own it")
-	}
-
 	target, ok := database.BuildTarget(spec, database.FormValues{Host: "svc", Port: "6379"})
 	if !ok || target != "redis:svc:6379" {
 		t.Fatalf("BuildTarget = %q/%t, want the shim grammar", target, ok)
 	}
-
-	// The full open path treats the shim driver like a compiled-in one.
-	opened, err := database.Open(context.Background(), "redis://svc:6379")
+	opened, err := database.Open(context.Background(), "redis", "redis://svc:6379")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	if opened.Target != "redis://svc:6379" || opened.Info.Product != "Redis" {
-		t.Fatalf("opened = %+v, want the kept target and the shim service", opened)
+		t.Fatalf("opened = %+v, want the kept target and shim service", opened)
 	}
 	if err := opened.Service.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
@@ -120,7 +110,7 @@ func TestRegisterShim_makesDriverIndistinguishable(t *testing.T) {
 func driverNames(specs []database.Spec) []string {
 	names := make([]string, len(specs))
 	for i, spec := range specs {
-		names[i] = spec.Name
+		names[i] = spec.PluginID
 	}
 	return names
 }
@@ -152,7 +142,7 @@ func TestRegisterShim_rejectsMisconfigured(t *testing.T) {
 	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return trimmed })); err != nil {
 		t.Fatalf("RegisterShim with padded identities = %v, want nil", err)
 	}
-	if _, ok := database.ByName("redis-copy"); !ok {
+	if _, ok := database.ByPlugin("redis-copy"); !ok {
 		t.Fatal("trimmed plugin identity was not registered")
 	}
 
@@ -188,7 +178,7 @@ func TestRegisterShim_rejectsMisconfigured(t *testing.T) {
 	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return formless })); err != nil {
 		t.Fatalf("RegisterShim(formless) = %v, want success", err)
 	}
-	if _, ok := database.BuildTarget(database.Spec{Name: "sidekick"}, database.FormValues{}); ok {
+	if _, ok := database.BuildTarget(database.Spec{PluginID: "sidekick", Driver: "sidekick"}, database.FormValues{}); ok {
 		t.Fatal("BuildTarget(formless driver) succeeded, want the raw-target fallback")
 	}
 }
@@ -248,7 +238,7 @@ func TestRegisterShim_queryLanguage(t *testing.T) {
 			if err := register(test.name, test.ql); err != nil {
 				t.Fatalf("RegisterShim(%s) = %v, want success", test.name, err)
 			}
-			spec, ok := database.ByName(test.name)
+			spec, ok := database.ByPlugin(test.name)
 			if !ok {
 				t.Fatalf("%s not registered", test.name)
 			}
@@ -296,7 +286,7 @@ func TestOpen_carriesMatchedDriverQueryLanguage(t *testing.T) {
 	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return caps })); err != nil {
 		t.Fatalf("RegisterShim: %v", err)
 	}
-	opened, err := database.Open(context.Background(), "langkv:svc:6379")
+	opened, err := database.Open(context.Background(), "langkv", "langkv:svc:6379")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -347,58 +337,31 @@ func TestCapabilities_writeCapabilitiesRoundTrip(t *testing.T) {
 	}
 }
 
-// TestRegisterShim_rejectsCrossDriverOverlap registers drivers whose
-// target prefixes shadow or are shadowed by another driver's; matching is
-// registration-order based, so cross-driver overlap is ambiguous and must
-// be rejected. Overlaps declared within one driver stay legal.
-func TestRegisterShim_rejectsCrossDriverOverlap(t *testing.T) {
+// TestRegisterShim_allowsSharedFamiliesAndPrefixes verifies that plugin IDs
+// disambiguate registrations even when families and target prefixes match.
+func TestRegisterShim_allowsSharedFamiliesAndPrefixes(t *testing.T) {
 	register := func(name string, targets []database.TargetPattern) error {
 		return database.RegisterShim(shimFunc(func() database.Capabilities {
-			return database.Capabilities{Name: name, Targets: targets}
+			return database.Capabilities{Name: name, Driver: "mysql", Targets: targets}
 		}))
 	}
-
-	if err := register("olap", []database.TargetPattern{{Prefix: "olap:"}}); err != nil {
-		t.Fatalf("RegisterShim(olap) = %v, want success", err)
+	for _, test := range []struct {
+		name    string
+		targets []database.TargetPattern
+	}{
+		{name: "olap", targets: []database.TargetPattern{{Prefix: "olap:"}}},
+		{name: "olapext", targets: []database.TargetPattern{{Prefix: "olap:ext"}}},
+		{name: "olaprev", targets: []database.TargetPattern{{Prefix: "olap"}}},
+		{name: "olapeq", targets: []database.TargetPattern{{Prefix: "eq:"}}},
+		{name: "olapeq2", targets: []database.TargetPattern{{Prefix: "eq:"}}},
+		{name: "kvshim", targets: []database.TargetPattern{{Prefix: "kv://", KeepTarget: true}, {Prefix: "kv:"}}},
+	} {
+		if err := register(test.name, test.targets); err != nil {
+			t.Fatalf("RegisterShim(%s) = %v, want success", test.name, err)
+		}
 	}
-
-	// A new pattern that extends an existing driver's prefix.
-	err := register("olapext", []database.TargetPattern{{Prefix: "olap:ext"}})
-	if err == nil {
-		t.Fatal("RegisterShim with a prefix extending another driver succeeded, want error")
-	}
-	if !strings.Contains(err.Error(), "olap:ext") || !strings.Contains(err.Error(), "olap:") {
-		t.Fatalf("overlap error = %v, want it to mention both prefixes", err)
-	}
-
-	// The reverse: a new pattern that is a prefix of an existing one.
-	err = register("olaprev", []database.TargetPattern{{Prefix: "olap"}})
-	if err == nil {
-		t.Fatal("RegisterShim with a prefix shadowed by another driver succeeded, want error")
-	}
-	if !strings.Contains(err.Error(), "olap") || (!strings.Contains(err.Error(), "olap:ext") && !strings.Contains(err.Error(), "olap:")) {
-		t.Fatalf("reverse overlap error = %v, want it to mention both prefixes", err)
-	}
-
-	// Exact-equal prefixes are overlap too, even with a fresh driver name.
-	if err := register("olapeq", []database.TargetPattern{{Prefix: "eq:"}}); err != nil {
-		t.Fatalf("RegisterShim(olapeq) = %v, want success", err)
-	}
-	err = register("olapeq2", []database.TargetPattern{{Prefix: "eq:"}})
-	if err == nil {
-		t.Fatal("RegisterShim with an exact-equal prefix succeeded, want error")
-	}
-	if !strings.Contains(err.Error(), "eq:") {
-		t.Fatalf("equal-prefix error = %v, want it to mention the prefix", err)
-	}
-
-	// Ordered overlap within one driver stays legal: the scheme form is
-	// declared before the label form it would otherwise shadow.
-	if err := register("kvshim", []database.TargetPattern{
-		{Prefix: "kv://", KeepTarget: true},
-		{Prefix: "kv:"},
-	}); err != nil {
-		t.Fatalf("RegisterShim(same-driver ordered overlap) = %v, want success", err)
+	if got := len(database.Matches("eq:value")); got != 2 {
+		t.Fatalf("Matches(eq:value) = %d, want two plugin instances", got)
 	}
 }
 
@@ -420,7 +383,7 @@ func TestRegisterShim_workspace(t *testing.T) {
 	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return caps })); err != nil {
 		t.Fatalf("RegisterShim: %v", err)
 	}
-	spec, ok := database.ByName("wskv")
+	spec, ok := database.ByPlugin("wskv")
 	if !ok {
 		t.Fatal("wskv not registered")
 	}
@@ -428,7 +391,7 @@ func TestRegisterShim_workspace(t *testing.T) {
 		t.Fatalf("spec workspace = %+v, want %+v", spec.Workspace, workspace)
 	}
 
-	opened, err := database.Open(context.Background(), "wskv:svc")
+	opened, err := database.Open(context.Background(), "wskv", "wskv:svc")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

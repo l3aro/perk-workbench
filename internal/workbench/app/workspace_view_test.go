@@ -64,7 +64,7 @@ func keysResult(rows ...string) sharedsql.Result {
 func workspaceViewModel(t *testing.T, service sharedsql.Service, workspace *sharedsql.WorkspaceCapability) Model {
 	t.Helper()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	model := New("pluginkv:svc", context.Background(), func(_ context.Context, _ string) (sharedsql.Opened, error) {
+	model := New("pluginkv:svc", context.Background(), func(_ context.Context, _ string, _ string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{
 			Target:        "pluginkv:svc",
 			Service:       service,

@@ -46,6 +46,7 @@ func (m Model) updateOpen(message databaseOpenedMsg) (tea.Model, tea.Cmd) {
 	previous := m.Database
 	m.Opened(message.target, message.service, "")
 	m.connectionTarget = message.requested
+	m.connectionPlugin = message.pluginID
 	if previous != nil {
 		if err := previous.Close(); err != nil {
 			log.Error("close previous database", err)

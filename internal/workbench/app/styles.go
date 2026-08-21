@@ -105,17 +105,17 @@ func readDirectory(dir string) tea.Cmd {
 func selectPickerItem(raw string) tea.Cmd {
 	return func() tea.Msg {
 		if raw == ":memory:" {
-			return pickerSelectionMsg{target: raw}
+			return pickerSelectionMsg{pluginID: "sqlite", target: raw}
 		}
 		resolved, err := filepath.EvalSymlinks(raw)
 		if err != nil {
-			return pickerSelectionMsg{err: err}
+			return pickerSelectionMsg{pluginID: "sqlite", err: err}
 		}
 		info, err := os.Stat(resolved)
 		if err != nil {
-			return pickerSelectionMsg{err: err}
+			return pickerSelectionMsg{pluginID: "sqlite", err: err}
 		}
-		return pickerSelectionMsg{target: resolved, dir: info.IsDir()}
+		return pickerSelectionMsg{pluginID: "sqlite", target: resolved, dir: info.IsDir()}
 	}
 }
 

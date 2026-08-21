@@ -139,7 +139,11 @@ func load(ctx context.Context, configPath string, entries []Entry, register func
 		}
 		client.SetPlugin(handshake.Capabilities.Name)
 		client.setProtocolVersion(handshake.ProtocolVersion)
-		item.shim = newShim(client, handshake.Capabilities, loader)
+		source := "external"
+		if configured.Builtin {
+			source = "builtin"
+		}
+		item.shim = newShim(client, handshake.Capabilities, loader, source)
 		if err := register(item.shim); err != nil {
 			fail(fmt.Errorf("plugin %q: %w", configured.identity(), err))
 			_ = client.Close()

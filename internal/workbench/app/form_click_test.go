@@ -324,7 +324,7 @@ func TestConnectionForm_clickSelectsDriverOption(t *testing.T) {
 	model.State = stateConnection
 	model = resizeModel(model, 100, 44)
 	_ = model.newConnection()
-	// SQLite layout: Driver title at view line 0, options at 1-3
+	// SQLite layout: Plugin title at view line 0, options at 1-3
 	// (SQLite, MySQL, PostgreSQL). Pane content starts at screen y=2, so
 	// the MySQL option row is at y=4.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
@@ -334,8 +334,8 @@ func TestConnectionForm_clickSelectsDriverOption(t *testing.T) {
 	}
 	// The rebuild resets focus to the first field, matching the keyboard
 	// path, and the form now carries the MySQL TLS select.
-	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "driver" {
-		t.Fatalf("focused field = %q, want driver", got)
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "plugin" {
+		t.Fatalf("focused field = %q, want plugin", got)
 	}
 	if !strings.Contains(model.connection.component.Form.View(), "TLS") {
 		t.Fatal("MySQL form has no TLS field after driver click")
@@ -349,7 +349,7 @@ func TestConnectionForm_clickSwapsPortOnDriverOption(t *testing.T) {
 	_ = model.newConnection()
 	model.connection.component.Form.Values.Port = "5432"
 	// Click the MySQL option (view line 2, screen y=4): the port follows
-	// the MySQL default, matching the keyboard driver change.
+	// the MySQL default, matching the keyboard plugin change.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 4, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.connection.component.Form.Values.Driver != driverMySQL || model.connection.component.Form.Values.Port != "3306" {
@@ -363,6 +363,7 @@ func TestConnectionForm_clickSelectsTLSOption(t *testing.T) {
 	model = resizeModel(model, 100, 44)
 	_ = model.newConnection()
 	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Plugin = "mysql"
 	_ = model.connection.component.Form.Rebuild()
 	// MySQL layout: TLS title at view line 23, options at 24-26. Pane
 	// content starts at screen y=2, so "Verify certificate" is at y=26.
@@ -382,15 +383,15 @@ func TestConnectionForm_clickOnSelectTitleOnlyFocuses(t *testing.T) {
 	model.State = stateConnection
 	model = resizeModel(model, 100, 44)
 	_ = model.newConnection()
-	// The Driver title (view line 0, screen y=2) is not an option row: the
+	// The Plugin title (view line 0, screen y=2) is not an option row: the
 	// click focuses the field without changing the value.
 	updated, _ := model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 2, Button: tea.MouseLeft})
 	model = updated.(Model)
 	if model.connection.component.Form.Values.Driver != driverSQLite {
 		t.Fatalf("driver = %q, want sqlite unchanged", model.connection.component.Form.Values.Driver)
 	}
-	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "driver" {
-		t.Fatalf("focused field = %q, want driver", got)
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "plugin" {
+		t.Fatalf("focused field = %q, want plugin", got)
 	}
 	// A click on the blank line under the options (view line 4, screen y=6)
 	// also leaves the value alone.
@@ -409,6 +410,7 @@ func TestConnectionForm_clickSelectsWrappedTLSOption(t *testing.T) {
 	model = resizeModel(model, 40, 44)
 	_ = model.newConnection()
 	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Plugin = "mysql"
 	_ = model.connection.component.Form.Rebuild()
 	// Click the wrapped continuation row, then the option after the wrapped
 	// one; each click re-locates its row in the freshly rendered view (the
@@ -463,6 +465,7 @@ func TestConnectionForm_clickValueReadingLikeOptionFocusesField(t *testing.T) {
 	// change the TLS mode. Database title at view line 20, value at 21
 	// (screen y=23).
 	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Target = "certificate"
 	_ = model.connection.component.Form.Rebuild()
 	updated, _ = model.Update(tea.MouseClickMsg{X: model.layout.schemaWidth + 10, Y: 23, Button: tea.MouseLeft})

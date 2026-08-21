@@ -394,6 +394,7 @@ func TestConnectionForm_viewportKeepsActionsReachable(t *testing.T) {
 	model := New("", context.Background(), testOpen, false)
 	model.connection.component.Form.Focus = connectionFocusForm
 	model.connection.component.Form.Values.Driver = driverMySQL
+	model.connection.component.Form.Values.Plugin = "mysql"
 	model.connection.component.Form.Values.Host, model.connection.component.Form.Values.Port = "localhost", "5432"
 	model.connection.component.Form.Values.User = "postgres"
 	_ = model.connection.component.Form.Rebuild()
@@ -562,8 +563,8 @@ func TestConnectionForm_mouseWheelMovesFieldFocus(t *testing.T) {
 	}
 	updated, _ = model.Update(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
 	model = updated.(Model)
-	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "driver" {
-		t.Fatalf("wheel up focused field = %q, want driver", got)
+	if got := model.connection.component.Form.Huh.GetFocusedField().GetKey(); got != "plugin" {
+		t.Fatalf("wheel up focused field = %q, want plugin", got)
 	}
 }
 

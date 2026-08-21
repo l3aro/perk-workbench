@@ -110,7 +110,7 @@ func (m Model) connectionSecrets(target string) []string {
 	form := m.connection.component.Form.Values
 	add(form.Pass)
 	add(profile.ResolveSecretRef(form.Pass))
-	if spec, ok := database.ByName(string(form.Driver)); ok && spec.Form != nil {
+	if spec, ok := database.ByPlugin(form.Plugin); ok && spec.Form != nil {
 		for _, field := range spec.Form.Fields {
 			if field.Kind != database.FormPassword {
 				continue

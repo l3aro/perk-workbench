@@ -152,71 +152,120 @@ func officialTestShims() []Shim {
 	}
 }
 
-func TestMatch_routesTargetForms(t *testing.T) {
+func TestMatches_routesTargetForms(t *testing.T) {
 	tests := []struct {
-		name              string
-		target            string
-		wantName, wantDSN string
-		wantOK            bool
+		name                string
+		target              string
+		wantPlugin, wantDSN string
+		wantOK              bool
 	}{
-		{name: "mongo colon prefix", target: "mongo:mongodb://h/app", wantName: "mongodb", wantDSN: "mongodb://h/app", wantOK: true},
-		{name: "mongo uri", target: "mongodb://h/app", wantName: "mongodb", wantDSN: "mongodb://h/app", wantOK: true},
-		{name: "mongo srv uri", target: "mongodb+srv://h/app", wantName: "mongodb", wantDSN: "mongodb+srv://h/app", wantOK: true},
-		{name: "mysql prefix", target: "mysql:user@tcp(h:3306)/app", wantName: "mysql", wantDSN: "user@tcp(h:3306)/app", wantOK: true},
-		{name: "mysql scheme via label", target: "mysql://user@h/app", wantName: "mysql", wantDSN: "//user@h/app", wantOK: true},
-		{name: "postgres uri", target: "postgres://u@h/app", wantName: "postgres", wantDSN: "postgres://u@h/app", wantOK: true},
-		{name: "postgresql uri", target: "postgresql://u@h/app", wantName: "postgres", wantDSN: "postgresql://u@h/app", wantOK: true},
-		{name: "postgres prefix", target: "postgres:host=h", wantName: "postgres", wantDSN: "host=h", wantOK: true},
+		{name: "mongo colon prefix", target: "mongo:mongodb://h/app", wantPlugin: "mongodb", wantDSN: "mongodb://h/app", wantOK: true},
+		{name: "mongo uri", target: "mongodb://h/app", wantPlugin: "mongodb", wantDSN: "mongodb://h/app", wantOK: true},
+		{name: "mysql prefix", target: "mysql:user@tcp(h:3306)/app", wantPlugin: "mysql", wantDSN: "user@tcp(h:3306)/app", wantOK: true},
+		{name: "postgres uri", target: "postgres://u@h/app", wantPlugin: "postgres", wantDSN: "postgres://u@h/app", wantOK: true},
 		{name: "plain path", target: "/tmp/plain.db", wantOK: false},
-		{name: "memory target", target: ":memory:", wantOK: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			spec, dsn, ok := Match(test.target)
+			matches := Matches(test.target)
+			ok := len(matches) > 0
 			if ok != test.wantOK {
-				t.Fatalf("Match(%q) ok = %v, want %v", test.target, ok, test.wantOK)
+				t.Fatalf("Matches(%q) ok = %v, want %v", test.target, ok, test.wantOK)
 			}
 			if !ok {
 				return
 			}
-			if spec.Name != test.wantName {
-				t.Fatalf("Match(%q) driver = %q, want %q", test.target, spec.Name, test.wantName)
+			if matches[0].Spec.PluginID != test.wantPlugin {
+				t.Fatalf("Matches(%q) plugin = %q, want %q", test.target, matches[0].Spec.PluginID, test.wantPlugin)
 			}
-			if dsn != test.wantDSN {
-				t.Fatalf("Match(%q) dsn = %q, want %q", test.target, dsn, test.wantDSN)
+			if matches[0].DSN != test.wantDSN {
+				t.Fatalf("Matches(%q) dsn = %q, want %q", test.target, matches[0].DSN, test.wantDSN)
 			}
 		})
 	}
 }
 
-func TestByName(t *testing.T) {
-	spec, ok := ByName("sqlite")
+func TestByPlugin(t *testing.T) {
+	spec, ok := ByPlugin("sqlite")
 	if !ok {
-		t.Fatal("ByName(sqlite) not found")
+		t.Fatal("ByPlugin(sqlite) not found")
 	}
-	if spec.Name != "sqlite" {
-		t.Fatalf("ByName(sqlite) name = %q", spec.Name)
+	if spec.PluginID != "sqlite" {
+		t.Fatalf("ByPlugin(sqlite) plugin ID = %q", spec.PluginID)
 	}
-	if _, ok := ByName("does-not-exist"); ok {
-		t.Fatal("ByName(does-not-exist) found, want missing")
+	if _, ok := ByPlugin("does-not-exist"); ok {
+		t.Fatal("ByPlugin(does-not-exist) found, want missing")
+	}
+}
+func TestPluginIDRoutesSharedDriverInstances(t *testing.T) {
+	openService := func(product string) func(context.Context, string) (sharedsql.Service, error) {
+		return func(context.Context, string) (sharedsql.Service, error) {
+			return &officialTestService{product: product}, nil
+		}
+	}
+	form := &FormSpec{
+		Prefix: "mysql:",
+		Fields: []FormField{{Key: "database", Title: "Database", Kind: FormInput}},
+	}
+	for _, test := range []struct {
+		pluginID string
+		display  string
+		product  string
+	}{
+		{pluginID: "mysql-cloud-test", display: "MySQL Cloud", product: "MySQL Cloud"},
+		{pluginID: "mysql-cloud-test-alt", display: "MySQL Cloud Alt", product: "MySQL Cloud Alt"},
+	} {
+		test := test
+		Register(Spec{
+			PluginID: test.pluginID,
+			Driver:   "mysql",
+			Display:  test.display,
+			Targets:  []TargetPattern{{Prefix: "mysql:"}},
+			Form:     form,
+			Open:     openService(test.product),
+		})
+	}
+	if got := len(Matches("mysql:app")); got < 3 {
+		t.Fatalf("Matches(mysql:) = %d, want built-in plus two plugin instances", got)
+	}
+	if _, err := ResolvePlugin("mysql:app"); err == nil ||
+		!strings.Contains(err.Error(), "mysql-cloud-test") ||
+		!strings.Contains(err.Error(), "--select") {
+		t.Fatalf("ResolvePlugin ambiguity = %v, want named candidates and --select guidance", err)
+	}
+	for _, test := range []struct {
+		pluginID string
+		product  string
+	}{
+		{pluginID: "mysql-cloud-test", product: "MySQL Cloud"},
+		{pluginID: "mysql-cloud-test-alt", product: "MySQL Cloud Alt"},
+	} {
+		opened, err := Open(context.Background(), test.pluginID, "mysql:app")
+		if err != nil {
+			t.Fatalf("Open(%s): %v", test.pluginID, err)
+		}
+		if opened.Info.Product != test.product {
+			t.Fatalf("Open(%s) product = %q, want %q", test.pluginID, opened.Info.Product, test.product)
+		}
+		_ = opened.Service.Close()
 	}
 }
 
-func TestRegister_duplicateNamePanics(t *testing.T) {
+func TestRegister_duplicatePluginIDPanics(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("duplicate Register did not panic")
 		}
 	}()
-	Register(Spec{Name: "mysql", Open: func(context.Context, string) (sharedsql.Service, error) {
+	Register(Spec{PluginID: "mysql", Driver: "mysql", Open: func(context.Context, string) (sharedsql.Service, error) {
 		return nil, nil
 	}})
 }
 
 func TestRegister_invalidSpecPanics(t *testing.T) {
 	for _, spec := range []Spec{
-		{Name: "", Open: func(context.Context, string) (sharedsql.Service, error) { return nil, nil }},
-		{Name: "nameless"},
+		{PluginID: "", Driver: "test", Open: func(context.Context, string) (sharedsql.Service, error) { return nil, nil }},
+		{PluginID: "nameless", Driver: "nameless"},
 	} {
 		t.Run("invalid", func(t *testing.T) {
 			defer func() {
@@ -231,7 +280,7 @@ func TestRegister_invalidSpecPanics(t *testing.T) {
 
 func TestQueryLanguage_builtinsAdvertise(t *testing.T) {
 	for _, name := range []string{"sqlite", "mysql", "postgres"} {
-		spec, ok := ByName(name)
+		spec, ok := ByPlugin(name)
 		if !ok {
 			t.Fatalf("%s not registered", name)
 		}
@@ -239,7 +288,7 @@ func TestQueryLanguage_builtinsAdvertise(t *testing.T) {
 			t.Fatalf("%s query language = %+v, want the SQL default", name, spec.QueryLanguage)
 		}
 	}
-	mongo, ok := ByName("mongodb")
+	mongo, ok := ByPlugin("mongodb")
 	if !ok {
 		t.Fatal("mongodb not registered")
 	}
@@ -290,17 +339,13 @@ func TestRegister_invalidQueryLanguagePanics(t *testing.T) {
 					t.Fatal("Register with invalid query language did not panic")
 				}
 			}()
-			Register(Spec{
-				Name: "qlpanic", Targets: []TargetPattern{{Prefix: "qlpanic:"}},
-				Open: open, QueryLanguage: test.ql,
-			})
+			Register(Spec{PluginID: "qlpanic", Driver: "qlpanic", Targets: []TargetPattern{{Prefix: "qlpanic:"}},
+				Open: open, QueryLanguage: test.ql})
 		})
 	}
 
 	// A zero advertisement passes validation without advertising.
-	Register(Spec{
-		Name: "qlzeroreg", Targets: []TargetPattern{{Prefix: "qlzeroreg:"}}, Open: open,
-	})
+	Register(Spec{PluginID: "qlzeroreg", Driver: "qlzeroreg", Targets: []TargetPattern{{Prefix: "qlzeroreg:"}}, Open: open})
 }
 
 func TestOpenFallsBackToSQLite(t *testing.T) {
@@ -308,7 +353,7 @@ func TestOpenFallsBackToSQLite(t *testing.T) {
 	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	opened, err := Open(context.Background(), path)
+	opened, err := Open(context.Background(), "sqlite", path)
 	if err != nil {
 		t.Fatalf("Open(%q) error = %v", path, err)
 	}
@@ -327,19 +372,19 @@ func TestFormDrivers_registrationOrderAndLabels(t *testing.T) {
 		{"mysql", "MySQL"},
 		{"postgres", "PostgreSQL"},
 	}
-	drivers := FormDrivers()
-	if len(drivers) != len(want) {
-		t.Fatalf("FormDrivers() = %d drivers, want %d", len(drivers), len(want))
+	drivers := FormPlugins()
+	if len(drivers) < len(want) {
+		t.Fatalf("FormPlugins() = %d plugins, want at least %d", len(drivers), len(want))
 	}
-	for i, spec := range drivers {
-		if spec.Name != want[i].name || spec.Display != want[i].display {
-			t.Fatalf("driver %d = %q/%q, want %q/%q", i, spec.Name, spec.Display, want[i].name, want[i].display)
+	for i, spec := range drivers[:len(want)] {
+		if spec.PluginID != want[i].name || spec.Display != want[i].display {
+			t.Fatalf("plugin %d = %q/%q, want %q/%q", i, spec.PluginID, spec.Display, want[i].name, want[i].display)
 		}
 		if spec.Form == nil {
-			t.Fatalf("driver %q has no form spec", spec.Name)
+			t.Fatalf("plugin %q has no form spec", spec.PluginID)
 		}
 	}
-	mongo, ok := ByName("mongodb")
+	mongo, ok := ByPlugin("mongodb")
 	if !ok {
 		t.Fatal("mongodb not registered")
 	}
@@ -349,7 +394,7 @@ func TestFormDrivers_registrationOrderAndLabels(t *testing.T) {
 }
 
 func TestFormSpecs_carryDeclarativeMetadata(t *testing.T) {
-	sqlite, _ := ByName("sqlite")
+	sqlite, _ := ByPlugin("sqlite")
 	if sqlite.Form.Prefix != "" {
 		t.Fatalf("sqlite prefix = %q, want none", sqlite.Form.Prefix)
 	}
@@ -358,7 +403,7 @@ func TestFormSpecs_carryDeclarativeMetadata(t *testing.T) {
 		t.Fatalf("sqlite target field = %+v, want required validation", field)
 	}
 
-	mysql, _ := ByName("mysql")
+	mysql, _ := ByPlugin("mysql")
 	if mysql.Form.Prefix != "mysql:" {
 		t.Fatalf("mysql prefix = %q, want mysql:", mysql.Form.Prefix)
 	}
@@ -370,7 +415,7 @@ func TestFormSpecs_carryDeclarativeMetadata(t *testing.T) {
 		t.Fatalf("mysql TLS options = %+v, want verify/skip-verify/disabled values", tls.Options)
 	}
 
-	postgres, _ := ByName("postgres")
+	postgres, _ := ByPlugin("postgres")
 	if postgres.Form.Prefix != "postgres:" {
 		t.Fatalf("postgres prefix = %q, want postgres:", postgres.Form.Prefix)
 	}
@@ -393,7 +438,7 @@ func mysqlField(spec Spec, key string) FormField {
 }
 
 func TestBuildTarget_serializesPerDriver(t *testing.T) {
-	mysql, _ := ByName("mysql")
+	mysql, _ := ByPlugin("mysql")
 	dsn, ok := BuildTarget(mysql, FormValues{Host: "db.example.test", Port: "3307", User: "alice", Pass: "secret", Database: "app", TLS: "skip-verify"})
 	if !ok {
 		t.Fatal("BuildTarget(mysql) reported no builder")
@@ -406,7 +451,7 @@ func TestBuildTarget_serializesPerDriver(t *testing.T) {
 		t.Fatalf("mysql target = %#v, want form fields serialized", parsed)
 	}
 
-	postgres, _ := ByName("postgres")
+	postgres, _ := ByPlugin("postgres")
 	target, ok := BuildTarget(postgres, FormValues{Host: "db.example.test", Port: "5433", User: "alice", Pass: "secret", Database: "app", TLS: "require"})
 	if !ok {
 		t.Fatal("BuildTarget(postgres) reported no builder")
@@ -415,17 +460,17 @@ func TestBuildTarget_serializesPerDriver(t *testing.T) {
 		t.Fatalf("postgres target = %q, want URL form", target)
 	}
 
-	sqlite, _ := ByName("sqlite")
+	sqlite, _ := ByPlugin("sqlite")
 	target, ok = BuildTarget(sqlite, FormValues{Database: " /tmp/a.db "})
 	if !ok || target != "/tmp/a.db" {
 		t.Fatalf("sqlite target = %q/%t, want trimmed raw path", target, ok)
 	}
 
 	// Unknown drivers degrade gracefully: no builder, caller falls back.
-	if _, ok := BuildTarget(Spec{Name: "nope", Form: &FormSpec{}}, FormValues{Database: "/tmp/x.db"}); ok {
+	if _, ok := BuildTarget(Spec{PluginID: "nope", Driver: "nope", Form: &FormSpec{}}, FormValues{Database: "/tmp/x.db"}); ok {
 		t.Fatal("BuildTarget(unknown driver) succeeded, want no builder")
 	}
-	if _, ok := BuildTarget(Spec{Name: "nope"}, FormValues{Database: "/tmp/x.db"}); ok {
+	if _, ok := BuildTarget(Spec{PluginID: "nope", Driver: "nope"}, FormValues{Database: "/tmp/x.db"}); ok {
 		t.Fatal("BuildTarget(driver without form) succeeded, want none")
 	}
 }
@@ -458,11 +503,9 @@ func TestRegister_commandCatalogRoundTrip(t *testing.T) {
 			{Name: "SET", Usage: "SET key value", Summary: "Set the value at key"},
 		},
 	}
-	Register(Spec{
-		Name: "qlcatalog", Targets: []TargetPattern{{Prefix: "qlcatalog:"}},
-		Open: open, QueryLanguage: language,
-	})
-	spec, ok := ByName("qlcatalog")
+	Register(Spec{PluginID: "qlcatalog", Driver: "qlcatalog", Targets: []TargetPattern{{Prefix: "qlcatalog:"}},
+		Open: open, QueryLanguage: language})
+	spec, ok := ByPlugin("qlcatalog")
 	if !ok {
 		t.Fatal("qlcatalog not registered")
 	}

@@ -635,7 +635,7 @@ func TestPluginInspect_failures(t *testing.T) {
 		{name: "wrong protocol version", env: map[string]string{"PERK_PLUGIN_PROTOCOL_VERSION": "2"}, wantPhase: "initialize", wantError: "protocol version 2, want 1"},
 		{name: "malformed stdout", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "malformed"}, wantPhase: "protocol", wantError: "malformed response frame"},
 		{name: "crash during initialize", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "crash"}, wantPhase: "protocol", wantError: "exit status 3"},
-		{name: "registration rejects empty name", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "bad_caps"}, wantPhase: "register", wantError: "needs a name"},
+		{name: "registration rejects empty plugin ID", env: map[string]string{"PERK_PLUGIN_BEHAVIOR": "bad_caps"}, wantPhase: "register", wantError: "needs a plugin ID"},
 		{name: "resolve failure", env: nil, wantPhase: "resolve", wantError: "no such file"},
 	}
 	for _, test := range tests {
@@ -839,7 +839,7 @@ func TestPluginDoctor_duplicateIdentityAcrossItems(t *testing.T) {
 	if len(reports) != 2 || !reports[0].OK || !reports[1].OK {
 		t.Fatalf("reports = %+v, want both duplicate-identity items ok", reports)
 	}
-	if _, ok := database.ByName("clihelper"); ok {
+	if _, ok := database.ByPlugin("clihelper"); ok {
 		t.Fatal("doctor installed a global driver; the registry must stay untouched")
 	}
 }
@@ -861,7 +861,7 @@ func TestPluginDoctor_overlappingTargetsAcrossItems(t *testing.T) {
 	if len(reports) != 2 || !reports[0].OK || !reports[1].OK {
 		t.Fatalf("reports = %+v, want both overlapping-prefix items ok", reports)
 	}
-	if _, ok := database.ByName("clihelper"); ok {
+	if _, ok := database.ByPlugin("clihelper"); ok {
 		t.Fatal("doctor installed a global driver; the registry must stay untouched")
 	}
 }

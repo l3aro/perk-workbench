@@ -91,8 +91,11 @@ func (l *Loader) Restart(ctx context.Context, identifier string) error {
 	}
 	client.SetPlugin(handshake.Capabilities.Name)
 	client.setProtocolVersion(handshake.ProtocolVersion)
-
-	replacement := newShim(client, handshake.Capabilities, l)
+	source := "external"
+	if item.config.Builtin {
+		source = "builtin"
+	}
+	replacement := newShim(client, handshake.Capabilities, l, source)
 	if item.registered {
 		if err := database.ValidateShimReplacement(replacement); err != nil {
 			_ = client.Close()

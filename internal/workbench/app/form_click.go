@@ -272,7 +272,7 @@ func (m Model) handleFormClick(x, y int) (tea.Model, tea.Cmd) {
 			}
 			return m.openConnection()
 		}
-		// A click on an option row of the Driver or TLS select selects it:
+		// A click on an option row of the Plugin or TLS select selects it:
 		// huh's select fields don't handle mouse clicks.
 		if field, option := m.connection.component.Form.SelectOptionAt(m.connection.component.Form.View(), contentY-1); field != "" {
 			return m, m.connection.component.Form.ApplySelectOption(field, option)

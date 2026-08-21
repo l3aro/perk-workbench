@@ -4,53 +4,29 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-	"sync"
-
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/profile"
+	"slices"
+	"strings"
+	"sync"
 )
 
-// Spec describes one driver in the group: which target forms address it,
-// how to open a service for a matched target, and (optionally) how the
-// connection form presents it. The group is the single place that maps
-// target forms to backends; the workbench never switches on target
-// prefixes itself. Everything but Open is plain data, so a spec crosses
-// the plugin DTO boundary unchanged.
+// Spec describes one registered plugin instance: the database family it
+// serves, the target forms it addresses, and the callbacks that cross the
+// plugin boundary. PluginID is unique; Driver is deliberately non-unique.
 type Spec struct {
-	// Name identifies the driver. It is the profile driver name
-	// ("sqlite", "mysql", "postgres").
-	Name string
-
-	// Display is the human-readable driver label ("SQLite").
-	Display string
-
-	// Targets lists the target forms this driver addresses, in check
-	// order. Empty means the driver is reached only through the default
-	// fallback (SQLite).
-	Targets []TargetPattern
-
-	// Open opens a service for a matched target.
-	Open func(ctx context.Context, target string) (sharedsql.Service, error)
-
-	// Form describes the connection form for this driver, or nil when the
-	// driver has no form entry (MongoDB is opened by target URL only).
-	// Target serialization is a registered in-process builder (see
-	// BuildTarget), not part of the spec.
-	Form *FormSpec
-
-	// QueryLanguage describes how the query editor presents this
-	// driver's language. A zero value carries no advertisement (the UI
-	// falls back to its defaults); built-ins and registered shims always
-	// carry an explicit one.
+	PluginID      string
+	Driver        string
+	Display       string
+	Targets       []TargetPattern
+	Open          func(ctx context.Context, target string) (sharedsql.Service, error)
+	BuildTarget   TargetBuilder
+	Form          *FormSpec
 	QueryLanguage QueryLanguage
-
-	// Workspace advertises the driver's workspace tab capability: the
-	// standard tabs it supports beyond Query/Browse and its ordered
-	// custom plain-data views. Nil keeps the legacy per-product tab
-	// policy exactly; a present advertisement is authoritative for the
-	// tab row.
-	Workspace *sharedsql.WorkspaceCapability
+	Workspace     *sharedsql.WorkspaceCapability
+	// Source identifies how the plugin is hosted ("builtin" or "external").
+	// Built-ins remain child processes; this is presentation metadata only.
+	Source string
 }
 
 // TargetPattern declaratively addresses one target form of a driver. A
@@ -143,44 +119,40 @@ type FormValues struct {
 
 var (
 	driversMu sync.RWMutex
-	byName    = map[string]Spec{}
+	byPlugin  = map[string]Spec{}
 	order     []string
 )
 
-// Register adds a driver to the group. Driver names are unique: registering
-// a duplicate name panics. Registration is init-time only — the group is
-// fully populated before any Open call — but the lock keeps late in-process
-// registration (tests, future shims) safe.
+// Register adds a plugin instance to the registry. Plugin IDs are unique;
+// database families and target prefixes may be shared.
 func Register(spec Spec) {
 	if err := validateSpec(spec); err != nil {
 		panic(err.Error())
 	}
 	driversMu.Lock()
 	defer driversMu.Unlock()
-	if _, exists := byName[spec.Name]; exists {
-		panic("database: driver " + spec.Name + " registered twice")
+	if _, exists := byPlugin[spec.PluginID]; exists {
+		panic("database: plugin " + spec.PluginID + " registered twice")
 	}
-	byName[spec.Name] = spec
-	order = append(order, spec.Name)
+	byPlugin[spec.PluginID] = spec
+	order = append(order, spec.PluginID)
 }
 
-// validateSpec checks the invariants every registered driver must hold:
-// a name, an open function, at least one target form (only the default
-// fallback driver may have none), and — when the driver has a
-// connection form — a form prefix routed by one of its stripped target
-// forms, so serialized targets always reach the driver back.
+// validateSpec checks the invariants every registered plugin must hold.
 func validateSpec(spec Spec) error {
 	switch {
-	case spec.Name == "":
-		return errors.New("database: driver spec needs a name")
+	case strings.TrimSpace(spec.PluginID) == "":
+		return errors.New("database: plugin spec needs a plugin ID")
+	case strings.TrimSpace(spec.Driver) == "":
+		return fmt.Errorf("database: plugin %q needs a driver family", spec.PluginID)
 	case spec.Open == nil:
-		return fmt.Errorf("database: driver spec %q needs an open function", spec.Name)
-	case len(spec.Targets) == 0 && spec.Name != string(profile.DriverSQLite):
-		return fmt.Errorf("database: driver %q has no target forms; only the fallback driver %q may", spec.Name, profile.DriverSQLite)
+		return fmt.Errorf("database: plugin spec %q needs an open function", spec.PluginID)
+	case len(spec.Targets) == 0 && spec.Driver != string(profile.DriverSQLite):
+		return fmt.Errorf("database: plugin %q has no target forms; only the SQLite fallback may", spec.PluginID)
 	}
 	for _, pattern := range spec.Targets {
 		if pattern.Prefix == "" {
-			return fmt.Errorf("database: driver %q has an empty target prefix", spec.Name)
+			return fmt.Errorf("database: plugin %q has an empty target prefix", spec.PluginID)
 		}
 	}
 	if spec.Form != nil && spec.Form.Prefix != "" {
@@ -192,100 +164,98 @@ func validateSpec(spec Spec) error {
 			}
 		}
 		if !routed {
-			return fmt.Errorf("database: driver %q form prefix %q must be one of its stripped target forms", spec.Name, spec.Form.Prefix)
+			return fmt.Errorf("database: plugin %q form prefix %q must be one of its stripped target forms", spec.PluginID, spec.Form.Prefix)
 		}
 	}
 	if err := validateQueryLanguage(spec.QueryLanguage); err != nil {
-		return fmt.Errorf("database: driver %q: %w", spec.Name, err)
+		return fmt.Errorf("database: plugin %q: %w", spec.PluginID, err)
 	}
 	if err := sharedsql.ValidateWorkspaceCapability(spec.Workspace); err != nil {
-		return fmt.Errorf("database: driver %q: %w", spec.Name, err)
+		return fmt.Errorf("database: plugin %q: %w", spec.PluginID, err)
 	}
 	return nil
 }
 
-// ByName returns the registered driver with the given name.
-func ByName(name string) (Spec, bool) {
+// ByPlugin returns the registered plugin instance with the given ID.
+func ByPlugin(pluginID string) (Spec, bool) {
 	driversMu.RLock()
 	defer driversMu.RUnlock()
-	spec, ok := byName[name]
+	spec, ok := byPlugin[pluginID]
 	return spec, ok
 }
 
-// Match selects the driver whose target form addresses target, returning
-// the connection target to open. Registration order is precedence order;
-// within a driver, patterns are checked in declared order.
-func Match(target string) (Spec, string, bool) {
+// PluginsByDriver returns all registered plugin instances serving one family,
+// in deterministic plugin-ID order.
+func PluginsByDriver(driver string) []Spec {
 	driversMu.RLock()
 	defer driversMu.RUnlock()
-	for _, name := range order {
-		for _, pattern := range byName[name].Targets {
+	specs := make([]Spec, 0)
+	for _, pluginID := range order {
+		spec := byPlugin[pluginID]
+		if spec.Driver == driver {
+			specs = append(specs, spec)
+		}
+	}
+	slices.SortFunc(specs, func(a, b Spec) int { return strings.Compare(a.PluginID, b.PluginID) })
+	return specs
+}
+
+// FormPlugins returns registered plugin instances that advertise a form, in
+// registry order so built-ins retain their stable selector order.
+func FormPlugins() []Spec {
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	specs := make([]Spec, 0, len(order))
+	for _, pluginID := range order {
+		if spec := byPlugin[pluginID]; spec.Form != nil {
+			specs = append(specs, spec)
+		}
+	}
+	return specs
+}
+
+// targetMatch is one plugin-specific target route.
+type targetMatch struct {
+	Spec Spec
+	DSN  string
+}
+
+// Matches returns every plugin instance whose target pattern addresses target.
+// Results are sorted by plugin ID, never by load order.
+func Matches(target string) []targetMatch {
+	driversMu.RLock()
+	defer driversMu.RUnlock()
+	matches := make([]targetMatch, 0)
+	for _, pluginID := range order {
+		spec := byPlugin[pluginID]
+		for _, pattern := range spec.Targets {
 			if !strings.HasPrefix(target, pattern.Prefix) {
 				continue
 			}
-			if pattern.KeepTarget {
-				return byName[name], target, true
+			dsn := target
+			if !pattern.KeepTarget {
+				dsn = strings.TrimPrefix(target, pattern.Prefix)
 			}
-			return byName[name], strings.TrimPrefix(target, pattern.Prefix), true
+			matches = append(matches, targetMatch{Spec: spec, DSN: dsn})
+			break
 		}
 	}
-	return Spec{}, "", false
+	slices.SortFunc(matches, func(a, b targetMatch) int {
+		return strings.Compare(a.Spec.PluginID, b.Spec.PluginID)
+	})
+	return matches
 }
-
-// FormDrivers returns the registered drivers that offer a connection
-// form, in registration order — the driver select's render order.
-func FormDrivers() []Spec {
-	driversMu.RLock()
-	defer driversMu.RUnlock()
-	drivers := make([]Spec, 0, len(order))
-	for _, name := range order {
-		if spec := byName[name]; spec.Form != nil {
-			drivers = append(drivers, spec)
-		}
-	}
-	return drivers
-}
-
-var (
-	buildersMu     sync.RWMutex
-	targetBuilders = map[string]TargetBuilder{}
-)
 
 // TargetBuilder serializes connection-form values into the opener target
-// body for one driver (no prefix). Built-in builders implement their
-// dialect in the adapter packages; RegisterShim installs the builder of a
-// plugin transport, receiving the same field-value DTO.
+// body for one plugin (without its form prefix).
 type TargetBuilder func(values FormValues) (string, bool)
 
-// registerTargetBuilder registers the target serializer for a driver.
-// Built-ins register theirs here; plugin shims register theirs through
-// RegisterShim. Names are unique: registering a duplicate name panics.
-func registerTargetBuilder(name string, build TargetBuilder) {
-	if name == "" || build == nil {
-		panic("database: target builder needs a driver name and a function")
-	}
-	buildersMu.Lock()
-	defer buildersMu.Unlock()
-	if _, exists := targetBuilders[name]; exists {
-		panic("database: target builder " + name + " registered twice")
-	}
-	targetBuilders[name] = build
-}
-
-// BuildTarget serializes form values into the opener target body for
-// spec's driver. ok=false when the driver has no form or no registered
-// builder; the caller then falls back to the raw target field.
+// BuildTarget serializes form values through the callback carried by spec.
 func BuildTarget(spec Spec, values FormValues) (string, bool) {
-	if spec.Form == nil {
+	if spec.Form == nil || spec.BuildTarget == nil {
 		return "", false
 	}
-	buildersMu.RLock()
-	defer buildersMu.RUnlock()
-	build, ok := targetBuilders[spec.Name]
-	if !ok {
-		return "", false
-	}
-	return build(values)
+	return spec.BuildTarget(values)
 }
 
 // QueryLanguage is the query editor presentation of a driver's
@@ -422,36 +392,35 @@ type Shim interface {
 // write by the caller): duplicate names, and cross-driver target
 // prefixes that would shadow or be shadowed by another driver's forms.
 // Overlaps within one shim's own patterns stay legal.
+// shimSource is optional metadata supplied by the loader. It distinguishes
+// self-hosted built-ins from external children without moving either into the
+// host process.
+type shimSource interface {
+	PluginSource() string
+}
+
+// checkShimConflictsLocked rejects only duplicate plugin IDs. Families and
+// target prefixes are intentionally shareable.
 func checkShimConflictsLocked(caps Capabilities) error {
-	if _, exists := byName[caps.Name]; exists {
-		return fmt.Errorf("database: driver %q registered twice", caps.Name)
-	}
-	for _, pattern := range caps.Targets {
-		for name, existing := range byName {
-			for _, other := range existing.Targets {
-				if strings.HasPrefix(pattern.Prefix, other.Prefix) || strings.HasPrefix(other.Prefix, pattern.Prefix) {
-					return fmt.Errorf("database: driver %q target prefix %q overlaps %q of driver %q", caps.Name, pattern.Prefix, other.Prefix, name)
-				}
-			}
-		}
+	if _, exists := byPlugin[caps.Name]; exists {
+		return fmt.Errorf("database: plugin %q registered twice", caps.Name)
 	}
 	return nil
 }
 
-// ValidateShim checks the registration invariants RegisterShim enforces
-// — a valid capability advertisement, a name unique against the
-// registered drivers, and no cross-driver target-prefix overlap —
-// without installing anything. It is the read-only face of shim
-// registration for diagnostic tooling: validating the same shim any
-// number of times, including duplicate identities and overlapping
-// target prefixes across items, never mutates the driver group.
+// ValidateShim checks registration invariants without installing the shim.
 func ValidateShim(shim Shim) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
 	}
 	caps := normalizeCapabilities(shim.Capabilities())
 	if err := validateSpec(Spec{
-		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+		PluginID:      caps.Name,
+		Driver:        caps.Driver,
+		Targets:       caps.Targets,
+		Open:          shim.Open,
+		BuildTarget:   shim.BuildTarget,
+		Form:          caps.Form,
 		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
 		Workspace:     caps.Workspace,
 	}); err != nil {
@@ -462,21 +431,28 @@ func ValidateShim(shim Shim) error {
 	return checkShimConflictsLocked(caps)
 }
 
-// RegisterShim installs a plugin-backed driver into the group, deriving
-// the spec from the shim's declarative capabilities. Unlike Register, a
-// misconfigured shim returns an error: a broken plugin must not take the
-// app down. Formless drivers never register a target builder; the
-// connection form then falls back to the raw target field, like a
-// target-only driver. ValidateShim is the side-effect-free face of the
-// same checks.
+// RegisterShim installs one plugin-backed driver into the registry.
 func RegisterShim(shim Shim) error {
+	source := ""
+	if sourced, ok := shim.(shimSource); ok {
+		source = sourced.PluginSource()
+	}
+	return registerShim(shim, source)
+}
+
+func registerShim(shim Shim, source string) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
 	}
 	caps := normalizeCapabilities(shim.Capabilities())
 	queryLanguage := normalizeQueryLanguage(caps.QueryLanguage)
 	if err := validateSpec(Spec{
-		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+		PluginID:      caps.Name,
+		Driver:        caps.Driver,
+		Targets:       caps.Targets,
+		Open:          shim.Open,
+		BuildTarget:   shim.BuildTarget,
+		Form:          caps.Form,
 		QueryLanguage: queryLanguage,
 		Workspace:     caps.Workspace,
 	}); err != nil {
@@ -487,43 +463,37 @@ func RegisterShim(shim Shim) error {
 	if err := checkShimConflictsLocked(caps); err != nil {
 		return err
 	}
-	// Install the target builder before the driver becomes visible, so a
-	// concurrent BuildTarget can never observe a partially registered
-	// shim. Formless drivers (MongoDB-style, target URL only) never
-	// register one.
-	if caps.Form != nil {
-		buildersMu.Lock()
-		defer buildersMu.Unlock()
-		targetBuilders[caps.Name] = shim.BuildTarget
-	}
 	spec := Spec{
-		Name:          caps.Name,
+		PluginID:      caps.Name,
+		Driver:        caps.Driver,
 		Display:       caps.Display,
 		Targets:       caps.Targets,
 		Open:          shim.Open,
+		BuildTarget:   shim.BuildTarget,
 		Form:          caps.Form,
 		QueryLanguage: queryLanguage,
 		Workspace:     caps.Workspace,
+		Source:        source,
 	}
-	byName[caps.Name] = spec
+	byPlugin[caps.Name] = spec
 	order = append(order, caps.Name)
 	return nil
 }
 
-// ValidateShimReplacement validates a restart replacement whose driver
-// is already registered under its own identity: the replacement must be
-// self-consistent and must not conflict with any OTHER registered
-// driver, while the entry's own registration is excluded — it is the
-// registration being swapped in place, never duplicated. The caller is
-// still responsible for requiring the replacement to keep the
-// registered identity. Side-effect-free, like ValidateShim.
+// ValidateShimReplacement validates a restart replacement against all other
+// registered plugin instances while excluding its own plugin ID.
 func ValidateShimReplacement(shim Shim) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
 	}
 	caps := normalizeCapabilities(shim.Capabilities())
 	if err := validateSpec(Spec{
-		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
+		PluginID:      caps.Name,
+		Driver:        caps.Driver,
+		Targets:       caps.Targets,
+		Open:          shim.Open,
+		BuildTarget:   shim.BuildTarget,
+		Form:          caps.Form,
 		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
 		Workspace:     caps.Workspace,
 	}); err != nil {
@@ -531,17 +501,5 @@ func ValidateShimReplacement(shim Shim) error {
 	}
 	driversMu.RLock()
 	defer driversMu.RUnlock()
-	for _, pattern := range caps.Targets {
-		for name, existing := range byName {
-			if name == caps.Name {
-				continue // the entry's own registration, being swapped
-			}
-			for _, other := range existing.Targets {
-				if strings.HasPrefix(pattern.Prefix, other.Prefix) || strings.HasPrefix(other.Prefix, pattern.Prefix) {
-					return fmt.Errorf("database: driver %q target prefix %q overlaps %q of driver %q", caps.Name, pattern.Prefix, other.Prefix, name)
-				}
-			}
-		}
-	}
 	return nil
 }

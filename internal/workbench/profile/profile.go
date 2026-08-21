@@ -93,7 +93,10 @@ const (
 // Profile is one persisted connection record. The JSON keys are stable
 // wire format; do not rename them.
 type Profile struct {
-	ID     string `json:"id"`
+	ID string `json:"id"`
+	// Plugin is the selected plugin instance. Driver remains the database
+	// family for form rules and display.
+	Plugin string `json:"plugin,omitempty"`
 	Driver Driver `json:"driver"`
 	Name   string `json:"name"`
 	// Target is the driver's opener target body. It is persisted as-is
@@ -116,8 +119,7 @@ type Profile struct {
 	// to the stored enc: value that failed to decrypt at load. It is
 	// in-memory only (json:"-"; the wire format is unchanged) and marks
 	// a fail-closed load: the retained ciphertext is never surfaced as a
-	// literal, and Save refuses while the field still holds exactly that
-	// blob. Re-entering the field's value clears the refusal.
+	// literal, and Save refuses to rewrite it until the user re-enters it.
 	Undecryptable map[string]string `json:"-"`
 }
 

@@ -150,8 +150,7 @@ func TestLoad_duplicateDriverAndOverlap(t *testing.T) {
 	}
 	_ = loader.Close()
 
-	// Target overlap: the first copy owns alpha:, the second's alpha:b
-	// must be rejected (prefix overlap), even under a fresh driver name.
+	// Target overlap is allowed when plugin IDs differ.
 	setEnv(t, "PERK_PLUGIN_NAME", "pluginkvo")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "alpha:")
 	registered = nil
@@ -165,14 +164,8 @@ func TestLoad_duplicateDriverAndOverlap(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_TARGETS", "alpha:b")
 	registered = nil
 	loader, errs = Load(context.Background(), configPath, testEntries(copyB), registerRecorder(&registered))
-	if len(errs) != 1 {
-		t.Fatalf("overlap Load errors = %v, want exactly one", errs)
-	}
-	if len(registered) != 0 {
-		t.Fatalf("overlap Load registered %d drivers, want none", len(registered))
-	}
-	if !strings.Contains(errs[0].Error(), "alpha:b") || !strings.Contains(errs[0].Error(), "alpha:") {
-		t.Fatalf("overlap error = %v, want it to mention both prefixes", errs[0])
+	if len(errs) != 0 || len(registered) != 1 {
+		t.Fatalf("overlap Load errors = %v, registered = %d, want none and one", errs, len(registered))
 	}
 	_ = loader.Close()
 
@@ -267,7 +260,7 @@ func TestLoad_databaseOpenSemantics(t *testing.T) {
 	client := loader.clients[0]
 	loader.mu.Unlock()
 
-	opened, err := database.Open(context.Background(), "pluginkv:whatever")
+	opened, err := database.Open(context.Background(), "pluginkv", "pluginkv:whatever")
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -567,7 +560,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	if got := shims[0].Capabilities().QueryLanguage; got != nil {
 		t.Fatalf("wire query_language = %+v, want nil (not advertised)", got)
 	}
-	spec, ok := database.ByName("qlomit")
+	spec, ok := database.ByPlugin("qlomit")
 	if !ok {
 		t.Fatal("qlomit not registered")
 	}
@@ -599,7 +592,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 			{Name: "SET", Usage: "SET key value", Summary: "Set the value at key"},
 		},
 	}
-	if spec, ok := database.ByName("qlpass"); !ok {
+	if spec, ok := database.ByPlugin("qlpass"); !ok {
 		t.Fatal("qlpass not registered")
 	} else if !reflect.DeepEqual(spec.QueryLanguage, want) {
 		t.Fatalf("qlpass query language = %+v, want %+v", spec.QueryLanguage, want)
@@ -618,7 +611,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	if len(shims) != 0 {
 		t.Fatalf("invalid-advertisement Load registered %d drivers, want none", len(shims))
 	}
-	if _, ok := database.ByName("qlbad"); ok {
+	if _, ok := database.ByPlugin("qlbad"); ok {
 		t.Fatal("qlbad registered despite invalid query language")
 	}
 	_ = loader.Close()
@@ -637,7 +630,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	if len(shims) != 0 {
 		t.Fatalf("duplicate-command Load registered %d drivers, want none", len(shims))
 	}
-	if _, ok := database.ByName("qlbadcmd"); ok {
+	if _, ok := database.ByPlugin("qlbadcmd"); ok {
 		t.Fatal("qlbadcmd registered despite duplicate command names")
 	}
 	_ = loader.Close()

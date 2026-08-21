@@ -517,7 +517,7 @@ func TestRestart_registeredThroughDatabaseRegisterShim(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = loader.Close() })
 
-	opened, err := database.Open(context.Background(), name+":first")
+	opened, err := database.Open(context.Background(), name, name+":first")
 	if err != nil {
 		t.Fatalf("Open before restart: %v", err)
 	}
@@ -541,7 +541,7 @@ func TestRestart_registeredThroughDatabaseRegisterShim(t *testing.T) {
 
 	// The recovered driver serves new opens; the old session generation
 	// keeps failing deterministically.
-	recovered, err := database.Open(context.Background(), name+":second")
+	recovered, err := database.Open(context.Background(), name, name+":second")
 	if err != nil {
 		t.Fatalf("Open after restart: %v", err)
 	}

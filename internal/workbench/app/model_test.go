@@ -590,7 +590,7 @@ func TestChatContext_doesNotLeakPreviousConnection(t *testing.T) {
 	// Open B through a stub backend with a distinct product identity.
 	var openedB bool
 	bTarget := filepath.Join(t.TempDir(), "b.db")
-	model = New("", context.Background(), func(_ context.Context, target string) (sharedsql.Opened, error) {
+	model = New("", context.Background(), func(_ context.Context, _ string, target string) (sharedsql.Opened, error) {
 		if target != bTarget {
 			t.Fatalf("open target = %q, want %q", target, bTarget)
 		}

@@ -647,7 +647,7 @@ func TestPluginManager_restartReconnectsCrashedCurrentSession(t *testing.T) {
 	crashed.ExitStatus = 3
 	crashed.Error = "EOF"
 	service := &fakePluginService{closeErr: &plugin.TerminalError{Err: errors.New("perk/v1: client closed")}}
-	open := func(ctx context.Context, target string) (sharedsql.Opened, error) {
+	open := func(ctx context.Context, _ string, target string) (sharedsql.Opened, error) {
 		return sharedsql.Opened{
 			Target:        target,
 			Service:       service,
