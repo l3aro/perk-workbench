@@ -365,14 +365,29 @@ func normalizeQueryLanguage(ql *QueryLanguage) QueryLanguage {
 	return *ql
 }
 
+// normalizeCapabilities trims the plugin identity fields once at the
+// registration boundary. Name remains the unique plugin identity; Driver
+// is the non-unique database-family key and falls back to Name when omitted.
+func normalizeCapabilities(caps Capabilities) Capabilities {
+	caps.Name = strings.TrimSpace(caps.Name)
+	caps.Driver = strings.TrimSpace(caps.Driver)
+	if caps.Driver == "" {
+		caps.Driver = caps.Name
+	}
+	return caps
+}
+
 // Capabilities is the serializable advertisement an external driver
 // serves over its transport: identity, the target forms it addresses,
 // the connection form description, and the query editor language — the
 // DTO twin of Spec's data fields. Compiled-in drivers never travel as
 // capabilities.
 type Capabilities struct {
-	Name    string          `json:"name"`
-	Display string          `json:"display"`
+	Name    string `json:"name"`
+	Display string `json:"display"`
+	// Driver is the non-unique database-family key. When omitted, it
+	// normalizes to Name for compatibility with existing v1 plugins.
+	Driver  string          `json:"driver,omitempty"`
 	Targets []TargetPattern `json:"targets,omitempty"`
 	Form    *FormSpec       `json:"form,omitempty"`
 	// QueryLanguage advertises the query editor language for this
@@ -434,7 +449,7 @@ func ValidateShim(shim Shim) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
 	}
-	caps := shim.Capabilities()
+	caps := normalizeCapabilities(shim.Capabilities())
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
 		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),
@@ -458,7 +473,7 @@ func RegisterShim(shim Shim) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
 	}
-	caps := shim.Capabilities()
+	caps := normalizeCapabilities(shim.Capabilities())
 	queryLanguage := normalizeQueryLanguage(caps.QueryLanguage)
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
@@ -506,7 +521,7 @@ func ValidateShimReplacement(shim Shim) error {
 	if shim == nil {
 		return errors.New("database: nil shim")
 	}
-	caps := shim.Capabilities()
+	caps := normalizeCapabilities(shim.Capabilities())
 	if err := validateSpec(Spec{
 		Name: caps.Name, Targets: caps.Targets, Open: shim.Open, Form: caps.Form,
 		QueryLanguage: normalizeQueryLanguage(caps.QueryLanguage),

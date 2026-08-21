@@ -8,6 +8,31 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
+func TestValidateCapabilities_driverIdentity(t *testing.T) {
+	base := database.Capabilities{
+		Name:    "redis-plugin",
+		Display: "Redis",
+		Targets: []database.TargetPattern{{Prefix: "redis:"}},
+	}
+	for _, test := range []struct {
+		name    string
+		driver  string
+		wantErr bool
+	}{
+		{name: "omitted", wantErr: false},
+		{name: "explicit family", driver: " redis ", wantErr: false},
+		{name: "blank family falls back to name", driver: " \t", wantErr: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			caps := base
+			caps.Driver = test.driver
+			err := validateCapabilities(caps)
+			if (err != nil) != test.wantErr {
+			}
+		})
+	}
+}
+
 // TestValidateCapabilities_commandCatalog: the conformance runner's
 // capabilities validation enforces the same command-catalog invariants
 // as registration — nonblank bounded control-free name/usage/summary,

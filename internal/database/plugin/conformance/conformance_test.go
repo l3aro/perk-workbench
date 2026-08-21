@@ -603,7 +603,7 @@ func TestEvidenceDocumentStableFields(t *testing.T) {
 	if doc.ExecutableSHA256 != wantHash {
 		t.Fatalf("executable digest = %q, want %q", doc.ExecutableSHA256, wantHash)
 	}
-	if doc.Capabilities == nil || doc.Capabilities.Name != "conftest" || doc.Capabilities.Display != "Conformance Helper" {
+	if doc.Capabilities == nil || doc.Capabilities.Name != "conftest" || doc.Capabilities.Display != "Conformance Helper" || doc.Capabilities.Driver != "conftest-family" {
 		t.Fatalf("capabilities identity = %+v, want the helper's advertisement", doc.Capabilities)
 	}
 }

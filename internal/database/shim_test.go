@@ -24,6 +24,7 @@ func (fakeRedisShim) Capabilities() database.Capabilities {
 	return database.Capabilities{
 		Name:    "redis",
 		Display: "Redis",
+		Driver:  "redis",
 		Targets: []database.TargetPattern{
 			{Prefix: "redis://", KeepTarget: true},
 			{Prefix: "redis:"},
@@ -135,6 +136,24 @@ func TestRegisterShim_rejectsMisconfigured(t *testing.T) {
 	noName.Name = ""
 	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return noName })); err == nil {
 		t.Fatal("RegisterShim without a name succeeded, want an error")
+	}
+
+	blankName := base
+	blankName.Name = " \t"
+	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return blankName })); err == nil {
+		t.Fatal("RegisterShim with whitespace-only name succeeded, want an error")
+	}
+
+	trimmed := base
+	trimmed.Name = "  redis-copy  "
+	trimmed.Driver = "  redis  "
+	trimmed.Targets = []database.TargetPattern{{Prefix: "redis-copy:"}}
+	trimmed.Form = nil
+	if err := database.RegisterShim(shimFunc(func() database.Capabilities { return trimmed })); err != nil {
+		t.Fatalf("RegisterShim with padded identities = %v, want nil", err)
+	}
+	if _, ok := database.ByName("redis-copy"); !ok {
+		t.Fatal("trimmed plugin identity was not registered")
 	}
 
 	if err := database.RegisterShim(fakeRedisShim{}); err == nil {

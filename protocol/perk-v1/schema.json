@@ -200,6 +200,9 @@
         "display": {
           "type": "string"
         },
+        "driver": {
+          "type": "string"
+        },
         "targets": {
           "type": "array",
           "items": {

@@ -381,13 +381,18 @@ function normalizeQueryCommands(commands) {
   return normalized;
 }
 
-// normalizeCapabilities makes the wire shape explicit: write_capabilities
-// is always present, document is omitted when null, query_language is
-// omitted when absent or null, and workspace is omitted when absent or
-// null — matching the Go host DTOs (database.Capabilities,
-// sharedsql.WriteCapabilities, sharedsql.WorkspaceCapability).
+// normalizeCapabilities makes the wire shape explicit: driver is trimmed
+// and falls back to name, write_capabilities is always present, document
+// is omitted when null, query_language is omitted when absent or null,
+// and workspace is omitted when absent or null — matching the Go host
+// DTOs (database.Capabilities, sharedsql.WriteCapabilities,
+// sharedsql.WorkspaceCapability).
 function normalizeCapabilities(capabilities) {
   requireObject(capabilities, 'capabilities');
+  const driver = capabilities.driver;
+  if (driver !== undefined && typeof driver !== 'string') {
+    throw new TypeError('capabilities.driver must be a string when provided');
+  }
   const write = capabilities.write_capabilities;
   if (write !== undefined && write !== null && (typeof write !== 'object' || Array.isArray(write))) {
     throw new TypeError('capabilities.write_capabilities must be an object');
@@ -399,6 +404,14 @@ function normalizeCapabilities(capabilities) {
   const queryLanguage = normalizeQueryLanguage(capabilities.query_language);
   const workspace = normalizeWorkspaceCapability(capabilities.workspace);
   const normalized = { ...capabilities, write_capabilities: writeCapabilities };
+  if (driver !== undefined) {
+    const fallbackDriver = typeof capabilities.name === 'string' ? capabilities.name.trim() : '';
+    const normalizedDriver = driver.trim() || fallbackDriver;
+    if (normalizedDriver === '') {
+      throw new TypeError('capabilities.driver must resolve to a nonblank string');
+    }
+    normalized.driver = normalizedDriver;
+  }
   if (queryLanguage === undefined) {
     delete normalized.query_language;
   } else {

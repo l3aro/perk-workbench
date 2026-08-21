@@ -69,6 +69,7 @@ type wireError struct {
 type helperCapabilities struct {
 	Name    string `json:"name"`
 	Display string `json:"display"`
+	Driver  string `json:"driver,omitempty"`
 	Targets []struct {
 		Prefix string `json:"prefix"`
 	} `json:"targets"`
@@ -80,6 +81,7 @@ func helperCaps(name, display string) helperCapabilities {
 	return helperCapabilities{
 		Name:    name,
 		Display: display,
+		Driver:  "conftest-family",
 		Targets: []struct {
 			Prefix string `json:"prefix"`
 		}{{Prefix: "conftest:"}},

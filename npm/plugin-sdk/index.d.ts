@@ -160,6 +160,8 @@ export interface WorkspaceCapability {
 export interface Capabilities {
   name: string;
   display: string;
+  /** Optional non-unique database-family key; hosts fall back to name. */
+  driver?: string;
   targets?: TargetPattern[];
   form?: FormSpec | null;
   query_language?: QueryLanguage | null;

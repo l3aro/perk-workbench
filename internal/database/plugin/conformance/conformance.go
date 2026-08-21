@@ -57,6 +57,7 @@ const EvidenceVersion = 1
 type CapabilitiesIdentity struct {
 	Name    string `json:"name"`
 	Display string `json:"display,omitempty"`
+	Driver  string `json:"driver,omitempty"`
 }
 
 // CaseError is one case failure with its stable category and message.
@@ -547,6 +548,7 @@ func (e *Engine) expectInitializeResult(frame Frame) error {
 		e.capabilities = &CapabilitiesIdentity{
 			Name:    result.Capabilities.Name,
 			Display: result.Capabilities.Display,
+			Driver:  strings.TrimSpace(result.Capabilities.Driver),
 		}
 	}
 	return nil

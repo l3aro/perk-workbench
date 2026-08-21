@@ -102,6 +102,45 @@ test('initialize result includes write_capabilities even when empty', async () =
   await server.close();
 });
 
+test('initialize preserves an explicit driver family key', async () => {
+  const { server, client } = createServer(
+    minimalDefinition({
+      capabilities: {
+        name: 'redis-plugin',
+        display: 'Redis',
+        driver: 'redis',
+        write_capabilities: { row_writer: false },
+      },
+    }),
+  );
+  const result = await client.initialize();
+  assert.equal(result.capabilities.driver, 'redis');
+  await server.close();
+});
+
+test('capabilities accepts omitted and falls back from a blank driver', async () => {
+  const { server, client } = createServer(minimalDefinition());
+  const result = await client.initialize();
+  assert.equal(result.capabilities.driver, undefined);
+  await server.close();
+
+  const blank = createServer(minimalDefinition({
+    capabilities: { ...minimalDefinition().capabilities, driver: '  ' },
+  }));
+  const blankResult = await blank.client.initialize();
+  assert.equal(blankResult.capabilities.driver, 'kv');
+  await blank.server.close();
+
+  assert.throws(
+    () => createServer(minimalDefinition({ capabilities: { ...minimalDefinition().capabilities, driver: 7 } })),
+    /capabilities\.driver must be a string/,
+  );
+  assert.throws(
+    () => createServer(minimalDefinition({ capabilities: { name: ' ', display: 'KV', driver: ' ', write_capabilities: {} } })),
+    /capabilities\.driver must resolve to a nonblank string/,
+  );
+});
+
 test('initialize result includes a normalized query_language when advertised', async () => {
   const { server, client } = createServer(
     minimalDefinition({

@@ -5,6 +5,7 @@
     "protocol_version": 1,
     "capabilities": {
       "name": "perk-redis",
+      "driver": "redis",
       "display": "Redis (plugin)",
       "targets": [
         {
