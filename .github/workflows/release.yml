@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.25.8"
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: darwin, goarch: amd64, runner: macos-13 }
+          - { goos: darwin, goarch: arm64, runner: macos-14 }
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm }
+          - { goos: windows, goarch: amd64, runner: windows-latest }
+    steps:
+      - name: Checkout host
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build one self-hosting executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .release-work
+          suffix=''; [[ '${{ matrix.goos }}' == windows ]] && suffix='.exe'
+          CGO_ENABLED=0 GOOS='${{ matrix.goos }}' GOARCH='${{ matrix.goarch }}' GOTOOLCHAIN=local \
+            go build -trimpath -buildvcs=false -ldflags='-s -w -buildid= -X main.version=${GITHUB_REF_NAME#v}' \
+            -o ".release-work/perk-workbench$suffix" ./cmd/perk-workbench
+      - name: Smoke-test all self-plugin modes on the native runner
+        shell: bash
+        run: scripts/self-plugin-smoke.sh ".release-work/perk-workbench${{ matrix.goos == 'windows' && '.exe' || '' }}"
+      - name: Package one-binary artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix=''; [[ '${{ matrix.goos }}' == windows ]] && suffix='.exe'
+          scripts/release-package.sh '${{ matrix.goos }}' '${{ matrix.goarch }}' .release-work/dist ".release-work/perk-workbench$suffix"
+      - name: Upload one-binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perk-workbench-release-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            .release-work/dist/perk-workbench-*.tar.gz
+            .release-work/dist/perk-workbench-*.zip
+            .release-work/dist/perk-workbench-*.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download target artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: perk-workbench-release-*
+          path: ${{ runner.temp }}/release
+          merge-multiple: true
+      - name: Publish host release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "perk-workbench $GITHUB_REF_NAME" \
+            --notes "One self-hosting perk-workbench executable per supported target. Built-in SQLite, MySQL, PostgreSQL, and MongoDB modes speak perk/v1 as child processes; no driver assets are published."
+          find "$RUNNER_TEMP/release" -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber

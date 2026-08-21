@@ -1,7 +1,7 @@
 .PHONY: sqlite mysql postgres mongo
 
 sqlite:
-	docker compose run --rm -t dev
+	go run ./cmd/perk-workbench demo/chinook-sqlite.db
 
 mysql:
 	docker compose up -d mysql

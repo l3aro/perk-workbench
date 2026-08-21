@@ -1,11 +1,11 @@
-# Perk Workbench external plugins (perk/v1)
+# Perk Workbench plugins (perk/v1)
 
-External database plugins let third parties add backends to perk-workbench
-without touching the Go codebase. A plugin is a separate executable that
-speaks the **perk/v1** protocol to the host: JSON-RPC 2.0 over
-newline-delimited UTF-8 JSON on stdin/stdout. The host spawns it, verifies
-it at handshake, and registers it in the driver group, so a plugin-backed
-driver is indistinguishable from a compiled-in one.
+Perk Workbench has two plugin sources. A built-in descriptor launches this
+same executable with `--plugin sqlite`, `--plugin mysql`, `--plugin postgres`,
+or `--plugin mongodb`; an external descriptor launches another executable.
+Both sources speak **perk/v1**: JSON-RPC 2.0 over newline-delimited UTF-8 JSON
+on stdin/stdout. Built-ins are child processes, not in-process drivers.
+Multiple plugin IDs may advertise the same database family.
 
 This document is the normative perk/v1 contract. The authoritative
 implementations are:
@@ -86,88 +86,89 @@ The full policy is the versioned asset `protocol/perk-v1/policy.md`
 
 ## Trust model
 
-A configured plugin is **trusted code**. It is an executable the workbench
-spawns as a child process with the workbench's own OS privileges: it can
-read and write whatever the workbench user can, including the database
-files and credentials the workbench opens. `config.json` is the explicit
-**allowlist** — nothing is auto-discovered, nothing runs unless the user
-listed it there. Adding an entry is the user's explicit authorization.
+A configured plugin is trusted code. The workbench spawns both built-in
+self-plugin children and external executables with the workbench user's OS
+privileges. `config.json` is the explicit **allowlist**: nothing is
+auto-discovered, and nothing runs unless its descriptor is listed there.
 
-Entries added through `perk-workbench plugin add --approve` (or the TUI
-plugins flow) are **pinned**: the config records the lowercase SHA-256 of
-the exact executable bytes that were approved, and startup verifies that
-fingerprint immediately before spawning the child. A pinned executable
-whose bytes have changed since approval (a reinstall, a rebuild, a
-tampered file) is **refused** with a clear expected/actual drift error and
-never executes; the other configured plugins still load. Hand-written
-`plugins` entries without a pin load **unpinned** exactly as before, for
-backwards compatibility — `plugin list` and `plugin doctor` report them as
-such, and pinning them is one `plugin add --approve` away.
+External descriptors may include a lowercase SHA-256 digest. The loader
+verifies that digest immediately before spawning the child and refuses a
+mismatch. Built-in descriptors never accept a digest because their executable
+is the host binary itself. `plugin add --approve` writes the external
+`{"path":"…","sha256":"…"}` descriptor directly; there is no separate
+`plugin_trust` map.
 
 ## Configuring plugins
 
-Plugins are listed in the workbench config file
-(`$XDG_CONFIG_HOME/perk-workbench/config.json`) under `plugins`, e.g.:
+Plugins are listed in `$XDG_CONFIG_HOME/perk-workbench/config.json` under
+`plugins`. A missing config file is materialized with the four built-ins in
+stable order:
 
 ```json
-{"plugins":["perk-redis","/home/alice/projects/clickhouse-driver/node_modules/.bin/perk-clickhouse"]}
+{
+  "plugins": [
+    {"builtin": "sqlite"},
+    {"builtin": "mysql"},
+    {"builtin": "postgres"},
+    {"builtin": "mongodb"}
+  ]
+}
 ```
 
-`plugin add --approve` additionally writes a `plugin_trust` object that
-maps each pinned executable's **canonical absolute path** to its approved
-SHA-256 digest:
+Remove a built-in descriptor to disable only that plugin ID. The other
+instances remain enabled:
 
 ```json
-{"plugins":["/home/alice/.local/bin/perk-redis"],
- "plugin_trust":{"/home/alice/.local/bin/perk-redis":"0123…cdef"}}
+{
+  "plugins": [
+    {"builtin": "sqlite"},
+    {"builtin": "postgres"},
+    {"builtin": "mongodb"},
+    {"path": "/home/alice/.local/bin/perk-redis", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+  ]
+}
 ```
 
-The trust key is the same canonical path `plugins` entries resolve to
-(`filepath.Abs` + `EvalSymlinks`), so the pin survives any entry spelling
-that resolves to the same file. A `plugin_trust` digest must be 64
-hexadecimal characters and its key an absolute path; a malformed trust
-record fails config parsing, and a valid pin that does not match the
-current bytes is refused per entry at startup. `plugin add` persists the
-entry as its canonical absolute path, so the pin and the entry can never
-resolve apart.
+Each descriptor sets exactly one source:
 
-Resolution rules for one entry:
+- `{"builtin":"sqlite"}` resolves the current executable and spawns
+  `perk-workbench --plugin sqlite`.
+- `{"path":"perk-redis"}` resolves a bare executable through `PATH`.
+- `{"path":"./perk-redis","sha256":"…"}` resolves a path relative to the
+  config file and verifies its lowercase 64-hex digest before spawn.
 
-- **Bare names** (no path separator, e.g. `perk-redis`) resolve through
-  `PATH` (`exec.LookPath`), so a globally installed plugin
-  (`npm install -g` of a plugin package) works by name.
-- **Paths containing a separator** resolve relative to the config file's
-  directory when relative, and are used as-is when absolute. This is how
-  a project-local install is addressed: list the absolute path into the
-  project's `node_modules/.bin`, or a relative path when the config file
-  lives in that project.
-- Every entry is canonicalized (`filepath.Abs` + `EvalSymlinks`) and must
-  be a regular file with at least one executable permission bit. Listing
-  the same canonical executable twice loads it once.
-- Each item is an **executable**, not an npm package spec. `npm install`
-  of a plugin package only places its `bin` executable on disk (see
-  below); the `plugins` entry names that executable.
+`sha256` is valid only on external path descriptors. Duplicate built-in names
+and duplicate resolved external paths are configuration errors. A configured
+external path may have no digest for backwards-compatible unpinned loading.
+The executable-plus-arguments pair is the process identity, so multiple
+instances of one binary with different built-in arguments do not collapse.
 
-Config-level validation happens at startup, before anything loads: an
-entry that is blank after trimming, or contains a NUL byte, fails config
-parsing (`config "<path>": plugins[<index>] must not be blank / must not
-contain a NUL byte`) and startup stops. A freshly materialized config file
-contains `"plugins": []`; a nil or empty list disables plugins.
+Capabilities carry a stable plugin ID in `name` and a non-unique database
+family in `driver`. For example, `mysql` and `mysql-cloud` may both advertise
+`driver: "mysql"` while remaining separate selectable plugin instances.
+Profiles persist the selected plugin ID; direct targets are rejected when a
+family has multiple matching plugins and must be opened through the form or
+`--select`.
 
-Per-entry failures at load time — resolution, spawning, the handshake, or
-registration — are logged and **skipped**; later entries still load and
-the built-in drivers (SQLite, MySQL, PostgreSQL, MongoDB) always start. A
-broken plugin never blocks startup. There is no auto-discovery of any
-kind: only allowlisted entries are ever spawned.
+Resolution rules for external paths:
 
-Plugins load in config order: resolve → dedupe → verify pin → spawn →
-handshake (`perk/v1/initialize`) → register. A pinned executable whose
-digest no longer matches is refused at the verify step — its child is
-never spawned — and contributes one logged error naming the entry with
-the expected and actual digests. A plugin rejected at handshake (wrong
-protocol version) or registration (invalid capabilities, duplicate name,
-target-prefix overlap) is terminated immediately and contributes one
-logged error.
+- Bare names (no path separator) resolve through `PATH`.
+- Paths containing a separator resolve relative to the config file when
+  relative, and as-is when absolute.
+- Every resolved executable must be a regular file with an executable bit.
+- The same canonical external path may not be listed twice.
+
+Config validation happens before any child starts. Invalid descriptors,
+malformed lowercase digests, blank paths, NUL bytes, duplicate built-ins, and
+duplicate resolved external paths stop startup with a diagnostic. A configured
+child that fails to resolve, spawn, initialize, or register is logged and
+skipped; later descriptors still load.
+
+Plugins load in config order: resolve, verify any external pin, spawn,
+handshake (`perk/v1/initialize`), and register. Built-in modes are shipped in
+the one `perk-workbench` executable. The host release publishes no driver
+repositories, sidecar archives, release manifests, or independent official
+driver assets; third-party external plugins retain their own release choices.
 
 ## Inspecting plugins from the CLI
 
@@ -439,14 +440,11 @@ Limits:
   the strict parsing rules above, exactly as the production host does.
 - Deliberately invalid input frames (malformed JSON, non-object JSON,
   invalid UTF-8, oversized frames) are constructed by the runner —
-  they cannot exist as canonical fixtures.
-- `--json` emits exactly one self-contained release evidence document
-  on stdout, pass or fail, and nothing else; diagnostics for the
-  invocation itself go to stderr only when no document can be
-  produced. Raw protocol frames and request data are never reported.
-  The document is validated by
-  `protocol/perk-v1/plugin-test-evidence.schema.json` (version 1) and
-  carries the stable evidence fields:
+  The document is validated by `plugin-test-evidence.schema.json`
+  (version 1) and carries the stable evidence fields; it is emitted on
+  stdout, pass or fail, and nothing else — diagnostics for the invocation
+  itself go to stderr only when no document can be produced. Raw protocol
+  frames and request data are never reported.
   - `evidence_schema` / `evidence_version` — the evidence document
     shape (`perk/v1/plugin-test-evidence.schema.json`, version 1).
   - `protocol_version` — the perk protocol version the host speaks
@@ -537,12 +535,10 @@ A plugin package declares its executable with a `bin` entry:
 
 Usage options:
 
-- **Global install** — `npm install -g perk-demo-kv` links
-  `perk-demo` into the npm global bin directory, which is normally on
-  `PATH`; configure `"plugins": ["perk-demo"]`.
-- **Project-local** — `npm install` in a project places the executable
-  at `node_modules/.bin/perk-demo`; configure the explicit path
-  `"plugins": ["/home/alice/projects/perk-demo-kv/node_modules/.bin/perk-demo"]`
+- **Global install** — `npm install -g perk-demo-kv` links the external
+  `perk-demo` executable into `PATH`; configure `{"path":"perk-demo"}`.
+- **Project-local** — configure the explicit path
+  `{"path":"/home/alice/projects/perk-demo-kv/node_modules/.bin/perk-demo"}`
   (or a path relative to the config file's directory).
 
 The rest of this document defines what the SDK implements; a complete,
@@ -1202,8 +1198,8 @@ is a `bin` executable with a shebang; diagnostics go to stderr.
 //   }
 //
 // config.json:
-//   { "plugins": ["perk-demo"] }                              # npm install -g perk-demo-kv
-//   # project-local: "plugins": ["/home/alice/projects/perk-demo-kv/node_modules/.bin/perk-demo"]
+//   { "plugins": [{ "path": "perk-demo" }] }                 // npm install -g perk-demo-kv
+//   // project-local: { "plugins": [{ "path": "/home/alice/projects/perk-demo-kv/node_modules/.bin/perk-demo" }] }
 
 const {
   createPluginServer,
@@ -1427,5 +1423,6 @@ What the example demonstrates:
 - `server.closed` resolves at input EOF or termination, after which the
   process exits.
 
-Run it with the workbench after installing the SDK and linking the bin;
-an invalid entry is logged and skipped while built-in drivers start.
+Run it with the workbench after installing the SDK and linking the executable;
+an invalid external entry is logged and skipped while other configured
+descriptors continue loading.

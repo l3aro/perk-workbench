@@ -11,6 +11,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/ultraviolet v0.0.0-20260720091822-7cc6674724ac
 	github.com/charmbracelet/x/ansi v0.11.7
+	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
@@ -18,6 +19,12 @@ require (
 	go.mongodb.org/mongo-driver/v2 v2.8.0
 	golang.design/x/clipboard v0.8.0
 	modernc.org/sqlite v1.54.0
+)
+
+require (
+	github.com/charmbracelet/x/conpty v0.1.1 // indirect
+	github.com/charmbracelet/x/errors v0.0.0-20240508181413-e8d8b6e2de86 // indirect
+	github.com/creack/pty v1.1.24 // indirect
 )
 
 require (

@@ -16,17 +16,23 @@ Perk Workbench is an interactive terminal database client. It opens one SQLite, 
 ```text
 cmd/perk-workbench
         |
+        +--> --plugin NAME: one built-in child speaking perk/v1
+        |
         v
-internal/workbench/app <-- Bubble Tea state, input, layout, async commands
+internal/workbench/app <-- Bubble Tea state, layout, async commands
         |                         |
         |                         +--> internal/ai (optional chat)
-        |                         |
-        |   sibling packages under internal/workbench/:
-        |   querylog notification connection chat browse schema uikit
+        |
         v
-internal/database -- target routing --> sqlite | mysql | postgres | mongodb
-        |                                      \       |       /        |
-        +--------------------------------------> internal/sql <---------+
+internal/database -- plugin-aware routing and persisted plugin IDs
+        |
+        +--> internal/database/plugin -- child loader and protocol shim
+        |          |
+        |          +--> perk-workbench --plugin sqlite|mysql|postgres|mongodb
+        |          +--> external executable
+        |
+        v
+internal/sql <-- shared service and wire-safe DTO contracts
 
 internal/core      query lifecycle, focus, and tab state
 internal/chrome    stateless terminal rendering
@@ -34,26 +40,39 @@ internal/clipboard optional native clipboard support
 internal/log       event log with debug/info/warn/error levels
 ```
 
-`cmd/perk-workbench` owns process setup: command-line parsing, signal context, optional clipboard and AI initialization, Bubble Tea startup, and closing the database service and AI history.
+`cmd/perk-workbench` owns process setup, CLI parsing, self-plugin dispatch,
+signal context, optional clipboard and AI initialization, Bubble Tea startup,
+and cleanup. A built-in is deliberately a child process: the host and its
+four bundled implementations communicate over the same perk/v1 boundary used
+by external plugins.
+
 
 `internal/workbench/app` owns all Bubble Tea state and presentation decisions. It starts database work and query execution as commands, then applies result messages only when they match the active request. The root `app.Model` is a shell that coordinates; each UI feature lives in its own package under `internal/workbench/` (`querylog`, `notification`, `connection`, `chat`, `browse`, `schema`, plus the shared `uikit` contract), and the shell itself lives in `internal/workbench/app`.
 
 `internal/core` owns the small workflow state machine: opening, ready, failure, and picking states; focused pane and tab; selected table; and the active cancelable query.
 
-`internal/database.Open` selects a service from the target form:
+`internal/database.Open` selects a registered plugin by explicit plugin ID
+and target:
 
-- `mysql:<DSN>` → MySQL
-- `postgres:`, `postgres://`, or `postgresql://` → PostgreSQL
-- `mongo:` or `mongodb://` / `mongodb+srv://` → MongoDB (database from the URI path, default `test`)
-- everything else → SQLite
+- an unprefixed target selects plugin ID `sqlite`;
+- a prefixed target selects its plugin only when exactly one registered plugin
+  matches;
+- an ambiguous family reports every candidate and requires the connection
+  form or `--select`.
 
-It opens the service, lists the initial schema, and returns both atomically. On schema-list failure it closes the service. SQLite accepts `:memory:`; every other target must resolve to an existing regular file.
+The registry keeps `PluginID` unique and `Driver` non-unique. Target forms are
+plain `TargetPattern` data, and profiles persist the selected plugin ID.
+SQLite accepts `:memory:`; every other target must resolve to an existing
+regular file where that driver requires one. Opening a target lists its
+initial schema and closes the service when schema loading fails.
 
-Routing goes through a driver group in `internal/database`: each compiled-in driver registers a `Spec` (name, display label, declarative target forms, open function, optional connection-form description) via `Register`, and `Open` dispatches through `Match` with SQLite as the fallback. Target forms are plain data — `TargetPattern`s: label prefixes (`mysql:`, stripped for the opener) and URL schemes (`postgres://`, passed through whole) — so addressing needs no code and survives the plugin DTO boundary. New compiled-in drivers register a spec there; the workbench and `internal/sql` never switch on target prefixes.
+The connection form is driven by each plugin's declarative `FormSpec`.
+`FormValues` and target serialization cross the same DTO boundary as external
+plugins; driver-specific grammar stays in the child implementation.
 
-The connection form is driven by each spec's declarative `FormSpec`: field keys/titles/kinds, select options, validation rules, and the opener-target prefix — plain data, no code, so plugin-supplied specs survive the DTO boundary. Fields outside the fixed key set (host, port, username, password, database, target, tls) bind to `profile.Extras`, which is encrypted at rest like `Pass`. Target serialization is not part of the spec: each driver registers an in-process builder (grammar lives in the adapter — `mysql.Target`, `postgres.Target`), and the form dispatches its field-value DTO to it — the same shape a plugin shim's transport uses to produce a target for its driver (see Plugins).
-
-`internal/sql.Service` is the boundary between the workbench and all drivers. It defines execution, schema inspection, table browsing, index/foreign-key management, and column changes. Driver-specific SQL stays inside its matching driver package.
+`internal/sql.Service` is the boundary between the workbench and all
+database implementations. It defines execution, schema inspection, table
+browsing, index/foreign-key management, and column changes.
 
 ## Query lifecycle
 
@@ -165,9 +184,9 @@ type DocumentWriteCapability struct {
 	Text   bool           `json:"text"`
 }
 
-// WriteCapabilities is the serializable capability descriptor, the durable
-// plugin boundary. Compiled-in drivers are discovered in-process; plugins
-// advertise the same descriptor and are wrapped by a shim.
+// WriteCapabilities is the serializable capability descriptor at the
+// child-process boundary. Built-ins and external plugins advertise the same
+// descriptor and are wrapped by a shim.
 type WriteCapabilities struct {
 	RowWriter bool                     `json:"row_writer"`
 	Document  *DocumentWriteCapability `json:"document,omitempty"`
@@ -198,7 +217,11 @@ type DocumentWriter interface {
 
 **Value representation.** `RowValue` is an explicit tagged tree, not `any`: a `Kind` plus per-kind payloads (String, Bool, Integer, Float, Bytes, Decimal, Timestamp, Array, Object). Every kind is JSON-encodable, so the same tree survives a future out-of-process plugin boundary without leaking driver-native types (ObjectID, decimals, instants) into the contract. The workbench's existing tri-state form maps directly onto `Default` (omit the column), `Null`, and `String`; typed input (a per-field type picker) is a later enhancement. Document stores skip the tree entirely and exchange `DocumentPayload` — a format tag plus bytes — because a document's serialization *is* its value: extended JSON expresses nested documents and native types exactly, which is the Compass-style JSON document editor. The tag is what keeps the contract honest: the first non-BSON document store (DynamoDB JSON, Elasticsearch's dialect) adds a format constant and its own editor-to-driver pairing instead of forcing a breaking redesign of this interface.
 
-**Capability discovery** replaces the product-string checks. The workbench derives a `WriteCapabilities` descriptor from `WriteCapabilitiesProvider` when the service implements it, otherwise from the same in-process type assertions (`RowWriter`, `DocumentReader`, `DocumentWriter`). Product names remain display-only. Palette/menu availability and the row-action handlers dispatch on the descriptor; missing capability means the action is hidden or rejected with a clear status, never a broken statement. In-process assertions are the adapter seam, not the durable plugin boundary: a plugin advertises the same serializable descriptor and exchanges the tagged request/response DTOs declared in `internal/sql/row_write.go` (`RowWriteRequest`/`RowWriteResponse`, `DocumentWriteRequest`/`DocumentWriteResponse`), which serialize the `RowValue` tree and extended-JSON documents losslessly. Compiled-in drivers implement the Go interfaces directly; an out-of-process plugin is wrapped by a thin shim implementing the same interfaces by marshaling those DTOs across the boundary, so the workbench cannot tell the two cases apart.
+**Capability discovery** replaces the product-string checks. The workbench
+derives a `WriteCapabilities` descriptor from
+`WriteCapabilitiesProvider` when the service implements it, otherwise from
+the same service interfaces on the local or proxied child. Product names are
+display-only; every browse action dispatches on the descriptor.
 
 **Document editor policy.** A non-nil `Document` capability with `Text == true` is editable. `DocumentFormatMongoExtendedJSON` uses the JSON-aware editor: an insert starts at `{}`, the workbench requires `encoding/json.Valid` before confirmation, and the driver enforces BSON Extended JSON semantics. Every other non-empty textual format uses a labeled raw-text editor with no parsing/formatting/schema behavior; exact UTF-8 bytes travel unchanged to the driver. Empty format, `Text == false`, or a loaded document with invalid UTF-8 disables insert/edit and reports `document editing is unsupported for format <format>`. Delete remains available whenever the selected browse row carries a valid document identity (`Result.DocumentIDs`).
 
@@ -206,35 +229,49 @@ type DocumentWriter interface {
 
 1. *SQL family* — move the three statement builders into the `sqlite`, `mysql`, and `postgres` drivers as `RowWriter` implementations, binding values as parameters instead of quoting them by hand (all three drivers already own their `quoteIdentifier`). The workbench keeps the tri-state form and confirmation dialog; the confirmation and query-log entries show a structured preview of the same `RowValue` DTOs instead of dialect SQL, so no driver statement is duplicated in the UI. Read-only stays a workbench policy. Behavior parity: same `RowsAffected == 1` checks.
 2. *MongoDB* — implement `WriteCapabilitiesProvider`, `DocumentReader`, and `DocumentWriter` (format `application/vnd.perk.mongodb.extjson+json;version=2;mode=relaxed`) with the driver's existing BSON extended-JSON parsing and collection layer; browse results carry per-row `DocumentIDs`; the workbench adds a JSON document editor for insert and whole-document replace, removing the current "not supported" rejection.
-3. *Future* — plugins advertise the same capability descriptor and exchange the tagged DTOs; the workbench reaches them through `RowWriter`/`DocumentWriter` adapter shims, making a plugin and a compiled-in driver indistinguishable. Each new store picks the family it fits. No uniformity of *semantics* is promised: ClickHouse and Cassandra mutate through UPSERT/INSERT-style statements and their own key models, not row-by-PK UPDATE, so their `RowWriter` implementations carry their own mutation and key semantics behind the interface. The interface decides where the dialect lives, not that all stores behave alike.
+3. *Future* — external plugins advertise the same capability descriptor and
+exchange the tagged DTOs. Built-in and external services remain separated by
+the perk/v1 child boundary; the workbench does not special-case a driver
+implementation in the UI.
 
 ## Plugins
 
-Plugins are the extension seam for new backends. A plugin is a separate process that serves the driver contract; the workbench never speaks to it directly. The in-process face is a shim registered into the driver group, so a plugin-backed driver is indistinguishable from a compiled-in one.
+Plugins are the process boundary for database implementations. Every built-in
+and external plugin serves the same JSON-RPC 2.0, newline-delimited
+perk/v1 protocol on stdin/stdout. A built-in descriptor launches this host
+binary with `--plugin sqlite`, `--plugin mysql`, `--plugin postgres`, or
+`--plugin mongodb`; an external descriptor launches a configured executable.
+Neither source is called in-process by the TUI.
 
-The transport is **JSON-RPC 2.0 over newline-delimited JSON on stdio** (perk/v1), owned by the host: `internal/database/plugin` runs the loader, the bounded concurrent RPC client, the session shims, and the child lifecycle. Discovery is an **explicit config allowlist**, never auto-discovery: `config.json` lists plugin executables under `plugins`; each entry is a bare name resolved through PATH or a path resolved relative to the config file and canonicalized. The loader resolves, dedupes, spawns, handshakes (`perk/v1/initialize`), and registers one plugin per entry in order; a rejected entry is logged and skipped while the built-in drivers start. A plugin child is trusted code running with the workbench's OS privileges, so the allowlist is the security boundary. On shutdown the loader closes every open session (`perk/v1/close`) before terminating the children. Node.js authors implement the plugin side with the `perk-workbench-plugin-sdk` npm package; `docs/plugins.md` is the normative protocol contract.
+`config.json` stores descriptors under `plugins`:
 
-The seam has three pieces, all declared in `internal/database`:
+```json
+{
+  "plugins": [
+    {"builtin": "sqlite"},
+    {"builtin": "mysql"},
+    {"path": "/home/alice/.local/bin/perk-redis", "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}
+  ]
+}
+```
 
-1. **`Capabilities`** — the serializable advertisement a plugin serves over its transport: driver name, display label, target forms (declarative `TargetPattern`s), and the connection-form `FormSpec`. It is the DTO twin of `Spec`'s data fields, so the driver select, connection form, and profile persistence consume it exactly like a compiled-in driver's. `FormValues` is the matching field-value DTO a transport sends for target serialization.
-2. **`Shim`** — the in-process transport face: `Capabilities()`, plus the dialect the transport owns — `BuildTarget(FormValues)` producing the opener target body, and `Open(ctx, target)` returning a `sharedsql.Service` proxied over the wire.
-3. **`RegisterShim`** — the startup registration path. It validates the advertisement (unique name, at least one target form, non-empty prefixes, the form prefix routed by a stripped pattern, no cross-driver target-prefix overlap) and returns an error instead of crashing: a broken plugin must not take the app down. The loader calls it only after the perk/v1 handshake accepted the plugin's protocol version; a plugin that fails handshake or registration is terminated immediately.
+`builtin` and `path` are mutually exclusive. Built-ins resolve the current
+executable and carry no digest. External paths resolve through `PATH` or
+relative to the config file; a supplied lowercase 64-hex `sha256` is checked
+immediately before spawn. The loader identity includes the executable and its
+arguments, so distinct built-in modes do not deduplicate.
 
-The write side of the contract is DTO-shaped: `internal/sql` declares the `WriteCapabilities` descriptor, the `RowValue` tagged tree, and the `RowWriteRequest`/`RowWriteResponse` and `DocumentPayload` request/response types, all JSON-safe and marshaled verbatim across the wire. The wire protocol is the versioned perk/v1 envelope — JSON-RPC 2.0 over NDJSON stdio, with a `perk/v1/initialize` handshake that rejects incompatible plugins before registration (see `docs/plugins.md`). Optional capability interfaces (`WriteCapabilitiesProvider`, `RowWriter`, `DocumentReader`, `DocumentWriter`) are discovered by the workbench on the proxied service exactly as on a compiled-in service.
+Capabilities separate plugin identity from database family: `name` is the
+unique plugin ID, while `driver` may be shared. `mysql` and `mysql-cloud` can
+both advertise `driver: "mysql"` and appear as separate form options.
+Persisted connections retain the selected plugin ID. Direct opening of an
+ambiguous target is rejected instead of choosing by load order.
 
-Live lifecycle: the loader keeps one entry per configured plugin —
-including entries rejected at startup, which stay inspectable and
-recoverable — and exposes a concurrency-safe status/control API
-(`Statuses`, `Restart`, `EntryForService`), injected into the workbench
-as `app.PluginControl`; the app never owns child processes. Restart
-re-verifies the configured pin before spawning, validates the
-replacement (perk protocol version, driver identity), and atomically
-swaps the shim's transport client: old session generations fail
-deterministically, new opens use the replacement, and the global driver
-registration is never replaced or duplicated. Terminal child/protocol
-failures carry an error marker the workbench renders as the Plugins →
-Status → Restart recovery path, with the original error preserved in
-the query-log detail and diagnostics.
+The host release is one `perk-workbench` executable per supported target. It
+contains all four built-in implementations and publishes no `plugins/`
+directory, sidecar archive, release manifest, or independent official-driver
+asset. The four former driver repositories retain source and behavior tests
+but do not publish driver release workflows or package inputs.
 
 ## Verification
 

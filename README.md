@@ -21,14 +21,23 @@ A terminal UI for exploring databases. Built with [Bubble Tea](https://github.co
 ## Quick start
 
 ```bash
+go run ./cmd/perk-workbench demo/chinook-sqlite.db
+```
+
+The same command is the normal installed-binary form:
+
+```bash
 npx perk-workbench path/to/database.db
 ```
 
-Or install globally:
+The four bundled database modes are self-hosted child processes speaking
+perk/v1 over NDJSON. They are not in-process drivers:
 
 ```bash
-npm install -g perk-workbench
-perk-workbench path/to/database.db
+perk-workbench --plugin sqlite
+perk-workbench --plugin mysql
+perk-workbench --plugin postgres
+perk-workbench --plugin mongodb
 ```
 
 Connect to MySQL, PostgreSQL, and MongoDB:
@@ -38,8 +47,6 @@ perk-workbench 'mysql:user:pass@tcp(host:3306)/db'
 perk-workbench 'postgres://user:pass@host:5432/db'
 perk-workbench 'mongodb://user:pass@host:27017/db'
 ```
-
-MongoDB connections accept mongosh-style statements in the query editor (`db.restaurants.find({"borough": "Bronx"}).limit(5)`, `countDocuments`, `aggregate`, `distinct`, writes, and index DDL); the schema pane lists collections, and the structure tab shows fields sampled from the collection.
 
 Or configure the connection with Laravel-compatible environment variables, then launch without an argument:
 
@@ -107,21 +114,27 @@ transient key problem cannot silently destroy your stored ciphertext.
 ## Architecture
 
 ```
-cmd/perk-workbench/    CLI entry point
+cmd/perk-workbench/    CLI entry point and self-plugin dispatcher
 internal/
 ├── workbench/         Bubble Tea models, layout, keybindings
 ├── core/              Workflow state machine (query lifecycle, focus, tabs)
-├── database/          Connection dispatcher (routes DSN to driver)
-├── sql/               Shared types & contracts (Service, Column, Rows)
-├── sqlite/            SQLite driver (modernc.org/sqlite, no CGO)
-├── mysql/             MySQL driver
-├── postgres/          PostgreSQL driver
-├── mongodb/           MongoDB driver (mongosh-style statements)
+├── database/          Plugin-aware connection dispatcher
+├── database/plugin/   perk/v1 child lifecycle, loader, and shim
+├── drivers/           SQLite, MySQL, PostgreSQL, MongoDB implementations
+├── sql/               Shared types and service contracts
 ├── chrome/            Stateless terminal rendering helpers
 ├── ai/                AI clients (OpenAI, Anthropic, Gemini)
 ├── clipboard/         System clipboard access
 └── log/               Event logging
 ```
+
+Built-in config entries are `{"builtin":"sqlite"}` (and the other three
+families). External entries are `{"path":"…","sha256":"…"}`; the digest is
+optional and applies only to external executables. Plugin identity is
+separate from database family, so multiple plugin IDs can advertise
+`driver: "mysql"` and remain independently selectable. The four bundled
+implementations ship in every host binary; the official driver repositories
+do not publish independent release assets.
 
 ## Development
 
@@ -140,17 +153,15 @@ perk-workbench --version
 ```
 
 `--version` prints `perk-workbench <version>`; a build without the
-injection honestly reports `perk-workbench devel`. The injected
-version is carried into the plugin test evidence document
-(`host_version`), so release evidence names the exact host build.
+injection honestly reports `perk-workbench devel`.
 
 Demo databases for testing:
 
 ```bash
-make sqlite      # Chinook (SQLite)
-make mysql       # Office demo (MySQL)
-make postgres    # Employees demo (PostgreSQL)
-make mongo       # Restaurants demo (MongoDB)
+make sqlite      # direct SQLite self-plugin with Chinook
+make mysql       # Office demo (MySQL via Docker)
+make postgres    # Employees demo (PostgreSQL via Docker)
+make mongo       # Restaurants demo (MongoDB via Docker)
 ```
 
 ## License

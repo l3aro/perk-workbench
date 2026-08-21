@@ -33,30 +33,31 @@ const usage = `Usage: perk-workbench [--read-only] [--select] [--pin] [database]
 
 Connect to a database and browse, query, and edit it.
 
+Self-plugin mode:
+  perk-workbench --plugin NAME                  Serve one built-in plugin over perk/v1
+                                                  (sqlite, mysql, postgres, or mongodb)
+
 Commands:
-  plugin list [--json]                    List configured plugin executables
-  plugin inspect [--json] EXECUTABLE      Inspect one plugin over perk/v1
+  plugin list [--json]                    List configured built-in/external descriptors
+  plugin inspect [--json] EXECUTABLE      Inspect one external plugin over perk/v1
   plugin add [--json] [--approve SHA256] EXECUTABLE
-                                          Preview or pin and enable a plugin
-  plugin remove [--json] NAME_OR_EXECUTABLE
-                                          Remove a configured plugin
+                                          Preview or pin and enable an external plugin
+  plugin remove [--json] NAME_OR_PATH     Remove a built-in name or external path
   plugin doctor [--json] [EXECUTABLE...]  Check configured plugins or given executables
-  plugin test [--json] EXECUTABLE        Conformance-test one plugin over perk/v1
+  plugin test [--json] EXECUTABLE         Conformance-test one external plugin over perk/v1
 
 Options:
   --select           Choose a saved connection interactively from the CLI.
                      Cannot be combined with a database target.
   --pin              Lock the session: every in-app quit affordance
                      (Ctrl+C, Ctrl+Q, the header quit button, the palette
-                     quit entry, the footer hints) is disabled. The
-                     program still exits when its context is cancelled,
-                     so the embedding host owns the session lifecycle.
-  --version, -v   Print the build version: "perk-workbench <version>"
-                  with <version> injected at build time via
-                  -ldflags "-X main.version=<version>", or
-                  "perk-workbench devel" when nothing was injected
-  -h, --help      Show this help
+                     quit entry, the footer hints) is disabled. The program
+                     still exits when its context is cancelled.
+  --version, -v      Print the build version: "perk-workbench <version>"
+  -h, --help         Show this help
 
+Built-in descriptors are child processes of this executable and speak
+perk/v1 over NDJSON. External descriptors use a path and optional sha256 pin.
 Run "perk-workbench plugin --help" for plugin command help.
 `
 

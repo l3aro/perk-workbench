@@ -18,13 +18,17 @@ import (
 
 const pluginUsage = `Usage: perk-workbench plugin COMMAND [--json] [ARGUMENTS...]
 
-Manage built-in and external database driver plugins.
+Manage configured built-in and external perk/v1 database plugins.
+
+Built-in descriptors launch this executable with --plugin NAME, so the
+four built-in database modes remain child processes rather than in-process
+drivers. External descriptors use an executable path and optional lowercase
+sha256 pin. Multiple plugin IDs may advertise the same database family.
 
 Commands:
   list [--json]
-      List configured built-in/external descriptors in config order
-      without spawning children. Each item reports its source and
-      external pin state.
+      List configured builtin/path descriptors in config order without
+      spawning children. Each item reports its source and external pin state.
   inspect [--json] EXECUTABLE
       Resolve, initialize, and validate one external plugin over perk/v1.
   doctor [--json] [EXECUTABLE...]
@@ -40,8 +44,8 @@ Commands:
 
 Options:
   --json       Machine-readable JSON on stdout; diagnostics for the
-               invocation go to stderr only when no JSON document can
-               be produced
+               invocation go to stderr only when no JSON document can be
+               produced
   -h, --help   Show this help
 
 Exit status: 0 success, 1 plugin or operational failure, 2 usage error.
