@@ -1,5 +1,11 @@
 package site
 
+import (
+	"fmt"
+	"html/template"
+	"strings"
+)
+
 // Page describes a renderable page in the Perk Workbench site.
 type Page struct {
 	Path     string
@@ -7,6 +13,15 @@ type Page struct {
 	Summary  string
 	Template string
 	Keywords []string
+
+	// Eyebrow, Lede, and Body come from the docs markdown content and are
+	// empty for hand-written template pages.
+	Eyebrow string
+	Lede    string
+	Body    template.HTML
+	// Corpus is the lowercase search text: title, summary/lede, keywords,
+	// and the raw markdown body. Built once at startup.
+	Corpus string
 }
 
 // PageCatalogue returns the site's pages in navigation order.
@@ -69,4 +84,37 @@ func PageCatalogue() []Page {
 			Keywords: []string{"plugins", "Perk protocol", "drivers", "workspace views", "extensions"},
 		},
 	}
+}
+
+// LoadPages merges the static catalogue with the rendered docs markdown.
+// Docs pages take their title, lede, keywords, and body from the markdown
+// file; the catalogue entry only fixes the route order.
+func LoadPages() []Page {
+	docs := loadDocContent()
+	pages := PageCatalogue()
+	for i := range pages {
+		doc, ok := docs[pages[i].Path]
+		if !ok {
+			continue
+		}
+		pages[i].Title = doc.Meta.Title
+		pages[i].Summary = doc.Meta.Lede
+		pages[i].Eyebrow = doc.Meta.Eyebrow
+		pages[i].Lede = doc.Meta.Lede
+		pages[i].Keywords = doc.Meta.Keywords
+		pages[i].Body = doc.Body
+		pages[i].Template = "pages/doc.html"
+		pages[i].Corpus = strings.ToLower(strings.Join([]string{
+			doc.Meta.Title,
+			doc.Meta.Lede,
+			strings.Join(doc.Meta.Keywords, " "),
+			doc.Text,
+		}, "\n"))
+	}
+	for _, path := range []string{"/", "/demo", "/docs"} {
+		if _, ok := docs[path]; ok {
+			panic(fmt.Sprintf("site: %s must stay a template page", path))
+		}
+	}
+	return pages
 }

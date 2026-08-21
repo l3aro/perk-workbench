@@ -16,12 +16,11 @@ func TestRoutes(t *testing.T) {
 		{path: "/", title: "Perk Workbench"},
 		{path: "/demo", title: "Live demo"},
 		{path: "/docs", title: "Documentation"},
-		{path: "/docs/getting-started", title: "Getting Started"},
+		{path: "/docs/getting-started", title: "Getting started"},
 		{path: "/docs/connections", title: "Connections"},
 		{path: "/docs/workspace", title: "Workspace"},
-		{path: "/docs/ai", title: "AI"},
+		{path: "/docs/ai", title: "AI assistance"},
 		{path: "/docs/plugins", title: "Plugins"},
-
 	}
 	server := New("test")
 	for _, tt := range tests {
@@ -161,6 +160,41 @@ func TestSearchEscapesQuery(t *testing.T) {
 	}
 	if strings.Contains(body, "<script>") {
 		t.Errorf("body contains an unescaped script element")
+	}
+}
+
+func TestSearchMatchesBodyContent(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	// "AES-256-GCM" only occurs in the connections page body, never in its
+	// title, lede, or keywords.
+	req := httptest.NewRequest("GET", "/search?q=AES-256-GCM", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, req)
+
+	if recorder.Code != 200 {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, `href="/docs/connections"`) {
+		t.Errorf("body-only search hit missing: results do not link /docs/connections")
+	}
+}
+
+func TestDocsPageRendersMarkdown(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	req := httptest.NewRequest("GET", "/docs/plugins", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, req)
+	body := recorder.Body.String()
+
+	for _, want := range []string{"<h2 id=\"perk-v1\">Perk v1</h2>", `<code class="language-sh">perk-workbench plugin list`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rendered docs body missing %q", want)
+		}
 	}
 }
 

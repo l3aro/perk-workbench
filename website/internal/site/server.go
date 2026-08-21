@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -78,6 +79,9 @@ type pageData struct {
 	Title         string
 	Path          string
 	Docs          bool
+	Eyebrow       string
+	Lede          string
+	Body          template.HTML
 	Query         string
 	SearchMessage string
 	Results       []Page
@@ -86,7 +90,7 @@ type pageData struct {
 
 func New(version string) http.Handler {
 	mux := http.NewServeMux()
-	pages := PageCatalogue()
+	pages := LoadPages()
 	assets := loadAssetManifest()
 
 	route := func(path string, page Page) {
@@ -186,7 +190,8 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 	if r.Method == http.MethodHead {
 		return
 	}
-	if err := t.ExecuteTemplate(w, "base", pageData{Title: page.Title, Path: page.Path, Docs: strings.HasPrefix(page.Path, "/docs"), Version: version}); err != nil {
+	data := pageData{Title: page.Title, Path: page.Path, Docs: strings.HasPrefix(page.Path, "/docs"), Eyebrow: page.Eyebrow, Lede: page.Lede, Body: page.Body, Version: version}
+	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		return
 	}
 }
@@ -231,15 +236,38 @@ func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages 
 	}
 }
 
+// searchPages scores every page against its prebuilt corpus: a title hit
+// outranks a lede/keyword hit, which outranks a body hit. Ties keep the
+// catalogue order.
 func searchPages(query string, pages []Page) []Page {
-	needle := strings.ToLower(query)
-	results := make([]Page, 0)
+	needle := strings.ToLower(strings.TrimSpace(query))
+	if needle == "" {
+		return nil
+	}
+	type hit struct {
+		page  Page
+		score int
+	}
+	var hits []hit
 	for _, page := range pages {
-		if strings.Contains(strings.ToLower(page.Title), needle) ||
-			strings.Contains(strings.ToLower(page.Summary), needle) ||
-			containsKeyword(page.Keywords, needle) {
-			results = append(results, page)
+		score := 0
+		switch {
+		case strings.Contains(strings.ToLower(page.Title), needle):
+			score = 3
+		case strings.Contains(strings.ToLower(page.Summary), needle),
+			containsKeyword(page.Keywords, needle):
+			score = 2
+		case strings.Contains(page.Corpus, needle):
+			score = 1
 		}
+		if score > 0 {
+			hits = append(hits, hit{page: page, score: score})
+		}
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
+	results := make([]Page, 0, len(hits))
+	for _, h := range hits {
+		results = append(results, h.page)
 	}
 	return results
 }
