@@ -58,7 +58,7 @@ func TestStatuses_healthyCrashedClosed(t *testing.T) {
 	copyPlugin(t, filepath.Join(dir, "plugin-status-child"))
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{entryText}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(entryText), restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -146,7 +146,7 @@ func TestStatuses_crashedChild(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -194,8 +194,10 @@ func TestStatuses_rejectedEntriesInConfigOrder(t *testing.T) {
 	}
 	configPath := filepath.Join(dir, "config.json")
 
-	loader, errs := LoadPinned(context.Background(), configPath, []string{missing, drifted},
-		map[string]string{drifted: pin}, restartRecorder(&[]database.Shim{}))
+	loader, errs := Load(context.Background(), configPath, []Entry{
+		{Config: missing, Executable: missing},
+		{Config: drifted, Executable: drifted, SHA256: pin},
+	}, restartRecorder(&[]database.Shim{}))
 	if len(errs) != 2 {
 		t.Fatalf("Load errors = %v, want both rejections", errs)
 	}
@@ -235,7 +237,7 @@ func TestRestart_rejectedAtStartEntryRetainedAndRestartable(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 	if len(errs) != 1 {
 		t.Fatalf("Load errors = %v, want the version rejection", errs)
 	}
@@ -303,7 +305,7 @@ func TestRestart_pinDriftFailsClosedWithoutSpawn(t *testing.T) {
 	configPath := filepath.Join(dir, "config.json")
 
 	var registered []database.Shim
-	loader, errs := LoadPinned(context.Background(), configPath, []string{script}, map[string]string{script: pin}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, []Entry{{Config: script, Executable: script, SHA256: pin}}, restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -351,7 +353,7 @@ func TestRestart_swapsFutureSessionsNotActiveGeneration(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -445,7 +447,7 @@ func TestRestart_failureLeavesStatusUseful(t *testing.T) {
 	load := func(t *testing.T) (*Loader, []database.Shim) {
 		t.Helper()
 		var registered []database.Shim
-		loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+		loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 		if len(errs) != 0 {
 			t.Fatalf("Load errors = %v, want none", errs)
 		}
@@ -509,7 +511,7 @@ func TestRestart_registeredThroughDatabaseRegisterShim(t *testing.T) {
 	}
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
-	loader, errs := Load(context.Background(), configPath, []string{executable}, database.RegisterShim)
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), database.RegisterShim)
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -567,7 +569,7 @@ func TestRestart_closeRaceWinsAndLeavesNoChild(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -620,7 +622,7 @@ func TestRestart_concurrentSameEntryAndStatuses(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -675,7 +677,7 @@ func TestStatuses_immutableCopies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), []string{executable}, restartRecorder(&[]database.Shim{}))
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), restartRecorder(&[]database.Shim{}))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -746,7 +748,7 @@ func TestIsTerminal_inFlightKill(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, restartRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), restartRecorder(&registered))
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}

@@ -373,11 +373,42 @@ func run(target string, readOnly, noQuit bool) error {
 	return errors.Join(runErr, closeErr)
 }
 
-// loadPlugins starts every configured user plugin child. Each pinned
-// fingerprint is verified inside the loader immediately before that child
-// spawns. Rejected and drifted entries remain nonfatal diagnostics.
+// pluginEntries converts persisted descriptors into child-process entries.
+// Built-ins intentionally execute this same binary with explicit plugin
+// arguments; they are not in-process drivers.
+func pluginEntries(config app.Config) []plugin.Entry {
+	self, err := os.Executable()
+	if err != nil {
+		log.Error("resolving self-hosted plugin executable", err)
+		return nil
+	}
+	entries := make([]plugin.Entry, 0, len(config.Plugins))
+	for _, descriptor := range config.Plugins {
+		switch {
+		case descriptor.Builtin != "":
+			entries = append(entries, plugin.Entry{
+				Config:     descriptor.Builtin,
+				Display:    descriptor.Builtin,
+				Executable: self,
+				Args:       []string{"--plugin", descriptor.Builtin},
+				Builtin:    true,
+			})
+		default:
+			entries = append(entries, plugin.Entry{
+				Config:     descriptor.Path,
+				Display:    descriptor.Path,
+				Executable: descriptor.Path,
+				SHA256:     descriptor.SHA256,
+			})
+		}
+	}
+	return entries
+}
+
+// loadPlugins starts every configured plugin child. External pins are
+// verified immediately before spawn; built-ins use the self-hosted argv.
 func loadPlugins(ctx context.Context, config app.Config, register func(database.Shim) error) *plugin.Loader {
-	loader, errs := plugin.LoadPinned(ctx, app.ConfigPath(), config.Plugins, config.PluginTrust, register)
+	loader, errs := plugin.Load(ctx, app.ConfigPath(), pluginEntries(config), register)
 	for _, err := range errs {
 		log.Error("loading plugin", err)
 	}

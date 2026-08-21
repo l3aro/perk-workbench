@@ -387,8 +387,8 @@ func TestPluginList_configOrderAndResolution(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("stdout = %q, want two lines in config order", stdout)
 	}
-	wantFirst := first + " [user] -> " + first + " [unpinned]"
-	wantSecond := second + " [user] -> " + second + " [unpinned]"
+	wantFirst := first + " [external] -> " + first + " [unpinned]"
+	wantSecond := second + " [external] -> " + second + " [unpinned]"
 	if lines[0] != wantFirst || lines[1] != wantSecond {
 		t.Fatalf("stdout = %q, want %q and %q", stdout, wantFirst, wantSecond)
 	}
@@ -526,7 +526,7 @@ func TestPluginList_reportsInvalidEntries(t *testing.T) {
 	if status != 1 || stderr != "" {
 		t.Fatalf("human list = %d, stderr %q, want 1", status, stderr)
 	}
-	if !strings.Contains(stdout, missing+" [user] -> invalid:") || !strings.Contains(stdout, noexec+" [user] -> invalid:") {
+	if !strings.Contains(stdout, missing+" [external] -> invalid:") || !strings.Contains(stdout, noexec+" [external] -> invalid:") {
 		t.Fatalf("human stdout = %q, want per-entry invalid lines", stdout)
 	}
 }

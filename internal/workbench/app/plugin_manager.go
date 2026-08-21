@@ -89,13 +89,11 @@ type pluginPreviewMsg struct {
 }
 
 // pluginApproveMsg is the outcome of the async approve command. On
-// success it carries the persisted plugins/trust state so the model
-// goroutine can apply it to appConfig without racing the command
-// goroutine.
+// success it carries the persisted descriptor state so the model
+// goroutine can apply it to appConfig without racing the command goroutine.
 type pluginApproveMsg struct {
 	path    string
-	plugins []string
-	trust   map[string]string
+	plugins []PluginConfig
 	err     error
 }
 
@@ -145,9 +143,17 @@ func (m Model) pluginRestartCmd(identifier string, service sharedsql.Service, ta
 }
 
 func newPluginManager() *pluginManager {
+	removeList := make([]string, 0, len(appConfig.Plugins))
+	for _, descriptor := range appConfig.Plugins {
+		if descriptor.Builtin != "" {
+			removeList = append(removeList, descriptor.Builtin)
+		} else {
+			removeList = append(removeList, descriptor.Path)
+		}
+	}
 	return &pluginManager{
 		view:       pluginViewMenu,
-		removeList: append([]string{}, appConfig.Plugins...),
+		removeList: removeList,
 	}
 }
 
@@ -227,11 +233,11 @@ func (m Model) pluginApproveCmd(entry, previewDigest string) tea.Cmd {
 		if !strings.EqualFold(digest, previewDigest) {
 			return pluginApproveMsg{err: fmt.Errorf("executable changed since preview (sha256 %s); review the preview and approve again", digest)}
 		}
-		plugins, trust, _, err := savePlugin(configPath, path, digest)
+		plugins, _, err := savePlugin(configPath, path, digest)
 		if err != nil {
 			return pluginApproveMsg{err: err}
 		}
-		return pluginApproveMsg{path: path, plugins: plugins, trust: trust}
+		return pluginApproveMsg{path: path, plugins: plugins}
 	}
 }
 
@@ -284,7 +290,6 @@ func (m Model) updatePluginManager(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		appConfig.Plugins = msg.plugins
-		appConfig.PluginTrust = msg.trust
 		m.overlay.pluginManager = nil
 		m.setStatus("plugin enabled; restart required")
 		return m, nil
@@ -697,6 +702,10 @@ func pluginStatusState(status plugin.Status) string {
 func pluginStatusDetails(status plugin.Status) string {
 	var details strings.Builder
 	fmt.Fprintf(&details, "  entry: %s\n", safeText(status.Entry))
+	fmt.Fprintf(&details, "  source: %s\n", safeText(status.Source))
+	if len(status.Args) > 0 {
+		fmt.Fprintf(&details, "  args: %s\n", safeText(strings.Join(status.Args, " ")))
+	}
 	if status.Path != "" {
 		fmt.Fprintf(&details, "  path: %s\n", safeText(status.Path))
 	}

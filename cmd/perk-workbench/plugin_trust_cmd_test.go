@@ -20,13 +20,15 @@ func writeTrustConfig(t *testing.T, plugins []string, trust map[string]string) s
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := map[string]any{}
-	if plugins != nil {
-		config["plugins"] = plugins
+	descriptors := make([]map[string]string, 0, len(plugins))
+	for _, path := range plugins {
+		descriptor := map[string]string{"path": path}
+		if digest := trust[path]; digest != "" {
+			descriptor["sha256"] = digest
+		}
+		descriptors = append(descriptors, descriptor)
 	}
-	if trust != nil {
-		config["plugin_trust"] = trust
-	}
+	config := map[string]any{"plugins": descriptors}
 	data, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
@@ -182,11 +184,8 @@ func TestPluginAdd_approvePinsAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadConfig = %v", err)
 	}
-	if len(config.Plugins) != 1 || config.Plugins[0] != helper {
-		t.Fatalf("Plugins = %v, want the canonical executable path", config.Plugins)
-	}
-	if config.PluginTrust[helper] != digest {
-		t.Fatalf("PluginTrust = %v, want the pinned digest", config.PluginTrust)
+	if len(config.Plugins) != 5 || config.Plugins[4].Path != helper || config.Plugins[4].SHA256 != digest {
+		t.Fatalf("Plugins = %v, want four defaults plus canonical pinned descriptor", config.Plugins)
 	}
 	raw, err := os.ReadFile(configPath)
 	if err != nil {
@@ -345,11 +344,8 @@ func TestPluginAdd_replacesExistingEntryWithSameCanonicalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(config.Plugins) != 1 || config.Plugins[0] != helper {
-		t.Fatalf("Plugins = %v, want the relative entry replaced by %q", config.Plugins, helper)
-	}
-	if config.PluginTrust[helper] != digest {
-		t.Fatalf("PluginTrust = %v, want the pin", config.PluginTrust)
+	if len(config.Plugins) != 1 || config.Plugins[0].Path != helper || config.Plugins[0].SHA256 != digest {
+		t.Fatalf("Plugins = %v, want the canonical pinned descriptor", config.Plugins)
 	}
 }
 
@@ -378,8 +374,8 @@ func TestPluginRemove_byEntryStringAndByPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(config.Plugins) != 0 || len(config.PluginTrust) != 0 {
-		t.Fatalf("config = %+v, want empty plugins and trust after removal", config)
+	if len(config.Plugins) != 0 {
+		t.Fatalf("config = %+v, want empty plugins after removal", config)
 	}
 
 	// Re-add, then remove by the canonical path.
@@ -421,7 +417,7 @@ func TestPluginRemove_failuresLeaveConfigUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Ambiguous: a third alias resolves to both configured entries.
+	// Duplicate resolved external paths are rejected during config loading.
 	alias := filepath.Join(dir, "alias-plugin")
 	if err := os.Symlink(real, alias); err != nil {
 		t.Fatal(err)
@@ -434,8 +430,8 @@ func TestPluginRemove_failuresLeaveConfigUntouched(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
 		t.Fatalf("stdout %q is not JSON: %v", stdout, err)
 	}
-	if result.OK || result.Changed || !strings.Contains(result.Error, "ambiguous") {
-		t.Fatalf("result = %+v, want an ambiguous failure", result)
+	if result.OK || result.Changed || !strings.Contains(result.Error, "duplicate external plugin path") {
+		t.Fatalf("result = %+v, want duplicate-path failure", result)
 	}
 
 	// Not configured.
@@ -487,10 +483,10 @@ func TestPluginList_reportsTrustState(t *testing.T) {
 	if status != 0 || stderr != "" {
 		t.Fatalf("human list = %d, stderr %q", status, stderr)
 	}
-	if !strings.Contains(stdout, first+" [user] -> "+first+" [pinned sha256:"+digest+"]") {
+	if !strings.Contains(stdout, first+" [external] -> "+first+" [pinned sha256:"+digest+"]") {
 		t.Fatalf("human stdout = %q, want the pinned fingerprint line", stdout)
 	}
-	if !strings.Contains(stdout, second+" [user] -> "+second+" [unpinned]") {
+	if !strings.Contains(stdout, second+" [external] -> "+second+" [unpinned]") {
 		t.Fatalf("human stdout = %q, want the unpinned line", stdout)
 	}
 }

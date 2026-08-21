@@ -14,40 +14,25 @@ import (
 // Every field is a fresh copy; mutating a returned Status or its
 // Stderr slice never affects the loader or its children.
 type Status struct {
-	// Entry is the configured entry text (relative or bare name) whose
-	// canonical path resolves to Path.
-	Entry string `json:"entry"`
-	// Path is the canonical executable path; "" when resolution has
-	// never succeeded.
-	Path string `json:"path"`
-	// Plugin is the host-known identity claimed at the last successful
-	// initialize handshake; "" before any successful handshake.
-	Plugin string `json:"plugin"`
-	// ProtocolVersion is the perk/v1 protocol version negotiated at the
-	// last successful handshake; 0 when no handshake has succeeded.
-	ProtocolVersion int `json:"protocol_version"`
-	// Trusted reports whether the entry is pinned in the config trust
-	// map; Fingerprint is the configured sha256 pin.
-	Trusted     bool   `json:"trusted"`
-	Fingerprint string `json:"fingerprint,omitempty"`
-	// PID is the current child's pid; 0 once reaped.
-	PID int `json:"pid"`
-	// Running reports whether the current child is not yet reaped.
-	Running bool `json:"running"`
-	// ExitStatus is the current child's exit code once reaped; -1 while
-	// running or signal-killed.
-	ExitStatus int `json:"exit_status"`
-	// InitDuration is the last initialize RPC duration, on success or
-	// failure; 0 when no handshake has completed.
-	InitDuration time.Duration `json:"init_duration"`
-	// InFlight is the number of pending requests on the current child at
-	// status time.
-	InFlight int `json:"in_flight"`
-	// Error is the last terminal/structured failure: the load rejection
-	// or restart failure text, or the current child's terminal error.
-	Error string `json:"error,omitempty"`
-	// Stderr is the current child's newest bounded diagnostics tail.
-	Stderr []string `json:"stderr"`
+	// Entry is the configured identity (builtin name or external path).
+	Entry           string        `json:"entry"`
+	Display         string        `json:"display,omitempty"`
+	Source          string        `json:"source"`
+	Executable      string        `json:"executable"`
+	Args            []string      `json:"args,omitempty"`
+	Builtin         bool          `json:"builtin"`
+	Path            string        `json:"path"`
+	Plugin          string        `json:"plugin"`
+	ProtocolVersion int           `json:"protocol_version"`
+	Trusted         bool          `json:"trusted"`
+	Fingerprint     string        `json:"fingerprint,omitempty"`
+	PID             int           `json:"pid"`
+	Running         bool          `json:"running"`
+	ExitStatus      int           `json:"exit_status"`
+	InitDuration    time.Duration `json:"init_duration"`
+	InFlight        int           `json:"in_flight"`
+	Error           string        `json:"error,omitempty"`
+	Stderr          []string      `json:"stderr"`
 }
 
 // Statuses returns one immutable status per configured entry, in config
@@ -67,15 +52,20 @@ func (l *Loader) Statuses() []Status {
 	return statuses
 }
 
-// status snapshots one entry: the immutable identity and trust fields,
-// the entry's last failure, and the current client's diagnostics. The
-// client snapshot is taken under the client lock only; the stderr tail
-// is copied under the drain lock.
 func (e *entry) status() Status {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	source := "external"
+	if e.config.Builtin {
+		source = "builtin"
+	}
 	status := Status{
-		Entry:       e.configEntry,
+		Entry:       e.config.identity(),
+		Display:     e.config.display(),
+		Source:      source,
+		Executable:  e.config.Executable,
+		Args:        append([]string(nil), e.config.Args...),
+		Builtin:     e.config.Builtin,
 		Path:        e.path,
 		Trusted:     e.trust != "",
 		Fingerprint: e.trust,

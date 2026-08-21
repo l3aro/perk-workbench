@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,25 +11,19 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
 
-// entry is one configured plugin entry: its identity, configured pin,
-// current client generation, and last failure. The loader keeps one
-// entry per unique canonical path, in config order, including entries
-// rejected at load — a rejected entry stays inspectable through
-// Statuses and recoverable through Restart.
+// entry is one configured plugin invocation, its current client generation,
+// and its last failure.
 type entry struct {
-	// mu serializes restarts of this entry and guards the mutable
-	// lifecycle fields: client, shim, registered, err.
 	mu sync.Mutex
 
-	configEntry string // configured entry text
-	path        string // canonical executable path; "" when never resolved
-	trust       string // configured pin (lowercase sha256); "" when unpinned
-	register    func(database.Shim) error
-
-	registered bool    // a shim was installed (through register)
-	shim       *shim   // the registered shim; client pointer swaps on restart
-	client     *Client // current client generation (old ones stay in loader.clients)
-	err        error   // last load rejection or restart failure; nil while healthy
+	config     Entry
+	path       string
+	trust      string
+	register   func(database.Shim) error
+	registered bool
+	shim       *shim
+	client     *Client
+	err        error
 }
 
 // Restart recovers exactly one configured entry — loaded, rejected, or
@@ -57,25 +50,28 @@ func (l *Loader) Restart(ctx context.Context, identifier string) error {
 	item.mu.Lock()
 	defer item.mu.Unlock()
 
-	// Re-resolve the configured entry and re-verify its pin before
-	// anything executes; a drifted pin fails closed exactly like load.
-	path, err := resolvePluginExecutable(item.configEntry, l.configPath)
-	if err != nil {
-		return item.fail(fmt.Errorf("plugin %q: %w", item.configEntry, err))
+	executable := item.config.Executable
+	if executable == "" {
+		executable = item.config.Config
 	}
-	if item.trust != "" {
+	path, err := resolvePluginExecutable(executable, l.configPath)
+	if err != nil {
+		return item.fail(fmt.Errorf("plugin %q: %w", item.config.identity(), err))
+	}
+	if item.trust != "" && !item.config.Builtin {
 		digest, err := SHA256File(path)
 		if err != nil {
-			return item.fail(fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", item.configEntry, err))
+			return item.fail(fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", item.config.identity(), err))
 		}
-		if !strings.EqualFold(digest, item.trust) {
-			return item.fail(fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", item.configEntry, item.trust, digest))
+		if digest != item.trust {
+			return item.fail(fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", item.config.identity(), item.trust, digest))
 		}
 	}
 
-	client, err := spawn(path, spawnArgs...)
+	args := append(append([]string{}, item.config.Args...), spawnArgs...)
+	client, err := spawn(path, args...)
 	if err != nil {
-		return item.fail(fmt.Errorf("plugin %q: %w", item.configEntry, err))
+		return item.fail(fmt.Errorf("plugin %q: %w", item.config.identity(), err))
 	}
 
 	var handshake initializeResult
@@ -86,42 +82,31 @@ func (l *Loader) Restart(ctx context.Context, identifier string) error {
 	}, &handshake); err != nil {
 		client.setInitDuration(time.Since(initStart))
 		_ = client.Close()
-		return item.fail(fmt.Errorf("plugin %q: initialize: %w", item.configEntry, err))
+		return item.fail(fmt.Errorf("plugin %q: initialize: %w", item.config.identity(), err))
 	}
 	client.setInitDuration(time.Since(initStart))
 	if handshake.ProtocolVersion != ProtocolVersion {
 		_ = client.Close()
-		return item.fail(fmt.Errorf("plugin %q: protocol version %d, want %d", item.configEntry, handshake.ProtocolVersion, ProtocolVersion))
+		return item.fail(fmt.Errorf("plugin %q: protocol version %d, want %d", item.config.identity(), handshake.ProtocolVersion, ProtocolVersion))
 	}
 	client.SetPlugin(handshake.Capabilities.Name)
 	client.setProtocolVersion(handshake.ProtocolVersion)
 
 	replacement := newShim(client, handshake.Capabilities, l)
 	if item.registered {
-		// The driver is already installed under the registered identity:
-		// the replacement must validate and keep that identity, and only
-		// the transport client swaps — the global registration is never
-		// replaced or duplicated. The entry's own registration is
-		// excluded from the conflict check.
 		if err := database.ValidateShimReplacement(replacement); err != nil {
 			_ = client.Close()
-			return item.fail(fmt.Errorf("plugin %q: %w", item.configEntry, err))
+			return item.fail(fmt.Errorf("plugin %q: %w", item.config.identity(), err))
 		}
 		if replacement.Capabilities().Name != item.shim.Capabilities().Name {
 			_ = client.Close()
-			return item.fail(fmt.Errorf("plugin %q: identity changed on restart: %q, want %q", item.configEntry, replacement.Capabilities().Name, item.shim.Capabilities().Name))
+			return item.fail(fmt.Errorf("plugin %q: identity changed on restart: %q, want %q", item.config.identity(), replacement.Capabilities().Name, item.shim.Capabilities().Name))
 		}
 	} else if item.register == nil {
 		_ = client.Close()
-		return item.fail(fmt.Errorf("plugin %q: no registration callback; cannot restart", item.configEntry))
+		return item.fail(fmt.Errorf("plugin %q: no registration callback; cannot restart", item.config.identity()))
 	}
 
-	// Atomically publish the replacement and reap the old child. Close
-	// racing this swap wins: the loader is already closed, so the fresh
-	// child is closed and reaped here and nothing is published. An
-	// entry rejected at load registers here, under the loader lock, so
-	// Close can never observe a global driver identity installed for a
-	// closed loader (the registration is not undoable).
 	l.mu.Lock()
 	if l.closed {
 		l.mu.Unlock()
@@ -132,7 +117,7 @@ func (l *Loader) Restart(ctx context.Context, identifier string) error {
 		if err := item.register(replacement); err != nil {
 			l.mu.Unlock()
 			_ = client.Close()
-			return item.fail(fmt.Errorf("plugin %q: %w", item.configEntry, err))
+			return item.fail(fmt.Errorf("plugin %q: %w", item.config.identity(), err))
 		}
 		item.registered = true
 		item.shim = replacement
@@ -151,8 +136,7 @@ func (l *Loader) Restart(ctx context.Context, identifier string) error {
 	return nil
 }
 
-// findEntry resolves identifier — a configured entry text or canonical
-// path — to exactly one entry.
+// findEntry resolves the configured identity or canonical executable path.
 func (l *Loader) findEntry(identifier string) (*entry, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -161,9 +145,11 @@ func (l *Loader) findEntry(identifier string) (*entry, error) {
 	}
 	var match *entry
 	for _, item := range l.entries {
-		if identifier == item.configEntry || (item.path != "" && identifier == item.path) {
+		if identifier == item.config.identity() || (item.path != "" && identifier == item.path) {
+			if match != nil {
+				return nil, fmt.Errorf("ambiguous configured plugin entry %q", identifier)
+			}
 			match = item
-			break
 		}
 	}
 	if match == nil {
@@ -172,13 +158,11 @@ func (l *Loader) findEntry(identifier string) (*entry, error) {
 	return match, nil
 }
 
-// fail records err as the entry's last failure and returns it.
 func (e *entry) fail(err error) error {
 	e.err = err
 	return err
 }
 
-// EntryForService reports the configured entry text of the plugin
 // child backing service, or "" when the service is not a live session
 // of this loader's current client generation. Old generations (sessions
 // opened before a restart) are deliberately not matched: they fail
@@ -197,7 +181,7 @@ func (l *Loader) EntryForService(service sharedsql.Service) (string, bool) {
 	}
 	for _, item := range l.entries {
 		if item.client == client {
-			return item.configEntry, true
+			return item.config.identity(), true
 		}
 	}
 	return "", false

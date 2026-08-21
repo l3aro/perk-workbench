@@ -52,8 +52,18 @@ type InspectResult struct {
 // exit/running state, and it remains available because the loader
 // retains its clients.
 func Inspect(ctx context.Context, entry, configPath string) InspectResult {
+	return InspectEntry(ctx, Entry{Config: entry, Display: entry, Executable: entry}, configPath)
+}
+
+// InspectEntry is Inspect for a structured child invocation. It preserves
+// explicit argv, so a self-hosted built-in is inspected through --plugin.
+func InspectEntry(ctx context.Context, configured Entry, configPath string) InspectResult {
 	result := InspectResult{}
-	path, err := ResolveExecutable(entry, configPath)
+	executable := configured.Executable
+	if executable == "" {
+		executable = configured.Config
+	}
+	path, err := ResolveExecutable(executable, configPath)
 	if err != nil {
 		result.Phase = PhaseResolve
 		result.Error = err.Error()
@@ -62,7 +72,7 @@ func Inspect(ctx context.Context, entry, configPath string) InspectResult {
 	result.Path = path
 
 	var registerErr error
-	loader, errs := Load(ctx, configPath, []string{path}, func(shim database.Shim) error {
+	loader, errs := Load(ctx, configPath, []Entry{configured}, func(shim database.Shim) error {
 		caps := shim.Capabilities()
 		result.Capabilities = &caps
 		registerErr = database.ValidateShim(shim)
@@ -82,9 +92,6 @@ func Inspect(ctx context.Context, entry, configPath string) InspectResult {
 			result.Phase = PhaseRegister
 			result.Error = registerErr.Error()
 		case result.Snapshot != nil && !benignProtocolError(result.Snapshot.Error):
-			// The child hit a terminal protocol or process failure: a
-			// malformed response stream, a crash, or a premature exit
-			// mid-handshake. Its text is already part of the snapshot.
 			result.Phase = PhaseProtocol
 			result.Error = result.Snapshot.Error
 		default:

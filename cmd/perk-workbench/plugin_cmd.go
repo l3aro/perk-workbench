@@ -18,49 +18,25 @@ import (
 
 const pluginUsage = `Usage: perk-workbench plugin COMMAND [--json] [ARGUMENTS...]
 
-Manage external database driver plugins.
+Manage built-in and external database driver plugins.
 
 Commands:
   list [--json]
-      List configured plugin entries in config order without spawning
-      children. Each entry is resolved with the exact startup resolution
-      and allowlist; invalid entries are reported per entry. Each entry
-      also reports its trust state (unpinned, or pinned with the
-      configured fingerprint). Exit status 1 when any entry is invalid.
+      List configured built-in/external descriptors in config order
+      without spawning children. Each item reports its source and
+      external pin state.
   inspect [--json] EXECUTABLE
-      Resolve, initialize, and validate one plugin over perk/v1, then
-      close it and report its capabilities, fingerprint/trust state,
-      and final diagnostic snapshot. Works for executables not listed
-      in config. A pinned executable whose bytes drifted is refused
-      before anything spawns.
+      Resolve, initialize, and validate one external plugin over perk/v1.
   doctor [--json] [EXECUTABLE...]
-      Run the full resolve/initialize/register/shutdown lifecycle for
-      every configured entry, or exactly the given executables. Each
-      item runs independently and failures never stop later items.
-      Pinned drift fails the item before its child spawns. Exit status
-      1 when any item fails.
+      Run the full lifecycle for configured descriptors, or exactly the
+      given external executables. Each item runs independently.
   add [--json] [--approve SHA256] EXECUTABLE
-      Resolve, inspect, and fingerprint one plugin: the report shows
-      the capabilities and the lowercase SHA-256 of the canonical
-      executable bytes, and the config is NOT touched. Rerun with
-      --approve <that exact digest> to pin and atomically persist the
-      plugin. With --approve the resolve/inspect/hash is repeated and
-      fails closed when the digest does not match the current bytes;
-      nothing is written on any failure.
-  remove [--json] NAME_OR_EXECUTABLE
-      Atomically remove one configured plugin and its trust record.
-      NAME_OR_EXECUTABLE matches a configured entry exactly, or an
-      executable that resolves to exactly one configured plugin;
-      ambiguous matches fail instead of removing multiple entries.
+      Inspect and fingerprint one external plugin. --approve stores a
+      pinned {path,sha256} descriptor atomically.
+  remove [--json] BUILTIN_OR_PATH
+      Atomically remove one configured built-in name or external path.
   test [--json] EXECUTABLE
-      Run the perk/v1 conformance suite against one executable:
-      fixture-driven protocol cases and generated transport cases, each
-      in a fresh child that is terminated when the case ends. --json
-      emits one self-contained release evidence document (evidence
-      schema/version, protocol and host versions, contract and
-      executable digests, capabilities identity, case results, final
-      pass/fail) suitable for release evidence. Exit status 1 when any
-      case fails.
+      Run the perk/v1 conformance suite against one external executable.
 
 Options:
   --json       Machine-readable JSON on stdout; diagnostics for the
@@ -105,11 +81,16 @@ const (
 	trustMismatch = "mismatch"
 )
 
-const pluginSourceUser = "user"
+const (
+	pluginSourceBuiltin  = "builtin"
+	pluginSourceExternal = "external"
+)
 
 type pluginCommandEntry struct {
-	entry  string
-	source string
+	entry      string
+	source     string
+	descriptor app.PluginConfig
+	process    plugin.Entry
 }
 
 // pluginReport is the per-item outcome of a plugin command: the input
@@ -119,40 +100,24 @@ type pluginCommandEntry struct {
 // carries target or form values, credentials, statements, or stdout
 // protocol frames: the lifecycle below never exchanges them.
 type pluginReport struct {
-	Entry  string `json:"entry"`
-	Source string `json:"source,omitempty"`
-	// Path is the canonical executable path once resolution succeeded.
-	Path string `json:"path,omitempty"`
-	// OK reports whether the full lifecycle succeeded.
-	OK bool `json:"ok"`
-	// Phase is the failing lifecycle phase — resolve, initialize,
-	// protocol, register, shutdown, or trust — or "ok" when every phase
-	// passed.
-	Phase string `json:"phase"`
-	// Error is the failure text when OK is false.
-	Error string `json:"error,omitempty"`
-	// Trust is the fingerprint/trust state: unpinned, match, or
-	// mismatch (list reports unpinned or pinned).
-	Trust string `json:"trust,omitempty"`
-	// SHA256 is the computed digest of the canonical executable bytes.
-	SHA256 string `json:"sha256,omitempty"`
-	// Expected is the pinned digest from the trust record when one
-	// exists.
-	Expected string `json:"expected_sha256,omitempty"`
-	// Capabilities is the driver advertisement once the initialize
-	// handshake succeeded: declarative identity, target patterns, form
-	// description, and write interfaces — never user-supplied values.
+	Entry        string                 `json:"entry"`
+	Source       string                 `json:"source,omitempty"`
+	Builtin      bool                   `json:"builtin"`
+	Executable   string                 `json:"executable,omitempty"`
+	Args         []string               `json:"args,omitempty"`
+	Path         string                 `json:"path,omitempty"`
+	OK           bool                   `json:"ok"`
+	Phase        string                 `json:"phase"`
+	Error        string                 `json:"error,omitempty"`
+	Trust        string                 `json:"trust,omitempty"`
+	SHA256       string                 `json:"sha256,omitempty"`
+	Expected     string                 `json:"expected_sha256,omitempty"`
 	Capabilities *database.Capabilities `json:"capabilities,omitempty"`
-	// Snapshot is the final diagnostic snapshot, taken after the child
-	// was closed: canonical path, init duration, exit/running state, and
-	// the bounded stderr tail.
-	Snapshot *plugin.Snapshot `json:"snapshot,omitempty"`
+	Snapshot     *plugin.Snapshot       `json:"snapshot,omitempty"`
 }
 
 // dispatchPlugin parses and runs one plugin subcommand, returning the
 // process exit status. --json is accepted before or after the
-// positional operands; --approve consumes the following argument;
-// unknown flags and malformed operand counts are usage errors.
 func dispatchPlugin(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "perk-workbench plugin: missing command")
@@ -251,17 +216,19 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 		return 1
 	}
 	configPath := app.ConfigPath()
-	entries, trust, err := configuredPluginCommandEntries(config)
+	entries, _, err := configuredPluginCommandEntries(config)
 	if err != nil {
 		fmt.Fprintf(stderr, "perk-workbench plugin list: %v\n", err)
 		return 1
 	}
 
-	// listItem is the stable machine-readable shape of one entry.
+	// listItem is the stable machine-readable shape of one descriptor.
 	type listItem struct {
 		Entry    string `json:"entry"`
 		Source   string `json:"source"`
+		Builtin  string `json:"builtin,omitempty"`
 		Path     string `json:"path,omitempty"`
+		SHA256   string `json:"sha256,omitempty"`
 		Trust    string `json:"trust,omitempty"`
 		Expected string `json:"expected_sha256,omitempty"`
 		Error    string `json:"error,omitempty"`
@@ -269,16 +236,23 @@ func runPluginList(jsonOut bool, stdout, stderr io.Writer) int {
 	items := make([]listItem, 0, len(entries))
 	failed := false
 	for _, entry := range entries {
-		item := listItem{Entry: entry.entry, Source: entry.source}
-		path, err := plugin.ResolveExecutable(entry.entry, configPath)
-		if err != nil {
-			item.Error = err.Error()
+		item := listItem{
+			Entry: entry.entry, Source: entry.source,
+			Builtin: entry.descriptor.Builtin, SHA256: entry.descriptor.SHA256,
+		}
+		path := entry.process.Executable
+		var resolveErr error
+		if !entry.process.Builtin {
+			path, resolveErr = plugin.ResolveExecutable(entry.process.Executable, configPath)
+		}
+		if resolveErr != nil {
+			item.Error = resolveErr.Error()
 			failed = true
 		} else {
 			item.Path = path
-			if pin, pinned := trust[path]; pinned {
+			if entry.descriptor.SHA256 != "" {
 				item.Trust = trustPinned
-				item.Expected = pin
+				item.Expected = entry.descriptor.SHA256
 			} else {
 				item.Trust = trustUnpinned
 			}
@@ -331,37 +305,49 @@ func runPluginInspect(jsonOut bool, entry string, stdout, stderr io.Writer) int 
 // failures never stop later items. A pinned executable whose bytes
 // drifted fails its item before the child spawns.
 func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) int {
-	entries := operands
-	configPath := ""
-	trust := app.ReadPluginTrust(app.ConfigPath())
-	sources := pluginSourceMap(entries, pluginSourceUser)
-	if len(operands) == 0 {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	var reports []pluginReport
+	failed := false
+	if len(operands) > 0 {
+		trust := app.ReadPluginTrust(app.ConfigPath())
+		for _, operand := range operands {
+			if err := ctx.Err(); err != nil {
+				failed = true
+				break
+			}
+			itemCtx, cancel := context.WithTimeout(ctx, pluginInitTimeout)
+			report := checkPlugin(itemCtx, operand, "", trust)
+			cancel()
+			report.Source = pluginSourceExternal
+			reports = append(reports, report)
+			failed = failed || !report.OK
+		}
+	} else {
 		config, err := loadConfig()
 		if err != nil {
 			fmt.Fprintf(stderr, "perk-workbench plugin doctor: %v\n", err)
 			return 1
 		}
-		configuredEntries, configuredTrust, err := configuredPluginCommandEntries(config)
+		entries, _, err := configuredPluginCommandEntries(config)
 		if err != nil {
 			fmt.Fprintf(stderr, "perk-workbench plugin doctor: %v\n", err)
 			return 1
 		}
-		entries = commandEntryNames(configuredEntries)
-		configPath = app.ConfigPath()
-		trust = configuredTrust
-		sources = commandEntrySources(configuredEntries)
+		for _, configured := range entries {
+			if err := ctx.Err(); err != nil {
+				failed = true
+				break
+			}
+			itemCtx, cancel := context.WithTimeout(ctx, pluginInitTimeout)
+			report := checkPluginEntry(itemCtx, configured.process, app.ConfigPath())
+			cancel()
+			report.Source = configured.source
+			reports = append(reports, report)
+			failed = failed || !report.OK
+		}
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	check := func(ctx context.Context, entry, configPath string) pluginReport {
-		report := checkPlugin(ctx, entry, configPath, trust)
-		report.Source = sources[entry]
-		return report
-	}
-	reports, failed := checkPluginItems(ctx, entries, configPath, check)
-
 	if jsonOut {
 		return emitJSON(stdout, reports, exitCode(!failed))
 	}
@@ -375,38 +361,30 @@ func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) 
 }
 
 func configuredPluginCommandEntries(config app.Config) ([]pluginCommandEntry, map[string]string, error) {
+	processes := pluginEntries(config)
+	if len(processes) != len(config.Plugins) {
+		return nil, nil, fmt.Errorf("could not resolve self-hosted plugin executable")
+	}
 	entries := make([]pluginCommandEntry, 0, len(config.Plugins))
-	for _, entry := range config.Plugins {
-		entries = append(entries, pluginCommandEntry{entry: entry, source: pluginSourceUser})
+	trust := map[string]string{}
+	for i, descriptor := range config.Plugins {
+		process := processes[i]
+		entry := descriptor.Builtin
+		source := pluginSourceBuiltin
+		if entry == "" {
+			entry = descriptor.Path
+			source = pluginSourceExternal
+			if path, err := plugin.ResolveExecutable(descriptor.Path, app.ConfigPath()); err == nil && descriptor.SHA256 != "" {
+				trust[path] = descriptor.SHA256
+			}
+		}
+		entries = append(entries, pluginCommandEntry{
+			entry: entry, source: source, descriptor: descriptor, process: process,
+		})
 	}
-	return entries, config.PluginTrust, nil
+	return entries, trust, nil
 }
 
-func commandEntryNames(entries []pluginCommandEntry) []string {
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		names = append(names, entry.entry)
-	}
-	return names
-}
-
-func commandEntrySources(entries []pluginCommandEntry) map[string]string {
-	sources := make(map[string]string, len(entries))
-	for _, entry := range entries {
-		sources[entry.entry] = entry.source
-	}
-	return sources
-}
-
-func pluginSourceMap(entries []string, source string) map[string]string {
-	sources := make(map[string]string, len(entries))
-	for _, entry := range entries {
-		sources[entry] = source
-	}
-	return sources
-}
-
-// pluginAddResult is the JSON document shape of `plugin add`. It embeds
 // the inspect report (entry, path, phases, capabilities, snapshot) and
 // adds the fingerprint and the config-mutation outcome: pending for the
 // two-stage preview (config untouched, rerun with --approve), changed
@@ -585,40 +563,57 @@ func checkPluginItems(ctx context.Context, entries []string, configPath string, 
 // reflects the final exit/running state, and it remains available
 // because the loader retains its clients.
 func checkPlugin(ctx context.Context, entry, configPath string, trust map[string]string) pluginReport {
-	report := pluginReport{Entry: entry}
-	path, err := plugin.ResolveExecutable(entry, configPath)
-	if err != nil {
-		report.Phase = phaseResolve
-		report.Error = err.Error()
-		return report
+	configured := plugin.Entry{Config: entry, Display: entry, Executable: entry}
+	if path, err := plugin.ResolveExecutable(entry, configPath); err == nil {
+		configured.Executable = path
+		if pin := trust[path]; pin != "" {
+			configured.SHA256 = pin
+		}
+	}
+	return checkPluginEntry(ctx, configured, configPath)
+}
+
+func checkPluginEntry(ctx context.Context, configured plugin.Entry, configPath string) pluginReport {
+	report := pluginReport{
+		Entry: configured.Config, Builtin: configured.Builtin,
+		Executable: configured.Executable, Args: append([]string(nil), configured.Args...),
+	}
+	if report.Entry == "" {
+		report.Entry = configured.Executable
+	}
+	path := configured.Executable
+	if !configured.Builtin {
+		var err error
+		path, err = plugin.ResolveExecutable(path, configPath)
+		if err != nil {
+			report.Phase = phaseResolve
+			report.Error = err.Error()
+			return report
+		}
 	}
 	report.Path = path
-
-	pin, pinned := trust[path]
-	if pinned {
+	if configured.SHA256 != "" && !configured.Builtin {
+		report.Expected = configured.SHA256
 		digest, err := plugin.SHA256File(path)
 		if err != nil {
 			report.Trust = trustMismatch
-			report.Expected = pin
 			report.Phase = phaseTrust
 			report.Error = fmt.Sprintf("verifying pinned sha256: %v", err)
 			return report
 		}
 		report.SHA256 = digest
-		report.Expected = pin
-		if strings.EqualFold(digest, pin) {
-			report.Trust = trustMatch
-		} else {
+		if digest != configured.SHA256 {
 			report.Trust = trustMismatch
 			report.Phase = phaseTrust
-			report.Error = fmt.Sprintf("pinned executable changed: expected sha256 %s, got %s", pin, digest)
+			report.Error = fmt.Sprintf("pinned executable changed: expected sha256 %s, got %s", configured.SHA256, digest)
 			return report
 		}
-	} else {
+		report.Trust = trustMatch
+	} else if !configured.Builtin {
 		report.Trust = trustUnpinned
 	}
 
-	insp := plugin.Inspect(ctx, path, configPath)
+	insp := plugin.InspectEntry(ctx, configured, configPath)
 	report.Phase = insp.Phase
 	report.Error = insp.Error
 	report.OK = insp.Phase == phaseOK

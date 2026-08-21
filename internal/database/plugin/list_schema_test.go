@@ -28,11 +28,10 @@ func listSchemaViaPlugin(t *testing.T, behavior, schema string) ([]sharedsql.Sch
 		t.Fatal(err)
 	}
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}

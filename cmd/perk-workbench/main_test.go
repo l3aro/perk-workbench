@@ -400,7 +400,7 @@ func TestLoadPlugins_logsRejectedEntriesAndStaysClosable(t *testing.T) {
 	defer log.SetNotifier(nil)
 
 	registered := false
-	loader := loadPlugins(context.Background(), app.Config{Plugins: []string{"./no-such-plugin"}}, func(database.Shim) error {
+	loader := loadPlugins(context.Background(), app.Config{Plugins: []app.PluginConfig{{Path: "./no-such-plugin"}}}, func(database.Shim) error {
 		registered = true
 		return nil
 	})
@@ -455,8 +455,7 @@ func TestLoadPlugins_refusesPinnedDriftBeforeSpawn(t *testing.T) {
 
 	registered := false
 	loader := loadPlugins(context.Background(), app.Config{
-		Plugins:     []string{script},
-		PluginTrust: map[string]string{script: pin},
+		Plugins: []app.PluginConfig{{Path: script, SHA256: pin}},
 	}, func(database.Shim) error {
 		registered = true
 		return nil
@@ -497,8 +496,7 @@ func TestLoadPlugins_spawnsMatchingPin(t *testing.T) {
 
 	registered := false
 	loader := loadPlugins(context.Background(), app.Config{
-		Plugins:     []string{script},
-		PluginTrust: map[string]string{script: digest},
+		Plugins: []app.PluginConfig{{Path: script, SHA256: digest}},
 	}, func(database.Shim) error {
 		registered = true
 		return nil
@@ -526,7 +524,7 @@ func TestLoadPlugins_legacyUnpinnedEntryStillLoads(t *testing.T) {
 	t.Setenv("PERK_PLUGIN_MARKER", marker)
 
 	registered := false
-	loader := loadPlugins(context.Background(), app.Config{Plugins: []string{script}}, func(database.Shim) error {
+	loader := loadPlugins(context.Background(), app.Config{Plugins: []app.PluginConfig{{Path: script}}}, func(database.Shim) error {
 		registered = true
 		return nil
 	})

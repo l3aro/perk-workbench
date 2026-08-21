@@ -22,6 +22,14 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func testEntries(paths ...string) []Entry {
+	entries := make([]Entry, len(paths))
+	for i, path := range paths {
+		entries[i] = Entry{Config: path, Display: path, Executable: path}
+	}
+	return entries
+}
+
 // TestPluginHelperChild is the re-executed plugin child. It serves the
 // perk/v1 protocol on stdio, driven by PERK_PLUGIN_* env vars, and always
 // ends with os.Exit — never returning to the testing framework, so no

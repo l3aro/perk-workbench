@@ -28,7 +28,7 @@ func TestLoad_configRelativeResolutionAndRegistration(t *testing.T) {
 	configPath := filepath.Join(cfgDir, "config.json")
 
 	var shims []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{"./plugin-child"}, func(shim database.Shim) error {
+	loader, errs := Load(context.Background(), configPath, testEntries("./plugin-child"), func(shim database.Shim) error {
 		shims = append(shims, shim)
 		return nil
 	})
@@ -67,11 +67,10 @@ func TestLoad_bareNameLookPath(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var shims []database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(dir, "config.json"),
-		[]string{"pluginkv-child", "true"}, func(shim database.Shim) error {
-			shims = append(shims, shim)
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(dir, "config.json"), testEntries("pluginkv-child", "true"), func(shim database.Shim) error {
+		shims = append(shims, shim)
+		return nil
+	})
 	t.Cleanup(func() { _ = loader.Close() })
 	if len(shims) != 1 {
 		t.Fatalf("registered %d shims, want 1", len(shims))
@@ -99,11 +98,10 @@ func TestLoad_rejectsMissingAndNonExecutable(t *testing.T) {
 	configPath := filepath.Join(dir, "config.json")
 
 	var shims []database.Shim
-	loader, errs := Load(context.Background(), configPath,
-		[]string{"./missing", "./adir", "./noexec"}, func(shim database.Shim) error {
-			shims = append(shims, shim)
-			return nil
-		})
+	loader, errs := Load(context.Background(), configPath, testEntries("./missing", "./adir", "./noexec"), func(shim database.Shim) error {
+		shims = append(shims, shim)
+		return nil
+	})
 	if len(errs) != 3 {
 		t.Fatalf("Load errors = %v, want one per rejected entry", errs)
 	}
@@ -143,7 +141,7 @@ func TestLoad_duplicateDriverAndOverlap(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_NAME", "pluginkvdup")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "dup:")
 	var registered []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{copyA, copyB}, registerRecorder(&registered))
+	loader, errs := Load(context.Background(), configPath, testEntries(copyA, copyB), registerRecorder(&registered))
 	if len(errs) != 1 {
 		t.Fatalf("duplicate-name Load errors = %v, want exactly one", errs)
 	}
@@ -157,7 +155,7 @@ func TestLoad_duplicateDriverAndOverlap(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_NAME", "pluginkvo")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "alpha:")
 	registered = nil
-	loader, errs = Load(context.Background(), configPath, []string{copyA}, registerRecorder(&registered))
+	loader, errs = Load(context.Background(), configPath, testEntries(copyA), registerRecorder(&registered))
 	if len(errs) != 0 || len(registered) != 1 {
 		t.Fatalf("first overlap Load: errs = %v, registered = %d, want none and one", errs, len(registered))
 	}
@@ -166,7 +164,7 @@ func TestLoad_duplicateDriverAndOverlap(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_NAME", "pluginkvo2")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "alpha:b")
 	registered = nil
-	loader, errs = Load(context.Background(), configPath, []string{copyB}, registerRecorder(&registered))
+	loader, errs = Load(context.Background(), configPath, testEntries(copyB), registerRecorder(&registered))
 	if len(errs) != 1 {
 		t.Fatalf("overlap Load errors = %v, want exactly one", errs)
 	}
@@ -182,7 +180,7 @@ func TestLoad_duplicateDriverAndOverlap(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_NAME", "pluginkvd")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "dupz:")
 	registered = nil
-	loader, errs = Load(context.Background(), configPath, []string{copyA, copyA}, registerRecorder(&registered))
+	loader, errs = Load(context.Background(), configPath, testEntries(copyA, copyA), registerRecorder(&registered))
 	if len(errs) != 0 || len(registered) != 1 {
 		t.Fatalf("dedupe Load: errs = %v, registered = %d, want none and one", errs, len(registered))
 	}
@@ -202,11 +200,10 @@ func TestLoad_wrongVersion(t *testing.T) {
 	}
 
 	var shims []database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(shim database.Shim) error {
-			shims = append(shims, shim)
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(shim database.Shim) error {
+		shims = append(shims, shim)
+		return nil
+	})
 	t.Cleanup(func() { _ = loader.Close() })
 	if len(errs) != 1 {
 		t.Fatalf("Load errors = %v, want exactly one", errs)
@@ -233,11 +230,10 @@ func TestLoad_incompatibleHandshake(t *testing.T) {
 			}
 
 			var shims []database.Shim
-			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-				[]string{executable}, func(shim database.Shim) error {
-					shims = append(shims, shim)
-					return nil
-				})
+			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(shim database.Shim) error {
+				shims = append(shims, shim)
+				return nil
+			})
 			if len(errs) != 1 {
 				t.Fatalf("Load errors = %v, want exactly one", errs)
 			}
@@ -260,11 +256,10 @@ func TestLoad_databaseOpenSemantics(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return database.RegisterShim(s)
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return database.RegisterShim(s)
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -337,11 +332,10 @@ func TestLoad_childExitDuringRequest(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -375,11 +369,10 @@ func TestLoad_loaderCloseWithPendingCall(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -430,11 +423,10 @@ func TestProxy_canceledExecute(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -483,11 +475,10 @@ func TestProxy_concurrentOutOfOrder(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -566,7 +557,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_NAME", "qlomit")
 	setEnv(t, "PERK_PLUGIN_TARGETS", "qlomit:")
 	var shims []database.Shim
-	loader, errs := Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), registerRecorder(&shims))
 	if len(errs) != 0 {
 		t.Fatalf("omitted-advertisement Load errors = %v, want none", errs)
 	}
@@ -592,7 +583,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE",
 		`{"name":"QL","editor_label":"Command","placeholder":"Enter a statement…","lexer":"plaintext","examples":["GET k","SET k v"],"commands":[{"name":"GET","usage":"GET key","summary":"Get the value at key"},{"name":"SET","usage":"SET key value","summary":"Set the value at key"}]}`)
 	shims = nil
-	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	loader, errs = Load(context.Background(), configPath, testEntries(executable), registerRecorder(&shims))
 	if len(errs) != 0 {
 		t.Fatalf("valid-advertisement Load errors = %v, want none", errs)
 	}
@@ -620,7 +611,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_TARGETS", "qlbad:")
 	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE", `{"name":"QL","placeholder":"Enter a statement…"}`)
 	shims = nil
-	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	loader, errs = Load(context.Background(), configPath, testEntries(executable), registerRecorder(&shims))
 	if len(errs) != 1 {
 		t.Fatalf("invalid-advertisement Load errors = %v, want exactly one", errs)
 	}
@@ -639,7 +630,7 @@ func TestLoad_queryLanguageNormalization(t *testing.T) {
 	setEnv(t, "PERK_PLUGIN_QUERY_LANGUAGE",
 		`{"name":"QL","editor_label":"Command","placeholder":"Enter a statement…","commands":[{"name":"GET","usage":"GET key","summary":"Get"},{"name":"get","usage":"GET key","summary":"Get"}]}`)
 	shims = nil
-	loader, errs = Load(context.Background(), configPath, []string{executable}, registerRecorder(&shims))
+	loader, errs = Load(context.Background(), configPath, testEntries(executable), registerRecorder(&shims))
 	if len(errs) != 1 {
 		t.Fatalf("duplicate-command Load errors = %v, want exactly one", errs)
 	}
@@ -677,11 +668,10 @@ func TestProxy_dynamicWrappers(t *testing.T) {
 			}
 
 			var shim database.Shim
-			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-				[]string{executable}, func(s database.Shim) error {
-					shim = s
-					return nil
-				})
+			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+				shim = s
+				return nil
+			})
 			if len(errs) != 0 {
 				t.Fatalf("Load errors = %v, want none", errs)
 			}
@@ -764,11 +754,10 @@ func TestProxy_writeResultsCarryNativeStatement(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -909,11 +898,10 @@ func TestProxy_workspaceViewWrapper(t *testing.T) {
 			}
 
 			var shim database.Shim
-			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-				[]string{executable}, func(s database.Shim) error {
-					shim = s
-					return nil
-				})
+			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+				shim = s
+				return nil
+			})
 			if len(errs) != 0 {
 				t.Fatalf("Load errors = %v, want none", errs)
 			}
@@ -963,11 +951,10 @@ func TestProxy_canceledWorkspaceView(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -1009,5 +996,31 @@ func TestProxy_canceledWorkspaceView(t *testing.T) {
 		t.Fatalf("marker line %q, want cancel <id>", lines[1])
 	} else if viewID != cancelID {
 		t.Fatalf("cancel id %q does not match workspace-view id %q", cancelID, viewID)
+	}
+}
+
+func TestLoad_sameExecutableDistinctArgsAreNotDeduplicated(t *testing.T) {
+	t.Setenv("PERK_PLUGIN_HELPER", "1")
+	dir := t.TempDir()
+	script := filepath.Join(dir, "plugin-wrapper")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexec \"$PERK_HELPER_BINARY\" -test.run=TestPluginHelperChild\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PERK_HELPER_BINARY", os.Args[0])
+	var registered []database.Shim
+	loader, errs := Load(context.Background(), filepath.Join(dir, "config.json"), []Entry{
+		{Config: "first", Display: "first", Executable: script, Args: []string{"--plugin", "first"}},
+		{Config: "second", Display: "second", Executable: script, Args: []string{"--plugin", "second"}},
+	}, restartRecorder(&registered))
+	if len(errs) != 0 {
+		t.Fatalf("Load errors = %v, want none", errs)
+	}
+	t.Cleanup(func() { _ = loader.Close() })
+	if len(registered) != 2 || len(loader.Statuses()) != 2 {
+		t.Fatalf("registered/statuses = %d/%d, want two distinct invocations", len(registered), len(loader.Statuses()))
+	}
+	statuses := loader.Statuses()
+	if statuses[0].Entry != "first" || statuses[1].Entry != "second" {
+		t.Fatalf("statuses = %+v, want stable configured identities", statuses)
 	}
 }

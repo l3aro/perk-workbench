@@ -20,7 +20,7 @@ func TestLoaderSnapshots_afterClose(t *testing.T) {
 	}
 	configPath := filepath.Join(t.TempDir(), "config.json")
 
-	loader, errs := Load(context.Background(), configPath, []string{executable}, func(database.Shim) error {
+	loader, errs := Load(context.Background(), configPath, testEntries(executable), func(database.Shim) error {
 		return nil
 	})
 	if len(errs) != 0 {
@@ -69,7 +69,7 @@ func TestLoaderSnapshots_immutableCopies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), []string{executable}, func(database.Shim) error {
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(database.Shim) error {
 		return nil
 	})
 	if len(errs) != 0 {
@@ -109,7 +109,7 @@ func TestLoaderSnapshots_concurrentAndAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), []string{executable}, func(database.Shim) error {
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(database.Shim) error {
 		return nil
 	})
 	if len(errs) != 0 {

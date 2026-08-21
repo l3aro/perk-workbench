@@ -15,89 +15,103 @@ import (
 	"github.com/l3aro/perk-workbench/internal/database"
 )
 
+// Entry is one configured child-process invocation. Config is the stable
+// configured identity shown by status and commands; Executable and Args are
+// the process identity used for deduplication. Builtin entries are self-hosted
+// and never use SHA256.
+type Entry struct {
+	Config     string
+	Display    string
+	Executable string
+	Args       []string
+	SHA256     string
+	Builtin    bool
+}
+
+func (e Entry) identity() string {
+	config := e.Config
+	if config == "" {
+		config = e.Executable
+	}
+	return config
+}
+
+func (e Entry) display() string {
+	if e.Display != "" {
+		return e.Display
+	}
+	return e.identity()
+}
+
+func (e Entry) key(path string) string {
+	return path + "\x00" + strings.Join(e.Args, "\x00")
+}
+
 // Loader owns the lifecycle of every configured plugin entry: the
 // spawned child, the registered shim, and every session opened in them.
-// Close is the single idempotent cleanup path. Entries rejected at
-// load (resolution, pin drift, handshake, protocol, or registration
-// failure) are retained with their failure so they stay inspectable and
-// restartable; Restart recovers exactly one entry.
+// Close is the single idempotent cleanup path.
 type Loader struct {
 	mu         sync.Mutex
 	configPath string
-	entries    []*entry // one per unique configured entry, in config order
+	entries    []*entry
 	clients    []*Client
 	sessions   map[*sessionProxy]struct{}
 	closed     bool
 }
 
-// spawnArgs is the argv appended to every plugin spawn. Production loads
-// leave it nil; the test suite sets it once in TestMain to re-execute the
-// test binary as the plugin child. It is the only seam through which Load
-// can pass -test.run to the helper child.
+// spawnArgs is appended after each Entry.Args for the test helper seam.
 var spawnArgs []string
 
-// Load resolves, spawns, handshakes, and registers one plugin per entry,
-// in order: resolve, dedupe, spawn, initialize, register. Failures are
-// nonfatal — each rejected entry contributes one error and later entries
-// still load. The returned Loader owns every successfully spawned child
-// (children rejected at handshake or registration are terminated
-// immediately) and must be closed by the caller.
-func Load(ctx context.Context, configPath string, entries []string, register func(database.Shim) error) (*Loader, []error) {
-	return load(ctx, configPath, entries, nil, register)
+// Load resolves, spawns, handshakes, and registers structured entries.
+func Load(ctx context.Context, configPath string, entries []Entry, register func(database.Shim) error) (*Loader, []error) {
+	return load(ctx, configPath, entries, register)
 }
 
-// LoadPinned is Load with per-entry trust verification: immediately
-// before each child would be spawned, the entry's canonical path is
-// looked up in trust and the configured SHA-256 digest is verified
-// against the current bytes. A pinned entry whose digest cannot be
-// computed or does not match is refused at that point — the child never
-// executes — and contributes one error naming the entry with the
-// expected and actual digests; later entries still load. Entries
-// without a trust record load unpinned for compatibility.
-func LoadPinned(ctx context.Context, configPath string, entries []string, trust map[string]string, register func(database.Shim) error) (*Loader, []error) {
-	return load(ctx, configPath, entries, trust, register)
-}
-
-func load(ctx context.Context, configPath string, entries []string, trust map[string]string, register func(database.Shim) error) (*Loader, []error) {
+func load(ctx context.Context, configPath string, entries []Entry, register func(database.Shim) error) (*Loader, []error) {
 	loader := &Loader{configPath: configPath, sessions: map[*sessionProxy]struct{}{}}
 	var errs []error
 	seen := map[string]struct{}{}
-	for _, entryText := range entries {
-		item := &entry{configEntry: entryText, register: register}
+	for _, configured := range entries {
+		item := &entry{config: configured, register: register}
 		fail := func(err error) {
 			item.err = err
 			errs = append(errs, err)
 		}
-		path, err := resolvePluginExecutable(entryText, configPath)
+		executable := configured.Executable
+		if executable == "" {
+			executable = configured.Config
+		}
+		path, err := resolvePluginExecutable(executable, configPath)
 		if err != nil {
-			fail(fmt.Errorf("plugin %q: %w", entryText, err))
+			fail(fmt.Errorf("plugin %q: %w", configured.identity(), err))
 			loader.trackEntry(item)
 			continue
 		}
-		if _, duplicate := seen[path]; duplicate {
-			continue // canonical duplicates are silently skipped
+		if _, duplicate := seen[configured.key(path)]; duplicate {
+			continue
 		}
-		seen[path] = struct{}{}
+		seen[configured.key(path)] = struct{}{}
 		item.path = path
 
-		if pin, pinned := trust[path]; pinned {
-			item.trust = pin
+		if configured.SHA256 != "" && !configured.Builtin {
+			item.trust = configured.SHA256
 			digest, err := SHA256File(path)
 			if err != nil {
-				fail(fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", entryText, err))
+				fail(fmt.Errorf("plugin %q: verifying pinned sha256: %v; refusing to start", configured.identity(), err))
 				loader.trackEntry(item)
 				continue
 			}
-			if !strings.EqualFold(digest, pin) {
-				fail(fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", entryText, pin, digest))
+			if digest != configured.SHA256 {
+				fail(fmt.Errorf("plugin %q: pinned executable changed: expected sha256 %s, got %s; refusing to start", configured.identity(), configured.SHA256, digest))
 				loader.trackEntry(item)
 				continue
 			}
 		}
 
-		client, err := spawn(path, spawnArgs...)
+		args := append(append([]string{}, configured.Args...), spawnArgs...)
+		client, err := spawn(path, args...)
 		if err != nil {
-			fail(fmt.Errorf("plugin %q: %w", entryText, err))
+			fail(fmt.Errorf("plugin %q: %w", configured.identity(), err))
 			loader.trackEntry(item)
 			continue
 		}
@@ -111,25 +125,23 @@ func load(ctx context.Context, configPath string, entries []string, trust map[st
 			WorkbenchVersion: workbenchVersion,
 		}, &handshake); err != nil {
 			client.setInitDuration(time.Since(initStart))
-			fail(fmt.Errorf("plugin %q: initialize: %w", entryText, err))
+			fail(fmt.Errorf("plugin %q: initialize: %w", configured.identity(), err))
 			_ = client.Close()
 			loader.trackEntry(item)
 			continue
 		}
 		client.setInitDuration(time.Since(initStart))
 		if handshake.ProtocolVersion != ProtocolVersion {
-			fail(fmt.Errorf("plugin %q: protocol version %d, want %d", entryText, handshake.ProtocolVersion, ProtocolVersion))
+			fail(fmt.Errorf("plugin %q: protocol version %d, want %d", configured.identity(), handshake.ProtocolVersion, ProtocolVersion))
 			_ = client.Close()
 			loader.trackEntry(item)
 			continue
 		}
-		// The plugin has identified itself; operation errors now carry
-		// this host-known identity, never the child's data claims.
 		client.SetPlugin(handshake.Capabilities.Name)
 		client.setProtocolVersion(handshake.ProtocolVersion)
 		item.shim = newShim(client, handshake.Capabilities, loader)
 		if err := register(item.shim); err != nil {
-			fail(fmt.Errorf("plugin %q: %w", entryText, err))
+			fail(fmt.Errorf("plugin %q: %w", configured.identity(), err))
 			_ = client.Close()
 			loader.trackEntry(item)
 			continue

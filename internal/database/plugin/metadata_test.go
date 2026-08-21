@@ -29,11 +29,10 @@ func TestProxy_writeResultsCarryStatementMetadata(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -94,11 +93,10 @@ func TestProxy_rejectsOrphanStatementMetadata(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}

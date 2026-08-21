@@ -19,14 +19,14 @@ func TestLoadConfig_missing_file_writes_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig = %v, want nil error", err)
 	}
-	if !reflect.DeepEqual(config, Config{}) {
-		t.Fatalf("LoadConfig = %#v, want zero config (built-in defaults)", config)
+	if len(config.Plugins) != 4 {
+		t.Fatalf("LoadConfig plugins = %#v, want four built-ins", config.Plugins)
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("default config file not written: %v", err)
 	}
-	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"appearance": "dark"`, `"auto_theme": true`, `"dark_theme": "ocean"`, `"light_theme": "light-ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`, `"plugins": []`} {
+	for _, want := range []string{`"browse_page_size": 25`, `"query_log_page_size": 25`, `"query_log_retention_days": 30`, `"notification_retention_days": 30`, `"notification_timeout_seconds": 10`, `"appearance": "dark"`, `"auto_theme": true`, `"dark_theme": "ocean"`, `"light_theme": "light-ocean"`, `"vim_mode": true`, `"nerd_font": true`, `"log_level": "info"`, `"table_open_target": "structure"`, `"builtin": "sqlite"`, `"builtin": "mongodb"`} {
 		if !strings.Contains(string(contents), want) {
 			t.Fatalf("default config = %q, want it to contain %q", contents, want)
 		}
@@ -339,33 +339,14 @@ func TestQueryLogConfig_uses_config_then_env_wins(t *testing.T) {
 
 func TestLoadConfig_plugins(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
-	if err := os.WriteFile(path, []byte(`{"plugins": ["./tools/redis", "redis-db"]}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"plugins":[{"builtin":"sqlite"},{"path":"redis-db","sha256":"`+strings.Repeat("ab", 32)+`"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
 	config, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("LoadConfig = %v, want nil error", err)
-	}
-	want := []string{"./tools/redis", "redis-db"}
-	if len(config.Plugins) != len(want) {
-		t.Fatalf("Plugins = %v, want %v", config.Plugins, want)
-	}
-	for i := range want {
-		if config.Plugins[i] != want[i] {
-			t.Fatalf("Plugins = %v, want %v", config.Plugins, want)
-		}
-	}
-
-	// A null plugins value loads as nil — also disabled, no error.
-	if err := os.WriteFile(path, []byte(`{"plugins": null}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	config, err = LoadConfig(path)
-	if err != nil {
-		t.Fatalf("LoadConfig(null plugins) = %v, want nil error", err)
-	}
-	if config.Plugins != nil {
-		t.Fatalf("Plugins = %v, want nil for null", config.Plugins)
+	if len(config.Plugins) != 2 || config.Plugins[0].Builtin != "sqlite" || config.Plugins[1].Path != "redis-db" {
+		t.Fatalf("plugins = %#v, want descriptor values", config.Plugins)
 	}
 }

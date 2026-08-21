@@ -269,21 +269,17 @@ func TestPluginManager_enablePinsAtomicallyAndRequiresRestart(t *testing.T) {
 		t.Fatalf("config was not written: %v", err)
 	}
 	var config struct {
-		Plugins []string          `json:"plugins"`
-		Trust   map[string]string `json:"plugin_trust"`
+		Plugins []PluginConfig `json:"plugins"`
 	}
 	if err := json.Unmarshal(contents, &config); err != nil {
 		t.Fatalf("config %q is not JSON: %v", contents, err)
-	}
-	if len(config.Plugins) != 1 || config.Plugins[0] != helper {
-		t.Fatalf("plugins = %v, want the canonical helper path", config.Plugins)
 	}
 	digest, err := plugin.SHA256File(helper)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if config.Trust[helper] != digest {
-		t.Fatalf("plugin_trust = %v, want the pinned digest", config.Trust)
+	if len(config.Plugins) != 5 || config.Plugins[4] != (PluginConfig{Path: helper, SHA256: digest}) {
+		t.Fatalf("plugins = %v, want four defaults plus pinned descriptor", config.Plugins)
 	}
 	info, err := os.Stat(appConfigFile(t))
 	if err != nil {
@@ -292,10 +288,8 @@ func TestPluginManager_enablePinsAtomicallyAndRequiresRestart(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("config mode = %o, want 0600", info.Mode().Perm())
 	}
-	// The resolved in-memory config follows, so a later remove list sees
-	// the new entry.
-	if len(appConfig.Plugins) != 1 || appConfig.Plugins[0] != helper {
-		t.Fatalf("appConfig.Plugins = %v, want the enabled plugin", appConfig.Plugins)
+	if len(appConfig.Plugins) != 5 || appConfig.Plugins[4] != (PluginConfig{Path: helper, SHA256: digest}) {
+		t.Fatalf("appConfig.Plugins = %v, want the enabled descriptor", appConfig.Plugins)
 	}
 }
 
@@ -402,11 +396,11 @@ func TestPluginManager_removeConfirmsAndRequiresRestart(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(`{"plugins": ["`+helper+`"], "plugin_trust": {"`+helper+`": "`+digest+`"}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"plugins":[{"path":"`+helper+`","sha256":"`+digest+`"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	snapshotAppConfig(t)
-	SetAppConfig(Config{Plugins: []string{helper}, PluginTrust: map[string]string{helper: digest}})
+	SetAppConfig(Config{Plugins: []PluginConfig{{Path: helper, SHA256: digest}}})
 
 	model := openPluginManager(t)
 	// Menu → Remove.

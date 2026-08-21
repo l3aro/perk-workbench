@@ -11,9 +11,20 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/l3aro/perk-workbench/internal/core"
+	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	"github.com/l3aro/perk-workbench/internal/log"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 )
+
+// PluginConfig identifies one configured plugin source. Exactly one of
+// Builtin and Path must be set.
+type PluginConfig struct {
+	Builtin string `json:"builtin,omitempty"`
+	Path    string `json:"path,omitempty"`
+	SHA256  string `json:"sha256,omitempty"`
+}
+
+var builtinPluginNames = []string{"sqlite", "mysql", "postgres", "mongodb"}
 
 // Config holds user-configurable default behavior. Zero values mean the
 // built-in default, so fields can be omitted from config.json.
@@ -72,18 +83,10 @@ type Config struct {
 	// in the schema tree: structure (columns), browse, sql, indexes, or
 	// foreign_keys. Omitted keeps the built-in default (structure).
 	TableOpenTarget string `json:"table_open_target"`
-	// Plugins lists external database driver plugin executables to load at
-	// startup. Each entry is a bare executable name resolved through PATH
-	// or a path relative to the config file's directory. Nil or empty
-	// disables plugins.
-	Plugins []string `json:"plugins"`
-	// PluginTrust pins configured plugin executables to the lowercase
-	// SHA-256 digest of the exact bytes approved with `plugin add
-	// --approve`, keyed by the canonical absolute executable path. An
-	// entry without a record loads unpinned for compatibility; a record
-	// whose digest does not match the current bytes is refused at startup
-	// before anything spawns. Nil or empty keeps every entry unpinned.
-	PluginTrust map[string]string `json:"plugin_trust,omitempty"`
+	// Plugins lists the configured built-in or external plugin descriptors.
+	// Missing config files materialize the four bundled built-ins; an
+	// explicit empty list disables all plugin instances.
+	Plugins []PluginConfig `json:"plugins"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -123,64 +126,69 @@ func vimModeEnabled() bool {
 }
 
 // LoadConfig reads config.json and returns the Config. If the file does not
-// exist, it writes the default config file and returns the defaults.
+// exist, it writes and returns the default configuration, including all four
+// bundled plugin descriptors. Legacy plugin fields are migrated in one
+// atomic rewrite.
 func LoadConfig(path string) (Config, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if err := writeDefaultConfigFile(path); err != nil {
-				return Config{}, fmt.Errorf("writing default config %q: %w", path, err)
-			}
-			return Config{}, nil
+		if !os.IsNotExist(err) {
+			return Config{}, fmt.Errorf("reading config %q: %w", path, err)
 		}
-		return Config{}, fmt.Errorf("reading config %q: %w", path, err)
+		raw := defaultConfigValues()
+		data, marshalErr := json.MarshalIndent(raw, "", "  ")
+		if marshalErr != nil {
+			return Config{}, fmt.Errorf("encoding default config %q: %w", path, marshalErr)
+		}
+		if err := writeConfigFileAtomic(path, data); err != nil {
+			return Config{}, fmt.Errorf("writing default config %q: %w", path, err)
+		}
+		return decodeConfig(path, raw)
 	}
 	if len(contents) == 0 {
 		return Config{}, nil
 	}
 
-	var config Config
-	if err := json.Unmarshal(contents, &config); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &raw); err != nil {
 		return Config{}, fmt.Errorf("parsing config %q: %w", path, err)
 	}
-	var pluginsErr error
-	for i, item := range config.Plugins {
-		if strings.TrimSpace(item) == "" {
-			pluginsErr = fmt.Errorf("config %q: plugins[%d] must not be blank", path, i)
-			break
-		}
-		if strings.ContainsRune(item, '\x00') {
-			pluginsErr = fmt.Errorf("config %q: plugins[%d] must not contain a NUL byte", path, i)
-			break
-		}
-	}
-	if pluginsErr == nil {
-		for key, digest := range config.PluginTrust {
-			switch {
-			case strings.TrimSpace(key) == "":
-				pluginsErr = fmt.Errorf("config %q: plugin_trust keys must not be blank", path)
-			case !filepath.IsAbs(key):
-				pluginsErr = fmt.Errorf("config %q: plugin_trust key %q must be an absolute path", path, key)
-			case strings.ContainsRune(key, '\x00'):
-				pluginsErr = fmt.Errorf("config %q: plugin_trust key must not contain a NUL byte", path)
-			case !validSHA256Digest(digest):
-				pluginsErr = fmt.Errorf("config %q: plugin_trust digest for %q must be 64 hexadecimal characters", path, key)
-			}
-			if pluginsErr != nil {
-				break
-			}
-		}
-	}
-	if migrated, err := migrateLegacyConfig(path, &config); err != nil {
+	changed, err := migratePluginConfig(raw, path)
+	if err != nil {
 		return Config{}, err
-	} else if migrated {
-		// The migrated fields were validated by construction; fall through
-		// to the remaining checks below.
-		_ = migrated
+	}
+	themeChanged, err := migrateLegacyThemeRaw(raw, path)
+	if err != nil {
+		return Config{}, err
+	}
+	if themeChanged {
+		changed = true
+	}
+	if changed {
+		data, err := json.MarshalIndent(raw, "", "  ")
+		if err != nil {
+			return Config{}, err
+		}
+		if err := writeConfigFileAtomic(path, data); err != nil {
+			return Config{}, fmt.Errorf("migrating config %q: %w", path, err)
+		}
+	}
+	return decodeConfig(path, raw)
+}
+
+func decodeConfig(path string, raw map[string]json.RawMessage) (Config, error) {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return Config{}, fmt.Errorf("encoding config %q: %w", path, err)
+	}
+	var config Config
+	if err := json.Unmarshal(data, &config); err != nil {
+		return Config{}, fmt.Errorf("parsing config %q: %w", path, err)
+	}
+	if err := validatePluginConfigs(path, config.Plugins); err != nil {
+		return Config{}, err
 	}
 	switch {
-	case pluginsErr != nil:
-		return Config{}, pluginsErr
 	case config.BrowsePageSize != 0 && (config.BrowsePageSize < 1 || config.BrowsePageSize > sharedsql.MaxRows):
 		return Config{}, fmt.Errorf("config %q: browse_page_size must be between 1 and %d, got %d", path, sharedsql.MaxRows, config.BrowsePageSize)
 	case config.QueryLogPageSize != 0 && (config.QueryLogPageSize < 1 || config.QueryLogPageSize > queryLogLimit):
@@ -205,6 +213,195 @@ func LoadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("config %q: table_open_target %q is not one of %v", path, config.TableOpenTarget, tableOpenTargetNames())
 	}
 	return config, nil
+
+}
+func defaultPluginConfigs() []PluginConfig {
+	plugins := make([]PluginConfig, len(builtinPluginNames))
+	for i, name := range builtinPluginNames {
+		plugins[i] = PluginConfig{Builtin: name}
+	}
+	return plugins
+}
+
+func validBuiltinPlugin(name string) bool {
+	for _, allowed := range builtinPluginNames {
+		if name == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func migratePluginConfig(raw map[string]json.RawMessage, path string) (bool, error) {
+	legacyTrust, hasTrust, err := parseLegacyPluginTrust(raw, path)
+	if err != nil {
+		return false, err
+	}
+	value, hasPlugins := raw["plugins"]
+	if !hasPlugins {
+		if hasTrust {
+			delete(raw, "plugin_trust")
+			return true, nil
+		}
+		if _, ok := raw["disabled_official_plugins"]; ok {
+			delete(raw, "disabled_official_plugins")
+			return true, nil
+		}
+		return false, nil
+	}
+
+	descriptors, legacy, err := decodePluginDescriptors(value, path)
+	if err != nil {
+		return false, err
+	}
+	changed := legacy
+	for i := range descriptors {
+		if descriptors[i].Path == "" || descriptors[i].SHA256 != "" {
+			continue
+		}
+		resolved, resolveErr := plugin.ResolveExecutable(descriptors[i].Path, path)
+		if resolveErr == nil {
+			if digest, ok := legacyTrust[resolved]; ok {
+				descriptors[i].SHA256 = digest
+			}
+		}
+	}
+	if hasTrust {
+		changed = true
+		delete(raw, "plugin_trust")
+	}
+	if _, ok := raw["disabled_official_plugins"]; ok {
+		changed = true
+		delete(raw, "disabled_official_plugins")
+	}
+	encoded, err := json.Marshal(descriptors)
+	if err != nil {
+		return false, err
+	}
+	if string(value) != string(encoded) {
+		changed = true
+	}
+	raw["plugins"] = encoded
+	if err := validatePluginConfigs(path, descriptors); err != nil {
+		return false, err
+	}
+	return changed, nil
+}
+
+func decodePluginDescriptors(value json.RawMessage, path string) ([]PluginConfig, bool, error) {
+	var items []json.RawMessage
+	if err := json.Unmarshal(value, &items); err != nil {
+		return nil, false, fmt.Errorf("parsing config %q: plugins: %w", path, err)
+	}
+	if len(items) == 0 {
+		if string(value) == "null" {
+			return nil, false, nil
+		}
+		return []PluginConfig{}, false, nil
+	}
+	legacy := false
+	var first string
+	if err := json.Unmarshal(items[0], &first); err == nil {
+		legacy = true
+	}
+	descriptors := make([]PluginConfig, len(items))
+	for i, item := range items {
+		if legacy {
+			var entry string
+			if err := json.Unmarshal(item, &entry); err != nil {
+				return nil, false, fmt.Errorf("config %q: plugins[%d] must be a descriptor or legacy string", path, i)
+			}
+			descriptors[i] = PluginConfig{Path: entry}
+			continue
+		}
+		if err := json.Unmarshal(item, &descriptors[i]); err != nil {
+			return nil, false, fmt.Errorf("config %q: plugins[%d] must be a descriptor: %w", path, i, err)
+		}
+	}
+	return descriptors, legacy, nil
+}
+
+func parseLegacyPluginTrust(raw map[string]json.RawMessage, path string) (map[string]string, bool, error) {
+	value, ok := raw["plugin_trust"]
+	if !ok {
+		return nil, false, nil
+	}
+	var trust map[string]string
+	if err := json.Unmarshal(value, &trust); err != nil {
+		return nil, true, fmt.Errorf("parsing config %q: plugin_trust: %w", path, err)
+	}
+	for key, digest := range trust {
+		switch {
+		case strings.TrimSpace(key) == "":
+			return nil, true, fmt.Errorf("config %q: plugin_trust keys must not be blank", path)
+		case !filepath.IsAbs(key):
+			return nil, true, fmt.Errorf("config %q: plugin_trust key %q must be an absolute path", path, key)
+		case strings.ContainsRune(key, '\x00'):
+			return nil, true, fmt.Errorf("config %q: plugin_trust key must not contain a NUL byte", path)
+		case !validSHA256Digest(digest) || digest != strings.ToLower(digest):
+			return nil, true, fmt.Errorf("config %q: plugin_trust digest for %q must be lowercase 64 hexadecimal characters", path, key)
+		}
+	}
+	return trust, true, nil
+}
+func validatePluginConfigs(path string, descriptors []PluginConfig) error {
+	seenBuiltins := map[string]struct{}{}
+	seenPaths := map[string]struct{}{}
+	for i, descriptor := range descriptors {
+		builtin := descriptor.Builtin
+		external := descriptor.Path
+		if (strings.TrimSpace(builtin) == "") == (strings.TrimSpace(external) == "") {
+			return fmt.Errorf("config %q: plugins[%d] must set exactly one of builtin or path", path, i)
+		}
+		if strings.TrimSpace(builtin) != "" {
+			if !validBuiltinPlugin(builtin) {
+				return fmt.Errorf("config %q: plugins[%d].builtin %q is not one of %v", path, i, builtin, builtinPluginNames)
+			}
+			if descriptor.SHA256 != "" {
+				return fmt.Errorf("config %q: plugins[%d].sha256 is only valid for path descriptors", path, i)
+			}
+			if _, exists := seenBuiltins[builtin]; exists {
+				return fmt.Errorf("config %q: duplicate builtin plugin %q", path, builtin)
+			}
+			seenBuiltins[builtin] = struct{}{}
+			continue
+		}
+		if strings.TrimSpace(external) == "" {
+			return fmt.Errorf("config %q: plugins[%d].path must not be blank", path, i)
+		}
+		if strings.ContainsRune(external, '\x00') {
+			return fmt.Errorf("config %q: plugins[%d].path must not contain a NUL byte", path, i)
+		}
+		if descriptor.SHA256 != "" && (!validSHA256Digest(descriptor.SHA256) || descriptor.SHA256 != strings.ToLower(descriptor.SHA256)) {
+			return fmt.Errorf("config %q: plugins[%d].sha256 must be lowercase 64 hexadecimal characters", path, i)
+		}
+		if resolved, err := plugin.ResolveExecutable(external, path); err == nil {
+			if _, exists := seenPaths[resolved]; exists {
+				return fmt.Errorf("config %q: duplicate external plugin path %q", path, resolved)
+			}
+			seenPaths[resolved] = struct{}{}
+		}
+	}
+	return nil
+}
+
+func migrateLegacyThemeRaw(raw map[string]json.RawMessage, path string) (bool, error) {
+	legacy, ok := raw["theme"]
+	if !ok {
+		return false, nil
+	}
+	var name string
+	if err := json.Unmarshal(legacy, &name); err != nil {
+		return false, fmt.Errorf("config %q: theme %q: %w", path, string(legacy), err)
+	}
+	if !validDarkTheme(name) {
+		name = string(themeOcean)
+	}
+	delete(raw, "theme")
+	setJSONKey(raw, "dark_theme", name)
+	setJSONKey(raw, "light_theme", string(themeLightOcean))
+	setJSONKey(raw, "auto_theme", false)
+	return true, nil
 }
 
 // tableOpenTargetNames returns the accepted table_open_target values.
@@ -349,51 +546,6 @@ func SaveAutoTheme(path string, enabled bool) error {
 	}
 	appConfig.AutoTheme = boolPtr(enabled) // keep the resolved config in sync
 	return nil
-}
-
-// migrateLegacyConfig upgrades a pre-appearance config file that used a
-// single "theme" key. The legacy theme becomes the dark slot (old themes
-// were all dark), auto-following is disabled (the old behavior was a fixed
-// theme), the light slot takes the default light theme, and the legacy key
-// is dropped. Unknown keys are preserved. Returns true when the file was
-// rewritten.
-func migrateLegacyConfig(path string, config *Config) (bool, error) {
-	raw, err := readConfigRaw(path)
-	if err != nil || raw == nil {
-		return false, err
-	}
-	legacy, ok := raw["theme"]
-	if !ok {
-		return false, nil
-	}
-	var name string
-	if err := json.Unmarshal(legacy, &name); err != nil {
-		return false, fmt.Errorf("config %q: theme %q: %w", path, string(legacy), err)
-	}
-	if !validDarkTheme(name) {
-		name = string(themeOcean)
-	}
-	if config.DarkTheme == "" {
-		config.DarkTheme = name
-	}
-	if config.LightTheme == "" {
-		config.LightTheme = string(themeLightOcean)
-	}
-	if config.AutoTheme == nil {
-		config.AutoTheme = boolPtr(false)
-	}
-	delete(raw, "theme")
-	setJSONKey(raw, "dark_theme", config.DarkTheme)
-	setJSONKey(raw, "light_theme", config.LightTheme)
-	setJSONKey(raw, "auto_theme", false)
-	data, err := json.MarshalIndent(raw, "", "  ")
-	if err != nil {
-		return false, err
-	}
-	if err := writeConfigFileAtomic(path, data); err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // setJSONKey sets raw[key] to the JSON encoding of value unless the key
@@ -623,7 +775,7 @@ func defaultConfigValues() map[string]json.RawMessage {
 		NerdFont:                   boolPtr(true),
 		LogLevel:                   "info",
 		TableOpenTarget:            tableTargetKey(tabStructure),
-		Plugins:                    []string{},
+		Plugins:                    defaultPluginConfigs(),
 	})
 	if err != nil {
 		panic(err) // plain struct: cannot fail

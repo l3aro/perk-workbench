@@ -596,11 +596,10 @@ func TestDiagnostics_snapshotLifecycle(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -690,11 +689,10 @@ func TestDiagnostics_crashStatus(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
@@ -772,8 +770,7 @@ func TestDiagnostics_rejectedHandshakeIdentity(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-				[]string{executable}, func(database.Shim) error { return nil })
+			loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(database.Shim) error { return nil })
 			if len(errs) != 1 {
 				t.Fatalf("Load errors = %v, want the handshake rejection", errs)
 			}
@@ -809,11 +806,10 @@ func TestDiagnostics_stderrFloodNoBlock(t *testing.T) {
 	}
 
 	var shim database.Shim
-	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"),
-		[]string{executable}, func(s database.Shim) error {
-			shim = s
-			return nil
-		})
+	loader, errs := Load(context.Background(), filepath.Join(t.TempDir(), "config.json"), testEntries(executable), func(s database.Shim) error {
+		shim = s
+		return nil
+	})
 	if len(errs) != 0 {
 		t.Fatalf("Load errors = %v, want none", errs)
 	}
