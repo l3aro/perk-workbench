@@ -77,9 +77,6 @@ type Config struct {
 	// or a path relative to the config file's directory. Nil or empty
 	// disables plugins.
 	Plugins []string `json:"plugins"`
-	// DisabledOfficialPlugins lists bundled official driver sidecars not to
-	// load at startup. Omitted or empty enables every official sidecar.
-	DisabledOfficialPlugins []string `json:"disabled_official_plugins"`
 	// PluginTrust pins configured plugin executables to the lowercase
 	// SHA-256 digest of the exact bytes approved with `plugin add
 	// --approve`, keyed by the canonical absolute executable path. An
@@ -172,24 +169,6 @@ func LoadConfig(path string) (Config, error) {
 			if pluginsErr != nil {
 				break
 			}
-		}
-	}
-	if pluginsErr == nil {
-		seenDisabledOfficialPlugins := make(map[string]struct{}, len(config.DisabledOfficialPlugins))
-		for i, name := range config.DisabledOfficialPlugins {
-			switch name {
-			case "sqlite", "mysql", "postgres", "mongodb":
-			default:
-				pluginsErr = fmt.Errorf("config %q: disabled_official_plugins[%d] %q is not one of [sqlite mysql postgres mongodb]", path, i, name)
-			}
-			if pluginsErr != nil {
-				break
-			}
-			if _, duplicate := seenDisabledOfficialPlugins[name]; duplicate {
-				pluginsErr = fmt.Errorf("config %q: disabled_official_plugins[%d] %q is duplicated", path, i, name)
-				break
-			}
-			seenDisabledOfficialPlugins[name] = struct{}{}
 		}
 	}
 	if migrated, err := migrateLegacyConfig(path, &config); err != nil {

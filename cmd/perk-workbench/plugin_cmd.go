@@ -105,10 +105,7 @@ const (
 	trustMismatch = "mismatch"
 )
 
-const (
-	pluginSourceOfficial = "official"
-	pluginSourceUser     = "user"
-)
+const pluginSourceUser = "user"
 
 type pluginCommandEntry struct {
 	entry  string
@@ -378,25 +375,11 @@ func runPluginDoctor(jsonOut bool, operands []string, stdout, stderr io.Writer) 
 }
 
 func configuredPluginCommandEntries(config app.Config) ([]pluginCommandEntry, map[string]string, error) {
-	officialEntries, officialTrust, err := officialPluginEntries(config.DisabledOfficialPlugins)
-	if err != nil {
-		return nil, nil, err
-	}
-	entries := make([]pluginCommandEntry, 0, len(officialEntries)+len(config.Plugins))
-	for _, entry := range officialEntries {
-		entries = append(entries, pluginCommandEntry{entry: entry, source: pluginSourceOfficial})
-	}
+	entries := make([]pluginCommandEntry, 0, len(config.Plugins))
 	for _, entry := range config.Plugins {
 		entries = append(entries, pluginCommandEntry{entry: entry, source: pluginSourceUser})
 	}
-	trust := make(map[string]string, len(officialTrust)+len(config.PluginTrust))
-	for entry, digest := range officialTrust {
-		trust[entry] = digest
-	}
-	for entry, digest := range config.PluginTrust {
-		trust[entry] = digest
-	}
-	return entries, trust, nil
+	return entries, config.PluginTrust, nil
 }
 
 func commandEntryNames(entries []pluginCommandEntry) []string {

@@ -1,12 +1,7 @@
 package main
 
-//go:generate go run generate_official_manifest.go
-
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,9 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -258,6 +251,9 @@ func loadAI() (*ai.Client, *ai.History, error) {
 // testable face of main, which stays a thin os.Exit wrapper. Command
 // helpers never call os.Exit themselves.
 func dispatch(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "--plugin" {
+		return dispatchSelfPlugin(args[1:], os.Stdin, stdout, stderr)
+	}
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
 		fmt.Fprint(stdout, usage)
 		return 0
@@ -336,10 +332,7 @@ func run(target string, readOnly, noQuit bool) error {
 	}
 	app.SetAppConfig(config)
 
-	loader, err := loadOfficialAndConfiguredPlugins(ctx, config, database.RegisterShim)
-	if err != nil {
-		return err
-	}
+	loader := loadPlugins(ctx, config, database.RegisterShim)
 
 	client, history, err := loadAI()
 	if err != nil {
@@ -378,199 +371,6 @@ func run(target string, readOnly, noQuit bool) error {
 		runErr = nil
 	}
 	return errors.Join(runErr, closeErr)
-}
-
-type officialManifest struct {
-	SchemaVersion    int                      `json:"schema_version"`
-	Protocol         int                      `json:"protocol"`
-	TestedHostCommit string                   `json:"tested_host_commit"`
-	Plugins          []officialManifestPlugin `json:"plugins"`
-}
-
-type officialManifestPlugin struct {
-	Name      string                           `json:"name"`
-	Protocol  int                              `json:"protocol"`
-	TestedRef string                           `json:"tested_ref"`
-	Targets   map[string]officialManifestAsset `json:"targets"`
-}
-
-type officialManifestAsset struct {
-	Status           string                 `json:"status"`
-	AssetURL         *string                `json:"asset_url"`
-	AssetSHA256      *string                `json:"asset_sha256"`
-	Target           officialManifestTarget `json:"target"`
-	Executable       string                 `json:"executable"`
-	ExecutableSHA256 *string                `json:"executable_sha256"`
-}
-
-type officialManifestTarget struct {
-	GOOS   string `json:"goos"`
-	GOARCH string `json:"goarch"`
-}
-
-var officialExecutable = os.Executable
-
-func officialPluginEntries(disabled []string) ([]string, map[string]string, error) {
-	const manifestSchemaVersion = 1
-	officialNames := []string{"sqlite", "mysql", "postgres", "mongodb"}
-	knownNames := map[string]struct{}{"sqlite": {}, "mysql": {}, "postgres": {}, "mongodb": {}}
-	disabledSet := make(map[string]struct{}, len(disabled))
-	for _, name := range disabled {
-		if _, known := knownNames[name]; !known {
-			return nil, nil, fmt.Errorf("unknown disabled official plugin %q", name)
-		}
-		if _, duplicate := disabledSet[name]; duplicate {
-			return nil, nil, fmt.Errorf("duplicate disabled official plugin %q", name)
-		}
-		disabledSet[name] = struct{}{}
-	}
-
-	executable, err := officialExecutable()
-	if err != nil {
-		return nil, nil, fmt.Errorf("locating host executable: %w", err)
-	}
-	if len(officialManifestData) == 0 {
-		return nil, nil, fmt.Errorf("official plugin manifest is empty")
-	}
-	var manifest officialManifest
-	if err := json.Unmarshal(officialManifestData, &manifest); err != nil {
-		return nil, nil, fmt.Errorf("parsing official plugin manifest: %w", err)
-	}
-	if manifest.SchemaVersion != manifestSchemaVersion {
-		return nil, nil, fmt.Errorf("official plugin manifest schema version %d, want %d", manifest.SchemaVersion, manifestSchemaVersion)
-	}
-	if manifest.Protocol != plugin.ProtocolVersion {
-		return nil, nil, fmt.Errorf("official plugin manifest protocol %d, want %d", manifest.Protocol, plugin.ProtocolVersion)
-	}
-	if !validCommitDigest(manifest.TestedHostCommit) {
-		return nil, nil, fmt.Errorf("official plugin manifest tested_host_commit is invalid")
-	}
-
-	byName := make(map[string]officialManifestPlugin, len(manifest.Plugins))
-	for _, item := range manifest.Plugins {
-		if _, known := knownNames[item.Name]; !known {
-			return nil, nil, fmt.Errorf("official plugin manifest has unknown plugin %q", item.Name)
-		}
-		if _, duplicate := byName[item.Name]; duplicate {
-			return nil, nil, fmt.Errorf("official plugin manifest duplicates plugin %q", item.Name)
-		}
-		byName[item.Name] = item
-	}
-
-	entries := make([]string, 0, len(officialNames)-len(disabledSet))
-	trust := make(map[string]string, len(entries))
-	hostTarget := runtime.GOOS + "/" + runtime.GOARCH
-	for _, name := range officialNames {
-		if _, disabled := disabledSet[name]; disabled {
-			continue
-		}
-		item, ok := byName[name]
-		if !ok {
-			return nil, nil, fmt.Errorf("official plugin manifest is missing %q", name)
-		}
-		if item.Protocol != plugin.ProtocolVersion {
-			return nil, nil, fmt.Errorf("official plugin %q protocol %d, want %d", name, item.Protocol, plugin.ProtocolVersion)
-		}
-		if item.TestedRef != manifest.TestedHostCommit {
-			return nil, nil, fmt.Errorf("official plugin %q tested_ref %q does not match tested_host_commit %q", name, item.TestedRef, manifest.TestedHostCommit)
-		}
-		if !validCommitDigest(item.TestedRef) {
-			return nil, nil, fmt.Errorf("official plugin %q tested_ref is invalid", name)
-		}
-		asset, ok := item.Targets[hostTarget]
-		if !ok {
-			return nil, nil, fmt.Errorf("official plugin %q has no target metadata for %s", name, hostTarget)
-		}
-		if asset.Status != "verified" || asset.AssetURL == nil || strings.TrimSpace(*asset.AssetURL) == "" || asset.AssetSHA256 == nil || asset.ExecutableSHA256 == nil {
-			return nil, nil, fmt.Errorf("official plugin %q has incomplete release metadata for %s", name, hostTarget)
-		}
-		if asset.Target.GOOS != runtime.GOOS || asset.Target.GOARCH != runtime.GOARCH {
-			return nil, nil, fmt.Errorf("official plugin %q target metadata is %s/%s, want %s", name, asset.Target.GOOS, asset.Target.GOARCH, hostTarget)
-		}
-		if !validSHA256(*asset.AssetSHA256) || !validSHA256(*asset.ExecutableSHA256) {
-			return nil, nil, fmt.Errorf("official plugin %q has invalid release digest metadata for %s", name, hostTarget)
-		}
-		executableName := "perk-" + name
-		if runtime.GOOS == "windows" {
-			executableName += ".exe"
-		}
-		if asset.Executable != executableName {
-			return nil, nil, fmt.Errorf("official plugin %q executable %q, want %q", name, asset.Executable, executableName)
-		}
-		path := filepath.Join(filepath.Dir(executable), "plugins", executableName)
-		resolved, err := plugin.ResolveExecutable(path, "")
-		if err != nil {
-			return nil, nil, fmt.Errorf("official plugin %q: %w", name, err)
-		}
-		digest, err := plugin.SHA256File(resolved)
-		if err != nil {
-			return nil, nil, fmt.Errorf("official plugin %q: hashing executable: %w", name, err)
-		}
-		if !strings.EqualFold(digest, *asset.ExecutableSHA256) {
-			return nil, nil, fmt.Errorf("official plugin %q executable sha256 mismatch: expected %s, got %s", name, *asset.ExecutableSHA256, digest)
-		}
-		entries = append(entries, resolved)
-		trust[resolved] = *asset.ExecutableSHA256
-	}
-	return entries, trust, nil
-}
-
-func isOfficialPluginError(err error, entries []string) bool {
-	if err == nil {
-		return false
-	}
-	text := err.Error()
-	for _, entry := range entries {
-		if strings.HasPrefix(text, fmt.Sprintf("plugin %q:", entry)) {
-			return true
-		}
-	}
-	return false
-}
-
-func validCommitDigest(value string) bool {
-	if len(value) != 40 {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil
-}
-
-func validSHA256(value string) bool {
-	if len(value) != sha256.Size*2 {
-		return false
-	}
-	_, err := hex.DecodeString(value)
-	return err == nil
-}
-
-// loadOfficialAndConfiguredPlugins loads release-pinned official entries
-// before configured user entries. Official preflight, handshake, and
-// registration failures abort startup; user entry failures are diagnostics.
-func loadOfficialAndConfiguredPlugins(ctx context.Context, config app.Config, register func(database.Shim) error) (*plugin.Loader, error) {
-	officialEntries, officialTrust, err := officialPluginEntries(config.DisabledOfficialPlugins)
-	if err != nil {
-		return nil, err
-	}
-	entries := make([]string, 0, len(officialEntries)+len(config.Plugins))
-	entries = append(entries, officialEntries...)
-	entries = append(entries, config.Plugins...)
-	trust := make(map[string]string, len(officialTrust)+len(config.PluginTrust))
-	for entry, digest := range officialTrust {
-		trust[entry] = digest
-	}
-	for entry, digest := range config.PluginTrust {
-		trust[entry] = digest
-	}
-	loader, errs := plugin.LoadPinned(ctx, app.ConfigPath(), entries, trust, register)
-	for _, err := range errs {
-		if isOfficialPluginError(err, officialEntries) {
-			closeErr := loader.Close()
-			return nil, errors.Join(fmt.Errorf("official plugin startup failed: %w", err), closeErr)
-		}
-		log.Error("loading plugin", err)
-	}
-	return loader, nil
 }
 
 // loadPlugins starts every configured user plugin child. Each pinned

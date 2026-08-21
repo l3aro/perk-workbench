@@ -10,8 +10,6 @@ const targets = [
   ['linux', 'arm64'],
   ['win32', 'x64'],
 ];
-const officialPlugins = ['sqlite', 'mysql', 'postgres', 'mongodb'];
-
 function field(block, start, end) {
   return block.subarray(start, end).toString('utf8').replace(/\0.*$/, '');
 }
@@ -77,15 +75,8 @@ async function inspectArchive(path, version) {
   assert.equal(manifest.bin, undefined, `${path}: platform package must not expose bin`);
   const binary = entries.get(`package/bin/perk-workbench${platform === 'win32' ? '.exe' : ''}`);
   assert.ok(binary, `${path}: missing native binary`);
-  const sidecarPrefix = 'package/bin/plugins/';
-  const sidecarNames = [...entries.keys()].filter((name) => name.startsWith(sidecarPrefix)).sort();
-  const expectedSidecars = officialPlugins.map((name) => `${sidecarPrefix}perk-${name}${platform === 'win32' ? '.exe' : ''}`).sort();
-  assert.deepEqual(sidecarNames, expectedSidecars, `${path}: target-matched official sidecars`);
-  for (const sidecar of expectedSidecars) {
-    const entry = entries.get(sidecar);
-    if (platform !== 'win32') assert.equal(entry.mode & 0o111, 0o111, `${path}: ${sidecar} is executable`);
-  }
   if (platform !== 'win32') assert.equal(binary.mode & 0o111, 0o111, `${path}: binary is executable`);
+
 }
 
 export async function inspectPackages(directory, version) {

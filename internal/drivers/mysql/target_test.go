@@ -1,0 +1,33 @@
+package mysql
+
+import (
+	"testing"
+
+	godrv "github.com/go-sql-driver/mysql"
+	driver "github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
+)
+
+func TestTarget_buildsDSN(t *testing.T) {
+	dsn := Target(driver.FormValues{User: "alice", Pass: "secret", Host: "127.0.0.1", Port: "3306", Database: "app", TLS: "skip-verify"})
+	parsed, err := godrv.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("parsing DSN %q: %v", dsn, err)
+	}
+	if parsed.User != "alice" || parsed.Passwd != "secret" || parsed.Net != "tcp" || parsed.Addr != "127.0.0.1:3306" || parsed.DBName != "app" {
+		t.Fatalf("DSN = %#v, want separate field values", parsed)
+	}
+	if parsed.TLSConfig != "skip-verify" {
+		t.Fatalf("TLS config = %q, want skip-verify", parsed.TLSConfig)
+	}
+}
+
+func TestTarget_blankTLSDefaultsToDisabled(t *testing.T) {
+	dsn := Target(driver.FormValues{User: "alice", Host: "localhost", Port: "3306"})
+	parsed, err := godrv.ParseDSN(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.TLSConfig != "false" {
+		t.Fatalf("blank TLS = %q, want disabled", parsed.TLSConfig)
+	}
+}
