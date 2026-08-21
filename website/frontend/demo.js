@@ -18,7 +18,7 @@ import '@xterm/xterm/css/xterm.css';
     fontSize: 14,
     lineHeight: 1.2,
     theme: {
-      background: '#10141b',
+      background: '#0b0e14',
       foreground: '#d7dee8',
       cursor: '#d7dee8',
       selectionBackground: '#334155'

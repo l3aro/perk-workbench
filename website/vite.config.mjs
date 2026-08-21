@@ -21,6 +21,7 @@ export default defineConfig({
         site: resolve(root, 'frontend/site.css'),
         demo: resolve(root, 'frontend/demo.js'),
         app: resolve(root, 'frontend/app.js'),
+        theme: resolve(root, 'frontend/theme.js'),
       },
     },
     target: 'es2018',
