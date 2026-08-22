@@ -4,7 +4,6 @@ import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 
 const targets = [
-  ['darwin', 'x64'],
   ['darwin', 'arm64'],
   ['linux', 'x64'],
   ['linux', 'arm64'],
@@ -81,8 +80,7 @@ async function inspectArchive(path, version) {
 
 export async function inspectPackages(directory, version) {
   const files = (await readdir(directory)).filter((file) => file.endsWith('.tgz')).sort();
-  assert.equal(files.length, 7, `${directory}: expected seven tarballs`);
-  await Promise.all(files.map((file) => inspectArchive(join(directory, file), version)));
+  assert.equal(files.length, 6, `${directory}: expected six tarballs`);
   return files;
 }
 

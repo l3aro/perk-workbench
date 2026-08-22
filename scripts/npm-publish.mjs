@@ -7,7 +7,6 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const output = join(root, 'dist', 'npm');
 const platformPackages = [
   'perk-workbench-darwin-arm64',
-  'perk-workbench-darwin-x64',
   'perk-workbench-linux-arm64',
   'perk-workbench-linux-x64',
   'perk-workbench-win32-x64',

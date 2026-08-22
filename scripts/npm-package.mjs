@@ -8,7 +8,6 @@ import { inspectPackages } from './npm-inspect.mjs';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const output = join(root, 'dist', 'npm');
 const targets = [
-  ['darwin', 'amd64', 'x64'],
   ['darwin', 'arm64', 'arm64'],
   ['linux', 'amd64', 'x64'],
   ['linux', 'arm64', 'arm64'],

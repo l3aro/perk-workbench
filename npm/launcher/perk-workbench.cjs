@@ -6,10 +6,10 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 // ---------------------------------------------------------------------------
-// Deterministic platform → package-name mapping for the five approved targets.
+// Deterministic platform → package-name mapping for the four approved targets.
 // ---------------------------------------------------------------------------
 const PLATFORM_PACKAGES = {
-  darwin: { x64: 'perk-workbench-darwin-x64', arm64: 'perk-workbench-darwin-arm64' },
+  darwin: { arm64: 'perk-workbench-darwin-arm64' },
   linux:  { x64: 'perk-workbench-linux-x64',  arm64: 'perk-workbench-linux-arm64' },
   win32:  { x64: 'perk-workbench-win32-x64' },
 };
@@ -45,7 +45,7 @@ function resolveBinaryPath(platform, arch, resolveModule) {
     throw Object.assign(
       new Error(
         `Unsupported platform: ${platform} ${arch}\n` +
-        `Supported targets: darwin (x64, arm64), linux (x64, arm64), win32 (x64)`
+        `Supported targets: darwin (arm64), linux (x64, arm64), win32 (x64)`
       ),
       { code: 'ERR_UNSUPPORTED_PLATFORM' },
     );

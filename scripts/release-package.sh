@@ -7,7 +7,7 @@ DIST=${3:?output directory is required}
 BINARY=${4:?built binary is required}
 
 case "$GOOS/$GOARCH" in
-  darwin/amd64|darwin/arm64|linux/amd64|linux/arm64|windows/amd64) ;;
+  darwin/arm64|linux/amd64|linux/arm64|windows/amd64) ;;
   *) echo "unsupported target: $GOOS/$GOARCH" >&2; exit 1 ;;
 esac
 

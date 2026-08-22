@@ -12,7 +12,6 @@ const execFileAsync = promisify(execFile);
 const root = new URL('..', import.meta.url).pathname;
 const platformArchives = [
   'perk-workbench-darwin-arm64-1.2.3.tgz',
-  'perk-workbench-darwin-x64-1.2.3.tgz',
   'perk-workbench-linux-arm64-1.2.3.tgz',
   'perk-workbench-linux-x64-1.2.3.tgz',
   'perk-workbench-win32-x64-1.2.3.tgz',
@@ -94,7 +93,6 @@ test('publishes all platform archives before the launcher', () => {
     'perk-workbench-1.2.3.tgz',
     'perk-workbench-plugin-sdk-1.2.3.tgz',
     'perk-workbench-darwin-arm64-1.2.3.tgz',
-    'perk-workbench-darwin-x64-1.2.3.tgz',
     'perk-workbench-linux-arm64-1.2.3.tgz',
     'perk-workbench-linux-x64-1.2.3.tgz',
     'perk-workbench-win32-x64-1.2.3.tgz',
@@ -110,7 +108,7 @@ test('publishes all platform archives before the launcher', () => {
   );
 
   // Then
-  assert.equal(invocations.length, 7);
+  assert.equal(invocations.length, 6);
   assert.deepEqual(
     invocations.map((invocation) => invocation[2]),
     [
@@ -166,7 +164,6 @@ test('skips packages whose exact version is already published', () => {
     viewed.map((invocation) => invocation[2]),
     [
       'perk-workbench-darwin-arm64@1.2.3',
-      'perk-workbench-darwin-x64@1.2.3',
       'perk-workbench-linux-arm64@1.2.3',
       'perk-workbench-linux-x64@1.2.3',
       'perk-workbench-win32-x64@1.2.3',

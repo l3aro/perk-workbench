@@ -20,7 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goos: darwin, goarch: amd64, runner: macos-13 }
           - { goos: darwin, goarch: arm64, runner: macos-14 }
           - { goos: linux, goarch: amd64, runner: ubuntu-latest }
           - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm }
