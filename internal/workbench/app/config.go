@@ -147,7 +147,10 @@ func LoadConfig(path string) (Config, error) {
 		return decodeConfig(path, raw)
 	}
 	if len(contents) == 0 {
-		return Config{}, nil
+		// Treat an existing empty file like an old config with no plugins
+		// key so migration materializes the bundled descriptors and persists
+		// them through the same atomic rewrite.
+		contents = []byte("{}")
 	}
 
 	var raw map[string]json.RawMessage

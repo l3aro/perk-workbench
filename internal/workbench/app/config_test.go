@@ -71,6 +71,27 @@ func TestLoadConfig_existingFileWithoutPlugins_materializesBuiltins(t *testing.T
 		t.Fatalf("migrated config = %s, want persisted builtin descriptors", contents)
 	}
 }
+func TestLoadConfig_zeroByteFileMaterializesBuiltins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	if !reflect.DeepEqual(config.Plugins, defaultPluginConfigs()) {
+		t.Fatalf("LoadConfig plugins = %#v, want bundled built-ins", config.Plugins)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(contents) == 0 || !strings.Contains(string(contents), `"plugins"`) {
+		t.Fatalf("materialized config = %q, want persisted plugin descriptors", contents)
+	}
+}
 func TestLoadConfig_existingFileWithoutPluginsPreservesDisabledBuiltins(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(path, []byte(`{"disabled_official_plugins":["sqlite","mongodb"],"future":1}`), 0o600); err != nil {
