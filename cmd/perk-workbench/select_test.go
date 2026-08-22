@@ -28,14 +28,17 @@ func TestConnectionOptions(t *testing.T) {
 	if len(options) != 2 {
 		t.Fatalf("connectionOptions() options = %d, want 2 (unusable profiles skipped)", len(options))
 	}
-	if got := options[0].Key; !strings.Contains(got, "Local") || !strings.Contains(got, "sqlite") || !strings.Contains(got, "/tmp/a.db") {
-		t.Fatalf("option[0] key = %q, want Local/sqlite/path before sidecar load", got)
+	// Registered plugins use their presentation label (for example,
+	// "SQLite"); an isolated test falls back to the raw family key ("sqlite").
+	// The stable contract is that the option identifies the same family.
+	if got := options[0].Key; !strings.Contains(got, "Local") || !strings.Contains(strings.ToLower(got), string(profile.DriverSQLite)) || !strings.Contains(got, "/tmp/a.db") {
+		t.Fatalf("option[0] key = %q, want Local/sqlite family/path", got)
 	}
 	if options[0].Value.Target != "/tmp/a.db" {
 		t.Fatalf("option[0] value = %q, want /tmp/a.db", options[0].Value)
 	}
-	if got := options[1].Key; !strings.Contains(got, "Remote") || !strings.Contains(got, "mysql") || !strings.Contains(got, "[READONLY]") {
-		t.Fatalf("option[1] key = %q, want Remote/mysql/[READONLY] before sidecar load", got)
+	if got := options[1].Key; !strings.Contains(got, "Remote") || !strings.Contains(strings.ToLower(got), string(profile.DriverMySQL)) || !strings.Contains(got, "[READONLY]") {
+		t.Fatalf("option[1] key = %q, want Remote/mysql family/[READONLY]", got)
 	}
 	if options[1].Value.Target != "mysql:alice@tcp(db.example.test:3306)/app" {
 		t.Fatalf("option[1] value = %q, want the mysql DSN", options[1].Value)
