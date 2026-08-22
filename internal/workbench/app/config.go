@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -239,15 +240,35 @@ func migratePluginConfig(raw map[string]json.RawMessage, path string) (bool, err
 	}
 	value, hasPlugins := raw["plugins"]
 	if !hasPlugins {
+		// Older config files predate the descriptor list. Materialize the
+		// bundled plugins so the registry-backed connection form remains
+		// usable, while preserving any legacy disabled built-ins.
+		plugins := defaultPluginConfigs()
+		changed := true
+		if disabledValue, ok := raw["disabled_official_plugins"]; ok {
+			var disabled []string
+			if err := json.Unmarshal(disabledValue, &disabled); err != nil {
+				return false, fmt.Errorf("parsing config %q: disabled_official_plugins: %w", path, err)
+			}
+			disabledSet := make(map[string]struct{}, len(disabled))
+			for _, name := range disabled {
+				disabledSet[name] = struct{}{}
+			}
+			plugins = slices.DeleteFunc(plugins, func(plugin PluginConfig) bool {
+				_, disabled := disabledSet[plugin.Builtin]
+				return disabled
+			})
+			delete(raw, "disabled_official_plugins")
+		}
 		if hasTrust {
 			delete(raw, "plugin_trust")
-			return true, nil
 		}
-		if _, ok := raw["disabled_official_plugins"]; ok {
-			delete(raw, "disabled_official_plugins")
-			return true, nil
+		encoded, err := json.Marshal(plugins)
+		if err != nil {
+			return false, err
 		}
-		return false, nil
+		raw["plugins"] = encoded
+		return changed, nil
 	}
 
 	descriptors, legacy, err := decodePluginDescriptors(value, path)

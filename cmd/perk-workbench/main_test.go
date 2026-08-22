@@ -19,6 +19,7 @@ import (
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
 	"github.com/l3aro/perk-workbench/internal/workbench/app"
 	"github.com/l3aro/perk-workbench/internal/workbench/connection"
+	"github.com/l3aro/perk-workbench/internal/workbench/profile"
 )
 
 func TestUsage_includesWorkbenchCommand(t *testing.T) {
@@ -567,6 +568,29 @@ func (fakePluginShim) Open(context.Context, string) (sharedsql.Service, error) {
 	return nil, errors.New("not opened in test")
 }
 
+type builtinFormShim struct {
+	database.Shim
+	caps database.Capabilities
+}
+
+func (s builtinFormShim) Capabilities() database.Capabilities { return s.caps }
+func (builtinFormShim) PluginSource() string                  { return "builtin" }
+
+func sqliteFormCapabilities(shim database.Shim) database.Shim {
+	caps := shim.Capabilities()
+	caps.Form = &database.FormSpec{
+		Fields: []database.FormField{{
+			Key:         "target",
+			Title:       "Target*",
+			Kind:        database.FormInput,
+			Placeholder: "path/to/database.db or :memory:",
+			Validate:    database.FormRequired,
+			Error:       "target is required",
+		}},
+	}
+	return builtinFormShim{Shim: shim, caps: caps}
+}
+
 func TestPluginRegistration_isVisibleToConnectionForm(t *testing.T) {
 	// RegisterShim is exactly the callback run() passes to plugin.Load;
 	// a driver installed through it must be offered by the connection
@@ -587,6 +611,74 @@ func TestPluginRegistration_isVisibleToConnectionForm(t *testing.T) {
 	}
 	if !hasField {
 		t.Fatalf("form titles for %q = %v, want the shim's Reggie Key field", name, form.FieldTitles())
+	}
+}
+
+func TestExistingConfigBuiltinDescriptorReachesSavedProfilePicker(t *testing.T) {
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	configPath := filepath.Join(configHome, "perk-workbench", "config.json")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`{"theme":"nord"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := app.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	if len(config.Plugins) != 4 || config.Plugins[0].Builtin != "sqlite" {
+		t.Fatalf("loaded plugin descriptors = %#v, want the four bundled built-ins", config.Plugins)
+	}
+	unrelated := fmt.Sprintf("unrelated%d", time.Now().UnixNano())
+	if err := database.RegisterShim(fakePluginShim{name: unrelated}); err != nil {
+		t.Fatalf("register unrelated plugin: %v", err)
+	}
+	helper := setupPluginHelper(t, map[string]string{
+		"PERK_PLUGIN_NAME":    "sqlite",
+		"PERK_PLUGIN_DISPLAY": "SQLite",
+	})
+	entries := pluginEntries(config)
+	if len(entries) == 0 {
+		t.Fatal("pluginEntries returned no configured built-ins")
+	}
+	entry := entries[0]
+	entry.Executable = helper
+	entry.Args = nil
+	loader, errs := plugin.Load(context.Background(), configPath, []plugin.Entry{entry}, func(shim database.Shim) error {
+		return database.RegisterShim(sqliteFormCapabilities(shim))
+	})
+	if len(errs) != 0 {
+		t.Fatalf("loading configured built-in descriptor = %v, want no errors", errs)
+	}
+	t.Cleanup(func() {
+		if err := loader.Close(); err != nil {
+			t.Errorf("closing plugin loader: %v", err)
+		}
+	})
+
+	component := connection.New()
+	component.LoadValues(profile.Profile{
+		Plugin: "sqlite",
+		Driver: profile.DriverSQLite,
+		Name:   "Existing",
+		Target: ":memory:",
+	})
+	_ = component.Form.Rebuild()
+	view := component.Form.View()
+	if !strings.Contains(view, "SQLite · Built-in") {
+		t.Fatalf("saved-profile plugin picker view = %q, want the loaded built-in option", view)
+	}
+	if !strings.Contains(view, "Reggie · "+unrelated) {
+		t.Fatalf("saved-profile plugin picker view = %q, want unrelated registered options retained", view)
+	}
+	if component.Form.Values.Plugin != "sqlite" {
+		t.Fatalf("saved-profile selected plugin = %q, want the migrated sqlite plugin", component.Form.Values.Plugin)
+	}
+	if err := component.Form.Validate(); err != nil {
+		t.Fatalf("saved profile validation = %v, driver=%q plugin=%q candidates=%v", err, component.Form.Values.Driver, component.Form.Values.Plugin, database.PluginsByDriver(string(component.Form.Values.Driver)))
 	}
 }
 

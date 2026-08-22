@@ -44,9 +44,67 @@ func TestLoadConfig_reads_values(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig = %v, want nil error", err)
 	}
-	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, DarkTheme: "nord", LightTheme: "light-ocean", AutoTheme: boolPtr(false), LogLevel: "warn"}
+	want := Config{BrowsePageSize: 100, QueryLogPageSize: 7, QueryLogRetentionDays: 90, NotificationRetentionDays: 45, NotificationTimeoutSeconds: 20, ReadOnly: true, DarkTheme: "nord", LightTheme: "light-ocean", AutoTheme: boolPtr(false), LogLevel: "warn", Plugins: defaultPluginConfigs()}
 	if !reflect.DeepEqual(config, want) {
 		t.Fatalf("LoadConfig = %#v, want %#v", config, want)
+	}
+}
+func TestLoadConfig_existingFileWithoutPlugins_materializesBuiltins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"theme":"nord"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	want := []PluginConfig{{Builtin: "sqlite"}, {Builtin: "mysql"}, {Builtin: "postgres"}, {Builtin: "mongodb"}}
+	if !reflect.DeepEqual(config.Plugins, want) {
+		t.Fatalf("LoadConfig plugins = %#v, want %#v", config.Plugins, want)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(contents), `"builtin": "sqlite"`) {
+		t.Fatalf("migrated config = %s, want persisted builtin descriptors", contents)
+	}
+}
+func TestLoadConfig_existingFileWithoutPluginsPreservesDisabledBuiltins(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"disabled_official_plugins":["sqlite","mongodb"],"future":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	want := []PluginConfig{{Builtin: "mysql"}, {Builtin: "postgres"}}
+	if !reflect.DeepEqual(config.Plugins, want) {
+		t.Fatalf("LoadConfig plugins = %#v, want %#v", config.Plugins, want)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(contents), "disabled_official_plugins") || !strings.Contains(string(contents), `"future": 1`) {
+		t.Fatalf("migrated config = %s, want exclusions removed and unrelated keys preserved", contents)
+	}
+}
+func TestLoadConfig_explicitEmptyPluginsRemainsEmpty(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"plugins":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig = %v, want nil error", err)
+	}
+	if config.Plugins == nil || len(config.Plugins) != 0 {
+		t.Fatalf("LoadConfig plugins = %#v, want explicit empty list", config.Plugins)
 	}
 }
 
