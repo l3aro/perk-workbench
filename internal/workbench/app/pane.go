@@ -6,7 +6,6 @@ import (
 
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/table"
-	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
@@ -74,32 +73,13 @@ func (m Model) schemaFilterShown() bool {
 	return m.schema.component.FilterShown(m.schemaLayout())
 }
 
-// filterInputRow renders a filter input in a bordered box with a
-// magnifying-glass suffix, sized to the given width. The border turns
-// primary while the input is focused. The input is truncated because its
-// placeholder view renders one cell wider than Width.
-func (m Model) filterInputRow(input textinput.Model, width int) string {
-	icon := lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted)).Render("🔍")
-	borderColor := colorBorder
-	if input.Focused() {
-		borderColor = colorPrimary
-	}
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(borderColor)).
-		Padding(0, 1).
-		Width(max(width-2, 0))
-	// Box content area: width-2 (box) - 2 (borders) - 2 (padding) - 2 (icon).
-	return box.Render(ansi.Truncate(input.View(), max(width-8, 0), "") + icon)
-}
-
 // recentFilterRow renders the profiles pane's filter input, matching the
 // schema sidebar; both panes share the sidebar width.
 func (m Model) recentFilterRow() string {
 	if !m.schemaFilterShown() {
 		return ""
 	}
-	return m.filterInputRow(m.connection.component.RecentFilter, max(m.layout.schemaWidth-4, 0))
+	return uikit.FilterInputRow(m.connection.component.RecentFilter, max(m.layout.schemaWidth-4, 0))
 }
 
 func newResultsTable() table.Model {
@@ -111,7 +91,7 @@ func newResultsTable() table.Model {
 		table.WithStyles(table.Styles{
 			Header:   headerStyle,
 			Cell:     lipgloss.NewStyle().Padding(0, spaceCompact),
-			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe)),
+			Selected: selectedTableStyle(0),
 		}),
 	)
 }
@@ -121,12 +101,9 @@ func resizeResultsTable(resultTable *table.Model, width, height int) {
 	resultTable.SetWidth(tableWidth)
 	resultTable.SetHeight(height)
 	resultTable.SetStyles(table.Styles{
-		Header: headerStyle,
-		Cell:   lipgloss.NewStyle().Padding(0, spaceCompact),
-		Selected: lipgloss.NewStyle().
-			Width(tableWidth).
-			Foreground(lipgloss.Color(colorPrimary)).
-			Background(lipgloss.Color(colorStripe)),
+		Header:   headerStyle,
+		Cell:     lipgloss.NewStyle().Padding(0, spaceCompact),
+		Selected: selectedTableStyle(tableWidth),
 	})
 }
 
@@ -186,9 +163,24 @@ func tableLine(columns []table.Column, row table.Row, numericColumns []bool, off
 // on (width, alignment); distinct widths are bounded by the column count, and
 // all access happens on the Bubble Tea UI goroutine.
 var (
-	cellStyleCache      = map[int]lipgloss.Style{}
-	cellStyleCacheRight = map[int]lipgloss.Style{}
+	cellStyleCache          = map[int]lipgloss.Style{}
+	cellStyleCacheRight     = map[int]lipgloss.Style{}
+	selectedTableStyleCache = map[int]lipgloss.Style{}
 )
+
+func selectedTableStyle(width int) lipgloss.Style {
+	if style, ok := selectedTableStyleCache[width]; ok {
+		return style
+	}
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorPrimary)).
+		Background(lipgloss.Color(colorStripe))
+	if width > 0 {
+		style = style.Width(width)
+	}
+	selectedTableStyleCache[width] = style
+	return style
+}
 
 func cellStyle(width int, numeric bool) lipgloss.Style {
 	cache := cellStyleCache
@@ -277,13 +269,12 @@ func highlightedTableRow(line string, selectedStart, selectedWidth int) string {
 	lineWidth := ansi.StringWidth(line)
 	selectedEnd := min(max(selectedStart+selectedWidth, 0), lineWidth)
 	selectedStart = min(max(selectedStart, 0), lineWidth)
-	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorPrimary)).Background(lipgloss.Color(colorStripe))
 	if selectedStart == selectedEnd {
-		return rowStyle.Render(line)
+		return selectedRowStyle.Render(line)
 	}
-	return rowStyle.Render(tableLineSegment(line, 0, selectedStart)) +
+	return selectedRowStyle.Render(tableLineSegment(line, 0, selectedStart)) +
 		selectedCellStyle.Render(tableLineSegment(line, selectedStart, selectedEnd-selectedStart)) +
-		rowStyle.Render(tableLineSegment(line, selectedEnd, lineWidth-selectedEnd))
+		selectedRowStyle.Render(tableLineSegment(line, selectedEnd, lineWidth-selectedEnd))
 }
 
 func tableOffset(resultTable table.Model, offset, viewportWidth int) int {
