@@ -201,12 +201,14 @@ type Run struct {
 	Messages       []ai.Message
 	// BlockCache holds rendered viewport blocks per message so
 	// RefreshView re-renders only appended/replaced messages instead of
-	// the whole conversation on every stream delta. StreamBlock caches
-	// the streaming tail so unchanged buffers are not re-rendered.
-	BlockCache   []Block
-	CachedWidth  int
-	StreamBlock  string
-	StreamSource string
+	// the whole conversation on every stream delta.
+	BlockCache  []Block
+	CachedWidth int
+	// stream caches completed markdown paragraphs separately from the
+	// mutable trailing paragraph. The source fields are retained so a
+	// delta that edits or shrinks the buffer can safely fall back to a
+	// whole-buffer render.
+	stream       streamCache
 	StreamBuffer string // accumulated streaming content
 	Loading      bool
 	Canceled     bool
@@ -217,10 +219,31 @@ type Run struct {
 	PendingWrite *PendingWrite
 }
 
+type streamCache struct {
+	Width          int
+	SourcePrefix   string
+	RenderedPrefix string
+	TailSource     string
+	TailRendered   string
+}
+
+func (run *Run) resetRenderCache() {
+	run.BlockCache = nil
+}
+
+func (run *Run) resetStreamCache() {
+	run.stream = streamCache{}
+}
+
 // Block is one cached rendered viewport block for a chat message.
 type Block struct {
-	Content string // source message content the block was rendered from
-	Block   string
+	Source blockSource
+	Block  string
+}
+
+type blockSource struct {
+	Role    ai.Role
+	Content string
 }
 
 // PendingWrite holds state for a sql_write call awaiting user
@@ -377,12 +400,12 @@ func (cm *Model) RecallPromptHistory(direction int) (string, bool) {
 		} else if cm.HistoryIndex < len(cm.PromptHistory)-1 {
 			cm.HistoryIndex++
 		} else {
-			return "", false // already at the oldest entry; never wrap
+			return "", false
 		}
 	} else {
 		if cm.HistoryIndex <= 0 {
 			if cm.HistoryIndex == -1 {
-				return "", false // Down outside recall mode
+				return "", false
 			}
 			cm.HistoryIndex = -1
 		} else {
@@ -399,6 +422,8 @@ func (cm *Model) RecallPromptHistory(direction int) (string, bool) {
 // visible conversation to the fresh view.
 func (cm *Model) NewConversation() {
 	if run := cm.Runs[""]; run != nil {
+		run.resetRenderCache()
+		run.resetStreamCache()
 		if run.Cancel != nil {
 			run.Cancel()
 		}
@@ -413,6 +438,8 @@ func (cm *Model) NewConversation() {
 // Reset stops every run and clears all chat state (disconnect path).
 func (cm *Model) Reset() {
 	for _, run := range cm.Runs {
+		run.resetRenderCache()
+		run.resetStreamCache()
 		if run.RoundState != nil {
 			run.RoundState.ReleaseContexts()
 		}

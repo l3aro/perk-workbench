@@ -50,9 +50,12 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 		cm.ActiveID = message.ConversationID
 		run := cm.Runs[message.ConversationID]
 		if run == nil {
-			run = &Run{ConversationID: message.ConversationID, Messages: message.Messages}
+			run = &Run{ConversationID: message.ConversationID}
 			cm.Runs[message.ConversationID] = run
 		}
+		run.Messages = message.Messages
+		run.resetRenderCache()
+		run.resetStreamCache()
 		cm.RefreshView()
 		return *cm, nil, nil
 	case HistoryDeletedMsg:
@@ -118,6 +121,8 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			run.Loading = false
 			run.Canceled = false
 			run.StreamBuffer = ""
+			run.resetRenderCache()
+			run.resetStreamCache()
 			if cm.IsActive(run) {
 				cm.RefreshView()
 			}
@@ -133,7 +138,6 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			return *cm, nil, nil
 		}
 		if message.Done {
-			// If canceled, discard partial content.
 			if run.Canceled {
 				if run.RoundState != nil {
 					run.RoundState.ReleaseContexts()
@@ -146,6 +150,8 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 				run.Loading = false
 				run.Canceled = false
 				run.StreamBuffer = ""
+				run.resetRenderCache()
+				run.resetStreamCache()
 				if cm.IsActive(run) {
 					cm.RefreshView()
 					return *cm, StatusChanged{Text: "AI request canceled"}, nil
@@ -156,7 +162,6 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			if run.RoundState != nil {
 				run.RoundState.ReleaseContexts()
 			}
-			// Stream completed successfully — cancel the context.
 			if run.Cancel != nil {
 				run.Cancel()
 				run.Cancel = nil
@@ -166,7 +171,9 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			content := run.StreamBuffer
 			run.StreamBuffer = ""
 			run.RoundState = nil
+			run.resetStreamCache()
 			if content == "" {
+				run.resetRenderCache()
 				if cm.IsActive(run) {
 					cm.RefreshView()
 					return *cm, StatusChanged{Text: "AI returned empty response"}, nil
@@ -179,6 +186,7 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 				Agent:   response.Agent,
 				Content: content,
 			})
+			run.resetRenderCache()
 			if cm.IsActive(run) {
 				cm.RefreshView()
 			}
@@ -186,9 +194,6 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			if wasFinalizing && cm.IsActive(run) {
 				event = StatusChanged{Text: "Assistant response complete"}
 			}
-			// Persist to history asynchronously; report errors regardless
-			// of which conversation is visible. The run keeps its captured
-			// scope even if the model has since disconnected.
 			if cm.History != nil && run.ConnectionID != "" && run.ConversationID != "" {
 				history, cid, scope := cm.History, run.ConversationID, run.ConnectionID
 				historyMsg := ai.Message{
@@ -204,7 +209,6 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			}
 			return *cm, event, nil
 		}
-		// Delta: accumulate and render, then await the next event.
 		run.StreamBuffer += message.Delta
 		if cm.IsActive(run) {
 			cm.RefreshView()
@@ -224,7 +228,9 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 		run.Cancel = nil
 		run.Canceled = false
 		run.StreamBuffer = ""
+		run.resetStreamCache()
 		if message.Err != nil {
+			run.resetRenderCache()
 			if cm.IsActive(run) {
 				if canceled {
 					return *cm, StatusChanged{Text: "AI request canceled"}, nil
@@ -234,6 +240,7 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			return *cm, nil, nil
 		}
 		run.Messages = append(run.Messages, ai.Message{Role: ai.RoleAssistant, Agent: message.Response.Agent, Content: message.Response.Content})
+		run.resetRenderCache()
 		if cm.IsActive(run) {
 			cm.RefreshView()
 		}
@@ -246,6 +253,8 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 		}
 		run.RoundState = &message.State
 		run.Messages = message.State.Messages
+		run.resetRenderCache()
+		run.resetStreamCache()
 		run.Cancel = message.State.Cancel
 		if cm.IsActive(run) {
 			cm.RefreshView()
@@ -260,6 +269,8 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 			return *cm, nil, nil // stale
 		}
 		if message.State != nil {
+			run.resetRenderCache()
+			run.resetStreamCache()
 			run.RoundState = message.State
 			run.Messages = message.State.Messages
 			run.Cancel = message.State.Cancel
@@ -316,6 +327,8 @@ func (cm *Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher,
 		}
 		run.Canceled = true
 		run.RoundState = nil
+		run.resetRenderCache()
+		run.resetStreamCache()
 		run.PendingWrite = nil
 		return *cm, nil, nil
 	}

@@ -21,50 +21,48 @@ func newTermRenderer(width int) (*glamour.TermRenderer, error) {
 // RefreshView re-renders the visible conversation into the viewport.
 func (cm *Model) RefreshView() {
 	run := cm.ActiveRun()
-	width := cm.Viewport.Width()
+	width := max(cm.Viewport.Width(), 1)
 	if width != run.CachedWidth {
+		run.resetRenderCache()
+		run.resetStreamCache()
 		run.CachedWidth = width
-		run.BlockCache = nil
-		run.StreamBlock = ""
-		run.StreamSource = ""
 	}
-	// Keep the cached prefix whose content still matches its message;
-	// tool-round boundaries replace the tail of run.Messages wholesale.
+
+	// Preserve only the longest equal front prefix. Tool rounds and history
+	// loads can replace an arbitrary suffix, while a role-only change must
+	// invalidate the corresponding block too.
 	keep := min(len(run.BlockCache), len(run.Messages))
-	for keep > 0 && run.BlockCache[keep-1].Content != run.Messages[keep-1].Content {
-		keep--
+	for index := 0; index < keep; index++ {
+		message := run.Messages[index]
+		source := run.BlockCache[index].Source
+		if source.Role != message.Role || source.Content != message.Content {
+			keep = index
+			break
+		}
 	}
 	run.BlockCache = run.BlockCache[:keep]
-
-	blocks := make([]string, 0, len(run.Messages)+2)
 	for index := keep; index < len(run.Messages); index++ {
 		message := run.Messages[index]
-		block := cm.MessageBlock(message)
-		run.BlockCache = append(run.BlockCache, Block{Content: message.Content, Block: block})
+		run.BlockCache = append(run.BlockCache, Block{
+			Source: blockSource{Role: message.Role, Content: message.Content},
+			Block:  cm.MessageBlock(message),
+		})
 	}
+
+	blocks := make([]string, 0, len(run.Messages)+2)
 	for _, cached := range run.BlockCache {
 		blocks = append(blocks, cached.Block)
 	}
 
 	// Append streaming content as the last assistant message.
 	if run.Loading {
-		// Adaptive label: "thinking..." before content, "streaming..."
-		// during.
 		label := "\u2022 thinking..."
 		if run.StreamBuffer != "" {
 			label = "\u2022 streaming..."
 		}
 		blocks = append(blocks, uikit.ThinkingStyle.Render(label))
-
 		if run.StreamBuffer != "" {
-			// Re-render only when the buffer changed; unchanged buffers
-			// (spinner ticks, tool phases) reuse the cached block.
-			block := run.StreamBlock
-			if run.StreamSource != run.StreamBuffer {
-				block = cm.StreamBlock(run.StreamBuffer)
-				run.StreamBlock, run.StreamSource = block, run.StreamBuffer
-			}
-			blocks = append(blocks, block)
+			blocks = append(blocks, cm.renderStream(run, width))
 		}
 	}
 
@@ -73,6 +71,135 @@ func (cm *Model) RefreshView() {
 	}
 	cm.Viewport.SetContent(strings.Join(blocks, "\n\n"))
 	cm.Viewport.GotoBottom()
+}
+
+// renderStream incrementally renders completed paragraphs and the mutable
+// tail. Any markdown state that crosses the paragraph boundary falls back to
+// the existing whole-buffer renderer, preserving glamour/table semantics.
+func (cm *Model) renderStream(run *Run, width int) string {
+	cache := &run.stream
+	if cache.Width != width {
+		run.resetStreamCache()
+		cache = &run.stream
+		cache.Width = width
+	}
+	content := run.StreamBuffer
+	boundary := strings.LastIndex(content, "\n\n")
+	if boundary < 0 {
+		if cache.TailSource != "" && !strings.HasPrefix(content, cache.TailSource) {
+			run.resetStreamCache()
+			cache = &run.stream
+			cache.Width = width
+		}
+		cache.SourcePrefix = ""
+		cache.RenderedPrefix = ""
+		cache.TailSource = content
+		cache.TailRendered = cm.StreamBlock(content)
+		if !safeStreamMarkdown(content) {
+			cache.TailRendered = cm.StreamBlock(content)
+		}
+		return cache.TailRendered
+	}
+
+	prefix, tail := content[:boundary], content[boundary+2:]
+	previous := cache.SourcePrefix
+	if cache.TailSource != "" {
+		if previous != "" {
+			previous += "\n\n"
+		}
+		previous += cache.TailSource
+	}
+	if previous != "" && !strings.HasPrefix(content, previous) {
+		run.resetStreamCache()
+		cache = &run.stream
+		cache.Width = width
+	}
+	if !safeStreamMarkdown(prefix) || !safeStreamMarkdown(tail) {
+		cache.SourcePrefix = ""
+		cache.RenderedPrefix = ""
+		cache.TailSource = content
+		cache.TailRendered = cm.StreamBlock(content)
+		return cache.TailRendered
+	}
+
+	renderedPrefix := cache.RenderedPrefix
+	oldPrefix := cache.SourcePrefix
+	if oldPrefix == "" || !strings.HasPrefix(prefix, oldPrefix) {
+		renderedPrefix = renderStreamParagraphs(cm, prefix)
+	} else if len(prefix) > len(oldPrefix) {
+		extra := strings.TrimPrefix(prefix[len(oldPrefix):], "\n\n")
+		if extra != "" {
+			added := renderStreamParagraphs(cm, extra)
+			if renderedPrefix != "" {
+				renderedPrefix += "\n\n"
+			}
+			renderedPrefix += added
+		}
+	}
+	cache.Width = width
+	cache.SourcePrefix = prefix
+	cache.RenderedPrefix = renderedPrefix
+	cache.TailSource = tail
+	cache.TailRendered = cm.StreamBlock(tail)
+	if renderedPrefix == "" {
+		return cache.TailRendered
+	}
+	if cache.TailRendered == "" {
+		return renderedPrefix
+	}
+	return renderedPrefix + "\n\n" + cache.TailRendered
+}
+
+func renderStreamParagraphs(cm *Model, content string) string {
+	if content == "" {
+		return ""
+	}
+	paragraphs := strings.Split(content, "\n\n")
+	rendered := make([]string, 0, len(paragraphs))
+	for _, paragraph := range paragraphs {
+		rendered = append(rendered, cm.StreamBlock(paragraph))
+	}
+	return strings.Join(rendered, "\n\n")
+}
+
+func safeStreamMarkdown(content string) bool {
+	if content == "" {
+		return true
+	}
+	fenceCount := 0
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+			fenceCount++
+		}
+	}
+	if fenceCount%2 != 0 {
+		return false
+	}
+	for _, paragraph := range strings.Split(content, "\n\n") {
+		lines := strings.Split(paragraph, "\n")
+		hasFence := false
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
+				hasFence = true
+				break
+			}
+		}
+		if hasFence {
+			continue
+		}
+		tableLike := 0
+		for _, line := range lines {
+			if strings.HasPrefix(strings.TrimSpace(line), "|") {
+				tableLike++
+			}
+		}
+		if tableLike > 0 && !isGFMTable(lines) {
+			return false
+		}
+	}
+	return true
 }
 
 // MessageBlock renders one message into its viewport block.

@@ -38,10 +38,17 @@ func (cm Model) Draw(canvas uv.ScreenBuffer, layout uikit.Layout) {}
 func (cm *Model) Resize(layout uikit.Layout) {
 	width := max(layout.Width, 1)
 	height := max(layout.Height, 1)
+	previousWidth := cm.Viewport.Width()
 	cm.Input.SetWidth(width)
 	cm.Input.SetHeight(1)
 	cm.Viewport.SetWidth(width)
 	cm.Viewport.SetHeight(max(height, 1))
+	run := cm.ActiveRun()
+	if previousWidth != width {
+		run.resetRenderCache()
+		run.resetStreamCache()
+		run.CachedWidth = width
+	}
 	cm.initGlamour(width)
 	cm.RefreshView()
 }

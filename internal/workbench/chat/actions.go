@@ -99,6 +99,8 @@ func (cm *Model) StartChat(ctx Context) (Model, Event, tea.Cmd) {
 	cm.NextGen++
 	run.PendingWrite = nil
 	run.RoundState = nil
+	run.resetRenderCache()
+	run.resetStreamCache()
 	cm.RefreshView()
 
 	gen := run.Gen
