@@ -11,7 +11,26 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 	"github.com/l3aro/perk-workbench/internal/workbench/notification"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
+	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
+
+// preparedKeyMatcher binds one immutable key representation to a dispatch
+// path while retaining compatibility with matchers that only implement Match.
+type preparedKeyMatcher struct {
+	base     uikit.KeyMatcher
+	prepared uikit.PreparedKeyStroke
+}
+
+func (m preparedKeyMatcher) Match(msg tea.KeyPressMsg, id uikit.CommandID, scopes []uikit.Scope) bool {
+	if msg.String() == m.prepared.String() && msg.Keystroke() == m.prepared.Keystroke() {
+		return uikit.MatchPrepared(m.base, m.prepared, id, scopes)
+	}
+	return m.base.Match(msg, id, scopes)
+}
+
+func (m preparedKeyMatcher) MatchPrepared(key uikit.PreparedKeyStroke, id uikit.CommandID, scopes []uikit.Scope) bool {
+	return uikit.MatchPrepared(m.base, key, id, scopes)
+}
 
 func isIdentStart(text string) bool {
 	if text == "" {
@@ -69,6 +88,31 @@ func (m Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
+	prepared := uikit.PreparedKeyStroke{}
+	keys := uikit.KeyMatcher(m.keybindings)
+	if keyPress, ok := message.(tea.KeyPressMsg); ok {
+		prepared = m.keybindings.Prepare(keyPress)
+		keys = preparedKeyMatcher{base: m.keybindings, prepared: prepared}
+	}
+	// History completions are scoped to the connection generation and must
+	// bypass overlays so a modal cannot consume them.
+	switch historyMessage := message.(type) {
+	case queryLogPersistedMsg:
+		if historyMessage.openTag == m.openTag && historyMessage.connectionID == m.connectionID {
+			// Persistence failures are intentionally silent.
+		}
+		return m, nil
+	case notificationPersistedMsg:
+		if historyMessage.openTag == m.openTag &&
+			historyMessage.connectionID == m.connectionID &&
+			historyMessage.err == nil {
+			m.notifications.component.ApplyPersisted(historyMessage.token, historyMessage.id)
+		}
+		return m, nil
+	case historyLoadedMsg:
+		return m.updateHistoryLoaded(historyMessage)
+	}
+
 	if window, ok := message.(tea.WindowSizeMsg); ok {
 		m.applyLayout(window.Width, window.Height)
 		m.browse.component.Resize(window.Width, window.Height)
@@ -100,7 +144,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	// Route streaming, persistence, and tool-round messages early so modal
 	// branches never consume them and stall the stream.
 	if chat.OwnsMessage(message) {
-		return m.updateChat(message)
+		return m.updateChat(message, keys)
 	}
 	// The notification component owns its messages: the popup dismiss
 	// timer, the popup click and its trailing release, and the open
@@ -108,7 +152,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	// It consumes only what it owns; everything else passes through to the
 	// modal and pane routing below.
 	if m.notifications.component.Consumes(message, notificationLayout(m)) {
-		model, event, cmd := m.notifications.component.Update(message, notificationLayout(m), m.keybindings)
+		model, event, cmd := m.notifications.component.Update(message, notificationLayout(m), keys)
 		m.notifications.component = model
 		return m.applyNotificationEvent(event, cmd)
 	}
@@ -421,17 +465,17 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		if m.schema.component.Structure.TableFiltering {
 			return m, m.updateTableFilter(message)
 		}
-		if m.keybindings.Match(message, "editor.external", []scope{scopeGlobal}) {
+		if uikit.MatchPrepared(keys, prepared, "editor.external", []uikit.Scope{uikit.ScopeGlobal}) {
 			if command, handled := m.openExternalEditor(); handled {
 				return m, command
 			}
 		}
-		if m.keybindings.Match(message, "app.palette", []scope{scopeGlobal}) && !m.hasOverlay() {
+		if uikit.MatchPrepared(keys, prepared, "app.palette", []uikit.Scope{uikit.ScopeGlobal}) && !m.hasOverlay() {
 			m.overlay.commandPalette = newCommandPalette(m)
 			m.overlay.commandPalette.visible = true
 			return m, nil
 		}
-		quit := !m.noQuit && m.keybindings.Match(message, "app.quit", []scope{scopeGlobal})
+		quit := !m.noQuit && uikit.MatchPrepared(keys, prepared, "app.quit", []scope{scopeGlobal})
 		if quit && !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&
 			!(m.queryEditorActive() && m.overlay.formMode.Editing()) &&
@@ -443,7 +487,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		}
-		if m.State == stateReady && !m.noQuit && m.keybindings.Match(message, "app.quit_dialog", []scope{scopeGlobal}) &&
+		if m.State == stateReady && !m.noQuit && uikit.MatchPrepared(keys, prepared, "app.quit_dialog", []scope{scopeGlobal}) &&
 			!m.hasOverlay() && !m.formActive() && !m.Running() {
 			return m.openQuitDialog(), nil
 		}
@@ -452,23 +496,23 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		// insert→normal→cancel precedence wins over query.cancel etc. An
 		// open write confirmation owns the key instead.
 		if m.Focus == focusChat && message.Key().Code == tea.KeyEscape && m.chat.writeConfirmation == nil {
-			return m.updateChat(message)
+			return m.updateChat(message, keys)
 		}
 
 		if m.State == stateReady && !m.formActive() && !m.schema.component.Filter.Focused() && !(m.Focus == focusWorkspace && m.Tab == tabQuery && m.overlay.formMode.Editing()) && !(m.Focus == focusChat && m.chat.component.ChatMode == chat.ModeInsert) {
 			switch {
-			case m.keybindings.Match(message, "focus.schema", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.schema", []scope{scopeGlobal}):
 				m.Focus = focusSchema
 				m.queryLog.component.ClearPendingG()
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
 				return m, nil
-			case m.keybindings.Match(message, "focus.workspace", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.workspace", []scope{scopeGlobal}):
 				m.Focus = focusWorkspace
 				m.queryLog.component.ClearPendingG()
 				m.focusActiveTable()
 				return m, nil
-			case m.keybindings.Match(message, "focus.query_log", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.query_log", []scope{scopeGlobal}):
 				m.Focus = focusQueryLog
 				m.queryLog.component.ClearPendingG()
 				m.queryLog.editor.text.Blur()
@@ -478,7 +522,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 					m.queryLog.component.Table.SetCursor(0)
 				}
 				return m, nil
-			case m.keybindings.Match(message, "focus.chat", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.chat", []scope{scopeGlobal}):
 				if !m.chat.component.Visible {
 					return m, nil
 				}
@@ -491,30 +535,30 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.chat.component.EnterNormalMode()
 				return m, nil
-			case m.keybindings.Match(message, "ai.toggle", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "ai.toggle", []scope{scopeGlobal}):
 				m.toggleAI()
 				return m, nil
-			case m.keybindings.Match(message, "focus.toggle_fullscreen", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.toggle_fullscreen", []scope{scopeGlobal}):
 				m.layout.fullscreen = !m.layout.fullscreen
 				m.applyLayout(m.layout.width, m.layout.height)
 				return m, nil
-			case m.keybindings.Match(message, "focus.cycle_forward", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.cycle_forward", []scope{scopeGlobal}):
 				m.cycleFocus(true)
 				return m, nil
-			case m.keybindings.Match(message, "focus.cycle_backward", []scope{scopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "focus.cycle_backward", []scope{scopeGlobal}):
 				m.cycleFocus(false)
 				return m, nil
 			}
 		}
 		if m.State == stateReady && m.Focus == focusWorkspace && m.Tab == tabQuery &&
-			m.keybindings.Match(message, "query.execute", []scope{scopeGlobal}) {
+			uikit.MatchPrepared(keys, prepared, "query.execute", []scope{scopeGlobal}) {
 			return m.executeQuery()
 		}
-		if m.Running() && m.keybindings.Match(message, "query.cancel", []scope{scopeGlobal}) {
+		if m.Running() && uikit.MatchPrepared(keys, prepared, "query.cancel", []scope{scopeGlobal}) {
 			m.cancelQuery()
 			return m, nil
 		}
-		if m.State == stateReady && !m.formActive() && m.keybindings.Match(message, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory(1) {
+		if m.State == stateReady && !m.formActive() && uikit.MatchPrepared(keys, prepared, "query.history", []scope{scopeGlobal}) && m.recallQueryHistory(1) {
 			m.Focus, m.Tab = focusWorkspace, tabQuery
 			m.blurTables()
 			return m, beginInsert(m.overlay.formMode, m.queryLog.editor)
@@ -548,11 +592,11 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 			// opens relational SQL completion (a no-op for non-SQL). A
 			// rebind of one binding never re-routes the other.
 			if m.overlay.formMode.Editing() &&
-				m.keybindings.Match(message, "query.complete", []scope{scopeEditor, scopeForm, scopeView, scopeGlobal}) &&
+				uikit.MatchPrepared(keys, prepared, "query.complete", []scope{scopeEditor, scopeForm, scopeView, scopeGlobal}) &&
 				m.queryLog.editor.showCommandCompletion() {
 				return m, nil
 			}
-			if m.overlay.formMode.Editing() && m.keybindings.Match(message, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
+			if m.overlay.formMode.Editing() && uikit.MatchPrepared(keys, prepared, "editor.complete", []scope{scopeForm, scopeView, scopeGlobal}) {
 				return m, m.startCompletion()
 			}
 			if m.overlay.formMode.Editing() {
@@ -594,16 +638,16 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, command
 			case formRouteParent:
-				if isInsertModeKey(message) || m.keybindings.Match(message, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
+				if isInsertModeKey(message) || uikit.MatchPrepared(keys, prepared, "form.edit", []scope{scopeForm, scopeView, scopeGlobal}) {
 					return m, beginInsert(m.overlay.formMode, m.queryLog.editor)
 				}
 			}
 		}
 		if m.State == stateReady && !m.formActive() && m.Focus == focusWorkspace {
 			switch {
-			case m.keybindings.Match(message, "workspace.tab_next", []scope{scopeView}):
+			case uikit.MatchPrepared(keys, prepared, "workspace.tab_next", []scope{scopeView}):
 				return m, m.toggleTab(true)
-			case m.keybindings.Match(message, "workspace.tab_prev", []scope{scopeView}):
+			case uikit.MatchPrepared(keys, prepared, "workspace.tab_prev", []scope{scopeView}):
 				return m, m.toggleTab(false)
 			}
 		}
@@ -800,7 +844,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	case browseTableMsg:
 		return m.updateBrowse(message)
 	case connectionTestMsg:
-		return m.updateConnection(message)
+		return m.updateConnection(message, keys, prepared)
 	case columnAlteredMsg:
 		return m.updateColumnAltered(message)
 	case columnDeletedMsg:
@@ -851,7 +895,7 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, command
 	}
 
-	return m.updateActive(message)
+	return m.updateActive(message, keys, prepared)
 }
 
 // openTableFilter starts editing the active tab's table filter.

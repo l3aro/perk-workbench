@@ -71,3 +71,26 @@ func assertOnlyNotificationTick(t *testing.T, command tea.Cmd) {
 		}
 	}
 }
+
+// driveNotificationCommand executes a command that may dismiss a notification
+// popup and persist the corresponding entry. Persistence completions must still
+// pass through Model.Update so the test exercises the same routing as Bubble
+// Tea rather than merely allowing the message through.
+func driveNotificationCommand(t *testing.T, model Model, command tea.Cmd) Model {
+	t.Helper()
+	for _, message := range executeCommandAll(command) {
+		switch message.(type) {
+		case notification.DismissMsg:
+			continue
+		case notificationPersistedMsg:
+			updated, next := model.Update(message)
+			model = updated.(Model)
+			if next != nil {
+				t.Fatalf("notification persistence completion returned command %T", next)
+			}
+		default:
+			t.Fatalf("command sent an unexpected message %T", message)
+		}
+	}
+	return model
+}

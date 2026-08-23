@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-
-	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
 
 const defaultQueryLogRetentionDays = 30
@@ -38,26 +36,4 @@ func queryLogPageSize() int {
 		return min(appConfig.QueryLogPageSize, queryLogLimit)
 	}
 	return defaultQueryLogPageSize
-}
-
-// queryLogStore returns the model's persistent query-log store, opened
-// lazily on first use and reused for every save and load.
-func (m *Model) queryLogStore() *querylog.Store {
-	if m.queryLog.store == nil && m.queryLog.path != "" {
-		if store, err := querylog.Open(m.queryLog.path, queryLogRetentionDays()); err == nil {
-			m.queryLog.store = store
-		}
-	}
-	return m.queryLog.store
-}
-
-// loadQueryLogEntries loads the retained entries for one connection
-// scope through the model's store, converting nothing: entries are the
-// store's own type. A missing or failing store yields no entries.
-func loadQueryLogEntries(store *querylog.Store, connectionID string) []queryLogEntry {
-	entries, err := store.Load(connectionID, queryLogLimit)
-	if err != nil {
-		return nil
-	}
-	return entries
 }

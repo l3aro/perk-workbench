@@ -199,10 +199,12 @@ func TestReconnectFailure_persistsRedactedNotificationHistory(t *testing.T) {
 	drainNotifications(model)
 
 	const failure = "switch failed: postgres://alice:secret-pw-9@db.example.test:5432/app?sslmode=disable"
-	updated, _ := model.Update(databaseOpenedMsg{err: errors.New(failure), reconnect: true, openTag: model.openTag})
+	updated, command := model.Update(databaseOpenedMsg{err: errors.New(failure), reconnect: true, openTag: model.openTag})
 	model = updated.(Model)
-	updated, _ = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+	model = driveCommand(model, command)
+	updated, command = model.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
 	model = updated.(Model)
+	model = driveCommand(model, command)
 
 	if !strings.Contains(model.Status, "database switch failed") || strings.Contains(model.Status, "secret-pw-9") {
 		t.Fatalf("status = %q, want the failure context without credentials", model.Status)

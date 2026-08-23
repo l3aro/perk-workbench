@@ -150,7 +150,6 @@ type schemaState struct {
 type queryState struct {
 	component             querylog.Model
 	path                  string
-	store                 *querylog.Store
 	history               []string
 	historyIndex          int
 	editor                *editor
@@ -217,13 +216,11 @@ type workspaceViewState struct {
 	cancel context.CancelFunc
 }
 
-// notificationState owns the notification pipeline's root half: history
-// persistence through the lazy store, the resolved data path, and the
-// status-popup suppression flags. The popup/detail/history state, queue,
-// and rendering live in the notification component; root routes messages
+// notificationState owns the notification pipeline's root half: the resolved
+// data path and status-popup suppression flags. The popup/detail/history state,
+// queue, and rendering live in the notification component; root routes messages
 // and applies its events.
 type notificationState struct {
-	store                   *notification.Store
 	component               notification.Model
 	path                    string
 	skipStatusPopup         bool
@@ -573,15 +570,10 @@ func (m *Model) disconnect() {
 
 // reset clears query workspace state: the editor, result table, raw
 // result, completion data, validation tag, editor history, and the
-// query-log component, and closes the query-log store. The component is
-// cleared in place so its sized table survives the disconnect layout
-// pass. Transient sensitive originals die with the scope: they never
-// survive a connection or profile reset.
+// query-log component. The component is cleared in place so its sized
+// table survives the disconnect layout pass. Transient sensitive originals
+// die with the scope: they never survive a connection or profile reset.
 func (s *queryState) reset() {
-	if s.store != nil {
-		_ = s.store.Close()
-		s.store = nil
-	}
 	s.component.Reset()
 	s.transientStatements = nil
 	s.history = nil
@@ -611,13 +603,9 @@ func (s *connectionState) reset() {
 	s.component.RecentFilter.Blur()
 }
 
-// reset closes the notification history store and clears the component's
-// captured entries, popup, detail, and history state.
+// reset clears the notification component's captured entries, popup, detail,
+// and history state.
 func (s *notificationState) reset() {
-	if s.store != nil {
-		_ = s.store.Close()
-		s.store = nil
-	}
 	s.component.Reset()
 }
 

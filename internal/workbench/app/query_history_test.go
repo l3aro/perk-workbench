@@ -66,8 +66,14 @@ func TestNew_loadsPersistedQueryLog(t *testing.T) {
 	}
 	// The scoped load (what updateOpen runs after recordConnection) shows them.
 	model.connectionID = "conn-a"
-	if store := model.queryLogStore(); store != nil {
-		model.queryLog.component.Entries = loadQueryLogEntries(store, model.connectionID)
+	store, err = querylog.Open(path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	model.queryLog.component.Entries, err = store.Load(model.connectionID, queryLogLimit)
+	if err != nil {
+		t.Fatal(err)
 	}
 	model.queryLog.component.Render()
 	if got := model.queryLog.component.Entries; len(got) != 1 || got[0].Statement != entry.Statement {

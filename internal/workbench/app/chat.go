@@ -89,12 +89,12 @@ func (m Model) applyChatSQL() tea.Cmd {
 
 // updateChat routes one chat-owned message or pane key into the
 // component and applies its events.
-func (m Model) updateChat(message tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateChat(message tea.Msg, keys uikit.KeyMatcher) (tea.Model, tea.Cmd) {
 	model, event, cmd := m.chat.component.Update(message, uikit.Layout{
 		Width:         m.layout.chatWidth,
 		Height:        m.layout.height,
 		ViewportWidth: m.chat.component.Viewport.Width(),
-	}, m.keybindings, m.chatLayout())
+	}, keys, m.chatLayout())
 	m.chat.component = model
 	return m.applyChatEvent(event, cmd)
 }

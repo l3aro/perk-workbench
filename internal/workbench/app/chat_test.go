@@ -335,7 +335,7 @@ func TestChat_concurrentConversationsRunIndependently(t *testing.T) {
 	model.chat.component.Input.SetValue("/new")
 	updated, cmdNew := model.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	model = updated.(Model)
-	assertOnlyNotificationTick(t, cmdNew)
+	model = driveNotificationCommand(t, model, cmdNew)
 	if model.chat.component.ActiveID != "" {
 		t.Fatalf("active conversation = %q, want fresh view", model.chat.component.ActiveID)
 	}

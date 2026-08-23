@@ -110,17 +110,18 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	canceled, quit := m.Workflow.FinishQuery()
+	var appendCmd tea.Cmd
 	if canceled {
-		m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: "canceled", Status: "canceled", Replayable: true})
+		appendCmd = m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: "canceled", Status: "canceled", Replayable: true})
 	} else {
 		m.setResults(message.result)
 		if message.statement != "" && len(message.result.Rows) > 0 {
 			m.queryLog.results.SetCursor(0)
 		}
-		m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: message.result.Duration, Message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), Status: "success", Replayable: true})
+		appendCmd = m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: message.result.Duration, Message: queryLogMessage(message.statement, message.result.RowsAffected, len(message.result.Rows)), Status: "success", Replayable: true})
 	}
 	if quit {
-		return m, tea.Quit
+		return m, tea.Sequence(appendCmd, tea.Quit)
 	}
 	// Schema may have changed (DDL); recheck the editor value against it.
 	m.queryLog.editorValidity = sqlValidityPending
@@ -128,9 +129,9 @@ func (m Model) updateQuerySuccess(message querySucceededMsg) (tea.Model, tea.Cmd
 		// A table action succeeded: close its popup and refresh the sidebar.
 		m.schema.component.Structure.TableForm = schema.TableForm{}
 		m.schema.component.Structure.TableFormRunning = false
-		return m, tea.Batch(m.scheduleSQLValidation(), m.loadSchema())
+		return m, tea.Batch(appendCmd, m.scheduleSQLValidation(), m.loadSchema())
 	}
-	return m, m.scheduleSQLValidation()
+	return m, tea.Batch(appendCmd, m.scheduleSQLValidation())
 }
 
 func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
@@ -147,11 +148,11 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		hint = pluginErr.Hint
 		suggested = pluginErr.SuggestedStatement
 	}
-	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: message.err.Error(), Status: "failed", Replayable: true, Hint: hint, SuggestedStatement: suggested})
+	appendCmd := m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: message.err.Error(), Status: "failed", Replayable: true, Hint: hint, SuggestedStatement: suggested})
 	m.chat.component.LastFailedQuery = message.statement
 	m.chat.component.LastFailedError = message.err.Error()
 	if quit {
-		return m, tea.Quit
+		return m, tea.Sequence(appendCmd, tea.Quit)
 	}
 	if m.schema.component.Structure.TableFormRunning {
 		// The table DDL was rejected: keep the popup open with its typed
@@ -162,7 +163,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		// diagnostics; a dead plugin gets the actionable recovery path on
 		// the status line instead.
 		m.setStatus(safeText(pluginFailureStatus(message.err, "table action failed: "+message.err.Error())))
-		return m, nil
+		return m, appendCmd
 	}
 	if plugin.IsTerminal(message.err) {
 		// The plugin child exited or the protocol died: surface the
@@ -170,7 +171,7 @@ func (m Model) updateQueryFailure(message queryFailedMsg) (tea.Model, tea.Cmd) {
 		// the original error for detail/diagnostics.
 		m.setStatus(safeText(pluginStoppedCTA))
 	}
-	return m, nil
+	return m, appendCmd
 }
 
 func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd) {
@@ -178,16 +179,16 @@ func (m Model) updateQueryCanceled(message queryCanceledMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	_, quit := m.Workflow.FinishQuery()
-	m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: "canceled", Status: "canceled", Replayable: true})
+	appendCmd := m.appendQueryLog(queryLogEntry{StartedAt: message.startedAt, Statement: message.statement, Duration: time.Since(message.startedAt), Message: "canceled", Status: "canceled", Replayable: true})
 	if quit {
-		return m, tea.Quit
+		return m, tea.Sequence(appendCmd, tea.Quit)
 	}
 	if m.schema.component.Structure.TableFormRunning {
 		// The statement never ran; restore the popup.
 		m.schema.component.Structure.TableFormRunning = false
 		m.overlay.formMode.Mode = formModeNormal
 	}
-	return m, nil
+	return m, appendCmd
 }
 
 // schemaLoadedMsg delivers a refreshed schema listing after a table action.

@@ -275,6 +275,10 @@ func TestSchemaTree_collections_count_in_database_badge(t *testing.T) {
 }
 
 func TestSchemaTree_stateColors(t *testing.T) {
+	// Re-establish one authoritative palette after earlier theme tests. Direct
+	// setTheme calls are also the production synchronization boundary for the
+	// app, uikit, and schema style caches.
+	setTheme(activeTheme)
 	// Given — the workspace has accounts open; the sidebar marks the path
 	// from the connected root down to that table.
 	model := serverProductModel(t, "PostgreSQL", &createDatabaseStub{})

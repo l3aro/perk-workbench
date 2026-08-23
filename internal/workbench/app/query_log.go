@@ -12,6 +12,15 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 )
 
+// queryLogPersistedMsg reports completion of an asynchronous query-log write.
+// Persistence failures are intentionally silent; the update handler only uses
+// the scope fields to discard completions from superseded connections.
+type queryLogPersistedMsg struct {
+	openTag      uint64
+	connectionID string
+	err          error
+}
+
 // queryLogLimit caps the persisted rows per scope; the component enforces
 // the same cap on its in-memory list.
 const queryLogLimit = querylog.Limit
@@ -84,13 +93,33 @@ func actionLogEntry(statement string, metadata *sharedsql.StatementMetadata, sta
 	return entry
 }
 
+// persistQueryLog returns a command that owns its store lifecycle. The
+// command captures only immutable values; in particular, entry must already
+// have had sensitive statements redacted before this function is called.
+func persistQueryLog(entry queryLogEntry, path, connectionID string, openTag uint64, retentionDays, limit int) tea.Cmd {
+	return func() tea.Msg {
+		historyPersistenceMu.Lock()
+		defer historyPersistenceMu.Unlock()
+
+		store, err := querylog.Open(path, retentionDays)
+		if err == nil {
+			err = store.Append(connectionID, entry, limit)
+			closeErr := store.Close()
+			if err == nil {
+				err = closeErr
+			}
+		}
+		return queryLogPersistedMsg{openTag: openTag, connectionID: connectionID, err: err}
+	}
+}
+
 // appendQueryLog records one executed statement: it fills the default
 // message, applies the sensitive-entry policy — the verbatim statement is
 // retained only in the session transient cache (never in the component,
 // at rest, or in loaded entries), and the entry is never replayable —
-// appends to the component (which caps and re-renders), and persists
-// through the lazy store when a profile scope exists.
-func (m *Model) appendQueryLog(entry queryLogEntry) {
+// appends to the component (which caps and re-renders), refreshes chat
+// context, and schedules persistence through an independent store.
+func (m *Model) appendQueryLog(entry queryLogEntry) tea.Cmd {
 	if entry.Message == "" {
 		switch entry.Status {
 		case "failed":
@@ -124,10 +153,11 @@ func (m *Model) appendQueryLog(entry queryLogEntry) {
 	if len(m.queryLog.transientStatements) > len(m.queryLog.component.Entries) {
 		m.queryLog.transientStatements = m.queryLog.transientStatements[:len(m.queryLog.component.Entries)]
 	}
-	if store := m.queryLogStore(); store != nil {
-		_ = store.Append(m.connectionID, entry, queryLogLimit)
-	}
 	m.refreshChatFailedContext()
+	if m.queryLog.path == "" || m.connectionID == "" {
+		return nil
+	}
+	return persistQueryLog(entry, m.queryLog.path, m.connectionID, m.openTag, queryLogRetentionDays(), queryLogLimit)
 }
 
 // queryLogYankText resolves the text a query-log copy action puts on the

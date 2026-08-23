@@ -175,7 +175,17 @@ func (m Model) connectionActionFocused() bool {
 	return m.connection.component.Form.Huh != nil && m.connection.component.Form.Huh.GetFocusedField().GetKey() == "action"
 }
 
-func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateConnection(message tea.Msg, keys uikit.KeyMatcher, prepared ...uikit.PreparedKeyStroke) (tea.Model, tea.Cmd) {
+	key := uikit.PreparedKeyStroke{}
+	if len(prepared) > 0 {
+		key = prepared[0]
+	} else if keyPress, ok := message.(tea.KeyPressMsg); ok {
+		key = m.keybindings.Prepare(keyPress)
+		keys = preparedKeyMatcher{base: keys, prepared: key}
+	}
+	if keys == nil {
+		keys = m.keybindings
+	}
 	if _, ok := message.(connection.ValidationMsg); ok {
 		m.connection.component.Form.FocusValidationError()
 		return m, nil
@@ -210,21 +220,21 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	if m.connection.component.Form.Focus == connectionFocusRecent {
 		// The pane's action keys only apply outside the filter input;
 		// while filtering, every key goes to the input.
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.connection.component.RecentFilter.Focused() {
+		if _, ok := message.(tea.KeyPressMsg); ok && !m.connection.component.RecentFilter.Focused() {
 			switch {
-			case m.keybindings.Match(keyPress, "connection.switch_to_form", []scope{scopeView, scopeGlobal}):
+			case uikit.MatchPrepared(keys, key, "connection.switch_to_form", []scope{scopeView, scopeGlobal}):
 				m.connection.component.Form.Focus = connectionFocusForm
 				return m, nil
-			case m.keybindings.Match(keyPress, "connection.filter", []scope{scopeView, scopeGlobal}):
+			case uikit.MatchPrepared(keys, key, "connection.filter", []scope{scopeView, scopeGlobal}):
 				return m, m.connection.component.FocusFilter()
-			case m.keybindings.Match(keyPress, "connection.add", []scope{scopeView, scopeGlobal}):
+			case uikit.MatchPrepared(keys, key, "connection.add", []scope{scopeView, scopeGlobal}):
 				return m, m.newConnection()
-			case m.keybindings.Match(keyPress, "connection.edit", []scope{scopeView, scopeGlobal}):
+			case uikit.MatchPrepared(keys, key, "connection.edit", []scope{scopeView, scopeGlobal}):
 				return m, m.editSelectedRecentConnection()
-			case m.keybindings.Match(keyPress, "connection.delete", []scope{scopeView, scopeGlobal}):
+			case uikit.MatchPrepared(keys, key, "connection.delete", []scope{scopeView, scopeGlobal}):
 				m.confirmDeleteRecentConnection()
 				return m, nil
-			case m.keybindings.Match(keyPress, "connection.context_menu", []scope{scopeView, scopeGlobal}):
+			case uikit.MatchPrepared(keys, key, "connection.context_menu", []scope{scopeView, scopeGlobal}):
 				if _, ok := m.selectedRecentConnection(); ok {
 					m.openRecentConnectionMenu(m.layout.schemaWidth/2, m.recentRowY(m.connection.component.Recent.Index())+1)
 				}
@@ -251,7 +261,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	keyPress, isKeyPress := message.(tea.KeyPressMsg)
 	if isKeyPress && m.connection.component.Form.Confirmation == nil && m.connectionActionFocused() &&
-		m.keybindings.Match(keyPress, "connection.action_enter", []scope{scopeView, scopeGlobal}) {
+		uikit.MatchPrepared(keys, key, "connection.action_enter", []scope{scopeView, scopeGlobal}) {
 		m.overlay.formMode.Mode = formModeNormal
 		m.connection.component.Form.Blur()
 		if m.connection.component.Form.Values.Action == connectionActionTest {
@@ -259,7 +269,7 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.openConnection()
 	}
-	if isKeyPress && m.connection.component.Form.Confirmation == nil && m.keybindings.Match(keyPress, "connection.execute", []scope{scopeView, scopeGlobal}) {
+	if isKeyPress && m.connection.component.Form.Confirmation == nil && uikit.MatchPrepared(keys, key, "connection.execute", []scope{scopeView, scopeGlobal}) {
 		if err := m.connection.component.Form.Validate(); err != nil {
 			m.setStatus(safeText(err.Error()))
 			return m, m.connection.component.Form.ShowValidationError()
@@ -300,14 +310,14 @@ func (m Model) updateConnection(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch {
-	case m.keybindings.Match(keyPress, "connection.switch_to_list", []scope{scopeView, scopeGlobal}):
+	case uikit.MatchPrepared(keys, key, "connection.switch_to_list", []scope{scopeView, scopeGlobal}):
 		m.connection.component.Form.SetFocus(connectionFocusRecent)
 		return m, nil
-	case isInsertModeKey(keyPress), m.keybindings.Match(keyPress, "connection.edit_field", []scope{scopeView, scopeGlobal}):
+	case isInsertModeKey(keyPress), uikit.MatchPrepared(keys, key, "connection.edit_field", []scope{scopeView, scopeGlobal}):
 		return m, m.overlay.formMode.BeginHuh(m.connection.component.Form.FocusForm())
-	case m.keybindings.Match(keyPress, "connection.field_next", []scope{scopeView, scopeGlobal}):
+	case uikit.MatchPrepared(keys, key, "connection.field_next", []scope{scopeView, scopeGlobal}):
 		return m, m.connection.component.Form.Huh.NextField()
-	case m.keybindings.Match(keyPress, "connection.field_prev", []scope{scopeView, scopeGlobal}):
+	case uikit.MatchPrepared(keys, key, "connection.field_prev", []scope{scopeView, scopeGlobal}):
 		return m, m.connection.component.Form.Huh.PrevField()
 	}
 	return m, nil

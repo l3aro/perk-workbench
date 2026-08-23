@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/querylog"
 	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 )
 
@@ -570,7 +571,14 @@ func TestAppendQueryLog_sensitiveEntriesRedactedInMemoryAndAtRest(t *testing.T) 
 	model.connectionID = "conn-a"
 	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
 	entry := actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Replayable: true, Sensitive: true}, time.Now(), nil, "completed")
-	model.appendQueryLog(entry)
+	persistCmd := model.appendQueryLog(entry)
+	if persistCmd == nil {
+		t.Fatal("appendQueryLog returned nil persistence command")
+	}
+	rawMessage := persistCmd()
+	if _, ok := rawMessage.(queryLogPersistedMsg); !ok {
+		t.Fatalf("persistence command message = %T, want queryLogPersistedMsg", rawMessage)
+	}
 
 	// In memory: the component holds the marker, never the secret.
 	if got := model.queryLog.component.Entries[0].Statement; got != redactedStatement {
@@ -588,10 +596,11 @@ func TestAppendQueryLog_sensitiveEntriesRedactedInMemoryAndAtRest(t *testing.T) 
 
 	// At rest: the store row holds the marker, and the raw database never
 	// contains the secret text.
-	store := model.queryLogStore()
-	if store == nil {
-		t.Fatal("query log store not opened")
+	store, err := querylog.Open(model.queryLog.path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer store.Close()
 	loaded, err := store.Load("conn-a", queryLogLimit)
 	if err != nil {
 		t.Fatal(err)
@@ -634,7 +643,14 @@ func TestAppendQueryLog_sensitiveFailureDropsAdvisories(t *testing.T) {
 		Replayable:         true,
 		Sensitive:          true,
 	}
-	model.appendQueryLog(entry)
+	persistCmd := model.appendQueryLog(entry)
+	if persistCmd == nil {
+		t.Fatal("appendQueryLog returned nil persistence command")
+	}
+	rawMessage := persistCmd()
+	if _, ok := rawMessage.(queryLogPersistedMsg); !ok {
+		t.Fatalf("persistence command message = %T, want queryLogPersistedMsg", rawMessage)
+	}
 	got := model.queryLog.component.Entries[0]
 	if got.Statement != redactedStatement || got.Replayable {
 		t.Fatalf("sensitive entry = %#v, want the redacted marker, non-replayable", got)
@@ -647,7 +663,12 @@ func TestAppendQueryLog_sensitiveFailureDropsAdvisories(t *testing.T) {
 	}
 	// At rest the store row carries the generic message, never backend
 	// error or advisory text.
-	loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit)
+	store, err := querylog.Open(model.queryLog.path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	loaded, err := store.Load("conn-a", queryLogLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -664,13 +685,30 @@ func TestAppendQueryLog_metadataRoundTrip(t *testing.T) {
 	model.connectionID = "conn-a"
 	native := "RENAME key user:2 user:3"
 	metadata := &sharedsql.StatementMetadata{Language: "redis", Replayable: false, Sensitive: false}
-	updated, _ := model.Update(browseRowUpdatedMsg{statement: native, metadata: metadata, startedAt: time.Now()})
+	updated, persistCmd := model.Update(browseRowUpdatedMsg{statement: native, metadata: metadata, startedAt: time.Now()})
 	model = updated.(Model)
+	if persistCmd == nil {
+		t.Fatal("row update returned nil query-log persistence command")
+	}
+	persisted := false
+	for _, message := range executeCommandAll(persistCmd) {
+		if _, ok := message.(queryLogPersistedMsg); ok {
+			persisted = true
+		}
+	}
+	if !persisted {
+		t.Fatal("query-log persistence command did not emit queryLogPersistedMsg")
+	}
 	entry := model.queryLog.component.Entries[0]
 	if entry.Statement != native || entry.Language != "redis" || entry.Replayable || entry.Sensitive {
 		t.Fatalf("logged entry = %#v, want native statement with language redis, not replayable", entry)
 	}
-	loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit)
+	store, err := querylog.Open(model.queryLog.path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	loaded, err := store.Load("conn-a", queryLogLimit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -685,8 +723,20 @@ func TestAppendQueryLog_metadataRoundTrip(t *testing.T) {
 	model.connectionID = "conn-a"
 	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
 	echoing := fmt.Errorf("ERR unknown command %q", secret)
-	updated, _ = model.Update(browseRowUpdatedMsg{statement: secret, metadata: &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, startedAt: time.Now(), err: echoing})
+	updated, persistCmd = model.Update(browseRowUpdatedMsg{statement: secret, metadata: &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, startedAt: time.Now(), err: echoing})
 	model = updated.(Model)
+	if persistCmd == nil {
+		t.Fatal("sensitive row update returned nil query-log persistence command")
+	}
+	persisted = false
+	for _, message := range executeCommandAll(persistCmd) {
+		if _, ok := message.(queryLogPersistedMsg); ok {
+			persisted = true
+		}
+	}
+	if !persisted {
+		t.Fatal("query-log persistence command did not emit queryLogPersistedMsg")
+	}
 	if model.chat.component.LastFailedQuery != redactedStatement {
 		t.Fatalf("chat context = %q, want the redacted marker %q", model.chat.component.LastFailedQuery, redactedStatement)
 	}
@@ -704,7 +754,12 @@ func TestAppendQueryLog_metadataRoundTrip(t *testing.T) {
 			t.Fatalf("sensitive failure leaked the statement into %q", surface)
 		}
 	}
-	if loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit); err != nil || len(loaded) != 1 || loaded[0].Message != "failed" {
+	store, err = querylog.Open(model.queryLog.path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if loaded, err := store.Load("conn-a", queryLogLimit); err != nil || len(loaded) != 1 || loaded[0].Message != "failed" {
 		t.Fatalf("persisted failure message = %#v (err %v), want the generic %q", loaded, err, "failed")
 	}
 	// A non-sensitive failure keeps the backend error text in status and
@@ -877,7 +932,15 @@ func TestQueryLog_yank_sensitiveStatementCopiesSessionOriginal(t *testing.T) {
 	model.Focus = focusQueryLog
 	model.queryLog.component.Table.Focus()
 	model.databaseInfo.Product = "SQLite"
-	model.appendQueryLog(entry)
+	persistCmd := model.appendQueryLog(entry)
+	if persistCmd == nil {
+		t.Fatal("appendQueryLog returned nil persistence command")
+	}
+	if rawMessage := persistCmd(); rawMessage == nil {
+		t.Fatal("query-log persistence command emitted nil message")
+	} else if _, ok := rawMessage.(queryLogPersistedMsg); !ok {
+		t.Fatalf("persistence command message = %T, want queryLogPersistedMsg", rawMessage)
+	}
 	model.queryLog.component.Table.SetCursor(0)
 	if got := model.queryLog.component.Entries[0].Statement; got != redactedStatement {
 		t.Fatalf("in-memory statement = %q, want redacted marker %q", got, redactedStatement)
@@ -898,7 +961,12 @@ func TestQueryLog_yank_sensitiveStatementCopiesSessionOriginal(t *testing.T) {
 	if got := model.queryLog.component.Entries[0].Statement; got != redactedStatement {
 		t.Fatalf("statement after copy = %q, want the marker still %q", got, redactedStatement)
 	}
-	if loaded, err := model.queryLogStore().Load("conn-a", queryLogLimit); err != nil || len(loaded) != 1 || loaded[0].Statement != redactedStatement {
+	store, err := querylog.Open(model.queryLog.path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if loaded, err := store.Load("conn-a", queryLogLimit); err != nil || len(loaded) != 1 || loaded[0].Statement != redactedStatement {
 		t.Fatalf("stored entry = %#v (err %v), want only the redacted marker", loaded, err)
 	}
 
@@ -1005,7 +1073,15 @@ func TestQueryLog_yank_loadedSensitiveEntryCannotRecoverOriginal(t *testing.T) {
 	secret := "SET api_token 8f14e45fceea167a5a36dedd4bea2543"
 	model := readyModel(t)
 	model.connectionID = "conn-a"
-	model.appendQueryLog(actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+	persistCmd := model.appendQueryLog(actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+	if persistCmd == nil {
+		t.Fatal("appendQueryLog returned nil persistence command")
+	}
+	if rawMessage := persistCmd(); rawMessage == nil {
+		t.Fatal("query-log persistence command emitted nil message")
+	} else if _, ok := rawMessage.(queryLogPersistedMsg); !ok {
+		t.Fatalf("persistence command message = %T, want queryLogPersistedMsg", rawMessage)
+	}
 
 	// Disconnect (scope reset) and reopen the same connection scope
 	// through the production open handler: loaded entries must carry no
@@ -1022,8 +1098,9 @@ func TestQueryLog_yank_loadedSensitiveEntryCannotRecoverOriginal(t *testing.T) {
 		}
 	})
 	model.openTag++
-	updated, _ := model.Update(databaseOpenedMsg{target: "reload.db", service: service, info: sharedsql.DatabaseInfo{}, reconnect: true, openTag: model.openTag})
+	updated, openCmd := model.Update(databaseOpenedMsg{target: "reload.db", service: service, info: sharedsql.DatabaseInfo{}, reconnect: true, openTag: model.openTag})
 	model = updated.(Model)
+	model = driveCommand(model, openCmd)
 
 	if got := model.queryLog.component.Entries; len(got) != 1 || got[0].Statement != redactedStatement || !got[0].Sensitive {
 		t.Fatalf("reloaded entries = %#v, want one redacted sensitive entry", got)
@@ -1110,5 +1187,52 @@ func TestQueryLog_yank_cacheClearedOnScopeReset(t *testing.T) {
 	}
 	if strings.Contains(strings.Join(model.queryLog.transientStatements, " "), "api_token") {
 		t.Fatal("new connection scope retained the previous connection's secret")
+	}
+}
+
+func TestAppendQueryLog_visibleBeforePersistenceCommand(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	cmd := model.appendQueryLog(queryLogEntry{Statement: "SELECT visible", Status: "success", Replayable: true})
+	if cmd == nil {
+		t.Fatal("appendQueryLog returned nil command for active scope")
+	}
+	if len(model.queryLog.component.Entries) != 1 || model.queryLog.component.Entries[0].Statement != "SELECT visible" {
+		t.Fatalf("entry not visible before command execution: %#v", model.queryLog.component.Entries)
+	}
+}
+
+func TestAppendQueryLog_commandCapturesRedactedEntryAndScope(t *testing.T) {
+	model := readyModel(t)
+	model.connectionID = "conn-a"
+	model.openTag = 7
+	path := model.queryLog.path
+	secret := "SET api_token captured-secret"
+	cmd := model.appendQueryLog(actionLogEntry(secret, &sharedsql.StatementMetadata{Language: "redis", Sensitive: true}, time.Now(), nil, "completed"))
+	if cmd == nil {
+		t.Fatal("appendQueryLog returned nil command for active scope")
+	}
+	model.connectionID = "conn-b"
+	model.openTag = 8
+	model.queryLog.path = t.TempDir() + "/other.db"
+	rawMessage := cmd()
+	message, ok := rawMessage.(queryLogPersistedMsg)
+	if !ok {
+		t.Fatalf("persistence command message = %T, want queryLogPersistedMsg", rawMessage)
+	}
+	if message.openTag != 7 || message.connectionID != "conn-a" {
+		t.Fatalf("persistence scope = %#v, want tag 7 and conn-a", message)
+	}
+	store, err := querylog.Open(path, queryLogRetentionDays())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	entries, err := store.Load("conn-a", queryLogLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Statement != redactedStatement || strings.Contains(entries[0].Statement, secret) {
+		t.Fatalf("persisted sensitive entry = %#v, want only redacted marker", entries)
 	}
 }

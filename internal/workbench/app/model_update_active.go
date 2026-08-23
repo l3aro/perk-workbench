@@ -7,23 +7,34 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
-func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) updateActive(message tea.Msg, keys uikit.KeyMatcher, strokes ...uikit.PreparedKeyStroke) (tea.Model, tea.Cmd) {
+	key := uikit.PreparedKeyStroke{}
+	if keys == nil {
+		keys = m.keybindings
+	}
+	if len(strokes) > 0 {
+		key = strokes[0]
+	} else if keyPress, ok := message.(tea.KeyPressMsg); ok {
+		key = uikit.PrepareKeyStroke(keyPress)
+		keys = preparedKeyMatcher{base: keys, prepared: key}
+	}
+	prepared := key
 	// The query-log detail overlay replaces normal content and consumes
 	// every message while open.
 	if m.queryLog.component.DetailOpen() {
-		model, event, cmd := m.queryLog.component.Update(message, queryLogLayout(m), m.keybindings)
+		model, event, cmd := m.queryLog.component.Update(message, queryLogLayout(m), keys)
 		m.queryLog.component = model
 		return m.applyQueryLogEvent(event, cmd)
 	}
 	switch m.State {
 	case stateConnection:
-		return m.updateConnection(message)
+		return m.updateConnection(message, keys, prepared)
 	case statePicking:
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.reload", []scope{scopeView, scopeGlobal}) {
+		if _, ok := message.(tea.KeyPressMsg); ok && uikit.MatchPrepared(keys, prepared, "picker.reload", []scope{scopeView, scopeGlobal}) {
 			m.setStatus("reloading picker")
 			return m, readDirectory(m.connection.pickerDir)
 		}
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "picker.select", []scope{scopeView, scopeGlobal}) {
+		if _, ok := message.(tea.KeyPressMsg); ok && uikit.MatchPrepared(keys, prepared, "picker.select", []scope{scopeView, scopeGlobal}) {
 			if item, ok := m.connection.picker.SelectedItem().(pickerItem); ok {
 				return m, selectPickerItem(item.raw)
 			}
@@ -44,12 +55,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			// add/rename/delete-table keys; the root applies the returned
 			// events (table selection, reconnects, context menus, popup
 			// requests) through its own overlays and DB flows.
-			component, event, cmd := m.schema.component.Update(message, m.schemaLayout(), m.keybindings, m.schemaSnapshot())
+			component, event, cmd := m.schema.component.Update(message, m.schemaLayout(), keys, m.schemaSnapshot(), prepared)
 			m.schema.component = component
 			return m.applySchemaEvent(event, cmd)
 		case focusWorkspace:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabQuery && m.overlay.formMode.Editing()) &&
-				m.keybindings.Match(keyPress, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
+			if _, ok := message.(tea.KeyPressMsg); ok && !m.formActive() && !(m.Tab == tabQuery && m.overlay.formMode.Editing()) &&
+				uikit.MatchPrepared(keys, prepared, "workspace.escape_to_schema", []scope{scopeView, scopeGlobal}) {
 				m.Focus = focusSchema
 				m.queryLog.editor.text.Blur()
 				m.blurTables()
@@ -74,12 +85,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				// Pane keys and the table passthrough route into the
 				// component; the root applies the events (filter/edit/
 				// delete requests) and keeps the horizontal pan offset.
-				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabStructure, m.schemaSnapshot(), &m.layout.structureOffset)
+				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), keys, tabStructure, m.schemaSnapshot(), &m.layout.structureOffset, prepared)
 				m.schema.component = component
 				return m.applySchemaEvent(event, cmd)
 			case tabBrowse:
 				if m.browse.component.FilterForm != nil {
-					component, result, cmd := m.browse.component.UpdateFilterForm(message, m.keybindings, m.overlay.formMode)
+					component, result, cmd := m.browse.component.UpdateFilterForm(message, keys, m.overlay.formMode)
 					m.browse.component = component
 					switch result.Action {
 					case browse.FilterApply:
@@ -107,45 +118,45 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				// Object-list mode: a/e/d run the selected object's
 				// add/edit/delete table actions directly, mirroring the
 				// "," object menu. Row actions apply to table rows only.
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.add_table", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.add_table", []scope{scopeView, scopeGlobal}) {
 					return m, m.browseObjectAction("add_table")
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.rename_table", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.rename_table", []scope{scopeView, scopeGlobal}) {
 					return m, m.browseObjectAction("rename_table")
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.delete_table", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.delete_table", []scope{scopeView, scopeGlobal}) {
 					return m, m.browseObjectAction("delete_table")
 				}
 				// Row actions (filter/edit/insert/view/context menu) apply
 				// to table rows only; the object-list mode routes its own
 				// keys (Enter opens, "," asks for the object menu) through
 				// the component below.
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.refine", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.refine", []scope{scopeView, scopeGlobal}) {
 					return m, m.openBrowseFilterForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.edit_cell", []scope{scopeView, scopeGlobal}) {
 					if m.writeCapabilities().RowWriter {
 						return m, m.openCellEditor()
 					}
 					return m, m.openEditDocument()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.edit", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.edit", []scope{scopeView, scopeGlobal}) {
 					if m.writeCapabilities().RowWriter {
 						return m, m.openBrowseForm()
 					}
 					return m, m.openEditDocument()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.insert_row", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.insert_row", []scope{scopeView, scopeGlobal}) {
 					return m, m.openInsertRowForm()
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.delete_row", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.delete_row", []scope{scopeView, scopeGlobal}) {
 					if !m.browseWriteAvailable() {
 						return m, nil
 					}
 					m.confirmBrowseRowDelete()
 					return m, nil
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.browse.component.Table.Cursor()
 					col := m.browse.component.SelectedColumn
 					display := ""
@@ -155,7 +166,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					raw := m.rawCellValue("browse", row, col, display)
 					return m, m.openCellViewer(m.browse.component.Table, col, raw)
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && m.keybindings.Match(keyPress, "browse.context_menu", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.browse.component.ObjectListMode() && uikit.MatchPrepared(keys, prepared, "browse.context_menu", []scope{scopeView, scopeGlobal}) {
 					row := m.browse.component.Table.Cursor()
 					if row < 0 || row >= len(m.browse.component.Result.Rows) {
 						return m, nil
@@ -179,14 +190,14 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				// sort/reset/copy/paging keys and the table passthrough;
 				// the root applies the events (reloads, page ticks,
 				// clipboard) and refreshes the status after navigation.
-				component, event, cmd := m.browse.component.Update(message, browseLayout(m), m.keybindings, m.browseBackend())
+				component, event, cmd := m.browse.component.Update(message, browseLayout(m), keys, m.browseBackend())
 				m.browse.component = component
 				model, cmd := m.applyBrowseEvent(event, cmd)
 				m = model.(Model)
 				m.refreshBrowseStatus()
 				return m, cmd
 			case tabQuery:
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && uikit.MatchPrepared(keys, prepared, "cell.view", []scope{scopeView, scopeGlobal}) {
 					row := m.queryLog.results.Cursor()
 					col := m.layout.resultsColumn
 					display := ""
@@ -196,7 +207,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 					raw := m.rawCellValue("results", row, col, display)
 					return m, m.openCellViewer(m.queryLog.results, col, raw)
 				}
-				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
+				if _, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && m.queryLog.results.Focused() && uikit.MatchPrepared(keys, prepared, "cell.yank", []scope{scopeView, scopeGlobal}) {
 					return m, m.copySQLCell()
 				}
 				if keyPress, ok := message.(tea.KeyPressMsg); ok && !m.overlay.formMode.Editing() && moveTableCell(&m.queryLog.results, &m.layout.resultsColumn, &m.layout.resultsOffset, m.layout.tableViewportWidth, keyPress) {
@@ -220,7 +231,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				// Pane keys and the table passthrough route into the
 				// component; the root applies the events (filter/edit/
 				// delete requests) and keeps the horizontal pan offset.
-				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabIndexes, m.schemaSnapshot(), &m.layout.indexesOffset)
+				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), keys, tabIndexes, m.schemaSnapshot(), &m.layout.indexesOffset, prepared)
 				m.schema.component = component
 				return m.applySchemaEvent(event, cmd)
 			case tabForeignKeys:
@@ -238,12 +249,12 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				// Pane keys and the table passthrough route into the
 				// component; the root applies the events (filter/edit/
 				// delete requests) and keeps the horizontal pan offset.
-				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), m.keybindings, tabForeignKeys, m.schemaSnapshot(), &m.layout.foreignKeysOffset)
+				component, event, cmd := m.schema.component.UpdateWorkspace(message, m.workspaceLayout(), keys, tabForeignKeys, m.schemaSnapshot(), &m.layout.foreignKeysOffset, prepared)
 				m.schema.component = component
 				return m.applySchemaEvent(event, cmd)
 			case tabCustom:
 				if keyPress, ok := message.(tea.KeyPressMsg); ok {
-					if m.workspace.table.Focused() && m.keybindings.Match(keyPress, "cell.view", []scope{scopeView, scopeGlobal}) {
+					if m.workspace.table.Focused() && uikit.MatchPrepared(keys, prepared, "cell.view", []scope{scopeView, scopeGlobal}) {
 						row := m.workspace.table.Cursor()
 						col := m.workspace.selectedColumn
 						display := ""
@@ -253,10 +264,10 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 						raw := m.rawCellValue("view", row, col, display)
 						return m, m.openCellViewer(m.workspace.table, col, raw)
 					}
-					if m.workspace.table.Focused() && m.keybindings.Match(keyPress, "cell.yank", []scope{scopeView, scopeGlobal}) {
+					if m.workspace.table.Focused() && uikit.MatchPrepared(keys, prepared, "cell.yank", []scope{scopeView, scopeGlobal}) {
 						return m, m.copyWorkspaceViewCell()
 					}
-					if m.keybindings.Match(keyPress, "workspace.view_reload", []scope{scopeView, scopeGlobal}) {
+					if uikit.MatchPrepared(keys, prepared, "workspace.view_reload", []scope{scopeView, scopeGlobal}) {
 						return m, m.reloadWorkspaceView()
 					}
 					if moveTableCell(&m.workspace.table, &m.workspace.selectedColumn, &m.workspace.offset, m.layout.tableViewportWidth, keyPress) {
@@ -269,7 +280,7 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, command
 		case focusQueryLog:
-			if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "query_log.context_menu", []scope{scopeView, scopeGlobal}) {
+			if _, ok := message.(tea.KeyPressMsg); ok && uikit.MatchPrepared(keys, prepared, "query_log.context_menu", []scope{scopeView, scopeGlobal}) {
 				// The pending top mark gates the first press of any key:
 				// an armed mark clears and stops without opening the menu.
 				// The menu itself needs screen geometry, so root builds it.
@@ -304,14 +315,14 @@ func (m Model) updateActive(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			model, event, cmd := m.queryLog.component.Update(message, queryLogLayout(m), m.keybindings)
+			model, event, cmd := m.queryLog.component.Update(message, queryLogLayout(m), keys)
 			m.queryLog.component = model
 			return m.applyQueryLogEvent(event, cmd)
 		case focusChat:
-			return m.updateChat(message)
+			return m.updateChat(message, keys)
 		}
 	case stateFailure:
-		if keyPress, ok := message.(tea.KeyPressMsg); ok && m.keybindings.Match(keyPress, "failure.return_to_picker", []scope{scopeView, scopeGlobal}) {
+		if _, ok := message.(tea.KeyPressMsg); ok && uikit.MatchPrepared(keys, prepared, "failure.return_to_picker", []scope{scopeView, scopeGlobal}) {
 			m.RecoverToPicker("choose another database")
 			return m, readDirectory(m.connection.pickerDir)
 		}

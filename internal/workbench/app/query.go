@@ -295,8 +295,9 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 		action = "added column"
 		status = "column added"
 	}
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, action))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, action))
 	}
 	if message.err != nil {
 		actionMsg := "updating column"
@@ -305,39 +306,40 @@ func (m Model) updateColumnAltered(message columnAlteredMsg) (tea.Model, tea.Cmd
 		}
 		m.schema.component.Structure.ColumnForm.Saving = false
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf(actionMsg+": %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 	m.setStatus(status)
-	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
+	return m, tea.Batch(appendCmd, m.loadTableInfo(), m.loadBrowse(), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }
-
 func (m Model) updateColumnDeleted(message columnDeletedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "dropped column"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "dropped column"))
 	}
 	if message.err != nil {
 		m.schema.component.Structure.ColumnForm.Saving = false
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("deleting column: %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	m.schema.component.Structure.ColumnForm = schema.ColumnForm{}
 	m.setStatus("column deleted")
-	return m, tea.Batch(m.loadTableInfo(), m.loadBrowse(), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
+	return m, tea.Batch(appendCmd, m.loadTableInfo(), m.loadBrowse(), m.loadSchemaForeignKeysAll(), m.loadSchemaIndexesAll())
 }
 
 func (m Model) updateBrowseRowUpdated(message browseRowUpdatedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "updated 1 row"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "updated 1 row"))
 	}
 	if message.err != nil {
 		m.browse.component.Form.Saving = false
 		m.setStatus(rowWriteFailureStatus("updating row", message.metadata, message.err))
-		return m, nil
+		return m, appendCmd
 	}
 	m.browse.component.Form = browse.Form{}
 	m.setStatus("row updated")
-	return m, m.loadBrowse()
+	return m, tea.Batch(appendCmd, m.loadBrowse())
 }
 
 // insertBrowseRow executes the insert form's RowWriter insert. The form
@@ -365,17 +367,18 @@ func (m Model) insertBrowseRow() tea.Cmd {
 }
 
 func (m Model) updateInsertRowMsg(message insertRowMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "inserted 1 row"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "inserted 1 row"))
 	}
 	if message.err != nil {
 		m.browse.component.Form.Saving = false
 		m.setStatus(rowWriteFailureStatus("inserting row", message.metadata, message.err))
-		return m, nil
+		return m, appendCmd
 	}
 	m.browse.component.Form = browse.Form{}
 	m.setStatus("row inserted")
-	return m, m.loadBrowse()
+	return m, tea.Batch(appendCmd, m.loadBrowse())
 }
 
 func (m Model) deleteRow() tea.Cmd {
@@ -476,15 +479,16 @@ func browseDeletePreview(table string, columns []string, row []*string, primaryK
 }
 
 func (m Model) updateDeleteRowMsg(message deleteRowMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "deleted 1 row"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, "deleted 1 row"))
 	}
 	if message.err != nil {
 		m.setStatus(rowWriteFailureStatus("deleting row", message.metadata, message.err))
-		return m, nil
+		return m, appendCmd
 	}
 	m.setStatus("row deleted")
-	return m, m.loadBrowse()
+	return m, tea.Batch(appendCmd, m.loadBrowse())
 }
 
 func (m Model) browseFilterStatement(filter sharedsql.BrowseFilter) string {
@@ -535,7 +539,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		if !message.startedAt.IsZero() {
 			duration = time.Since(message.startedAt)
 		}
-		m.appendQueryLog(queryLogEntry{
+		appendCmd := m.appendQueryLog(queryLogEntry{
 			StartedAt:  message.startedAt,
 			Statement:  statement,
 			Duration:   duration,
@@ -544,7 +548,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 			Replayable: true,
 		})
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("loading browse: %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	// Set the status before setBrowse so its split-aware table sizing
 	// (browseStatusSplit) sees the summary it will render. The position
@@ -561,7 +565,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 	if !message.startedAt.IsZero() {
 		duration = time.Since(message.startedAt)
 	}
-	m.appendQueryLog(queryLogEntry{
+	appendCmd := m.appendQueryLog(queryLogEntry{
 		StartedAt:  message.startedAt,
 		Statement:  statement,
 		Duration:   duration,
@@ -569,7 +573,7 @@ func (m Model) updateBrowse(message browseTableMsg) (tea.Model, tea.Cmd) {
 		Replayable: true,
 	})
 	m.setStatus("")
-	return m, nil
+	return m, appendCmd
 }
 
 // browseStatusText formats the browse page summary: the table name, the

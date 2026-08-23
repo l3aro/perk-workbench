@@ -327,16 +327,17 @@ func (m Model) executeCellUpdate() tea.Cmd {
 }
 
 func (m Model) updateCellEditorUpdated(msg cellEditorUpdatedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if msg.statement != "" {
-		m.appendQueryLog(actionLogEntry(msg.statement, msg.metadata, msg.startedAt, msg.err, "updated 1 row"))
+		appendCmd = m.appendQueryLog(actionLogEntry(msg.statement, msg.metadata, msg.startedAt, msg.err, "updated 1 row"))
 	}
 	if msg.err != nil {
 		m.setStatus(rowWriteFailureStatus("updating cell", msg.metadata, msg.err))
-		return m, nil
+		return m, appendCmd
 	}
 	m.browse.component.CloseCellEditor()
 	m.setStatus("cell updated")
-	return m, m.loadBrowse()
+	return m, tea.Batch(appendCmd, m.loadBrowse())
 }
 
 type documentEditorLoadedMsg struct {
@@ -407,19 +408,20 @@ func (m Model) updateDocumentEditorLoaded(message documentEditorLoadedMsg) (tea.
 // and reloads browse; failure keeps the editor open so the rejected text
 // survives, and restores the form from its confirming state.
 func (m Model) updateDocumentEditorSaved(message documentEditorSavedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
 		text := "updated 1 row"
 		if message.inserting {
 			text = "inserted 1 row"
 		}
-		m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, text))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, message.metadata, message.startedAt, message.err, text))
 	}
 	if message.err != nil {
 		m.browse.component.DocumentSaveFailed()
 		m.setStatus(rowWriteFailureStatus("saving document", message.metadata, message.err))
-		return m, nil
+		return m, appendCmd
 	}
 	m.browse.component.CloseDocumentEditor()
 	m.setStatus("document saved")
-	return m, m.loadBrowse()
+	return m, tea.Batch(appendCmd, m.loadBrowse())
 }

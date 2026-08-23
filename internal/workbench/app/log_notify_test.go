@@ -65,7 +65,7 @@ func TestLogNotification_logCallsInsideUpdateDrainToPopup(t *testing.T) {
 	if !strings.Contains(popup.Title, "Error") {
 		t.Fatalf("popup title = %q, want the Error title", popup.Title)
 	}
-	assertOnlyNotificationTick(t, cmd)
+	model = driveCommand(model, cmd)
 }
 
 // openWithScratch drives the connection form's open flow to completion and
@@ -78,8 +78,11 @@ func openWithScratch(t *testing.T, model Model) Model {
 	if command == nil {
 		t.Fatal("open connection command = nil")
 	}
-	updated, _ = model.Update(command())
-	return updated.(Model)
+	for _, message := range executeCommandAll(command) {
+		updated, _ := model.Update(message)
+		model = updated.(Model)
+	}
+	return model
 }
 
 // TestLogNotification_readyStatusIsDebugLog pins the database-ready
@@ -245,9 +248,11 @@ func TestLogNotification_openingStatusIsDebugLog(t *testing.T) {
 		t.Fatalf("popup = %#v, want the Debug opening popup", popup)
 	}
 	// The returned command is a batch with the dismiss tick; drive the
-	// open target directly so the open completes deterministically.
-	updated, _ = model.Update(model.openTarget(":memory:")())
+	// open target directly so the open and its asynchronous history writes
+	// complete deterministically.
+	updated, command := model.Update(model.openTarget(":memory:")())
 	model = updated.(Model)
+	model = driveCommand(model, command)
 	history := loadNotificationHistory(t, filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
 	if len(history) == 0 {
 		t.Fatal("history has no retained entries after the open")
@@ -312,9 +317,11 @@ func TestLogNotification_openingPickerStatusIsDebugLog(t *testing.T) {
 		t.Fatalf("popup = %#v, want the Debug opening popup", popup)
 	}
 	// The returned command is a batch with the dismiss tick; drive the
-	// open target directly so the open completes deterministically.
-	updated, _ = model.Update(model.openTarget(":memory:")())
+	// open target directly so the open and its asynchronous history writes
+	// complete deterministically.
+	updated, command := model.Update(model.openTarget(":memory:")())
 	model = updated.(Model)
+	model = driveCommand(model, command)
 	history := loadNotificationHistory(t, filepath.Join(dir, "perk-workbench", "data.db"), model.connectionID)
 	if len(history) == 0 {
 		t.Fatal("history has no retained entries after the open")
@@ -369,9 +376,11 @@ func TestLogNotification_openingDoesNotBindPreviousScope(t *testing.T) {
 	}
 
 	// Completing the open assigns the new scope and persists only its
-	// ready entry.
-	updated, _ = model.Update(model.openTarget(":memory:")())
+	// ready entry. Drive every command returned by the update before
+	// inspecting either scope's on-disk history.
+	updated, command := model.Update(model.openTarget(":memory:")())
 	model = updated.(Model)
+	model = driveCommand(model, command)
 	if model.connectionID == "live-scope" {
 		t.Fatal("open did not assign a new profile scope")
 	}

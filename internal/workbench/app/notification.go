@@ -57,17 +57,6 @@ func notificationPath() (string, error) {
 	return filepath.Join(dir, "perk-workbench", "data.db"), nil
 }
 
-// notificationStore returns the model's persistent notification store,
-// opened lazily on first use and reused for every save.
-func (m *Model) notificationStore() *notification.Store {
-	if m.notifications.store == nil && m.notifications.path != "" {
-		if store, err := notification.Open(m.notifications.path, notificationRetentionDays()); err == nil {
-			m.notifications.store = store
-		}
-	}
-	return m.notifications.store
-}
-
 // setStatus records a status transition, bumping the workbench-side revision
 // so repeated writes of the same text still surface as notification events.
 func (m *Model) setStatus(status string) {
@@ -96,18 +85,20 @@ func (m *Model) notifyLogTransient(entry log.Entry) tea.Cmd {
 	return m.show(notification.LogEntry(entry), false)
 }
 
-// show surfaces one entry through the notification component: it persists
-// when a connection profile is active and persist is set, then makes the
-// entry the visible popup. The store is fetched lazily only when the entry
-// could be scoped, so an unscoped status never opens the history database.
+// show surfaces one entry through the notification component and, when a
+// connection profile is active, schedules persistence using a command-owned
+// store. Immediate popup/list state is always updated before the command runs.
 func (m *Model) show(entry notification.Entry, persist bool) tea.Cmd {
-	var store *notification.Store
-	if persist && m.connectionID != "" {
-		store = m.notificationStore()
-	}
-	updated, cmd := m.notifications.component.Show(entry, persist, m.connectionID, store, notificationPopupDuration())
+	updated, dismissCmd, token := m.notifications.component.Show(entry, persist, notificationPopupDuration())
 	m.notifications.component = updated
-	return cmd
+	if token == 0 || m.connectionID == "" || m.notifications.path == "" {
+		return dismissCmd
+	}
+	persistCmd := persistNotification(entry, m.notifications.path, m.connectionID, m.openTag, token, notificationRetentionDays())
+	if dismissCmd == nil {
+		return persistCmd
+	}
+	return tea.Batch(dismissCmd, persistCmd)
 }
 
 // notificationLayout builds the layout snapshot root hands to the
