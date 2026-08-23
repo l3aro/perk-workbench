@@ -22,13 +22,6 @@ go test -race ./internal/workbench/app -run 'TestExecute|TestPicker|TestResize'
 go test -race ./cmd/perk-workbench -run TestParseTarget
 ```
 
-## Orchestration
-
-- For implementation work, load the `herdr` skill and act as the orchestrator.
-- Spawn exactly one separate task at a time in a Herdr pane; do not start the next task until the current task is complete.
-- Verify the completed task with its targeted behavior check, inspect its result, and commit its complete atomic change before proceeding.
-- Close the completed task’s Herdr pane after its commit and verification; only then spawn the next task.
-
 ## Running
 
 ```bash
@@ -39,5 +32,6 @@ make mysql                  # starts MySQL and opens its office demo database
 make postgres               # starts PostgreSQL and opens its employees demo database
 make mongo                  # starts MongoDB and opens its atlas demo database (restaurants primer + Atlas sample datasets, re-seeded when missing)
 ```
+
 - Compose mounts the source tree at `/workspace` and `demo/` at `/demo`; its default command opens `/demo/chinook-sqlite.db`.
 - The TUI needs an alternate-screen terminal. For manual query QA, run `F5`; `Escape` cancels a running query.
