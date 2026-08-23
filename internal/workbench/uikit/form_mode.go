@@ -81,8 +81,9 @@ func (c *FormModeController) RouteFormButtons(keyPress tea.KeyPressMsg, keybindi
 	case keyPress.Key().Code == tea.KeyDown, keyPress.Key().Code == 'j':
 		return FormButtonHandled, tea.KeyPressMsg{}, nil
 	}
-	if keybindings.Match(keyPress, "form.save", []Scope{ScopeForm, ScopeView, ScopeGlobal}) ||
-		keybindings.Match(keyPress, "form.discard", []Scope{ScopeForm, ScopeView, ScopeGlobal}) {
+	prepared := PrepareKeyStroke(keyPress)
+	if MatchPrepared(keybindings, prepared, "form.save", []Scope{ScopeForm, ScopeView, ScopeGlobal}) ||
+		MatchPrepared(keybindings, prepared, "form.discard", []Scope{ScopeForm, ScopeView, ScopeGlobal}) {
 		return FormButtonContinue, tea.KeyPressMsg{}, nil
 	}
 	return FormButtonHandled, tea.KeyPressMsg{}, nil

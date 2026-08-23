@@ -53,10 +53,63 @@ func (s Scope) String() string {
 // CommandID is a stable identifier for an application keyboard command.
 type CommandID string
 
+// PreparedKeyStroke contains the two canonical representations of one key
+// press. It is immutable after construction and lets dispatchers reuse the
+// computed strings without constructing a temporary stroke slice.
+type PreparedKeyStroke struct {
+	msg       tea.KeyPressMsg
+	text      string
+	keystroke string
+}
+
+// PrepareKeyStroke snapshots the representations used by key binding
+// matching. The original message is retained solely for compatibility with
+// matchers that have not adopted the prepared API.
+func PrepareKeyStroke(msg tea.KeyPressMsg) PreparedKeyStroke {
+	return PreparedKeyStroke{
+		msg:       msg,
+		text:      msg.String(),
+		keystroke: msg.Keystroke(),
+	}
+}
+
+// Message returns the original key press for compatibility fallbacks.
+func (p PreparedKeyStroke) Message() tea.KeyPressMsg {
+	return p.msg
+}
+
+// String returns the text representation of the prepared key press.
+func (p PreparedKeyStroke) String() string {
+	return p.text
+}
+
+// Keystroke returns the canonical keystroke representation of the prepared
+// key press.
+func (p PreparedKeyStroke) Keystroke() string {
+	return p.keystroke
+}
+
 // KeyMatcher matches a key press against configured command bindings.
 // Root's Keybindings satisfies it structurally.
 type KeyMatcher interface {
 	Match(msg tea.KeyPressMsg, id CommandID, scopes []Scope) bool
+}
+
+// PreparedKeyMatcher is the allocation-free extension implemented by
+// matchers that can consume a prepared key press. KeyMatcher intentionally
+// remains small so existing fakes and third-party implementations continue
+// to satisfy it.
+type PreparedKeyMatcher interface {
+	MatchPrepared(key PreparedKeyStroke, id CommandID, scopes []Scope) bool
+}
+
+// MatchPrepared dispatches through the prepared matcher when available and
+// falls back to the original message-taking API for existing matchers.
+func MatchPrepared(keybindings KeyMatcher, key PreparedKeyStroke, id CommandID, scopes []Scope) bool {
+	if prepared, ok := keybindings.(PreparedKeyMatcher); ok {
+		return prepared.MatchPrepared(key, id, scopes)
+	}
+	return keybindings.Match(key.Message(), id, scopes)
 }
 
 // Layout is the root-owned screen snapshot handed to a feature component
@@ -126,6 +179,10 @@ var (
 	StatusSuccessStyle, StatusFailedStyle lipgloss.Style
 	StatusCanceledStyle                   lipgloss.Style
 	SelectedCellStyle                     lipgloss.Style
+	selectedRowStyle                      lipgloss.Style
+	selectedTableStyleCache               map[int]lipgloss.Style
+	cellStyleCache                        map[int]lipgloss.Style
+	cellStyleCacheRight                   map[int]lipgloss.Style
 	ButtonSaveStyle, ButtonCancelStyle    lipgloss.Style
 	ActionStyle, ActionSelectedStyle      lipgloss.Style
 	ActionFocusedStyle                    lipgloss.Style
@@ -246,6 +303,13 @@ func resetStyles() {
 		Foreground(lipgloss.Color(ColorCanvas)).
 		Background(lipgloss.Color(ColorPrimary)).
 		Bold(true)
+	selectedRowStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color(ColorStripe))
+	selectedTableStyleCache = make(map[int]lipgloss.Style)
+	cellStyleCache = make(map[int]lipgloss.Style)
+	cellStyleCacheRight = make(map[int]lipgloss.Style)
+	clearFilterInputRowCache()
 	ButtonSaveStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(ColorCanvas)).
 		Background(lipgloss.Color(ColorPrimary)).
@@ -292,7 +356,7 @@ func NewResultsTable() table.Model {
 		table.WithStyles(table.Styles{
 			Header:   HeaderStyle,
 			Cell:     lipgloss.NewStyle().Padding(0, SpaceCompact),
-			Selected: lipgloss.NewStyle().Foreground(lipgloss.Color(ColorPrimary)).Background(lipgloss.Color(ColorStripe)),
+			Selected: selectedTableStyle(0),
 		}),
 	)
 }
@@ -304,12 +368,9 @@ func ResizeResultsTable(resultTable *table.Model, width, height int) {
 	resultTable.SetWidth(tableWidth)
 	resultTable.SetHeight(height)
 	resultTable.SetStyles(table.Styles{
-		Header: HeaderStyle,
-		Cell:   lipgloss.NewStyle().Padding(0, SpaceCompact),
-		Selected: lipgloss.NewStyle().
-			Width(tableWidth).
-			Foreground(lipgloss.Color(ColorPrimary)).
-			Background(lipgloss.Color(ColorStripe)),
+		Header:   HeaderStyle,
+		Cell:     lipgloss.NewStyle().Padding(0, SpaceCompact),
+		Selected: selectedTableStyle(tableWidth),
 	})
 }
 
@@ -373,10 +434,20 @@ func tableLine(columns []table.Column, row table.Row, numericColumns []bool, off
 // cellStyle returns a cached width-fixed table cell style. Styles depend only
 // on (width, alignment); distinct widths are bounded by the column count, and
 // all access happens on the Bubble Tea UI goroutine.
-var (
-	cellStyleCache      = map[int]lipgloss.Style{}
-	cellStyleCacheRight = map[int]lipgloss.Style{}
-)
+
+func selectedTableStyle(width int) lipgloss.Style {
+	if style, ok := selectedTableStyleCache[width]; ok {
+		return style
+	}
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(ColorPrimary)).
+		Background(lipgloss.Color(ColorStripe))
+	if width > 0 {
+		style = style.Width(width)
+	}
+	selectedTableStyleCache[width] = style
+	return style
+}
 
 func cellStyle(width int, numeric bool) lipgloss.Style {
 	cache := cellStyleCache
@@ -494,13 +565,12 @@ func highlightedTableRow(line string, selectedStart, selectedWidth int) string {
 	lineWidth := ansi.StringWidth(line)
 	selectedEnd := min(max(selectedStart+selectedWidth, 0), lineWidth)
 	selectedStart = min(max(selectedStart, 0), lineWidth)
-	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ColorPrimary)).Background(lipgloss.Color(ColorStripe))
 	if selectedStart == selectedEnd {
-		return rowStyle.Render(line)
+		return selectedRowStyle.Render(line)
 	}
-	return rowStyle.Render(tableLineSegment(line, 0, selectedStart)) +
+	return selectedRowStyle.Render(tableLineSegment(line, 0, selectedStart)) +
 		SelectedCellStyle.Render(tableLineSegment(line, selectedStart, selectedEnd-selectedStart)) +
-		rowStyle.Render(tableLineSegment(line, selectedEnd, lineWidth-selectedEnd))
+		selectedRowStyle.Render(tableLineSegment(line, selectedEnd, lineWidth-selectedEnd))
 }
 
 // TableOffset clamps a horizontal table offset to the viewport range.
