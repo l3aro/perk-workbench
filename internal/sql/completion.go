@@ -75,7 +75,11 @@ func AnalyzeSQL(value string, row, col int) SQLAnalysis {
 		col = 0
 	}
 
-	beforeCursor := textBeforeCursor(lines, row, col)
+	cursor := col
+	for index := range row {
+		cursor += len(lines[index]) + 1
+	}
+	words, beforeCursor := tokenizeUpperAt(value, cursor)
 
 	// Get the identifier being typed (may include a dot for qualified names).
 	prefix, _ := completionPrefixAt(line, col)
@@ -87,9 +91,8 @@ func AnalyzeSQL(value string, row, col int) SQLAnalysis {
 		prefix = prefix[dotInPrefix+1:]
 	}
 
+	referenced, aliases := extractTableReferencesTokens(words)
 	if qualifier != "" {
-		words := tokenizeUpper(value)
-		referenced, aliases := extractTableReferencesTokens(words)
 		return SQLAnalysis{
 			Context:          CtxQualified,
 			Prefix:           prefix,
@@ -100,30 +103,13 @@ func AnalyzeSQL(value string, row, col int) SQLAnalysis {
 		}
 	}
 
-	context := classifyContext(beforeCursor)
-	words := tokenizeUpper(value)
-	referenced, aliases := extractTableReferencesTokens(words)
 	return SQLAnalysis{
-		Context:          context,
+		Context:          classifyContextTokens(beforeCursor),
 		Prefix:           prefix,
 		Aliases:          aliases,
 		ReferencedTables: referenced,
 		Words:            words,
 	}
-}
-
-// textBeforeCursor returns all text before the cursor position.
-func textBeforeCursor(lines []string, row, col int) string {
-	if row < 0 || row >= len(lines) {
-		return ""
-	}
-	var sb strings.Builder
-	for i := 0; i < row; i++ {
-		sb.WriteString(lines[i])
-		sb.WriteByte('\n')
-	}
-	sb.WriteString(lines[row][:col])
-	return sb.String()
 }
 
 // completionPrefixAt extracts the identifier (or dotted identifier) at the cursor.
@@ -142,13 +128,10 @@ func completionPrefixAt(line string, col int) (string, int) {
 	return "", col
 }
 
-// classifyContext determines whether the cursor is in table or expression context
-// by scanning the text before cursor for the last significant keyword.
-func classifyContext(beforeCursor string) CompletionContext {
-	// Tokenize the text before cursor into words.
-	words := tokenizeUpper(beforeCursor)
-
-	// Look backwards for a context keyword.
+// classifyContextTokens determines whether the cursor is in table or expression
+// context by scanning the tokens before the cursor for the last significant
+// keyword.
+func classifyContextTokens(words []string) CompletionContext {
 	for i := len(words) - 1; i >= 0; i-- {
 		word := words[i]
 		switch word {
@@ -180,23 +163,39 @@ func classifyContext(beforeCursor string) CompletionContext {
 	return CtxExpression // default for SELECT/column context
 }
 
-// tokenizeUpper splits text into uppercased words, handling non-identifier chars.
-func tokenizeUpper(text string) []string {
-	var words []string
+// tokenizeUpperAt splits text into uppercased words while also returning the
+// token view ending at cursor. Both views are produced by one scan.
+func tokenizeUpperAt(text string, cursor int) (words, beforeCursor []string) {
 	var current strings.Builder
-	for _, r := range text {
+	var before strings.Builder
+	flush := func() {
+		if current.Len() == 0 {
+			return
+		}
+		words = append(words, strings.ToUpper(current.String()))
+		if before.Len() > 0 {
+			beforeCursor = append(beforeCursor, strings.ToUpper(before.String()))
+		}
+		current.Reset()
+		before.Reset()
+	}
+	for offset, r := range text {
 		if isIdentChar(r) {
 			current.WriteRune(r)
-		} else {
-			if current.Len() > 0 {
-				words = append(words, strings.ToUpper(current.String()))
-				current.Reset()
+			if cursor >= 0 && offset < cursor {
+				before.WriteRune(r)
 			}
+			continue
 		}
+		flush()
 	}
-	if current.Len() > 0 {
-		words = append(words, strings.ToUpper(current.String()))
-	}
+	flush()
+	return words, beforeCursor
+}
+
+// tokenizeUpper splits text into uppercased words, handling non-identifier chars.
+func tokenizeUpper(text string) []string {
+	words, _ := tokenizeUpperAt(text, -1)
 	return words
 }
 
