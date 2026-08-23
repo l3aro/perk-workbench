@@ -148,10 +148,33 @@ func (b Keybindings) resolve(stroke string, scopes []scope) (string, bool) {
 	return "", false
 }
 
+// PreparedKeyStroke is the shared immutable key representation used by
+// allocation-free dispatch.
+type PreparedKeyStroke = uikit.PreparedKeyStroke
+
+// Prepare snapshots a key press for reuse across all routing layers.
+func (b Keybindings) Prepare(msg tea.KeyPressMsg) PreparedKeyStroke {
+	return uikit.PrepareKeyStroke(msg)
+}
+
 // Match checks whether a key press triggers the given command in the
 // given scope priority order.
 func (b Keybindings) Match(msg tea.KeyPressMsg, id CommandID, scopes []scope) bool {
-	for _, stroke := range keyStrokes(msg) {
+	return b.MatchPrepared(b.Prepare(msg), id, scopes)
+}
+
+// MatchPrepared checks a previously prepared key press without constructing
+// a temporary stroke slice.
+func (b Keybindings) MatchPrepared(key PreparedKeyStroke, id CommandID, scopes []scope) bool {
+	text, keystroke := key.String(), key.Keystroke()
+	for i := range 2 {
+		stroke := text
+		if i == 1 {
+			if keystroke == text {
+				break
+			}
+			stroke = keystroke
+		}
 		for _, s := range scopes {
 			candidates, ok := b.index[s][stroke]
 			if !ok {
@@ -170,7 +193,21 @@ func (b Keybindings) Match(msg tea.KeyPressMsg, id CommandID, scopes []scope) bo
 // ResolveAny finds any command matching a key press in the given scopes.
 // Returns ("", false) if unmatched. Prefer Match for specific commands.
 func (b Keybindings) ResolveAny(msg tea.KeyPressMsg, scopes []scope) (string, bool) {
-	for _, stroke := range keyStrokes(msg) {
+	return b.ResolveAnyPrepared(b.Prepare(msg), scopes)
+}
+
+// ResolveAnyPrepared resolves a previously prepared key press without
+// constructing a temporary stroke slice.
+func (b Keybindings) ResolveAnyPrepared(key PreparedKeyStroke, scopes []scope) (string, bool) {
+	text, keystroke := key.String(), key.Keystroke()
+	for i := range 2 {
+		stroke := text
+		if i == 1 {
+			if keystroke == text {
+				break
+			}
+			stroke = keystroke
+		}
 		for _, s := range scopes {
 			candidates, ok := b.index[s][stroke]
 			if !ok || len(candidates) == 0 {
