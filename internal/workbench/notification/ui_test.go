@@ -231,22 +231,38 @@ func TestHistory_cellTravelAndViewer(t *testing.T) {
 		t.Fatalf("selectedCol after h = %d, want 0", h.selectedCol)
 	}
 
-	// v opens the viewer with the untruncated description; Escape closes it.
-	h.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
-	h.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
+	// v views the whole selected entry — every field, not just the cell
+	// under the cursor; Escape closes it.
+	h.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	h.handleKey(tea.KeyPressMsg{Code: 'l', Text: "l"})
 	h.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	if h.viewer == nil {
 		t.Fatal("v did not open the viewer")
 	}
-	if got := h.viewer.Column; got != "Description" {
-		t.Fatalf("viewer column = %q, want Description", got)
+	if got := h.viewer.Column; got != "Notification" {
+		t.Fatalf("viewer column = %q, want Notification", got)
+	}
+	selected, _ := h.selected()
+	view := ansi.Strip(render(m))
+	for _, want := range []string{
+		"Time:",
+		selected.CreatedAt.Format("2006-01-02 15:04:05"),
+		"Title:",
+		strings.TrimSpace(selected.Title),
+		"Description:",
+		"short",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("row viewer = %q, want it to show the whole entry including %q", view, want)
+		}
 	}
 	h.handleKey(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if h.viewer != nil {
 		t.Fatal("escape did not close the viewer")
 	}
-	// A key press over the open viewer scrolls it, not the table.
+	// A key press over the open viewer scrolls it, not the table. Reopen
+	// on the long entry so the content overflows the viewport.
+	h.handleKey(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	h.handleKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
 	before := h.viewer.Viewport.YOffset()
 	h.handleKey(tea.KeyPressMsg{Code: 'j', Text: "j"})
@@ -291,16 +307,16 @@ func TestHistory_sortCyclesAndHeaderClick(t *testing.T) {
 	// A header click on the Title column sorts by title ascending; the
 	// selected column follows the clicked column.
 	columns := h.table.Columns()
-	titleStart := 2 + (columns[0].Width + 2*uikit.SpaceCompact) + (columns[1].Width + 2*uikit.SpaceCompact)
+	titleStart := 2 + (columns[0].Width + 2*uikit.SpaceCompact)
 	m, _, _ = m.Update(tea.MouseClickMsg{X: titleStart + 2, Y: 6, Button: tea.MouseLeft}, testLayout, nil)
 	h = m.History
-	if h.sortCol != 2 || h.sortDesc || h.selectedCol != 2 || h.filtered[0].ID != 2 {
-		t.Fatalf("after header click: sort = col %d desc %t selected %d first %d, want Title ascending, selected col 2, first id 2", h.sortCol, h.sortDesc, h.selectedCol, h.filtered[0].ID)
+	if h.sortCol != 1 || h.sortDesc || h.selectedCol != 1 || h.filtered[0].ID != 2 {
+		t.Fatalf("after header click: sort = col %d desc %t selected %d first %d, want Title ascending, selected col 1, first id 2", h.sortCol, h.sortDesc, h.selectedCol, h.filtered[0].ID)
 	}
 	// Clicking the same header again descends.
 	m, _, _ = m.Update(tea.MouseClickMsg{X: titleStart + 2, Y: 6, Button: tea.MouseLeft}, testLayout, nil)
 	h = m.History
-	if h.sortCol != 2 || !h.sortDesc || h.filtered[0].ID != 3 {
+	if h.sortCol != 1 || !h.sortDesc || h.filtered[0].ID != 3 {
 		t.Fatalf("after second header click: sort = col %d desc %t, first = %d, want Title descending with id 3", h.sortCol, h.sortDesc, h.filtered[0].ID)
 	}
 	// A third s restores the default entry order, not the Title-desc
@@ -393,43 +409,52 @@ func TestHistory_copyCellRequestsClipboard(t *testing.T) {
 		t.Fatalf("copy event = %#v, want the raw Description cell", event)
 	}
 
-	// Time and Level cells copy too.
+	// Time and Title cells copy too.
 	h.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	h.handleKey(tea.KeyPressMsg{Code: 'h', Text: "h"})
 	if handled, event := h.handleKey(tea.KeyPressMsg{Code: 'y', Text: "y"}); !handled {
-		t.Fatal("y on the Level cell was not handled")
+		t.Fatal("y on the Title cell was not handled")
 	} else if _, ok := event.(uikit.ClipboardRequested); !ok {
-		t.Fatalf("Level copy event = %#v, want a clipboard request", event)
+		t.Fatalf("Title copy event = %#v, want a clipboard request", event)
 	}
 }
 
 func TestHistory_filterSearchesAllColumns(t *testing.T) {
 	m := New()
+	base := time.Now()
 	m.SetEntries([]Entry{
-		{ID: 3, CreatedAt: time.Now(), Title: title, Description: "row updated", Level: StoredLogLevel(log.LevelError)},
-		{ID: 2, CreatedAt: time.Now(), Title: title, Description: "column deleted"},
-		{ID: 1, CreatedAt: time.Now(), Title: title, Description: "ready: chinook"},
+		{ID: 3, CreatedAt: base, Title: title, Description: "row updated"},
+		{ID: 2, CreatedAt: base.Add(-time.Minute), Title: "alpha", Description: "column deleted"},
+		{ID: 1, CreatedAt: base.Add(-2 * time.Minute), Title: "ready", Description: "chinook"},
 	})
 	m.OpenHistory(0, testLayout.Width, testLayout.Height)
 	h := m.History
 
+	// Focus the filter once; later phases reset its value while it stays
+	// focused, so no stray "/" lands in the query.
 	h.handleKey(tea.KeyPressMsg{Code: '/', Text: "/"})
-	h.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	if len(h.filtered) != 1 || h.filtered[0].ID != 3 {
-		t.Fatalf("filtered = %#v, want only the error entry", h.filtered)
+	typeFilter := func(query string) {
+		h.filter.SetValue("")
+		h.applyFilter()
+		for _, key := range query {
+			h.handleKey(tea.KeyPressMsg{Code: key, Text: string(key)})
+		}
 	}
-	// The level column is searchable: "error" matches the same entry.
-	h.filter.SetValue("")
-	h.applyFilter()
-	h.handleKey(tea.KeyPressMsg{Code: 'e', Text: "e"})
-	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	h.handleKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
-	h.handleKey(tea.KeyPressMsg{Code: 'r', Text: "r"})
-	if len(h.filtered) != 1 || h.filtered[0].ID != 3 {
-		t.Fatalf("level search filtered = %#v, want only the error entry", h.filtered)
+
+	// The description column is searchable.
+	typeFilter("deleted")
+	if len(h.filtered) != 1 || h.filtered[0].ID != 2 {
+		t.Fatalf("description filter = %#v, want only id 2", h.filtered)
+	}
+	// The title column is searchable.
+	typeFilter("read")
+	if len(h.filtered) != 1 || h.filtered[0].ID != 1 {
+		t.Fatalf("title filter = %#v, want only id 1", h.filtered)
+	}
+	// The time column is searchable.
+	typeFilter(base.Add(-2 * time.Minute).Format("15:04"))
+	if len(h.filtered) != 1 || h.filtered[0].ID != 1 {
+		t.Fatalf("time filter = %#v, want only id 1", h.filtered)
 	}
 }
 
@@ -488,21 +513,31 @@ func TestPopup_logEntryRendersLevelTitleIcon(t *testing.T) {
 	}
 }
 
-func TestPopup_statusEntriesStayNeutral(t *testing.T) {
-	m, _, _ := New().Show(StatusEntry("row updated"), false, time.Minute)
-
+func TestPopup_statusEntriesCarryLevels(t *testing.T) {
+	// Routine query lifecycle transitions stay quiet at Debug.
+	m, _, _ := New().Show(StatusEntry("running query"), false, time.Minute)
 	popup := m.Popup
 	if popup == nil {
 		t.Fatal("popup not shown after Show")
 	}
-	if popup.Level != levelNone {
-		t.Fatalf("status popup level = %d, want %d", popup.Level, levelNone)
+	if popup.Level != StoredLogLevel(log.LevelDebug) {
+		t.Fatalf("lifecycle status level = %d, want %d", popup.Level, StoredLogLevel(log.LevelDebug))
 	}
-	if _, ok := logLevelOf(popup.Level); ok {
-		t.Fatal("status popup must not resolve to a log level")
+	if got := levelColor(popup.Level); got != uikit.ColorMuted {
+		t.Fatalf("lifecycle status color = %q, want %q", got, uikit.ColorMuted)
 	}
-	if got := levelColor(popup.Level); got != uikit.ColorSecondary {
-		t.Fatalf("status popup color = %q, want neutral %q", got, uikit.ColorSecondary)
+
+	// Every other status is a user-visible action captured at Info.
+	m, _, _ = New().Show(StatusEntry("row updated"), false, time.Minute)
+	popup = m.Popup
+	if popup == nil {
+		t.Fatal("popup not shown after Show")
+	}
+	if level, ok := logLevelOf(popup.Level); !ok || level != log.LevelInfo {
+		t.Fatalf("action status level = %d (%v), want Info", popup.Level, level)
+	}
+	if got := levelColor(popup.Level); got != uikit.ColorPrimary {
+		t.Fatalf("action status color = %q, want %q", got, uikit.ColorPrimary)
 	}
 }
 
@@ -520,8 +555,10 @@ func TestBorderColor_matchesLevel(t *testing.T) {
 			t.Fatalf("border color for %s = %q, want %q", tc.level, got, tc.want)
 		}
 	}
-	if got := borderColor(levelNone); got != uikit.ColorBorder {
-		t.Fatalf("border color for status = %q, want %q", got, uikit.ColorBorder)
+	// Level 0 only comes from rows persisted before leveled captures;
+	// they keep the neutral border.
+	if got := borderColor(0); got != uikit.ColorBorder {
+		t.Fatalf("border color for legacy unscoped row = %q, want %q", got, uikit.ColorBorder)
 	}
 }
 
@@ -559,7 +596,9 @@ func TestPopup_borderMatchesLevelColor(t *testing.T) {
 	}
 }
 
-func TestPopup_statusBorderStaysNeutral(t *testing.T) {
+func TestPopup_statusBorderMatchesSeverity(t *testing.T) {
+	// Status captures always carry a severity now: "row updated" is an
+	// action, so the popup border uses the Info color.
 	m, _, _ := New().Show(StatusEntry("row updated"), false, time.Minute)
 
 	bounds, ok := m.PopupBounds(testLayout)
@@ -567,7 +606,7 @@ func TestPopup_statusBorderStaysNeutral(t *testing.T) {
 		t.Fatal("no popup bounds")
 	}
 	line := strings.Split(render(m), "\n")[bounds.Min.Y]
-	if got, want := lastRGB(line), rgbOf(uikit.ColorBorder); got != want {
+	if got, want := lastRGB(line), rgbOf(uikit.ColorPrimary); got != want {
 		t.Fatalf("status popup top border color = %s, want %s (line %q)", got, want, line)
 	}
 }

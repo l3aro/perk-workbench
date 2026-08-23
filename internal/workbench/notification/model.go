@@ -2,6 +2,7 @@ package notification
 
 import (
 	"image"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,18 +15,19 @@ import (
 const (
 	// title is the fixed title of every captured status.
 	title = "Notification"
-	// levelNone marks an entry that is not a logged event (a status
-	// message). Positive level values are log.Level + 1, matching the
-	// persisted column so older rows keep the neutral appearance.
-	levelNone = 0
 )
 
 // StoredLogLevel converts a log level to the persisted notification level.
 func StoredLogLevel(level log.Level) int { return int(level) + 1 }
 
 // logLevelOf resolves the log level of a stored notification level, if any.
+// Debug is the lowest supported severity, so stored levels run from
+// StoredLogLevel(LevelDebug) through StoredLogLevel(LevelError); anything
+// outside that band resolves as Info without severity. The guard also keeps
+// rows persisted before leveled captures (stored as 0) rendering
+// defensively instead of breaking the overlays.
 func logLevelOf(level int) (log.Level, bool) {
-	if level <= levelNone || level > int(log.LevelError)+1 {
+	if level < StoredLogLevel(log.LevelDebug) || level > StoredLogLevel(log.LevelError) {
 		return log.LevelInfo, false
 	}
 	return log.Level(level - 1), true
@@ -106,11 +108,30 @@ func iconIndent(level int) int {
 }
 
 // StatusEntry builds the captured-status entry for one status transition.
+// The entry always carries a real severity: routine query lifecycle
+// transitions capture at Debug, every other status captures at Info, so
+// history never stores the neutral level 0 again. (Rows persisted before
+// leveled captures keep level 0 and render neutrally via logLevelOf.)
 func StatusEntry(text string) Entry {
 	return Entry{
 		CreatedAt:   time.Now(),
 		Title:       title,
 		Description: text,
+		Level:       StoredLogLevel(statusLogLevel(text)),
+	}
+}
+
+// statusLogLevel classifies one status transition into its capture
+// severity. The engine-driven query lifecycle — "running query",
+// "canceling query" — is routine churn and stays quiet (Debug). Statuses
+// recording a user-visible action or outcome ("copied to clipboard",
+// "theme: …", row writes, connection changes) surface at Info.
+func statusLogLevel(text string) log.Level {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "running query", "canceling query":
+		return log.LevelDebug
+	default:
+		return log.LevelInfo
 	}
 }
 

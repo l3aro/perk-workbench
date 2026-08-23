@@ -15,12 +15,13 @@ import (
 
 // columnTitles are the modal table's columns in display order; entryRow
 // and the sort column index both rely on this order.
-var columnTitles = []string{"Time", "Level", "Title", "Description"}
+var columnTitles = []string{"Time", "Title", "Description"}
 
 // history is a full-width modal table of retained notifications. It
 // mirrors the Browse pane's table: cell travel with h/j/k/l and the arrow
 // keys, y copies the selected cell, / filters, s (or a header click)
-// sorts, n/p page, and v opens the cell in the viewer overlay.
+// sorts, n/p page, and v views the whole selected entry (time, level,
+// title, description) in the viewer overlay.
 type history struct {
 	entries       []Entry // all retained entries, newest first
 	filtered      []Entry // entries after filter + sort
@@ -122,28 +123,18 @@ func (h *history) syncPage() {
 	h.table.SetHeight(h.pageSize)
 }
 
-// entryRow renders one entry as a table row: time, level, title,
-// description. Copy and view use the raw entry, not these display cells.
+// entryRow renders one entry as a table row: time, title, description.
+// Copy and view use the raw entry, not these display cells.
 func (h *history) entryRow(entry Entry) table.Row {
 	return table.Row{
 		entry.CreatedAt.Format("2006-01-02 15:04:05"),
-		h.levelText(entry),
 		entry.Title,
 		entry.Description,
 	}
 }
 
-// levelText returns the display text of an entry's level column: the
-// severity title for logged events, empty for plain status messages.
-func (h *history) levelText(entry Entry) string {
-	if level, ok := logLevelOf(entry.Level); ok {
-		return level.Title()
-	}
-	return ""
-}
-
 // applyFilter re-filters by the filter input (case-insensitive substring
-// match across time, level, title, and description), re-sorts, and resets
+// match across time, title, and description), re-sorts, and resets
 // to the first page.
 func (h *history) applyFilter() {
 	h.refilter()
@@ -153,7 +144,7 @@ func (h *history) applyFilter() {
 }
 
 // refilter rebuilds filtered from entries under the current filter query
-// (case-insensitive substring match across time, level, title, and
+// (case-insensitive substring match across time, title, and
 // description), then applies the active sort. Called whenever the filter
 // or the sort state changes, so removing a sort restores the default
 // newest-first order instead of keeping the last sorted order.
@@ -170,7 +161,7 @@ func (h *history) refilter() {
 
 // searchText joins every searchable field of one entry.
 func (h *history) searchText(entry Entry) string {
-	return entry.CreatedAt.Format("2006-01-02 15:04:05") + " " + h.levelText(entry) + " " + entry.Title + " " + entry.Description
+	return entry.CreatedAt.Format("2006-01-02 15:04:05") + " " + entry.Title + " " + entry.Description
 }
 
 // sortFiltered applies the current sort to filtered. The default order
@@ -186,8 +177,6 @@ func (h *history) sortFiltered() {
 		case 0:
 			cmp = a.CreatedAt.Compare(b.CreatedAt)
 		case 1:
-			cmp = strings.Compare(strings.ToLower(h.levelText(a)), strings.ToLower(h.levelText(b)))
-		case 2:
 			cmp = strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
 		default:
 			cmp = strings.Compare(strings.ToLower(a.Description), strings.ToLower(b.Description))
@@ -242,7 +231,7 @@ func (h *history) selected() (Entry, bool) {
 }
 
 // cellValue returns the raw value of one table cell: the formatted time,
-// level title, notification title, or the full description.
+// notification title, or the full description.
 func (h *history) cellValue(row, col int) string {
 	if row < 0 || row >= len(h.pageEntries) {
 		return ""
@@ -252,8 +241,6 @@ func (h *history) cellValue(row, col int) string {
 	case 0:
 		return entry.CreatedAt.Format("2006-01-02 15:04:05")
 	case 1:
-		return h.levelText(entry)
-	case 2:
 		return entry.Title
 	default:
 		return entry.Description
@@ -269,15 +256,30 @@ func (h *history) copyCell() (string, bool) {
 	return h.cellValue(row, h.selectedCol), true
 }
 
-// openViewer opens the selected cell in the viewer overlay, showing the
-// untruncated value with wrap toggling.
+// openViewer opens the selected entry in the viewer overlay. Viewing is
+// row-level: every field of the entry is shown, where y still copies just
+// the single selected cell.
 func (h *history) openViewer() {
 	row := h.table.Cursor()
-	if row < 0 || row >= len(h.pageEntries) || h.selectedCol < 0 || h.selectedCol >= len(columnTitles) {
+	if row < 0 || row >= len(h.pageEntries) {
 		return
 	}
-	col := h.selectedCol
-	h.viewer = uikit.NewCellViewer(columnTitles[col], h.cellValue(row, col), max(h.width-8, 1), max(h.height-10, 1))
+	entry := h.pageEntries[row]
+	h.viewer = uikit.NewCellViewer("Notification", h.entryText(entry), max(h.width-8, 1), max(h.height-10, 1))
+}
+
+// entryText renders one whole entry for the row-level viewer: labeled
+// time, level, and title above the full untruncated description. The
+// layout mirrors the popup-click detail card.
+func (h *history) entryText(entry Entry) string {
+	var b strings.Builder
+	b.WriteString("Time:\n  " + entry.CreatedAt.Format("2006-01-02 15:04:05"))
+	if level, ok := logLevelOf(entry.Level); ok {
+		b.WriteString("\n\nLevel:\n  " + level.Title())
+	}
+	b.WriteString("\n\nTitle:\n  " + entry.Title)
+	b.WriteString("\n\nDescription:\n  " + entry.Description)
+	return b.String()
 }
 
 // nextPage advances to the next page, keeping the cursor row.
