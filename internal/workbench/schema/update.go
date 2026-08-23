@@ -16,7 +16,13 @@ import (
 // navigation and expansion/collapse keys, the add/rename/delete-table keys,
 // and the list passthrough. The root routes focusSchema messages here and
 // applies the returned events (TableSelected, ReconnectRequested, ...).
-func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, snapshot Snapshot) (Model, Event, tea.Cmd) {
+func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, snapshot Snapshot, preparedArg ...uikit.PreparedKeyStroke) (Model, Event, tea.Cmd) {
+	prepared := uikit.PreparedKeyStroke{}
+	if len(preparedArg) > 0 {
+		prepared = preparedArg[0]
+	} else if keyPress, ok := msg.(tea.KeyPressMsg); ok {
+		prepared = uikit.PrepareKeyStroke(keyPress)
+	}
 	if _, ok := msg.(TreeAnimTickMsg); ok {
 		model, cmd := m.UpdateTreeAnim(msg.(TreeAnimTickMsg), snapshot)
 		return model, nil, cmd
@@ -38,39 +44,39 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, s
 			return m, nil, filterCommand
 		}
 		switch {
-		case keys.Match(keyPress, "schema.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			m.Filter.Focus()
 			return m, nil, nil
-		case keys.Match(keyPress, "schema.context_menu", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.context_menu", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			return m.contextMenuKey(layout, snapshot)
-		case keys.Match(keyPress, "schema.add_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.add_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			if item, ok := m.List.SelectedItem().(Item); ok {
 				if target, ok := m.AddTarget(item, snapshot); ok {
 					return m, TableFormRequested{Kind: TableFormTable, Database: target}, nil
 				}
 			}
 			return m, nil, nil
-		case keys.Match(keyPress, "schema.create_database", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.create_database", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			if m.SupportsCreateDatabase(snapshot) {
 				return m, TableFormRequested{Kind: TableFormDatabase}, nil
 			}
 			return m, nil, nil
-		case keys.Match(keyPress, "schema.rename_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.rename_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			if item, ok := m.List.SelectedItem().(Item); ok && !item.Root && item.Kind == "table" {
 				return m, TableFormRequested{Kind: TableFormTable, Database: item.Database, Table: item.Table}, nil
 			}
 			return m, nil, nil
-		case keys.Match(keyPress, "schema.delete_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.delete_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			if item, ok := m.List.SelectedItem().(Item); ok && !item.Root && item.Kind == "table" {
 				return m, DeleteTableRequested{Database: item.Database, Table: item.Table}, nil
 			}
 			return m, nil, nil
-		case keys.Match(keyPress, "schema.select_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.select_table", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			return m.SchemaSelect(snapshot)
-		case keys.Match(keyPress, "schema.expand", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.expand", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			next, cmd := m.SchemaExpand(snapshot)
 			return next, nil, cmd
-		case keys.Match(keyPress, "schema.collapse", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+		case uikit.MatchPrepared(keys, prepared, "schema.collapse", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 			next, cmd := m.SchemaCollapse(snapshot)
 			return next, nil, cmd
 		}
@@ -93,7 +99,13 @@ func (m Model) Update(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, s
 // delete actions emit requests the root applies through its form-mode and
 // overlay wrappers), the table navigation, and the table passthrough.
 // offset is the root-owned horizontal pan offset of the active tab's table.
-func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, tab core.Tab, snapshot Snapshot, offset *int) (Model, Event, tea.Cmd) {
+func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyMatcher, tab core.Tab, snapshot Snapshot, offset *int, preparedArg ...uikit.PreparedKeyStroke) (Model, Event, tea.Cmd) {
+	prepared := uikit.PreparedKeyStroke{}
+	if len(preparedArg) > 0 {
+		prepared = preparedArg[0]
+	} else if keyPress, ok := msg.(tea.KeyPressMsg); ok {
+		prepared = uikit.PrepareKeyStroke(keyPress)
+	}
 	var targetTable *table.Model
 	guarded := false
 	switch tab {
@@ -102,18 +114,18 @@ func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyM
 			return m, nil, nil
 		}
 		targetTable = &m.Structure.Table
-		if keyPress, ok := msg.(tea.KeyPressMsg); ok {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
 			switch {
-			case keys.Match(keyPress, "structure.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "structure.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, nil, m.OpenTableFilter(tab)
-			case keys.Match(keyPress, "structure.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "structure.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.ResetTableFilter(tab)
 				return m, nil, nil
-			case keys.Match(keyPress, "structure.edit", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "structure.edit", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, ColumnFormRequested{}, nil
-			case keys.Match(keyPress, "structure.add", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "structure.add", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, NewColumnFormRequested{}, nil
-			case keys.Match(keyPress, "structure.delete", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "structure.delete", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				if column := m.SelectedColumn(); column != nil {
 					return m, ColumnDeleteRequested{Name: column.Name}, nil
 				}
@@ -125,33 +137,33 @@ func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyM
 			return m, nil, nil
 		}
 		targetTable = &m.Structure.Indexes
-		if keyPress, ok := msg.(tea.KeyPressMsg); ok {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
 			switch {
-			case keys.Match(keyPress, "indexes.toggle_diagram", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "indexes.toggle_diagram", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.IndexDiagram = !m.Structure.IndexDiagram
 				if m.Structure.IndexDiagram {
 					m.Structure.RelationshipDiagram = false
 				}
 				return m, nil, nil
-			case m.Structure.IndexDiagram && keys.Match(keyPress, "diagram.depth_up", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case m.Structure.IndexDiagram && uikit.MatchPrepared(keys, prepared, "diagram.depth_up", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.DiagramDepth = min(m.Structure.DiagramDepth+1, MaxDiagramDepth)
 				return m, nil, nil
-			case m.Structure.IndexDiagram && keys.Match(keyPress, "diagram.depth_down", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case m.Structure.IndexDiagram && uikit.MatchPrepared(keys, prepared, "diagram.depth_down", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.DiagramDepth = max(m.Structure.DiagramDepth-1, 1)
 				return m, nil, nil
-			case keys.Match(keyPress, "indexes.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "indexes.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, nil, m.OpenTableFilter(tab)
-			case keys.Match(keyPress, "indexes.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "indexes.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.ResetTableFilter(tab)
 				return m, nil, nil
-			case keys.Match(keyPress, "indexes.create", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "indexes.create", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, IndexFormRequested{}, nil
-			case keys.Match(keyPress, "indexes.edit", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "indexes.edit", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				if m.SelectedIndex() != nil {
 					return m, IndexFormRequested{Selected: true}, nil
 				}
 				return m, nil, nil
-			case keys.Match(keyPress, "indexes.delete", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "indexes.delete", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				if index := m.SelectedIndex(); index != nil {
 					return m, IndexDeleteRequested{Name: index.Name}, nil
 				}
@@ -163,33 +175,33 @@ func (m Model) UpdateWorkspace(msg tea.Msg, layout uikit.Layout, keys uikit.KeyM
 			return m, nil, nil
 		}
 		targetTable = &m.Structure.ForeignKeys
-		if keyPress, ok := msg.(tea.KeyPressMsg); ok {
+		if _, ok := msg.(tea.KeyPressMsg); ok {
 			switch {
-			case keys.Match(keyPress, "foreign_keys.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "foreign_keys.filter", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, nil, m.OpenTableFilter(tab)
-			case keys.Match(keyPress, "foreign_keys.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "foreign_keys.reset", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.ResetTableFilter(tab)
 				return m, nil, nil
-			case keys.Match(keyPress, "foreign_keys.toggle_diagram", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "foreign_keys.toggle_diagram", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.RelationshipDiagram = !m.Structure.RelationshipDiagram
 				if m.Structure.RelationshipDiagram {
 					m.Structure.IndexDiagram = false
 				}
 				return m, nil, nil
-			case m.Structure.RelationshipDiagram && keys.Match(keyPress, "diagram.depth_up", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case m.Structure.RelationshipDiagram && uikit.MatchPrepared(keys, prepared, "diagram.depth_up", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.DiagramDepth = min(m.Structure.DiagramDepth+1, MaxDiagramDepth)
 				return m, nil, nil
-			case m.Structure.RelationshipDiagram && keys.Match(keyPress, "diagram.depth_down", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case m.Structure.RelationshipDiagram && uikit.MatchPrepared(keys, prepared, "diagram.depth_down", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				m.Structure.DiagramDepth = max(m.Structure.DiagramDepth-1, 1)
 				return m, nil, nil
-			case keys.Match(keyPress, "foreign_keys.create", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "foreign_keys.create", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				return m, ForeignKeyFormRequested{}, nil
-			case keys.Match(keyPress, "foreign_keys.edit", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "foreign_keys.edit", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				if m.SelectedForeignKey() != nil {
 					return m, ForeignKeyFormRequested{Selected: true}, nil
 				}
 				return m, nil, nil
-			case keys.Match(keyPress, "foreign_keys.delete", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
+			case uikit.MatchPrepared(keys, prepared, "foreign_keys.delete", []uikit.Scope{uikit.ScopeView, uikit.ScopeGlobal}):
 				if foreignKey := m.SelectedForeignKey(); foreignKey != nil {
 					return m, ForeignKeyDeleteRequested{ID: foreignKey.ID}, nil
 				}

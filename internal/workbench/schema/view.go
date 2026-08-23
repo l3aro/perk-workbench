@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
@@ -60,7 +59,8 @@ func (m *Model) ResizeTables(width, height int) {
 // any open schema forms after the root switches the palette. The root calls
 // it from its theme apply path, matching the pre-refactor list re-theming.
 func (m *Model) RefreshTheme() {
-	m.List.SetDelegate(schemaItemDelegate{})
+	resetSchemaThemeStyles()
+	m.List.SetDelegate(newSchemaItemDelegate())
 	applyListTheme(&m.List)
 	for _, form := range []*huh.Form{
 		m.Structure.ColumnForm.Form,
@@ -79,26 +79,7 @@ func (m Model) FilterRow(layout uikit.Layout) string {
 	if !m.FilterShown(layout) {
 		return ""
 	}
-	return filterInputRow(m.Filter, max(layout.ViewportWidth-4, 0))
-}
-
-// filterInputRow renders a filter input in a bordered box with a
-// magnifying-glass suffix, sized to the given width. The border turns
-// primary while the input is focused. The input is truncated because its
-// placeholder view renders one cell wider than Width.
-func filterInputRow(input textinput.Model, width int) string {
-	icon := lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorMuted)).Render("🔍")
-	borderColor := uikit.ColorBorder
-	if input.Focused() {
-		borderColor = uikit.ColorPrimary
-	}
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(borderColor)).
-		Padding(0, 1).
-		Width(max(width-2, 0))
-	// Box content area: width-2 (box) - 2 (borders) - 2 (padding) - 2 (icon).
-	return box.Render(ansi.Truncate(input.View(), max(width-8, 0), "") + icon)
+	return uikit.FilterInputRow(m.Filter, max(layout.ViewportWidth-4, 0))
 }
 
 // StructureView renders the structure tab: the column form when active,
@@ -810,10 +791,6 @@ func (m Model) relationshipEdges(snapshot Snapshot) (incoming, outgoing []relati
 	return incoming, outgoing
 }
 
-// hubColumnStyle highlights the hub's key inside a mapping so the main
-// table's column is identifiable at a glance.
-var hubColumnStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(uikit.ColorPrimary))
-
 // relationshipPairLabel renders one foreign key as "column → column"
 // pairs. The hub's column is qualified with the hub's bare table name
 // (the hub card carries the full qualified name) and highlighted;
@@ -881,7 +858,7 @@ func (m Model) relationshipCenterCard(connector bool, snapshot Snapshot) []strin
 // border so the outgoing connector can attach without patching styled output.
 func boxCard(title string, rows []string, selected bool, minWidth int, connector bool) []string {
 	if selected {
-		title = uikit.ActionSelectedStyle.Render(title)
+		title = diagramAccentStyle.Render(title)
 	}
 	titleWidth := ansi.StringWidth(title)
 	width := max(minWidth, titleWidth+5)
@@ -901,9 +878,8 @@ func boxCard(title string, rows []string, selected bool, minWidth int, connector
 	bottomLine := string(bottom)
 	lines = append(lines, bottomLine)
 	if selected {
-		border := lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorPrimary))
-		lines[0] = border.Render(lines[0])
-		lines[len(lines)-1] = border.Render(lines[len(lines)-1])
+		lines[0] = diagramBorderStyle.Render(lines[0])
+		lines[len(lines)-1] = diagramBorderStyle.Render(lines[len(lines)-1])
 	}
 	return lines
 }

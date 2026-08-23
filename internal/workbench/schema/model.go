@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
@@ -298,6 +299,38 @@ func (i Item) Description() string { return i.Detail }
 // cannot be typed into the filter input, so glob matching can rely on it to
 // recover the individual database/schema/table/kind names.
 const schemaFilterSeparator = "\x00"
+const schemaFilterPatternCacheSize = 128
+
+type schemaFilterPatternCache struct {
+	mu       sync.Mutex
+	patterns map[string]*regexp.Regexp
+	order    []string
+}
+
+var wildcardPatternCache = schemaFilterPatternCache{
+	patterns: make(map[string]*regexp.Regexp, schemaFilterPatternCacheSize),
+	order:    make([]string, 0, schemaFilterPatternCacheSize),
+}
+
+func (c *schemaFilterPatternCache) get(term string) (*regexp.Regexp, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if pattern, ok := c.patterns[term]; ok {
+		return pattern, nil
+	}
+	pattern, err := regexp.Compile("(?i)" + sharedsql.GlobToRegex(term))
+	if err != nil {
+		return nil, err
+	}
+	if len(c.order) == schemaFilterPatternCacheSize {
+		delete(c.patterns, c.order[0])
+		c.order = c.order[1:]
+	}
+	c.patterns[term] = pattern
+	c.order = append(c.order, term)
+	return pattern, nil
+}
 
 // ListFilter is the schema sidebar's list filter; exported for the root
 // tests.
@@ -319,7 +352,14 @@ func schemaListFilter(term string, targets []string) []list.Rank {
 		}
 		return list.DefaultFilter(term, plain)
 	}
-	pattern := regexp.MustCompile("(?i)" + sharedsql.GlobToRegex(term))
+	pattern, err := wildcardPatternCache.get(term)
+	if err != nil {
+		plain := make([]string, len(targets))
+		for index, target := range targets {
+			plain[index] = strings.TrimSpace(strings.ReplaceAll(target, schemaFilterSeparator, " "))
+		}
+		return list.DefaultFilter(term, plain)
+	}
 	ranks := make([]list.Rank, 0, len(targets))
 	for index, target := range targets {
 		fields := strings.Split(target, schemaFilterSeparator)
@@ -917,7 +957,54 @@ func (m Model) HandleSchemaRightClick(absX, absY int, layout uikit.Layout, snaps
 // ItemDelegate renders the schema tree rows; exported for the root tests.
 type ItemDelegate = schemaItemDelegate
 
-type schemaItemDelegate struct{}
+type schemaItemDelegate struct {
+	idle         lipgloss.Style
+	open         lipgloss.Style
+	selected     lipgloss.Style
+	idleBold     lipgloss.Style
+	openBold     lipgloss.Style
+	selectedBold lipgloss.Style
+}
+
+var (
+	schemaIdleRowStyle     lipgloss.Style
+	schemaOpenRowStyle     lipgloss.Style
+	schemaSelectedRowStyle lipgloss.Style
+	hubColumnStyle         lipgloss.Style
+	diagramAccentStyle     lipgloss.Style
+	diagramBorderStyle     lipgloss.Style
+)
+
+func resetSchemaThemeStyles() {
+	schemaIdleRowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorMuted))
+	schemaOpenRowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorSecondary))
+	schemaSelectedRowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorPrimary))
+	hubColumnStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(uikit.ColorPrimary))
+	diagramAccentStyle = uikit.ActionSelectedStyle
+	diagramBorderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(uikit.ColorPrimary))
+}
+
+// SetTheme refreshes package-level schema styles after the shared palette
+// changes. It keeps schema delegates created by existing models aligned with
+// the app and uikit theme globals.
+func SetTheme() {
+	resetSchemaThemeStyles()
+}
+
+func init() {
+	resetSchemaThemeStyles()
+}
+
+func newSchemaItemDelegate() schemaItemDelegate {
+	return schemaItemDelegate{
+		idle:         schemaIdleRowStyle,
+		open:         schemaOpenRowStyle,
+		selected:     schemaSelectedRowStyle,
+		idleBold:     schemaIdleRowStyle.Bold(true),
+		openBold:     schemaOpenRowStyle.Bold(true),
+		selectedBold: schemaSelectedRowStyle.Bold(true),
+	}
+}
 
 func (schemaItemDelegate) Height() int                         { return 1 }
 func (schemaItemDelegate) Spacing() int                        { return 0 }
@@ -934,7 +1021,7 @@ func treeMarkers() (database, schema, table string) {
 	return "▣", "▤", "▪"
 }
 
-func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
+func (delegate schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, item list.Item) {
 	schema, ok := item.(Item)
 	if !ok {
 		return
@@ -967,14 +1054,19 @@ func (schemaItemDelegate) Render(writer io.Writer, model list.Model, index int, 
 	if schema.RowCount != nil {
 		label += " (" + AbbreviateCount(*schema.RowCount) + ")"
 	}
-	color := uikit.ColorMuted // idle
+	// Resolve the state style from the reset-time cache on every render.
+	// Delegates can outlive a theme refresh, so using styles captured when
+	// the delegate was constructed would retain the old palette.
+	style := schemaIdleRowStyle
 	if schema.Open {
-		color = uikit.ColorSecondary
+		style = schemaOpenRowStyle
 	}
 	if index == model.Index() {
-		color = uikit.ColorPrimary
+		// Selection has precedence over the open-path marker.  Keep the
+		// selected style cached as well so the complete row follows the
+		// active palette without relying on a stale delegate snapshot.
+		style = schemaSelectedRowStyle
 	}
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 	// The marker renders bold so the icon reads larger than the regular
 	// label; terminal cells are fixed size, so weight is the only scaling
 	// that keeps the layout intact.
@@ -1011,7 +1103,7 @@ func newSchemaList() list.Model {
 	// built-in filter bar and keybinding are unused.
 	model.KeyMap.Filter = key.NewBinding(key.WithDisabled())
 	model.Filter = schemaListFilter
-	model.SetDelegate(schemaItemDelegate{})
+	model.SetDelegate(newSchemaItemDelegate())
 	return model
 }
 
