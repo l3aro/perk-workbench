@@ -6,15 +6,72 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	driver "github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
 )
 
+const (
+	validationCacheCapacity = 128
+	openOperationTimeout    = 10 * time.Second
+)
+
+type validationCacheEntry struct {
+	err error
+}
+
+type validationCache struct {
+	mu      sync.Mutex
+	entries map[string]validationCacheEntry
+	order   []string
+}
+
+func (c *validationCache) lookup(statement string) (error, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.entries[statement]
+	if !ok {
+		return nil, false
+	}
+	return entry.err, true
+}
+
+func (c *validationCache) store(statement string, entry validationCacheEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]validationCacheEntry, validationCacheCapacity)
+	}
+	if _, exists := c.entries[statement]; exists {
+		c.entries[statement] = entry
+		return
+	}
+	c.entries[statement] = entry
+	c.order = append(c.order, statement)
+	if len(c.order) <= validationCacheCapacity {
+		return
+	}
+	delete(c.entries, c.order[0])
+	c.order = c.order[1:]
+}
+
+func (c *validationCache) clear() {
+	c.mu.Lock()
+	c.entries = nil
+	c.order = nil
+	c.mu.Unlock()
+}
+
+func validationCacheable(err error) bool {
+	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
 type Service struct {
-	db   *stdsql.DB
-	info driver.DatabaseInfo
+	db              *stdsql.DB
+	info            driver.DatabaseInfo
+	validationCache validationCache
 }
 
 func Open(ctx context.Context, dsn string) (*Service, error) {
@@ -22,14 +79,26 @@ func Open(ctx context.Context, dsn string) (*Service, error) {
 	if err != nil {
 		return nil, connectionError(fmt.Errorf("opening postgresql database: %w", err))
 	}
-	if err := db.PingContext(ctx); err != nil {
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+
+	pingCtx, cancel := context.WithTimeout(ctx, openOperationTimeout)
+	err = db.PingContext(pingCtx)
+	cancel()
+	if err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return nil, connectionError(fmt.Errorf("pinging postgresql database: %w", errors.Join(err, closeErr)))
 		}
 		return nil, connectionError(fmt.Errorf("pinging postgresql database: %w", err))
 	}
+
+	versionCtx, cancel := context.WithTimeout(ctx, openOperationTimeout)
 	var version string
-	if err := db.QueryRowContext(ctx, "SHOW server_version").Scan(&version); err != nil {
+	err = db.QueryRowContext(versionCtx, "SHOW server_version").Scan(&version)
+	cancel()
+	if err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return nil, connectionError(fmt.Errorf("reading postgresql version: %w", errors.Join(err, closeErr)))
 		}
@@ -187,6 +256,7 @@ func (s *Service) Execute(ctx context.Context, statement string) (result driver.
 			return driver.Result{}, fmt.Errorf("reading affected rows: %w", err)
 		}
 		result.DurationNS = time.Since(started).Nanoseconds()
+		s.validationCache.clear()
 		return result, nil
 	}
 	rows, err := conn.QueryContext(ctx, statement)
@@ -198,6 +268,7 @@ func (s *Service) Execute(ctx context.Context, statement string) (result driver.
 		return driver.Result{}, err
 	}
 	result.DurationNS = time.Since(started).Nanoseconds()
+	s.validationCache.clear()
 	return result, nil
 }
 
@@ -232,14 +303,31 @@ func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (result
 // Validate prepares the statement against the open database without executing
 // it, so syntax and schema errors surface without any side effects.
 func (s *Service) Validate(ctx context.Context, statement string) error {
+	if err := ctx.Err(); err != nil {
+		return validationError(err)
+	}
 	if err := validateStatement(statement); err != nil {
 		return validationError(err)
 	}
+	if cached, ok := s.validationCache.lookup(statement); ok {
+		return cached
+	}
 	prepared, err := s.db.PrepareContext(ctx, statement)
 	if err != nil {
-		return validationError(fmt.Errorf("validating statement: %w", err))
+		wrapped := validationError(fmt.Errorf("validating statement: %w", err))
+		if validationCacheable(err) && ctx.Err() == nil {
+			s.validationCache.store(statement, validationCacheEntry{err: wrapped})
+		}
+		return wrapped
 	}
-	return prepared.Close()
+	closeErr := prepared.Close()
+	if closeErr != nil {
+		return closeErr
+	}
+	if ctx.Err() == nil {
+		s.validationCache.store(statement, validationCacheEntry{})
+	}
+	return nil
 }
 
 func postgresTableParts(table string) (schema, name string) {
@@ -491,6 +579,7 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change driver.C
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing column alteration: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
@@ -512,6 +601,7 @@ func (s *Service) AddColumn(ctx context.Context, table string, col driver.Column
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("adding column: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
@@ -522,6 +612,7 @@ func (s *Service) DropColumn(ctx context.Context, table, name string) error {
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+postgresTableIdentifier(table)+" DROP COLUMN "+quoteIdentifier(name)); err != nil {
 		return fmt.Errorf("dropping column: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 

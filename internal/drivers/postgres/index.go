@@ -103,6 +103,7 @@ func (s *Service) CreateIndex(ctx context.Context, table string, change driver.I
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("creating index: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
@@ -128,6 +129,7 @@ func (s *Service) ReplaceIndex(ctx context.Context, table, previous string, chan
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing index replacement: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
@@ -135,6 +137,7 @@ func (s *Service) DropIndex(ctx context.Context, table, name string) error {
 	if _, err := s.db.ExecContext(ctx, postgresDropIndexStatement(table, name)); err != nil {
 		return fmt.Errorf("dropping index: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 

@@ -164,6 +164,7 @@ func (s *Service) CreateForeignKey(ctx context.Context, table string, change dri
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+postgresTableIdentifier(table)+" ADD "+postgresForeignKeyClause(change)); err != nil {
 		return fmt.Errorf("creating foreign key: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
@@ -185,6 +186,7 @@ func (s *Service) ReplaceForeignKey(ctx context.Context, table, previous string,
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing foreign-key replacement: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
@@ -192,6 +194,7 @@ func (s *Service) DropForeignKey(ctx context.Context, table, previous string) er
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+postgresTableIdentifier(table)+" DROP CONSTRAINT "+quoteIdentifier(previous)); err != nil {
 		return fmt.Errorf("dropping foreign key: %w", err)
 	}
+	s.validationCache.clear()
 	return nil
 }
 
