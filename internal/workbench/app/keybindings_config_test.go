@@ -1,185 +1,82 @@
 package app
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestLoadKeybindings_missing_file_returns_defaults(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nonexistent", "keybindings.json")
-	b, err := LoadKeybindings(path)
+func TestLoadConfig_keybinds_missing_uses_defaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "perk-workbench", "config.json")
+	config, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("LoadKeybindings on missing file: %v", err)
+		t.Fatalf("LoadConfig on missing file: %v", err)
 	}
-	// Should have populated commands (not zero-value).
-	if b.DisplayKey("app.quit") == "" {
-		t.Fatal("missing file loaded empty keybindings")
+	if len(config.Keybinds) != 0 {
+		t.Fatalf("missing keybinds loaded overrides: %#v", config.Keybinds)
 	}
-	// Should have written the default config file.
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Fatal("LoadKeybindings did not create the config file")
-	}
-	contents, err := os.ReadFile(path)
+	b, err := NewKeybindings(config.Keybinds)
 	if err != nil {
-		t.Fatalf("reading generated config: %v", err)
+		t.Fatalf("NewKeybindings without overrides: %v", err)
 	}
-	var config map[string]map[string][]string
-	if err := json.Unmarshal(contents, &config); err != nil {
-		t.Fatalf("parsing generated config: %v", err)
-	}
-	if _, ok := config["query_log"]["cursor_down"]; ok {
-		t.Fatal("generated config includes fixed grid navigation")
-	}
-	if got := config["form"]["edit"]; len(got) != 1 || got[0] != "enter" {
-		t.Fatalf("generated config form.edit = %#v, want [enter]", got)
+	if got := b.DisplayKey("app.quit"); got != "Ctrl+C" {
+		t.Fatalf("DisplayKey(app.quit) = %q, want built-in Ctrl+C", got)
 	}
 }
 
-func TestLoadKeybindings_second_call_success(t *testing.T) {
-	// Regression: first call writes the default config, second call reads it back.
-	// The writer skips palette-only commands (keys: nil), so the file should never
-	// contain null; this test verifies the full round-trip.
-	path := filepath.Join(t.TempDir(), "nonexistent", "keybindings.json")
-	if _, err := LoadKeybindings(path); err != nil {
-		t.Fatalf("first call (create): %v", err)
-	}
-
-	b, err := LoadKeybindings(path)
+func TestLoadConfig_keybinds_null_uses_defaults(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": null}`)
+	config, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("second call (read back): %v", err)
+		t.Fatalf("LoadConfig with null keybinds: %v", err)
 	}
-	if b.DisplayKey("app.quit") == "" {
-		t.Fatal("second call loaded empty keybindings")
+	if len(config.Keybinds) != 0 {
+		t.Fatalf("null keybinds loaded overrides: %#v", config.Keybinds)
+	}
+	b, err := NewKeybindings(config.Keybinds)
+	if err != nil {
+		t.Fatalf("NewKeybindings with null keybinds: %v", err)
+	}
+	if got := b.DisplayKey("app.quit"); got != "Ctrl+C" {
+		t.Fatalf("DisplayKey(app.quit) = %q, want built-in Ctrl+C", got)
 	}
 }
 
-func TestLoadKeybindings_null_nested_value_ignored(t *testing.T) {
-	// Regression: existing config files with null values (e.g. from a palette-only
-	// command written by an older version) must not cause errors.
-	config := `{"ai":{"yolo_writes.toggle":null},"app":{"quit":["x"]}}`
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, err := LoadKeybindings(path)
+func TestLoadConfig_keybinds_flat_overrides(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {"app.quit": ["x"], "focus.schema": ["f1"]}}`)
+	config, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("LoadKeybindings with null nested value: %v", err)
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	b, err := NewKeybindings(config.Keybinds)
+	if err != nil {
+		t.Fatalf("NewKeybindings: %v", err)
 	}
 	if got := b.DisplayKey("app.quit"); got != "x" {
 		t.Fatalf("app.quit key = %q, want x", got)
 	}
-}
-
-func TestLoadKeybindings_empty_config_returns_defaults(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
+	if got := b.DisplayKey("focus.schema"); got != "F1" {
+		t.Fatalf("focus.schema key = %q, want F1", got)
 	}
-	b, err := LoadKeybindings(path)
-	if err != nil {
-		t.Fatalf("LoadKeybindings on empty config: %v", err)
-	}
-	if b.DisplayKey("app.quit") != "Ctrl+C" {
-		t.Fatalf("empty config should use defaults, got DisplayKey(app.quit) = %q", b.DisplayKey("app.quit"))
+	// Non-overridden commands keep their defaults.
+	if got := b.DisplayKey("query.cancel"); got != "Esc" {
+		t.Fatalf("query.cancel key = %q, want default Esc", got)
 	}
 }
 
-func TestLoadKeybindings_valid_overrides(t *testing.T) {
-	config := `{"app.quit": ["x"], "focus.schema": ["f1"]}`
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, err := LoadKeybindings(path)
-	if err != nil {
-		t.Fatalf("LoadKeybindings: %v", err)
-	}
-	if b.DisplayKey("app.quit") != "x" {
-		t.Fatalf("app.quit key = %q, want x", b.DisplayKey("app.quit"))
-	}
-	if b.DisplayKey("focus.schema") != "F1" {
-		t.Fatalf("focus.schema key = %q, want F1", b.DisplayKey("focus.schema"))
-	}
-}
-
-func TestLoadKeybindings_disable_command(t *testing.T) {
-	config := `{"app.quit": []}`
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, err := LoadKeybindings(path)
-	if err != nil {
-		t.Fatalf("LoadKeybindings: %v", err)
-	}
-	if b.DisplayKey("app.quit") != "" {
-		t.Fatalf("disabled app.quit should have no display key, got %q", b.DisplayKey("app.quit"))
-	}
-}
-
-func TestLoadKeybindings_unknown_command(t *testing.T) {
-	config := `{"does.not.exist": ["x"]}`
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := LoadKeybindings(path)
-	if err == nil {
-		t.Fatal("expected error for unknown command, got nil")
-	}
-}
-
-func TestLoadKeybindings_ignoresRemovedSavedQueryBindings(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(`{"query":{"save":["ctrl+k"],"saved":["ctrl+o"]},"app.quit":["x"]}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, err := LoadKeybindings(path)
-	if err != nil {
-		t.Fatalf("LoadKeybindings: %v", err)
-	}
-	if got := b.DisplayKey("app.quit"); got != "x" {
-		t.Fatalf("app.quit key = %q, want x", got)
-	}
-}
-
-func TestLoadKeybindings_invalid_json(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte("{invalid}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := LoadKeybindings(path)
-	if err == nil {
-		t.Fatal("expected error for invalid JSON, got nil")
-	}
-}
-
-func TestLoadKeybindings_invalid_keystroke(t *testing.T) {
-	config := `{"app.quit": ["++bad"]}`
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := LoadKeybindings(path)
-	if err == nil {
-		t.Fatal("expected error for invalid keystroke, got nil")
-	}
-}
-
-func TestLoadKeybindings_nested_format(t *testing.T) {
-	config := `{
+func TestLoadConfig_keybinds_nested_format(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {
 		"query": {"execute": ["f9"], "cancel": ["q"]},
 		"app": {"quit": ["ctrl+q", "ctrl+x"]}
-	}`
-	path := filepath.Join(t.TempDir(), "keybindings.json")
-	if err := os.WriteFile(path, []byte(config), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	b, err := LoadKeybindings(path)
+	}}`)
+	config, err := LoadConfig(path)
 	if err != nil {
-		t.Fatalf("LoadKeybindings with nested config: %v", err)
+		t.Fatalf("LoadConfig with nested keybinds: %v", err)
+	}
+	b, err := NewKeybindings(config.Keybinds)
+	if err != nil {
+		t.Fatalf("NewKeybindings with nested keybinds: %v", err)
 	}
 	if b.DisplayKey("query.execute") != "F9" {
 		t.Fatalf("query.execute key = %q, want F9", b.DisplayKey("query.execute"))
@@ -192,12 +89,95 @@ func TestLoadKeybindings_nested_format(t *testing.T) {
 	}
 }
 
-func TestKeybindingsPath_in_xdg_config(t *testing.T) {
-	path := keybindingsPath()
-	if !filepath.IsAbs(path) {
-		t.Fatalf("keybindingsPath() = %q, want absolute path", path)
+func TestLoadConfig_keybinds_disable_command(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {"app.quit": []}}`)
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
 	}
-	if !stringsSuffix(path, "perk-workbench/keybindings.json") {
-		t.Fatalf("keybindingsPath() = %q, want .../perk-workbench/keybindings.json", path)
+	b, err := NewKeybindings(config.Keybinds)
+	if err != nil {
+		t.Fatalf("NewKeybindings: %v", err)
 	}
+	if got := b.DisplayKey("app.quit"); got != "" {
+		t.Fatalf("disabled app.quit should have no display key, got %q", got)
+	}
+}
+
+func TestLoadConfig_keybinds_unknown_command(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {"does.not.exist": ["x"]}}`)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for unknown command, got nil")
+	}
+	if !strings.Contains(err.Error(), "keybinds") {
+		t.Fatalf("error %v does not mention keybinds", err)
+	}
+}
+
+func TestLoadConfig_keybinds_invalid_keystroke(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {"app.quit": ["++bad"]}}`)
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("expected error for invalid keystroke, got nil")
+	}
+}
+
+func TestLoadConfig_keybinds_invalid_value_type(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {"app.quit": 5}}`)
+	if _, err := LoadConfig(path); err == nil {
+		t.Fatal("expected error for non-array keybind value, got nil")
+	}
+}
+
+func TestLoadConfig_keybinds_null_entry_ignored(t *testing.T) {
+	// Regression: nested null values (e.g. from a palette-only command
+	// written by an older version of the placeholder file) must not fail.
+	path := writeKeybindsConfig(t, `{"keybinds": {"ai": {"yolo_writes.toggle": null}, "app": {"quit": ["x"]}}}`)
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig with null nested entry: %v", err)
+	}
+	b, err := NewKeybindings(config.Keybinds)
+	if err != nil {
+		t.Fatalf("NewKeybindings with null nested entry: %v", err)
+	}
+	if got := b.DisplayKey("app.quit"); got != "x" {
+		t.Fatalf("app.quit key = %q, want x", got)
+	}
+}
+
+func TestLoadConfig_keybinds_ignoresRemovedCommands(t *testing.T) {
+	path := writeKeybindsConfig(t, `{"keybinds": {"query": {"save": ["ctrl+k"], "saved": ["ctrl+o"]}, "chat": {"history": ["ctrl+h"]}, "browse": {"yank_cell": ["y"]}, "app": {"quit": ["x"]}}}`)
+	config, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig with removed commands: %v", err)
+	}
+	b, err := NewKeybindings(config.Keybinds)
+	if err != nil {
+		t.Fatalf("NewKeybindings with removed commands: %v", err)
+	}
+	if got := b.DisplayKey("app.quit"); got != "x" {
+		t.Fatalf("app.quit key = %q, want x", got)
+	}
+}
+
+// writeKeybindsConfig writes a minimal config.json containing the given raw
+// JSON merged alongside a plugins list (so plugin migration leaves it alone)
+// and returns its path.
+func writeKeybindsConfig(t *testing.T, raw string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "perk-workbench", "config.json")
+	// Splice the raw object next to a plugins descriptor: raw must start
+	// with "{" so its first key follows the injected one.
+	if !strings.HasPrefix(raw, "{") {
+		t.Fatalf("writeKeybindsConfig: raw %q must be a JSON object", raw)
+	}
+	contents := `{"plugins": [{"builtin": "sqlite"}], ` + raw[1:]
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

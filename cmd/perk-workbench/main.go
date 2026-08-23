@@ -208,14 +208,6 @@ func preferEnv(real func(string) (string, bool), file map[string]string) func(st
 	}
 }
 
-func loadKeybindings() (app.Keybindings, error) {
-	path := app.KeybindingsPath()
-	if path == "" {
-		return app.DefaultKeybindings(), nil
-	}
-	return app.LoadKeybindings(path)
-}
-
 func loadConfig() (app.Config, error) {
 	path := app.ConfigPath()
 	if path == "" {
@@ -302,13 +294,16 @@ func run(target string, selectFromProfiles bool, selectedPlugin string, readOnly
 	// headless environments such as the development container.
 	_ = clipboard.Init()
 
-	keybindings, err := loadKeybindings()
-	if err != nil {
-		return err
-	}
 	config, err := loadConfig()
 	if err != nil {
 		return err
+	}
+	// Built-in defaults, overridden only by the config.json "keybinds"
+	// object. LoadConfig already validated every entry, so this cannot
+	// fail for a config that passed startup.
+	keybindings, err := app.NewKeybindings(config.Keybinds)
+	if err != nil {
+		return fmt.Errorf("keybindings: %w", err)
 	}
 	// Auto-following (the default) resolves the effective appearance from
 	// the system theme at startup. Detection is best-effort: on failure it

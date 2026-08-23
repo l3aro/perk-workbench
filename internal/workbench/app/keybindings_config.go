@@ -3,37 +3,33 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 )
 
-// LoadKeybindings reads a JSON config file and returns Keybindings.
-// If the file does not exist, it writes the default config file and
-// returns the defaults.
-func LoadKeybindings(path string) (Keybindings, error) {
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err := writeDefaultConfig(path); err != nil {
-				return Keybindings{}, fmt.Errorf("writing default keybindings config %q: %w", path, err)
-			}
-			return DefaultKeybindings(), nil
-		}
-		return Keybindings{}, fmt.Errorf("reading keybindings config %q: %w", path, err)
-	}
-	if len(contents) == 0 {
-		return DefaultKeybindings(), nil
-	}
+// Keybinds holds manual keybinding overrides from the config.json
+// "keybinds" object. Every command not listed here keeps its built-in
+// default binding; an empty slice disables a command. Nothing is
+// materialized to disk — users add overrides by hand.
+type Keybinds map[string][]string
 
+// UnmarshalJSON parses the "keybinds" value. Both formats work:
+//
+// Flat:   {"keybinds": {"app.quit": ["q"], "browse.next_page": ["n"]}}
+// Nested: {"keybinds": {"app": {"quit": ["q"]}, "browse": {"next_page": ["n"]}}}
+//
+// Null values (flat entries or nested groups) are ignored.
+func (k *Keybinds) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*k = nil
+		return nil
+	}
 	var raw map[string]any
-	if err := json.Unmarshal(contents, &raw); err != nil {
-		return Keybindings{}, fmt.Errorf("parsing keybindings config %q: %w", path, err)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
 	}
 
-	flat, err := flattenConfig(raw)
+	flat, err := flattenKeybindConfig(raw)
 	if err != nil {
-		return Keybindings{}, fmt.Errorf("keybindings config %q: %w", path, err)
+		return err
 	}
 
 	// Removed in favor of the persisted query-log pane.
@@ -46,19 +42,16 @@ func LoadKeybindings(path string) (Keybindings, error) {
 	// Renamed: merged into cell.yank.
 	delete(flat, "browse.yank_cell")
 
-	b, err := NewKeybindings(flat)
-	if err != nil {
-		return Keybindings{}, fmt.Errorf("keybindings config %q: %w", path, err)
-	}
-	return b, nil
+	*k = flat
+	return nil
 }
 
-// flattenConfig converts a mixed flat/nested config map into the flat
-// map[string][]string that NewKeybindings expects. Both formats work:
+// flattenKeybindConfig converts a mixed flat/nested keybind map into the
+// flat map[string][]string that NewKeybindings expects. Both formats work:
 //
 // Flat:   {"app.quit": ["q"], "browse.next_page": ["n"]}
 // Nested: {"app": {"quit": ["q"]}, "browse": {"next_page": ["n"]}}
-func flattenConfig(raw map[string]any) (map[string][]string, error) {
+func flattenKeybindConfig(raw map[string]any) (map[string][]string, error) {
 	flat := make(map[string][]string, len(raw))
 	for key, val := range raw {
 		switch v := val.(type) {
@@ -104,66 +97,10 @@ func anyToStrings(arr []any) ([]string, error) {
 	return strs, nil
 }
 
-// MustLoadKeybindings is like LoadKeybindings but panics on error.
-// Suitable for cmd/perk-workbench startup.
-func MustLoadKeybindings(path string) Keybindings {
-	b, err := LoadKeybindings(path)
-	if err != nil {
-		panic(fmt.Sprintf("keybindings: %v", err))
-	}
-	return b
-}
-
-// KeybindingsPath returns the default config file path in the user's
-// XDG config directory.
-func KeybindingsPath() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(dir, "perk-workbench", "keybindings.json")
-}
-
-// writeDefaultConfig writes all default command bindings as a nested JSON
-// config file, grouped by command prefix (e.g. "query" → {"execute": ...}).
-func writeDefaultConfig(path string) error {
-	groups := make(map[string]map[string][]string)
-	for _, d := range defaultDefs {
-		if d.keys == nil {
-			continue
-		}
-		id := string(d.id)
-		dot := strings.IndexByte(id, '.')
-		if dot < 0 {
-			if groups[""] == nil {
-				groups[""] = make(map[string][]string)
-			}
-			groups[""][id] = d.keys
-			continue
-		}
-		prefix, suffix := id[:dot], id[dot+1:]
-		if groups[prefix] == nil {
-			groups[prefix] = make(map[string][]string)
-		}
-		groups[prefix][suffix] = d.keys
-	}
-	// json.MarshalIndent sorts object keys alphabetically, so the output
-	// is deterministic.
-	data, err := json.MarshalIndent(groups, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
-}
-
-// keybindingsPath returns the default config file path (same as KeybindingsPath).
-func keybindingsPath() string {
-	return KeybindingsPath()
-}
-
-func stringsSuffix(s, suffix string) bool {
-	return strings.HasSuffix(s, suffix)
+// validateKeybinds checks that every override names a known command and
+// only uses valid keystrokes. Called from LoadConfig so a bad entry fails
+// startup with the offending config path.
+func validateKeybinds(binds Keybinds) error {
+	_, err := NewKeybindings(binds)
+	return err
 }

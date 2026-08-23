@@ -88,6 +88,11 @@ type Config struct {
 	// Missing config files materialize the four bundled built-ins; an
 	// explicit empty list disables all plugin instances.
 	Plugins []PluginConfig `json:"plugins"`
+	// Keybinds holds manual keybinding overrides from the "keybinds"
+	// object. Every command not listed keeps its built-in default
+	// binding; an empty slice disables a command. Nothing is written for
+	// it — users add overrides by hand.
+	Keybinds Keybinds `json:"keybinds,omitempty"`
 }
 
 // appConfig is the resolved user configuration applied by SetAppConfig.
@@ -215,6 +220,11 @@ func decodeConfig(path string, raw map[string]json.RawMessage) (Config, error) {
 		return Config{}, fmt.Errorf("config %q: log_level %q is not one of %v", path, config.LogLevel, logLevelNames())
 	case config.TableOpenTarget != "" && !validTableOpenTarget(config.TableOpenTarget):
 		return Config{}, fmt.Errorf("config %q: table_open_target %q is not one of %v", path, config.TableOpenTarget, tableOpenTargetNames())
+	}
+	if len(config.Keybinds) > 0 {
+		if err := validateKeybinds(config.Keybinds); err != nil {
+			return Config{}, fmt.Errorf("config %q: keybinds: %w", path, err)
+		}
 	}
 	return config, nil
 

@@ -102,7 +102,7 @@ The root owns what is shared across features: `core.Workflow` and the query life
 
 Frame borders use rounded corners throughout: `lipgloss.RoundedBorder()` for lipgloss frames (panes, SQL editor) and the matching `╭╮╰╯` glyphs for canvas-drawn frames (dialogs, context menu, palette, confirmation card, cell viewer, ER diagram cards). Canvas frames hardcode those glyphs, so a future square-corner theme must update both the lipgloss styles and the canvas glyphs. Schema-tree connectors (`└`) and the confirmation accent bar (`┃`) intentionally keep their square glyphs.
 
-Keybindings load from the XDG config path. If no file exists, defaults are written there. Both flat and nested JSON keybinding maps are accepted.
+Keybindings are built-in defaults. There is no keybindings file: the app never writes a placeholder registry. Overrides live in the optional `keybinds` object inside `config.json` — users add entries by hand for only the commands they want to change (both flat `"app.quit": ["q"]` and nested `"app": {"quit": ["q"]}` maps are accepted; an empty array disables a command). Unknown command IDs or invalid keystrokes fail startup with the config path.
 
 App defaults load from `$XDG_CONFIG_HOME/perk-workbench/config.json` (also written on first run). Supported fields, all optional (0/omitted = built-in default):
 
@@ -113,6 +113,7 @@ App defaults load from `$XDG_CONFIG_HOME/perk-workbench/config.json` (also writt
 - `read_only` — open every connection read-only by default; the per-connection form toggle still opts out
 - `theme` — startup theme: `ocean`, `nord`, `monokai`, `dracula`, `catppuccin`, `solarized`; choosing a theme in-app (palette or picker) writes it back to config.json
 - `table_open_target` — workspace tab focused after selecting a table in the schema tree: `structure` (the Columns tab), `browse`, `sql`, `indexes`, or `foreign_keys`; choosing it in the command palette writes it back to config.json
+- `keybinds` — manual keybinding overrides, added by hand (never materialized): maps command IDs to keystroke arrays, e.g. `"keybinds": {"app.quit": ["q"]}`; every unlisted command keeps its built-in default, and an empty array disables a command
 
 The `PERK_WORKBENCH_QUERY_LOG_*` env vars still override their config values.
 
