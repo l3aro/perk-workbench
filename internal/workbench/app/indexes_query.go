@@ -92,30 +92,32 @@ func (m Model) updateIndexes(message indexesLoadedMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 func (m Model) updateIndexChanged(message indexChangedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "updated index"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "updated index"))
 	}
 	if message.err != nil {
 		m.schema.component.Structure.IndexForm.Saving = false
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("updating index: %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	m.schema.component.Structure.IndexForm.Close()
 	m.setStatus("index updated")
-	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo(), m.loadSchemaIndexesAll())
+	return m, tea.Batch(appendCmd, m.loadIndexes(), m.loadTableInfo(), m.loadSchemaIndexesAll())
 }
 func (m Model) updateIndexDeleted(message indexDeletedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "dropped index"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "dropped index"))
 	}
 	if message.err != nil {
 		m.schema.component.Structure.IndexForm.Saving = false
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("deleting index: %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	m.schema.component.Structure.IndexForm.Close()
 	m.setStatus("index deleted")
-	return m, tea.Batch(m.loadIndexes(), m.loadTableInfo(), m.loadSchemaIndexesAll())
+	return m, tea.Batch(appendCmd, m.loadIndexes(), m.loadTableInfo(), m.loadSchemaIndexesAll())
 }
 func (m *Model) openIndexForm(index *sharedsql.IndexInfo) tea.Cmd {
 	component, cmd := m.schema.component.OpenIndexForm(index, m.workspaceLayout(), m.keybindings)

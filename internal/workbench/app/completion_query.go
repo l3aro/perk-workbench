@@ -39,13 +39,13 @@ func (m *Model) startCompletion() tea.Cmd {
 	case sharedsql.CtxQualified:
 		return m.qualifiedCompletion(analysis)
 	case sharedsql.CtxTable:
-		m.queryLog.editor.showCompletion(m.tableContextItems(analysis))
+		m.queryLog.editor.showCompletionFor(analysis.Prefix, m.tableContextItems(analysis))
 		return nil
 	case sharedsql.CtxExpression:
-		m.queryLog.editor.showCompletion(m.expressionContextItems(analysis))
+		m.queryLog.editor.showCompletionFor(analysis.Prefix, m.expressionContextItems(analysis))
 		return nil
 	default:
-		m.queryLog.editor.showCompletion(m.genericItems())
+		m.queryLog.editor.showCompletionFor(analysis.Prefix, m.genericItems())
 		return nil
 	}
 }
@@ -93,7 +93,7 @@ func (m *Model) qualifiedCompletion(analysis sharedsql.SQLAnalysis) tea.Cmd {
 	}
 
 	// Fallback: generic items.
-	m.queryLog.editor.showCompletion(m.genericItems())
+	m.queryLog.editor.showCompletionFor(analysis.Prefix, m.genericItems())
 	return nil
 }
 
@@ -283,6 +283,9 @@ func (m Model) updateCompletionColumns(message completionColumnsMsg) (tea.Model,
 		items[index] = completionItemForColumn(column.Name, column.Type, tableName)
 	}
 	m.queryLog.completionColumns[message.table] = columnNames
-	m.queryLog.editor.showCompletionFor("", items)
+	row := m.queryLog.editor.text.input.Line()
+	col := m.queryLog.editor.text.input.Column()
+	analysis := sharedsql.AnalyzeSQL(m.queryLog.editor.value, row, col)
+	m.queryLog.editor.showCompletionFor(analysis.Prefix, items)
 	return m, nil
 }

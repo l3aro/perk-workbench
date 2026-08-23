@@ -115,31 +115,33 @@ func (m Model) updateReferencingForeignKeys(message referencingForeignKeysLoaded
 }
 
 func (m Model) updateForeignKeyChanged(message foreignKeyChangedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "updated foreign key"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "updated foreign key"))
 	}
 	if message.err != nil {
 		m.schema.component.Structure.ForeignKeyForm.Saving = false
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("updating foreign key: %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	m.schema.component.Structure.ForeignKeyForm.Close()
 	m.setStatus("foreign key updated")
-	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo(), m.loadSchemaForeignKeysAll())
+	return m, tea.Batch(appendCmd, m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo(), m.loadSchemaForeignKeysAll())
 }
 
 func (m Model) updateForeignKeyDeleted(message foreignKeyDeletedMsg) (tea.Model, tea.Cmd) {
+	var appendCmd tea.Cmd
 	if message.statement != "" {
-		m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "dropped foreign key"))
+		appendCmd = m.appendQueryLog(actionLogEntry(message.statement, nil, message.startedAt, message.err, "dropped foreign key"))
 	}
 	if message.err != nil {
 		m.schema.component.Structure.ForeignKeyForm.Saving = false
 		m.setStatus(safeText(pluginFailureStatus(message.err, fmt.Sprintf("deleting foreign key: %v", message.err))))
-		return m, nil
+		return m, appendCmd
 	}
 	m.schema.component.Structure.ForeignKeyForm.Close()
 	m.setStatus("foreign key deleted")
-	return m, tea.Batch(m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo(), m.loadSchemaForeignKeysAll())
+	return m, tea.Batch(appendCmd, m.loadForeignKeys(), m.loadReferencingForeignKeys(), m.loadTableInfo(), m.loadSchemaForeignKeysAll())
 }
 
 func (m *Model) openForeignKeyForm(foreignKey *sharedsql.ForeignKeyInfo) tea.Cmd {
