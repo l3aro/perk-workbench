@@ -14,6 +14,7 @@ import (
 // grammar lives with the driver that parses it.
 func Target(values driver.FormValues) string {
 	config := godrv.NewConfig()
+	config.InterpolateParams = true
 	config.User = strings.TrimSpace(values.User)
 	config.Passwd = values.Pass
 	config.Net = "tcp"

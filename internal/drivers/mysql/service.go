@@ -6,15 +6,27 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	driver "github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
 )
 
+const validationCacheLimit = 128
+
+type validationCacheEntry struct {
+	err error
+}
+
 type Service struct {
 	db   *stdsql.DB
 	info driver.DatabaseInfo
+
+	validationMu    sync.Mutex
+	validationCache map[string]validationCacheEntry
+	validationOrder []string
+	validationEpoch uint64
 }
 
 func Open(ctx context.Context, dsn string) (*Service, error) {
@@ -22,14 +34,20 @@ func Open(ctx context.Context, dsn string) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening mysql database: %w", err)
 	}
-	if err := db.PingContext(ctx); err != nil {
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetConnMaxIdleTime(5 * time.Minute)
+	discoveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := db.PingContext(discoveryCtx); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return nil, fmt.Errorf("pinging mysql database: %w", errors.Join(err, closeErr))
 		}
 		return nil, fmt.Errorf("pinging mysql database: %w", err)
 	}
 	var version string
-	if err := db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version); err != nil {
+	if err := db.QueryRowContext(discoveryCtx, "SELECT VERSION()").Scan(&version); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return nil, fmt.Errorf("reading mysql version: %w", errors.Join(err, closeErr))
 		}
@@ -130,6 +148,7 @@ func (s *Service) Execute(ctx context.Context, statement string) (result driver.
 			return driver.Result{}, fmt.Errorf("reading affected rows: %w", err)
 		}
 		result.DurationNS = time.Since(started).Nanoseconds()
+		s.clearValidationCache()
 		return result, nil
 	}
 	rows, err := conn.QueryContext(ctx, statement)
@@ -140,8 +159,8 @@ func (s *Service) Execute(ctx context.Context, statement string) (result driver.
 	if err != nil {
 		return driver.Result{}, err
 	}
-
 	result.DurationNS = time.Since(started).Nanoseconds()
+	s.clearValidationCache()
 	return result, nil
 }
 
@@ -176,14 +195,73 @@ func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (result
 // Validate prepares the statement against the open database without executing
 // it, so syntax and schema errors surface without any side effects.
 func (s *Service) Validate(ctx context.Context, statement string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := validateStatement(statement); err != nil {
 		return err
 	}
+	cached, found, epoch := s.validationCacheGet(statement)
+	if found {
+		return cached
+	}
 	prepared, err := s.db.PrepareContext(ctx, statement)
 	if err != nil {
-		return fmt.Errorf("validating statement: %w", err)
+		wrapped := fmt.Errorf("validating statement: %w", err)
+		if !validationErrorCacheable(ctx, err) {
+			return wrapped
+		}
+		s.validationCacheStore(statement, validationCacheEntry{err: wrapped}, epoch)
+		return wrapped
 	}
-	return prepared.Close()
+	if err := prepared.Close(); err != nil {
+		return err
+	}
+	if ctx.Err() == nil {
+		s.validationCacheStore(statement, validationCacheEntry{}, epoch)
+	}
+	return nil
+}
+
+func validationErrorCacheable(ctx context.Context, err error) bool {
+	return ctx.Err() == nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
+func (s *Service) validationCacheGet(statement string) (error, bool, uint64) {
+	s.validationMu.Lock()
+	defer s.validationMu.Unlock()
+	entry, found := s.validationCache[statement]
+	return entry.err, found, s.validationEpoch
+}
+
+func (s *Service) validationCacheStore(statement string, entry validationCacheEntry, epoch uint64) {
+	s.validationMu.Lock()
+	defer s.validationMu.Unlock()
+	if epoch != s.validationEpoch {
+		return
+	}
+	if s.validationCache == nil {
+		s.validationCache = make(map[string]validationCacheEntry, validationCacheLimit)
+	}
+	if _, exists := s.validationCache[statement]; exists {
+		s.validationCache[statement] = entry
+		return
+	}
+	if len(s.validationOrder) >= validationCacheLimit {
+		evicted := s.validationOrder[0]
+		s.validationOrder = s.validationOrder[1:]
+		delete(s.validationCache, evicted)
+	}
+	s.validationCache[statement] = entry
+	s.validationOrder = append(s.validationOrder, statement)
+}
+
+func (s *Service) clearValidationCache() {
+	s.validationMu.Lock()
+	s.validationCache = nil
+	s.validationOrder = nil
+	s.validationEpoch++
+	s.validationMu.Unlock()
 }
 
 func mysqlTableParts(table string) (database, name string) {
@@ -273,6 +351,9 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change driver.C
 	if current.PrimaryKey > 0 {
 		if change.Name != change.PreviousName && change.Type == current.Type && change.Nullable == current.Nullable && mysqlDefaultsEqual(change.DefaultValue, current.DefaultValue) && (change.Attributes == nil || *change.Attributes == current.Attributes) {
 			_, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name))
+			if err == nil {
+				s.clearValidationCache()
+			}
 			return err
 		}
 		return errors.New("primary-key columns can only be renamed without other changes")
@@ -281,6 +362,7 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change driver.C
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" RENAME COLUMN "+quoteIdentifier(change.PreviousName)+" TO "+quoteIdentifier(change.Name)); err != nil {
 			return fmt.Errorf("renaming column: %w", err)
 		}
+		s.clearValidationCache()
 		return nil
 	}
 	attributes, err := s.columnAttributes(ctx, table, change.PreviousName)
@@ -294,6 +376,7 @@ func (s *Service) AlterColumn(ctx context.Context, table string, change driver.C
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("altering column: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 
@@ -317,6 +400,7 @@ func (s *Service) AddColumn(ctx context.Context, table string, col driver.Column
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("adding column: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 
@@ -327,6 +411,7 @@ func (s *Service) DropColumn(ctx context.Context, table, name string) error {
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP COLUMN "+quoteIdentifier(name)); err != nil {
 		return fmt.Errorf("dropping column: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 

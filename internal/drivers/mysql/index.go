@@ -94,11 +94,13 @@ func (s *Service) CreateIndex(ctx context.Context, table string, change driver.I
 		if _, err := s.db.ExecContext(ctx, mysqlAddPrimaryKeyStatement(table, change.Columns)); err != nil {
 			return fmt.Errorf("creating primary key: %w", err)
 		}
+		s.clearValidationCache()
 		return nil
 	}
 	if _, err := s.db.ExecContext(ctx, mysqlCreateIndexStatement(table, change)); err != nil {
 		return fmt.Errorf("creating index: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 
@@ -116,6 +118,7 @@ func (s *Service) ReplaceIndex(ctx context.Context, table, previous string, chan
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP PRIMARY KEY, ADD PRIMARY KEY ("+indexColumns(change.Columns)+")"); err != nil {
 			return fmt.Errorf("replacing primary key: %w", err)
 		}
+		s.clearValidationCache()
 		return nil
 	}
 	if change.PrimaryKey {
@@ -127,6 +130,7 @@ func (s *Service) ReplaceIndex(ctx context.Context, table, previous string, chan
 	if _, err := s.db.ExecContext(ctx, mysqlCreateIndexStatement(table, change)); err != nil {
 		return fmt.Errorf("creating replacement index: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 
@@ -138,11 +142,13 @@ func (s *Service) DropIndex(ctx context.Context, table, name string) error {
 		if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP PRIMARY KEY"); err != nil {
 			return fmt.Errorf("dropping primary key: %w", err)
 		}
+		s.clearValidationCache()
 		return nil
 	}
 	if _, err := s.db.ExecContext(ctx, "DROP INDEX "+quoteIdentifier(name)+" ON "+mysqlTableIdentifier(table)); err != nil {
 		return fmt.Errorf("dropping index: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 

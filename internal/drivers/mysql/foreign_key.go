@@ -148,6 +148,7 @@ func (s *Service) CreateForeignKey(ctx context.Context, table string, change dri
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" ADD "+mysqlForeignKeyClause(change)); err != nil {
 		return fmt.Errorf("creating foreign key: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 
@@ -162,6 +163,7 @@ func (s *Service) ReplaceForeignKey(ctx context.Context, table, previous string,
 	if _, err := s.db.ExecContext(ctx, statement); err != nil {
 		return fmt.Errorf("replacing foreign key: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 
@@ -172,6 +174,7 @@ func (s *Service) DropForeignKey(ctx context.Context, table, previous string) er
 	if _, err := s.db.ExecContext(ctx, "ALTER TABLE "+mysqlTableIdentifier(table)+" DROP FOREIGN KEY "+quoteIdentifier(previous)); err != nil {
 		return fmt.Errorf("dropping foreign key: %w", err)
 	}
+	s.clearValidationCache()
 	return nil
 }
 

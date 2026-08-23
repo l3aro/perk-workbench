@@ -110,9 +110,11 @@ func collectRow(values []any) (display, raw []*string) {
 		if value == nil {
 			continue
 		}
-		text := fmt.Sprint(value)
+		var text string
 		if bytes, ok := value.([]byte); ok {
 			text = string(bytes)
+		} else {
+			text = fmt.Sprint(value)
 		}
 		raw[index] = &text
 		sanitized := sanitizeDisplay(text, maxRunes)
