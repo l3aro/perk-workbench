@@ -8,6 +8,7 @@ import (
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
 	sharedsql "github.com/l3aro/perk-workbench/internal/sql"
+	"github.com/l3aro/perk-workbench/internal/workbench/schema"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
@@ -55,25 +56,26 @@ func themesForScheme(s scheme) []appTheme {
 }
 
 var (
-	activeTheme                                                                                    = themeOcean
-	colorCanvas, colorPanel, colorStripe                                                           string
-	colorInk, colorMuted, colorPrimary                                                             string
-	colorSecondary, colorDanger, colorFocused, colorSuccess                                        string
-	colorBorder, colorModeNormal                                                                   string
-	colorModeInsert                                                                                string
-	colorWarn                                                                                      string
-	headerStyle, headerButtonStyle, headerQuitButtonStyle, footerStyle, statusStyle, thinkingStyle lipgloss.Style
-	focusStyle, panelStyle                                                                         lipgloss.Style
-	connectionActionStyle                                                                          lipgloss.Style
-	connectionActionSelectedStyle, connectionActionFocusedStyle                                    lipgloss.Style
-	formSaveButtonStyle, formCancelButtonStyle, formButtonFocusedStyle                             lipgloss.Style
-	primaryIndexStyle, uniqueIndexStyle                                                            lipgloss.Style
-	regularIndexStyle                                                                              lipgloss.Style
-	statusSuccessStyle, statusFailedStyle                                                          lipgloss.Style
-	statusCanceledStyle, readOnlyStyle                                                             lipgloss.Style
-	modeNormalStyle, modeInsertStyle                                                               lipgloss.Style
-	selectedCellStyle, completionItemStyle, completionBoxStyle, completionDetailStyle              lipgloss.Style
-	userMessageStyle, userMessageAccentStyle                                                       lipgloss.Style
+	activeTheme                                                                                         = themeOcean
+	themeRevision                                                                                       uint64
+	colorCanvas, colorPanel, colorStripe                                                                string
+	colorInk, colorMuted, colorPrimary                                                                  string
+	colorSecondary, colorDanger, colorFocused, colorSuccess                                             string
+	colorBorder, colorModeNormal                                                                        string
+	colorModeInsert                                                                                     string
+	colorWarn                                                                                           string
+	headerStyle, headerButtonStyle, headerQuitButtonStyle, footerStyle, statusStyle, thinkingStyle      lipgloss.Style
+	focusStyle, panelStyle                                                                              lipgloss.Style
+	connectionActionStyle                                                                               lipgloss.Style
+	connectionActionSelectedStyle, connectionActionFocusedStyle                                         lipgloss.Style
+	formSaveButtonStyle, formCancelButtonStyle, formButtonFocusedStyle                                  lipgloss.Style
+	primaryIndexStyle, uniqueIndexStyle                                                                 lipgloss.Style
+	regularIndexStyle                                                                                   lipgloss.Style
+	statusSuccessStyle, statusFailedStyle                                                               lipgloss.Style
+	statusCanceledStyle, readOnlyStyle                                                                  lipgloss.Style
+	modeNormalStyle, modeInsertStyle                                                                    lipgloss.Style
+	selectedCellStyle, selectedRowStyle, completionItemStyle, completionBoxStyle, completionDetailStyle lipgloss.Style
+	userMessageStyle, userMessageAccentStyle                                                            lipgloss.Style
 )
 
 // runtimeScheme is the effective appearance this session (system-derived or
@@ -200,13 +202,14 @@ func themeForScheme(s scheme, config Config) appTheme {
 }
 
 func init() { setTheme(themeOcean) }
-
 func setTheme(name appTheme) {
 	activeTheme = name
+	themeRevision++
 	// The palette values live in the shared UI layer so feature components
 	// and the root derive their styles from one source; the root snapshots
 	// them into its own style registry below.
 	uikit.SetTheme(string(name))
+	schema.SetTheme()
 	colorCanvas, colorPanel, colorStripe = uikit.ColorCanvas, uikit.ColorPanel, uikit.ColorStripe
 	colorInk, colorMuted, colorPrimary = uikit.ColorInk, uikit.ColorMuted, uikit.ColorPrimary
 	colorSecondary, colorDanger, colorFocused, colorSuccess = uikit.ColorSecondary, uikit.ColorDanger, uikit.ColorFocused, uikit.ColorSuccess
@@ -292,6 +295,12 @@ func resetStyles() {
 		Foreground(lipgloss.Color(colorCanvas)).
 		Background(lipgloss.Color(colorPrimary)).
 		Bold(true)
+	selectedRowStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorPrimary)).
+		Background(lipgloss.Color(colorStripe))
+	cellStyleCache = make(map[int]lipgloss.Style)
+	cellStyleCacheRight = make(map[int]lipgloss.Style)
+	selectedTableStyleCache = make(map[int]lipgloss.Style)
 	completionItemStyle = uikit.CompletionItemStyle
 	completionBoxStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
