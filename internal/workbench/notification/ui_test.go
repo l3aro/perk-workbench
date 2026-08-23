@@ -50,14 +50,14 @@ func colOf(line, sub string) int {
 
 func TestPopup_dismissGenerationGuards(t *testing.T) {
 	m := New()
-	updated, _ := m.Show(StatusEntry("first"), false, "", nil, time.Minute)
+	updated, _, _ := m.Show(StatusEntry("first"), false, time.Minute)
 	m = updated
 	if m.Popup == nil {
 		t.Fatal("popup not shown after Show")
 	}
 	stale := m.Generation
 
-	updated, _ = m.Show(StatusEntry("second"), false, "", nil, time.Minute)
+	updated, _, _ = m.Show(StatusEntry("second"), false, time.Minute)
 	m = updated
 	// A stale timer must not close the newer popup.
 	m, _, _ = m.Update(DismissMsg{Generation: stale}, testLayout, nil)
@@ -73,7 +73,7 @@ func TestPopup_dismissGenerationGuards(t *testing.T) {
 }
 
 func TestPopup_rendersDescription(t *testing.T) {
-	m, _ := New().Show(StatusEntry("ready: chinook"), false, "", nil, time.Minute)
+	m, _, _ := New().Show(StatusEntry("ready: chinook"), false, time.Minute)
 	view := ansi.Strip(render(m))
 	if !strings.Contains(view, "ready: chinook") {
 		t.Fatalf("popup view = %q, want the notification text", view)
@@ -81,17 +81,12 @@ func TestPopup_rendersDescription(t *testing.T) {
 }
 
 func TestPopup_clickOpensHistoryWithSelectedEntry(t *testing.T) {
-	store := openTestStore(t)
-	defer store.Close()
 	m := New()
-	updated, _ := m.Show(StatusEntry("first"), true, "conn-a", store, time.Minute)
-	m = updated
-	first := *m.Popup
-	updated, _ = m.Show(StatusEntry("second"), true, "conn-a", store, time.Minute)
-	m = updated
-	if first.ID == 0 {
-		t.Fatal("persisted notification has no row ID")
-	}
+	first := StatusEntry("first")
+	first.ID = 42
+	second := StatusEntry("second")
+	second.ID = 43
+	m.SetEntries([]Entry{second, first})
 	m.Popup = &first
 
 	bounds, ok := m.PopupBounds(testLayout)
@@ -120,9 +115,8 @@ func TestPopup_clickOpensHistoryWithSelectedEntry(t *testing.T) {
 		t.Fatal("escape did not close the notification history")
 	}
 }
-
 func TestPopup_clickWithoutScopeOpensDetailOnly(t *testing.T) {
-	m, _ := New().Show(StatusEntry("database unavailable: boom"), false, "", nil, time.Minute)
+	m, _, _ := New().Show(StatusEntry("database unavailable: boom"), false, time.Minute)
 	popup := *m.Popup
 	m.Popup = &popup
 
@@ -440,7 +434,7 @@ func TestHistory_filterSearchesAllColumns(t *testing.T) {
 }
 
 func TestPopup_logEntryRendersLevelTitleIcon(t *testing.T) {
-	m, _ := New().Show(LogEntry(log.Entry{Time: time.Now(), Level: log.LevelWarn, Message: "slow query detected"}), false, "", nil, time.Minute)
+	m, _, _ := New().Show(LogEntry(log.Entry{Time: time.Now(), Level: log.LevelWarn, Message: "slow query detected"}), false, time.Minute)
 
 	popup := m.Popup
 	if popup == nil {
@@ -495,7 +489,7 @@ func TestPopup_logEntryRendersLevelTitleIcon(t *testing.T) {
 }
 
 func TestPopup_statusEntriesStayNeutral(t *testing.T) {
-	m, _ := New().Show(StatusEntry("row updated"), false, "", nil, time.Minute)
+	m, _, _ := New().Show(StatusEntry("row updated"), false, time.Minute)
 
 	popup := m.Popup
 	if popup == nil {
@@ -553,7 +547,7 @@ func rgbOf(hex string) string {
 }
 
 func TestPopup_borderMatchesLevelColor(t *testing.T) {
-	m, _ := New().Show(LogEntry(log.Entry{Time: time.Now(), Level: log.LevelWarn, Message: "slow query detected"}), false, "", nil, time.Minute)
+	m, _, _ := New().Show(LogEntry(log.Entry{Time: time.Now(), Level: log.LevelWarn, Message: "slow query detected"}), false, time.Minute)
 
 	bounds, ok := m.PopupBounds(testLayout)
 	if !ok {
@@ -566,7 +560,7 @@ func TestPopup_borderMatchesLevelColor(t *testing.T) {
 }
 
 func TestPopup_statusBorderStaysNeutral(t *testing.T) {
-	m, _ := New().Show(StatusEntry("row updated"), false, "", nil, time.Minute)
+	m, _, _ := New().Show(StatusEntry("row updated"), false, time.Minute)
 
 	bounds, ok := m.PopupBounds(testLayout)
 	if !ok {

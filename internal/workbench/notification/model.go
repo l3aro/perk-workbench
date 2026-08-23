@@ -211,34 +211,58 @@ type Model struct {
 	History             *history
 	Generation          uint64
 	PopupSwallowRelease bool
+	nextToken           uint64
 }
 
 // New builds an empty notification component.
 func New() Model { return Model{} }
 
-// Show surfaces one entry as the visible popup and, when persist is set and
-// a connection scope with a store is available, saves it to history first.
-// The returned command closes the popup after the configured duration.
-func (m Model) Show(entry Entry, persist bool, scope string, store *Store, duration time.Duration) (Model, tea.Cmd) {
-	if persist && scope != "" && store != nil {
-		if id, err := store.Append(scope, Entry{
-			ID:          entry.ID,
-			CreatedAt:   entry.CreatedAt,
-			Title:       entry.Title,
-			Description: entry.Description,
-			Level:       entry.Level,
-		}, 0); err == nil {
-			entry.ID = id
+// Show surfaces one entry as the visible popup. Persistence itself is owned by
+// the root app's asynchronous command; this component only records a token so
+// the eventual row ID can be attached to the still-live entry.
+func (m Model) Show(entry Entry, persist bool, duration time.Duration) (Model, tea.Cmd, uint64) {
+	entry.persistToken = 0
+	token := uint64(0)
+	if persist {
+		m.nextToken++
+		if m.nextToken == 0 {
+			m.nextToken++
 		}
+		token = m.nextToken
+		entry.persistToken = token
 	}
 	m.Entries = append([]Entry{entry}, m.Entries...)
+	if len(m.Entries) > Limit {
+		m.Entries = m.Entries[:Limit]
+	}
 	m.Popup = &entry
 	m.Generation++
-	return m, DismissTick(m.Generation, duration)
+	return m, DismissTick(m.Generation, duration), token
+}
+
+// ApplyPersisted attaches a persisted row ID to entries that still carry the
+// matching Show token. Stale completions are deliberately ignored.
+func (m *Model) ApplyPersisted(token uint64, id int64) {
+	if m == nil || token == 0 {
+		return
+	}
+	for i := range m.Entries {
+		if m.Entries[i].persistToken == token {
+			m.Entries[i].ID = id
+		}
+	}
+	if m.Popup != nil && m.Popup.persistToken == token {
+		m.Popup.ID = id
+	}
 }
 
 // SetEntries replaces the captured entry list (the scoped history load).
-func (m *Model) SetEntries(entries []Entry) { m.Entries = entries }
+func (m *Model) SetEntries(entries []Entry) {
+	if len(entries) > Limit {
+		entries = entries[:Limit]
+	}
+	m.Entries = entries
+}
 
 // OpenHistory opens the history modal, selecting the entry with the given
 // SQLite row ID (0 or absent falls back to the newest entry).

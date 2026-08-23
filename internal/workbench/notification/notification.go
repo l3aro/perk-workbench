@@ -17,20 +17,25 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Limit bounds the number of live or loaded notifications retained by the UI.
+const Limit = 100
+
 // Entry is one captured status or log notification. ID is the SQLite row
 // ID when the entry was persisted for a connection scope, 0 otherwise.
 // Level is notificationLevelNone (0) for status messages, or log.Level + 1
 // for entries captured from the event log.
 type Entry struct {
-	ID          int64
-	CreatedAt   time.Time
-	Title       string
-	Description string
-	Level       int
+	ID           int64
+	CreatedAt    time.Time
+	Title        string
+	Description  string
+	Level        int
+	persistToken uint64
 }
 
-// Store is a lazily opened scoped notification database shared by every
-// save and load. It owns exactly one *sql.DB.
+// Store is a scoped notification-history database. It owns the SQLite
+// connection and applies the configured retention window when reading or
+// appending entries.
 type Store struct {
 	db            *sql.DB
 	retentionDays int
@@ -104,7 +109,13 @@ func (s *Store) Load(connectionID string, limit int) ([]Entry, error) {
 	if err := s.prune(time.Now(), connectionID); err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT id, created_at, title, description, level FROM notifications WHERE connection_id = ? ORDER BY created_at DESC, id DESC`, connectionID)
+	query := `SELECT id, created_at, title, description, level FROM notifications WHERE connection_id = ? ORDER BY created_at DESC, id DESC`
+	args := []any{connectionID}
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

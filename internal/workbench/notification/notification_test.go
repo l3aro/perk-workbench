@@ -3,6 +3,7 @@ package notification
 import (
 	"database/sql"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -71,6 +72,34 @@ func TestStore_scopesEntriesByConnection(t *testing.T) {
 	}
 	if len(gotB) != 1 || gotB[0].Title != "for B" {
 		t.Fatalf("scope conn-b entries = %#v, want only B's entry", gotB)
+	}
+}
+
+func TestStore_loadLimitReturnsNewestEntries(t *testing.T) {
+	store, err := Open(filepath.Join(t.TempDir(), "data.db"), 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	createdAt := time.Now().Add(-time.Hour)
+	for i := 1; i <= Limit+1; i++ {
+		if _, err := store.Append("conn-a", Entry{
+			CreatedAt:   createdAt,
+			Title:       "entry-" + strconv.Itoa(i),
+			Description: "history",
+		}, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := store.Load("conn-a", Limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != Limit {
+		t.Fatalf("limited entries = %d, want %d", len(got), Limit)
+	}
+	if got[0].Title != "entry-101" || got[Limit-1].Title != "entry-2" {
+		t.Fatalf("limited entries range = %q..%q, want entry-101..entry-2", got[0].Title, got[Limit-1].Title)
 	}
 }
 
