@@ -172,7 +172,7 @@ func (e *editor) acceptCommandCompletion() {
 			lastRow++
 		}
 	}
-	e.text.input.SetValue(newValue)
+	e.text.SetValue(newValue)
 	for range lastRow - targetRow {
 		e.text.input.CursorUp()
 	}
@@ -206,7 +206,7 @@ func (e *editor) acceptCompletion() {
 		lineRunes := []rune(lines[line])
 		newLine := string(lineRunes[:col-prefixRunes]) + item.InsertText + string(lineRunes[col:])
 		lines[line] = newLine
-		e.text.input.SetValue(strings.Join(lines, "\n"))
+		e.text.SetValue(strings.Join(lines, "\n"))
 		e.value = e.text.Value()
 	}
 	e.completion = completion{}
