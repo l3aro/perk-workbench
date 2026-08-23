@@ -37,6 +37,50 @@ func TestFormatValue(t *testing.T) {
 	}
 }
 
+func TestFormatCell_reusesCompactForValuesWithoutExtendedJSON(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{name: "nil", value: nil},
+		{name: "string", value: "Bronx"},
+		{name: "number", value: int64(42)},
+		{name: "object id", value: bson.ObjectID{1, 2, 3}},
+		{name: "date", value: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cell := formatCell(test.value)
+			if cell.compact != cell.full {
+				t.Fatalf("formatCell(%#v) = compact %q, full %q; want the same value", test.value, cell.compact, cell.full)
+			}
+		})
+	}
+}
+
+func TestFormatCell_formatsExtendedJSONOnlyForStructuredValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{name: "document", value: bson.D{{Key: "name", Value: "Bronx"}}},
+		{name: "array", value: bson.A{"Bronx"}},
+		{name: "binary", value: bson.Binary{Subtype: 0x80, Data: []byte{0xde, 0xad}}},
+		{name: "special", value: bson.Regex{Pattern: "^a.*", Options: "i"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cell := formatCell(test.value)
+			if got, want := cell.compact, formatValue(test.value); got != want {
+				t.Fatalf("compact value = %q, want %q", got, want)
+			}
+			if got, want := cell.full, formatViewValue(test.value); got != want {
+				t.Fatalf("full value = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestDocumentColumns_idFirstThenSorted(t *testing.T) {
 	docs := []bson.D{
 		{{Key: "name", Value: "a"}, {Key: "_id", Value: "1"}},

@@ -97,6 +97,27 @@ func formatViewValue(value any) string {
 	return formatValue(value)
 }
 
+type formattedCell struct {
+	compact string
+	full    string
+}
+
+// formatCell computes the compact cell text once. Values that need a valid
+// extended-JSON representation for viewing or copying are formatted again;
+// scalar values keep the compact representation for both result fields.
+func formatCell(value any) formattedCell {
+	compact := formatValue(value)
+	full := compact
+	switch value.(type) {
+	case bson.D, bson.M, map[string]any,
+		bson.A, []any, []byte, bson.Binary, bson.Regex, bson.Timestamp,
+		bson.JavaScript, bson.CodeWithScope, bson.DBPointer, bson.Undefined,
+		bson.MinKey, bson.MaxKey, bson.Symbol:
+		full = formatViewValue(value)
+	}
+	return formattedCell{compact: compact, full: full}
+}
+
 // wrappedExtJSON renders a value as extended JSON by wrapping it in a
 // one-field document (which the writer accepts) and stripping the wrapper.
 func wrappedExtJSON(value any) (string, bool) {
@@ -295,9 +316,10 @@ func documentsResult(docs []bson.D, hasMore bool, duration time.Duration) driver
 			if !ok {
 				continue
 			}
-			display := sanitizeDisplay(formatValue(value), maxRunes)
+			formatted := formatCell(value)
+			display := sanitizeDisplay(formatted.compact, maxRunes)
 			result.Rows[rowIndex][columnIndex] = &display
-			full := formatViewValue(value)
+			full := formatted.full
 			result.UntruncatedRows[rowIndex][columnIndex] = &full
 		}
 		// Stable document identity: the _id scalar as relaxed extended

@@ -13,6 +13,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
 )
@@ -524,6 +525,7 @@ func (s *Service) TableInfo(ctx context.Context, name string) ([]driver.ColumnIn
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = cursor.Close(ctx) }()
 	types := make(map[string]string)
 	var order []string
 	for cursor.Next(ctx) {
@@ -636,13 +638,29 @@ func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]driver.Index
 	if err != nil {
 		return nil, err
 	}
+	sort.Strings(names)
+
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(8)
+	collectionIndexes := make([][]driver.IndexInfo, len(names))
+	for index, name := range names {
+		index, name := index, name
+		group.Go(func() error {
+			indexes, err := s.ListIndexes(groupCtx, name)
+			if err != nil {
+				return err
+			}
+			collectionIndexes[index] = indexes
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
 	indexes := make(map[string][]driver.IndexInfo, len(names))
-	for _, name := range names {
-		collectionIndexes, err := s.ListIndexes(ctx, name)
-		if err != nil {
-			return nil, err
-		}
-		indexes[name] = collectionIndexes
+	for index, name := range names {
+		indexes[name] = collectionIndexes[index]
 	}
 	return indexes, nil
 }
