@@ -47,46 +47,29 @@ func (s *Service) primaryKeyColumns(ctx context.Context, table string) ([]string
 }
 
 func (s *Service) primaryKeyDependencies(ctx context.Context, table string) error {
-	rows, err := s.db.QueryContext(ctx, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name <> ?", table)
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT m.name
+		FROM sqlite_schema AS m
+		JOIN pragma_foreign_key_list(m.name) AS fk ON fk."table" = ?
+		WHERE m.type = 'table' AND m.name <> ?`, table, table)
 	if err != nil {
 		return fmt.Errorf("listing foreign-key dependencies: %w", err)
 	}
-	names := []string{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return fmt.Errorf("scanning foreign-key dependency: %w", err)
 		}
-		names = append(names, name)
+		_ = rows.Close()
+		return fmt.Errorf("primary key changes are unsupported while table %q is referenced by foreign key in %q", table, name)
 	}
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return fmt.Errorf("iterating foreign-key dependencies: %w", err)
 	}
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("closing foreign-key dependencies: %w", err)
-	}
-	for _, name := range names {
-		foreignKeys, err := s.db.QueryContext(ctx, "PRAGMA foreign_key_list("+quoteIdentifier(name)+")")
-		if err != nil {
-			return fmt.Errorf("reading foreign keys for %q: %w", name, err)
-		}
-		for foreignKeys.Next() {
-			var id, sequence int
-			var referencedTable, from, to, onUpdate, onDelete, match string
-			if err := foreignKeys.Scan(&id, &sequence, &referencedTable, &from, &to, &onUpdate, &onDelete, &match); err != nil {
-				foreignKeys.Close()
-				return fmt.Errorf("scanning foreign keys for %q: %w", name, err)
-			}
-			if referencedTable == table {
-				foreignKeys.Close()
-				return fmt.Errorf("primary key changes are unsupported while table %q is referenced by foreign key in %q", table, name)
-			}
-		}
-		if err := foreignKeys.Close(); err != nil {
-			return fmt.Errorf("closing foreign keys for %q: %w", name, err)
-		}
 	}
 	return nil
 }

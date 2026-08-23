@@ -170,7 +170,7 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options plugindr
 	if err != nil {
 		return plugindriver.Result{}, fmt.Errorf("browsing table: %w", err)
 	}
-	result, err := CollectRows(rows)
+	result, err := collectRowsWithLimit(rows, options.Limit+1)
 	if err != nil {
 		return plugindriver.Result{}, err
 	}
@@ -178,6 +178,7 @@ func (s *Service) BrowseTable(ctx context.Context, name string, options plugindr
 	if result.HasMore {
 		result.Rows = result.Rows[:options.Limit]
 		result.UntruncatedRows = result.UntruncatedRows[:options.Limit]
+		result.Truncated = false
 	}
 	return result, nil
 }

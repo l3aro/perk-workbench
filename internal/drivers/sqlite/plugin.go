@@ -31,21 +31,21 @@ func (s *sessionService) Execute(ctx context.Context, req driver.StatementReques
 	if err := ValidateStatement(req.Statement); err != nil {
 		return driver.Result{}, validationError(err)
 	}
-	result, err := s.service.Execute(ctx, req.Statement)
+	result, err := s.service.executeValidated(ctx, req.Statement)
 	return result, operationError(err)
 }
 func (s *sessionService) ExecuteReadOnly(ctx context.Context, req driver.StatementRequest) (driver.Result, error) {
 	if err := ValidateStatement(req.Statement); err != nil {
 		return driver.Result{}, validationError(err)
 	}
-	result, err := s.service.ExecuteReadOnly(ctx, req.Statement)
+	result, err := s.service.executeReadOnlyValidated(ctx, req.Statement)
 	return result, operationError(err)
 }
 func (s *sessionService) Validate(ctx context.Context, req driver.StatementRequest) error {
 	if err := ValidateStatement(req.Statement); err != nil {
 		return validationError(err)
 	}
-	return operationError(s.service.Validate(ctx, req.Statement))
+	return operationError(s.service.validateValidated(ctx, req.Statement))
 }
 func (s *sessionService) ListSchema(ctx context.Context, _ driver.EmptyRequest) ([]driver.SchemaObject, error) {
 	result, err := s.service.ListSchema(ctx)

@@ -105,9 +105,11 @@ func DisplayRow(values []any) []*string {
 		if value == nil {
 			continue
 		}
-		text := fmt.Sprint(value)
+		var text string
 		if bytes, ok := value.([]byte); ok {
 			text = string(bytes)
+		} else {
+			text = fmt.Sprint(value)
 		}
 		text = sanitizeDisplay(text, maxRunes)
 		row[index] = &text
@@ -116,6 +118,10 @@ func DisplayRow(values []any) []*string {
 }
 
 func CollectRows(rows *stdsql.Rows) (driver.Result, error) {
+	return collectRowsWithLimit(rows, maxRows)
+}
+
+func collectRowsWithLimit(rows *stdsql.Rows, limit int) (driver.Result, error) {
 	columns, err := rows.Columns()
 	if err != nil {
 		return driver.Result{}, CloseRows(rows, "reading result columns", err)
@@ -137,7 +143,7 @@ func CollectRows(rows *stdsql.Rows) (driver.Result, error) {
 		pointers[index] = &values[index]
 	}
 	for rows.Next() {
-		if len(result.Rows) == maxRows {
+		if len(result.Rows) == limit {
 			result.Truncated = true
 			break
 		}
@@ -164,9 +170,11 @@ func collectRow(values []any) (display, raw []*string) {
 		if value == nil {
 			continue
 		}
-		text := fmt.Sprint(value)
+		var text string
 		if bytes, ok := value.([]byte); ok {
 			text = string(bytes)
+		} else {
+			text = fmt.Sprint(value)
 		}
 		raw[index] = &text
 		sanitized := sanitizeDisplay(text, maxRunes)

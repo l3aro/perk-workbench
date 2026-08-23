@@ -218,23 +218,41 @@ func (s *Service) ListIndexesAll(ctx context.Context) (map[string][]plugindriver
 	if err := rows.Close(); err != nil {
 		return nil, fmt.Errorf("closing indexes: %w", err)
 	}
+	rows, err = s.db.QueryContext(ctx, `
+		SELECT m.name, x.name, x.pk
+		FROM sqlite_schema AS m
+		JOIN pragma_table_xinfo(m.name) AS x ON x.pk > 0
+		WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+		ORDER BY m.name, x.pk`)
+	if err != nil {
+		return nil, fmt.Errorf("reading table info: %w", err)
+	}
+	primaryColumns := map[string][]string{}
+	for rows.Next() {
+		var table, column string
+		var primaryKey int
+		if err := rows.Scan(&table, &column, &primaryKey); err != nil {
+			return nil, CloseRows(rows, "scanning table info", err)
+		}
+		primaryColumns[table] = append(primaryColumns[table], sanitizeDisplay(column))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, CloseRows(rows, "iterating table info", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("closing table info rows: %w", err)
+	}
 	for table, tableIndexes := range indexes {
-		hasPrimary := false
 		for _, index := range tableIndexes {
 			if index.PrimaryKey {
-				hasPrimary = true
+				delete(primaryColumns, table)
 				break
 			}
 		}
-		if hasPrimary {
-			continue
-		}
-		pk, err := tablePKColumns(ctx, s.db, table)
-		if err != nil {
-			return nil, err
-		}
-		if len(pk) > 0 {
-			indexes[table] = append([]plugindriver.IndexInfo{{Name: "PRIMARY", PrimaryKey: true, Columns: pk}}, tableIndexes...)
+	}
+	for table, columns := range primaryColumns {
+		if len(columns) > 0 {
+			indexes[table] = append([]plugindriver.IndexInfo{{Name: "PRIMARY", PrimaryKey: true, Columns: columns}}, indexes[table]...)
 		}
 	}
 	return indexes, nil

@@ -2,11 +2,11 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
+	plugindriver "github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
 	"slices"
 	"strings"
 	"testing"
-
-	plugindriver "github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
 )
 
 func TestServiceTableInfoAndBrowse(t *testing.T) {
@@ -58,6 +58,29 @@ func TestServiceTableInfoAndBrowse(t *testing.T) {
 	}
 	if len(result.UntruncatedRows) != len(result.Rows) {
 		t.Fatalf("BrowseTable() second page UntruncatedRows = %d, want %d (matching Rows)", len(result.UntruncatedRows), len(result.Rows))
+	}
+}
+func TestServiceBrowseTable_limit500UsesExtraRowWithoutTruncating(t *testing.T) {
+	service := newMemoryService(t)
+	ctx := context.Background()
+	if _, err := service.Execute(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY)"); err != nil {
+		t.Fatalf("creating table: %v", err)
+	}
+	for index := range 501 {
+		if _, err := service.Execute(ctx, fmt.Sprintf("INSERT INTO items (id) VALUES (%d)", index)); err != nil {
+			t.Fatalf("inserting row %d: %v", index, err)
+		}
+	}
+
+	result, err := service.BrowseTable(ctx, "items", plugindriver.BrowseOptions{Columns: []string{"id"}, Limit: 500})
+	if err != nil {
+		t.Fatalf("BrowseTable() error = %v", err)
+	}
+	if len(result.Rows) != 500 || len(result.UntruncatedRows) != 500 {
+		t.Fatalf("BrowseTable() rows = %d/%d, want 500/500", len(result.Rows), len(result.UntruncatedRows))
+	}
+	if !result.HasMore || result.Truncated {
+		t.Fatalf("BrowseTable() HasMore/Truncated = %t/%t, want true/false", result.HasMore, result.Truncated)
 	}
 }
 

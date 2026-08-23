@@ -11,11 +11,14 @@ import (
 	plugindriver "github.com/l3aro/perk-workbench-plugin-sdk-go/driver"
 )
 
-func (s *Service) Execute(ctx context.Context, statement string) (result plugindriver.Result, err error) {
+func (s *Service) Execute(ctx context.Context, statement string) (plugindriver.Result, error) {
 	if err := ValidateStatement(statement); err != nil {
 		return plugindriver.Result{}, err
 	}
+	return s.executeValidated(ctx, statement)
+}
 
+func (s *Service) executeValidated(ctx context.Context, statement string) (result plugindriver.Result, err error) {
 	started := time.Now()
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -53,11 +56,14 @@ func (s *Service) Execute(ctx context.Context, statement string) (result plugind
 	return result, nil
 }
 
-func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (result plugindriver.Result, err error) {
+func (s *Service) ExecuteReadOnly(ctx context.Context, statement string) (plugindriver.Result, error) {
 	if err := ValidateStatement(statement); err != nil {
 		return plugindriver.Result{}, err
 	}
+	return s.executeReadOnlyValidated(ctx, statement)
+}
 
+func (s *Service) executeReadOnlyValidated(ctx context.Context, statement string) (result plugindriver.Result, err error) {
 	started := time.Now()
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -127,6 +133,10 @@ func (s *Service) Validate(ctx context.Context, statement string) error {
 	if err := ValidateStatement(statement); err != nil {
 		return err
 	}
+	return s.validateValidated(ctx, statement)
+}
+
+func (s *Service) validateValidated(ctx context.Context, statement string) error {
 	prepared, err := s.db.PrepareContext(ctx, statement)
 	if err != nil {
 		return fmt.Errorf("validating statement: %w", err)
