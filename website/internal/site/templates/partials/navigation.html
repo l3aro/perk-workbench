@@ -1,0 +1,7 @@
+{{define "navigation"}}
+<nav class="docs-nav" aria-label="Primary">
+  <a href="/"{{if eq .Path "/"}} aria-current="page"{{end}}>Home</a>
+  <a href="/demo"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Live Demo</a>
+  <a href="/docs"{{if .Docs}} aria-current="page"{{end}}>Docs</a>
+</nav>
+{{end}}

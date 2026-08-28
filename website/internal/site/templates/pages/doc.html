@@ -1,0 +1,26 @@
+{{define "content"}}
+<header>
+  <p class="eyebrow">{{.Eyebrow}}</p>
+  <h1 class="page-title">{{.Title}}</h1>
+  <p class="lede">{{.Lede}}</p>
+</header>
+<div class="doc-body">
+{{.Body}}
+</div>
+{{if or .Previous .Next}}
+<nav class="doc-footer-nav" aria-label="Document navigation">
+  {{if .Previous}}
+  <a class="doc-nav-card doc-nav-prev" href="{{.Previous.Path}}">
+    <span>Previous</span>
+    <strong>{{.Previous.Title}}</strong>
+  </a>
+  {{end}}
+  {{if .Next}}
+  <a class="doc-nav-card doc-nav-next" href="{{.Next.Path}}">
+    <span>Next</span>
+    <strong>{{.Next.Title}}</strong>
+  </a>
+  {{end}}
+</nav>
+{{end}}
+{{end}}

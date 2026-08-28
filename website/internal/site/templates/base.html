@@ -1,0 +1,75 @@
+{{define "base"}}
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Perk Workbench — a terminal UI for exploring databases.">
+  <title>{{if .Title}}{{.Title}} · {{end}}Perk Workbench</title>
+  <script src="{{asset "theme"}}"></script>
+  <link rel="stylesheet" href="{{asset "site"}}">
+  <script src="{{asset "app"}}" defer></script>
+  {{block "head" .}}{{end}}
+</head>
+<body>
+  <a class="absolute -left-[9999px] top-0 z-[1000] rounded-lg bg-panel px-3 py-2 text-ink focus:left-3 focus:top-3" href="#main-content">Skip to content</a>
+  <div class="crt-overlay" aria-hidden="true"></div>
+  <header class="site-header flex flex-wrap items-center gap-x-6 gap-y-2 px-[clamp(1.25rem,5vw,5rem)] py-3 max-md:gap-x-4 max-md:gap-y-1 max-md:px-5 max-[30rem]:grid">
+    <a class="flex items-center gap-2.5 font-semibold tracking-[-0.02em] text-ink no-underline" href="/">
+      <span class="logo-mark" aria-hidden="true">❯</span>
+      <span>Perk Workbench</span>
+    </a>
+    {{template "navigation" .}}
+    <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle color theme">
+      <svg class="theme-icon-sun size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <svg class="theme-icon-moon size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    </button>
+  </header>
+  <main class="site-main mx-auto w-full max-w-[80rem] px-[clamp(1.25rem,5vw,5rem)] pt-14 pb-24 max-md:pt-10" id="main-content">
+    {{if .Docs}}
+    <div class="docs-layout">
+      {{template "docs-sidebar" .}}
+      <div class="docs-content min-w-0">
+        {{block "content" .}}{{end}}
+      </div>
+    </div>
+    {{else}}
+      {{block "content" .}}{{end}}
+    {{end}}
+  </main>
+  <footer class="mx-auto w-full max-w-[80rem] px-[clamp(1.25rem,5vw,5rem)] pb-10">
+    <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line pt-6 text-sm text-muted">
+      <p class="flex items-center gap-2 font-medium text-ink-soft">
+        <span class="logo-mark size-5 text-[0.65rem]" aria-hidden="true">❯</span>
+        Perk Workbench
+      </p>
+      <p>Terminal-native database exploration</p>
+      <a href="https://github.com/l3aro/perk-workbench">GitHub</a>
+    </div>
+  </footer>
+  <nav class="status-bar" aria-label="Quick actions">
+    <span class="status-mode" aria-hidden="true">NORMAL</span>
+    <span class="status-hint">terminal-native database exploration</span>
+    <span class="status-keys">
+      <button class="status-key" type="button" data-goto="/docs"><kbd>?</kbd>docs</button>
+      <button class="status-key" type="button" data-search-open><kbd>/</kbd>search</button>
+      <button class="status-key" type="button" data-status-theme><kbd>t</kbd>theme</button>
+    </span>
+  </nav>
+  <dialog id="search-spotlight" class="spotlight" aria-label="Search the site">
+    <form class="spotlight-form" role="search">
+      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="spotlight-input" type="search" placeholder="Search docs… (try: PostgreSQL, F5, plugins)" autocomplete="off" spellcheck="false" aria-controls="spotlight-results" aria-autocomplete="list">
+      <kbd>esc</kbd>
+    </form>
+    <div class="spotlight-results" id="spotlight-results" role="listbox" aria-label="Search results"></div>
+    <p class="spotlight-empty" hidden>No results found</p>
+    <footer class="spotlight-hints">
+      <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+      <span><kbd>&crarr;</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </footer>
+  </dialog>
+</body>
+</html>
+{{end}}
