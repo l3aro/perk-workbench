@@ -1,8 +1,8 @@
 services:
   website:
     build:
-      context: ..
-      dockerfile: website/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     environment:
       PORT: "8080"
     healthcheck:

@@ -1,0 +1,10 @@
+.git
+node_modules
+internal/site/assets/dist
+bin
+coverage.out
+perk-workbench-site
+.env
+.env.*
+!.env.example
+compose.override.yaml

@@ -6,6 +6,7 @@
 - `internal/database` selects SQLite, MySQL, PostgreSQL, or MongoDB; `internal/sql` defines their shared service and display contracts. Driver adapters live in `internal/drivers/` (`sqlite`, `mysql`, `postgres`, `mongodb`); keep driver-specific SQL in `internal/drivers/sqlite`, `internal/drivers/mysql`, or `internal/drivers/postgres`, and mongosh-style statement handling in `internal/drivers/mongodb`. Only `internal/database` may import concrete drivers in production code; the workbench and contract packages must not.
 - Preserve the SQLite contract: only existing files open (`:memory:` is the exception); non-memory targets use read-write mode and must not create files. The shared statement validator accepts one statement and rejects trigger creation.
 - Preserve query behavior in `workbench` and driver services: execution is asynchronous and cancelable, failed queries retain the prior result table, and display results cap at 500 rows and 300 runes per cell.
+- `website/` is a Go 1.26.6 nested module for the product site and docs; it is excluded from the root Go 1.25 module's package patterns by design, and must be checked from `website/` after Vite builds its embedded assets.
 
 ## Development
 

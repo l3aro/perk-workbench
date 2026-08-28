@@ -13,6 +13,9 @@ static assets; it is separate from the terminal application.
 
 Build the frontend bundles first (see below), then start the server:
 
+All commands in this file run from the `website/` directory, which is the
+module root.
+
 ```bash
 npm run build
 PORT=8080 go run ./cmd/perk-workbench-site
@@ -54,9 +57,9 @@ during development (restart `go run` to pick up the new embed).
 ## Run with Docker Compose
 
 The default Compose configuration routes the site through Traefik without
-publishing the application port on the host. The image builds both this site
-and the Perk Workbench TUI from the sibling `source/` repository, so the build
-context is the parent workspace directory. Ensure the shared Traefik network
+publishing the application port on the host. The image builds this site and the
+demo TUI (from the pinned npm release) in standalone stages; the build context
+is the `website/` directory. Ensure the shared Traefik network
 exists:
 
 ```bash
@@ -146,7 +149,7 @@ fresh immediately before compiling Go.
 
 ## Repository boundary
 
-This repository contains only the independent website module. It does not
-contain or modify the Perk Workbench source application or the sibling
-`perk-redis` repository. Changes to those repositories are outside this
-module's build and validation commands.
+The product site and documentation are a nested, independently buildable Go
+module inside the Perk Workbench repository. Product commands run at the
+repository root; site commands run in `website/`. No `go.work` joins the two
+modules.

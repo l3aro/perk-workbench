@@ -1,8 +1,17 @@
-name: Test
+name: Website
 
 on:
   push:
+    branches: ["**"]
+    paths:
+      - "website/**"
+      - ".github/workflows/website.yml"
+      - "go.work"
   pull_request:
+    paths:
+      - "website/**"
+      - ".github/workflows/website.yml"
+      - "go.work"
 
 permissions:
   contents: read
@@ -19,11 +28,12 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: website/package-lock.json
 
       # The generated frontend bundles are gitignored. The server loads the
       # embedded manifest at startup, so build them before the Go test step.
       - name: Build frontend
+        working-directory: website
         run: |
           npm ci
           npm run build
@@ -33,14 +43,18 @@ jobs:
         with:
           go-version: '1.26.6'
           cache: true
+          cache-dependency-path: website/go.sum
 
       - name: Test
+        working-directory: website
         run: go test -race ./...
 
       - name: Vet
+        working-directory: website
         run: go vet ./...
 
       - name: Check formatting
+        working-directory: website
         shell: bash
         run: |
           files="$(gofmt -l cmd internal)"
@@ -50,4 +64,5 @@ jobs:
           fi
 
       - name: Build
+        working-directory: website
         run: go build ./cmd/perk-workbench-site
