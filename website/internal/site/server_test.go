@@ -2,15 +2,29 @@ package site
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
+// docPages returns the markdown-backed documentation pages in catalogue
+// order, so tests track whatever documents LoadPages actually publishes.
+func docPages(pages []Page) []Page {
+	docs := make([]Page, 0, len(pages))
+	for _, page := range pages {
+		if strings.HasPrefix(page.Path, "/docs/") {
+			docs = append(docs, page)
+		}
+	}
+	return docs
+}
+
 func TestRoutes(t *testing.T) {
 	t.Parallel()
 
+	server := New("test")
 	tests := []struct {
 		path  string
 		title string
@@ -18,13 +32,21 @@ func TestRoutes(t *testing.T) {
 		{path: "/", title: "Perk Workbench"},
 		{path: "/demo", title: "Live demo"},
 		{path: "/docs", title: "Documentation"},
-		{path: "/docs/getting-started", title: "Getting started"},
-		{path: "/docs/connections", title: "Connections"},
-		{path: "/docs/workspace", title: "Workspace"},
-		{path: "/docs/ai", title: "AI assistance"},
-		{path: "/docs/plugins", title: "Plugins"},
 	}
-	server := New("test")
+	for _, doc := range docPages(LoadPages()) {
+		tests = append(tests, struct {
+			path  string
+			title string
+		}{doc.Path, doc.Title})
+	}
+	assertTestRoutes(t, server, tests)
+}
+
+func assertTestRoutes(t *testing.T, server http.Handler, tests []struct {
+	path  string
+	title string
+}) {
+	t.Helper()
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			req := httptest.NewRequest("GET", tt.path, nil)
@@ -76,9 +98,100 @@ func TestDocumentationNavigation(t *testing.T) {
 			t.Errorf("primary navigation unexpectedly contains %s", href)
 		}
 	}
-	if !strings.Contains(body, `<aside class="docs-sidebar" aria-label="Documentation sections">`) {
+
+	sidebarStart := strings.Index(body, `<aside class="docs-sidebar" aria-label="Documentation sections">`)
+	if sidebarStart < 0 {
 		t.Fatal("documentation sidebar is missing")
 	}
+	sidebarEnd := strings.Index(body[sidebarStart:], "</aside>")
+	if sidebarEnd < 0 {
+		t.Fatal("documentation sidebar is not closed")
+	}
+	sidebar := body[sidebarStart : sidebarStart+sidebarEnd]
+
+	// The Overview anchor gains aria-current on /docs itself, so match on
+	// the href and the visible label separately.
+	if count := strings.Count(sidebar, `href="/docs"`); count != 1 {
+		t.Errorf("sidebar contains %d Overview hrefs, want exactly 1", count)
+	}
+	if count := strings.Count(sidebar, ">Overview</a>"); count != 1 {
+		t.Errorf("sidebar contains %d Overview labels, want exactly 1", count)
+	}
+	for _, doc := range docPages(LoadPages()) {
+		link := fmt.Sprintf(`href="%s">%s</a>`, doc.Path, doc.Title)
+		if count := strings.Count(sidebar, link); count != 1 {
+			t.Errorf("sidebar contains %q %d times, want exactly 1", link, count)
+		}
+	}
+}
+
+func TestDocPreviousNext(t *testing.T) {
+	t.Parallel()
+
+	docs := docPages(LoadPages())
+	if len(docs) < 3 {
+		t.Fatalf("doc catalogue has %d documents, want at least 3", len(docs))
+	}
+
+	server := New("test")
+	get := func(path string) string {
+		t.Helper()
+		req := httptest.NewRequest("GET", path, nil)
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, req)
+		if recorder.Code != 200 {
+			t.Fatalf("%s: status = %d, want 200", path, recorder.Code)
+		}
+		return recorder.Body.String()
+	}
+	assertPrev := func(body string, doc Page) {
+		t.Helper()
+		if !strings.Contains(body, fmt.Sprintf(`<a class="doc-nav-card doc-nav-prev" href="%s">`, doc.Path)) {
+			t.Errorf("body does not link Previous to %s", doc.Path)
+		}
+		if !strings.Contains(body, "<strong>"+doc.Title+"</strong>") {
+			t.Errorf("Previous link does not label its destination %q", doc.Title)
+		}
+	}
+	assertNext := func(body string, doc Page) {
+		t.Helper()
+		if !strings.Contains(body, fmt.Sprintf(`<a class="doc-nav-card doc-nav-next" href="%s">`, doc.Path)) {
+			t.Errorf("body does not link Next to %s", doc.Path)
+		}
+		if !strings.Contains(body, "<strong>"+doc.Title+"</strong>") {
+			t.Errorf("Next link does not label its destination %q", doc.Title)
+		}
+	}
+
+	t.Run("middle document links both directions", func(t *testing.T) {
+		body := get(docs[1].Path)
+		if !strings.Contains(body, `<nav class="doc-footer-nav" aria-label="Document navigation">`) {
+			t.Fatal("document-footer navigation landmark is missing")
+		}
+		assertPrev(body, docs[0])
+		assertNext(body, docs[2])
+	})
+	t.Run("first document links forward only", func(t *testing.T) {
+		body := get(docs[0].Path)
+		assertNext(body, docs[1])
+		if strings.Contains(body, "doc-nav-prev") {
+			t.Errorf("first document %s exposes a Previous link", docs[0].Path)
+		}
+	})
+	t.Run("last document links backward only", func(t *testing.T) {
+		last := docs[len(docs)-1]
+		body := get(last.Path)
+		assertPrev(body, docs[len(docs)-2])
+		if strings.Contains(body, "doc-nav-next") {
+			t.Errorf("last document %s exposes a Next link", last.Path)
+		}
+	})
+	t.Run("overview has no footer", func(t *testing.T) {
+		body := get("/docs")
+		if strings.Contains(body, "doc-footer-nav") {
+			t.Error("overview renders a document footer")
+		}
+	})
 }
 
 func TestSearchAPI(t *testing.T) {
@@ -180,6 +293,90 @@ func TestSearchAPIMatchesBodyContent(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("body-only search hit missing: results do not include /docs/connections")
+	}
+}
+
+func TestSearchAIOpenAICompatible(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	req := httptest.NewRequest("GET", "/api/search?q=openai-compatible", nil)
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, req)
+
+	if recorder.Code != 200 {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	var payload struct {
+		Results []struct {
+			Path string `json:"path"`
+		} `json:"results"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+	found := false
+	for _, result := range payload.Results {
+		if result.Path == "/docs/ai" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("search for openai-compatible does not include /docs/ai")
+	}
+}
+
+func TestAIPageFacts(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest("GET", "/docs/ai", nil)
+	recorder := httptest.NewRecorder()
+	New("test").ServeHTTP(recorder, req)
+	body := recorder.Body.String()
+
+	for _, want := range []string{
+		"$XDG_CONFIG_HOME/perk-workbench/ai.json",
+		".perk-workbench/ai.json",
+		"Ctrl</kbd>+<kbd>G</kbd>",
+		"does not open or toggle AI",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("AI page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "to open the AI assistance flow") {
+		t.Error("AI page still claims Ctrl+A opens AI")
+	}
+}
+
+func TestPluginsPageApprovalForm(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest("GET", "/docs/plugins", nil)
+	recorder := httptest.NewRecorder()
+	New("test").ServeHTTP(recorder, req)
+	body := recorder.Body.String()
+
+	for _, want := range []string{
+		"plugin add --approve SHA256 EXECUTABLE",
+		"trusted executable code",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("plugins page missing %q", want)
+		}
+	}
+}
+
+func TestWorkspacePageFacts(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest("GET", "/docs/workspace", nil)
+	recorder := httptest.NewRecorder()
+	New("test").ServeHTTP(recorder, req)
+	body := recorder.Body.String()
+
+	if !strings.Contains(body, "Ctrl</kbd>+<kbd>Space</kbd>") {
+		t.Error("workspace page does not document the Ctrl+Space completion key")
 	}
 }
 

@@ -277,12 +277,78 @@
   }
   .doc-body table {
     @apply my-6;
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
   }
+
+  .doc-body th {
+    font-weight: 600;
+  }
+
   .doc-body pre {
     @apply my-4;
+    max-width: 100%;
   }
+
   .doc-body blockquote {
     @apply my-4 border-l-2 border-line pl-4 text-muted;
+  }
+
+  /* ---- Document prev/next footer ---- */
+
+  .doc-footer-nav {
+    @apply mt-16;
+    display: grid;
+    gap: 0.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-line);
+  }
+
+  @media (min-width: 40rem) {
+    .doc-footer-nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .doc-nav-card {
+    @apply rounded-xl border border-line bg-panel p-5 no-underline transition-all duration-200;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .doc-nav-card span {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--color-muted);
+  }
+
+  .doc-nav-card strong {
+    font-size: 1rem;
+    color: var(--color-ink);
+  }
+
+  .doc-nav-card:hover {
+    border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-line));
+    box-shadow: var(--shadow-glow);
+  }
+
+  .doc-nav-prev {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .doc-nav-next {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  /* A single-direction link (first or last document) spans the row. */
+  .doc-footer-nav .doc-nav-card:only-child {
+    grid-column: 1 / -1;
   }
 
   /* Gradient hero headline */
@@ -393,6 +459,17 @@
     @apply grid gap-12 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start;
   }
 
+  /* Below lg the single column must shrink with the viewport; without a
+   * minmax(0,1fr) track the sidebar row's content width would blow the
+   * page out horizontally instead of scrolling inside the nav. Scoped in a
+   * media query so it never overrides the lg two-column layout (a bare
+   * declaration after the variant would win at every width). */
+  @media (max-width: 63.99rem) {
+    .docs-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
   .docs-sidebar {
     @apply lg:sticky lg:top-24;
   }
@@ -414,6 +491,34 @@
     @apply text-ink;
     background: color-mix(in oklab, var(--color-accent) 14%, transparent);
     box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  /* Below lg the docs sidebar collapses from a stacked preface into a
+   * horizontally scrollable, touch-sized topic row above the content. */
+  @media (max-width: 63.99rem) {
+    .docs-sidebar-nav {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.375rem;
+      overflow-x: auto;
+      padding-bottom: 0.375rem;
+      border-left: 0;
+      border-bottom: 1px solid var(--color-line);
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .docs-sidebar-nav a,
+    .docs-sidebar-nav .docs-sidebar-search {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 2.75rem;
+      white-space: nowrap;
+    }
+
+    .docs-sidebar .eyebrow {
+      display: none;
+    }
   }
 
   /* ---- Cards ---- */

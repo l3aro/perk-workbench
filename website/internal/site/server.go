@@ -83,12 +83,43 @@ type pageData struct {
 	Lede    string
 	Body    template.HTML
 	Version string
+
+	// DocLinks is the ordered documentation catalogue shared by the docs
+	// overview, the sidebar, and search. Previous/Next point at the adjacent
+	// documents for a rendered doc page; the overview has neither.
+	DocLinks []docLink
+	Previous *docLink
+	Next     *docLink
+}
+
+// docLink is one navigation entry in the documentation catalogue. It carries
+// exactly the fields the overview cards and sidebar links render, all of
+// which come from the markdown frontmatter.
+type docLink struct {
+	Path    string
+	Title   string
+	Summary string
+}
+
+// docLinksFromPages derives the ordered documentation catalogue from the
+// markdown-backed pages. Only /docs/<name> routes participate: the overview
+// is a hand-written page and never appears in the list.
+func docLinksFromPages(pages []Page) []docLink {
+	links := make([]docLink, 0, len(pages))
+	for _, page := range pages {
+		if !strings.HasPrefix(page.Path, "/docs/") {
+			continue
+		}
+		links = append(links, docLink{Path: page.Path, Title: page.Title, Summary: page.Summary})
+	}
+	return links
 }
 
 func New(version string) http.Handler {
 	mux := http.NewServeMux()
 	pages := LoadPages()
 	assets := loadAssetManifest()
+	docLinks := docLinksFromPages(pages)
 
 	route := func(path string, page Page) {
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -99,15 +130,15 @@ func New(version string) http.Handler {
 			if !methodAllowed(w, r) {
 				return
 			}
-			renderPage(w, r, version, page, assets)
+			renderPage(w, r, version, page, assets, docLinks)
 		})
 	}
 
+	// Every page the catalogue produces is registered as a route. The
+	// documentation set is content-driven: adding a markdown document makes
+	// it reachable and searchable without touching this list.
 	for _, page := range pages {
-		switch page.Path {
-		case "/", "/demo", "/docs", "/docs/getting-started", "/docs/connections", "/docs/workspace", "/docs/ai", "/docs/plugins":
-			route(page.Path, page)
-		}
+		route(page.Path, page)
 	}
 
 	mux.HandleFunc("/ws/tui", func(w http.ResponseWriter, r *http.Request) {
@@ -174,7 +205,7 @@ func methodAllowed(w http.ResponseWriter, r *http.Request) bool {
 	http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 	return false
 }
-func renderPage(w http.ResponseWriter, r *http.Request, version string, page Page, assets assetManifest) {
+func renderPage(w http.ResponseWriter, r *http.Request, version string, page Page, assets assetManifest, docLinks []docLink) {
 	t := template.Must(template.New("base").Funcs(assetFuncs(assets)).ParseFS(embedded,
 		"templates/base.html",
 		"templates/partials/navigation.html",
@@ -186,10 +217,52 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 	if r.Method == http.MethodHead {
 		return
 	}
-	data := pageData{Title: page.Title, Path: page.Path, Docs: strings.HasPrefix(page.Path, "/docs"), Eyebrow: page.Eyebrow, Lede: page.Lede, Body: page.Body, Version: version}
+	data := pageData{
+		Title:    page.Title,
+		Path:     page.Path,
+		Docs:     strings.HasPrefix(page.Path, "/docs"),
+		Eyebrow:  page.Eyebrow,
+		Lede:     page.Lede,
+		Body:     page.Body,
+		Version:  version,
+		DocLinks: docLinks,
+		Previous: previousDocLink(docLinks, page.Path),
+		Next:     nextDocLink(docLinks, page.Path),
+	}
 	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		return
 	}
+}
+
+// previousDocLink returns the document that precedes pagePath in the
+// catalogue, or nil for the first document and for the hand-written
+// overview page.
+func previousDocLink(docLinks []docLink, pagePath string) *docLink {
+	for i, link := range docLinks {
+		if link.Path == pagePath {
+			if i == 0 {
+				return nil
+			}
+			prev := docLinks[i-1]
+			return &prev
+		}
+	}
+	return nil
+}
+
+// nextDocLink returns the document that follows pagePath in the catalogue,
+// or nil for the last document and for the hand-written overview page.
+func nextDocLink(docLinks []docLink, pagePath string) *docLink {
+	for i, link := range docLinks {
+		if link.Path == pagePath {
+			if i+1 >= len(docLinks) {
+				return nil
+			}
+			next := docLinks[i+1]
+			return &next
+		}
+	}
+	return nil
 }
 
 // renderSearchJSON answers the spotlight modal's live queries. The scoring

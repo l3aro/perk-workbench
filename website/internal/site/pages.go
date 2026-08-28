@@ -24,7 +24,8 @@ type Page struct {
 	Corpus string
 }
 
-// PageCatalogue returns the site's pages in navigation order.
+// PageCatalogue returns the hand-written pages in navigation order. The
+// documentation routes are markdown-backed and appended by LoadPages.
 func PageCatalogue() []Page {
 	return []Page{
 		{
@@ -48,73 +49,38 @@ func PageCatalogue() []Page {
 			Template: "pages/docs.html",
 			Keywords: []string{"documentation", "docs", "Perk Workbench"},
 		},
-		{
-			Path:     "/docs/getting-started",
-			Title:    "Getting Started",
-			Summary:  "Install Perk Workbench, open a database, and run your first query from the terminal.",
-			Template: "pages/getting-started.html",
-			Keywords: []string{"install", "quickstart", "first query", "terminal", "database"},
-		},
-		{
-			Path:     "/docs/connections",
-			Title:    "Connections",
-			Summary:  "Connect to SQLite, MySQL, PostgreSQL, and MongoDB while keeping credentials and driver behavior predictable.",
-			Template: "pages/connections.html",
-			Keywords: []string{"SQLite", "MySQL", "PostgreSQL", "MongoDB", "drivers", "connection"},
-		},
-		{
-			Path:     "/docs/workspace",
-			Title:    "Workspace",
-			Summary:  "Navigate schemas, write and execute queries, inspect results, and move through the workbench with keyboard-first controls.",
-			Template: "pages/workspace.html",
-			Keywords: []string{"workspace", "queries", "schema", "results", "keyboard", "shortcuts"},
-		},
-		{
-			Path:     "/docs/ai",
-			Title:    "AI",
-			Summary:  "Use AI assistance to understand schemas and shape queries without leaving the terminal-native workspace.",
-			Template: "pages/ai.html",
-			Keywords: []string{"AI", "queries", "schema", "assistance", "terminal"},
-		},
-		{
-			Path:     "/docs/plugins",
-			Title:    "Plugins",
-			Summary:  "Extend Perk Workbench with declarative drivers and workspace views through the versioned Perk plugin protocol.",
-			Template: "pages/plugins.html",
-			Keywords: []string{"plugins", "Perk protocol", "drivers", "workspace views", "extensions"},
-		},
 	}
 }
 
 // LoadPages merges the static catalogue with the rendered docs markdown.
-// Docs pages take their title, lede, keywords, and body from the markdown
-// file; the catalogue entry only fixes the route order.
+// Every markdown document becomes a page in frontmatter order after /docs;
+// documents take their title, lede, keywords, and body from the frontmatter
+// and rendered body. The static catalogue only fixes the routes that must
+// never be markdown-backed.
 func LoadPages() []Page {
 	docs := loadDocContent()
 	pages := PageCatalogue()
-	for i := range pages {
-		doc, ok := docs[pages[i].Path]
-		if !ok {
-			continue
+	for _, doc := range docs {
+		switch doc.Path {
+		case "/", "/demo", "/docs":
+			panic(fmt.Sprintf("site: %s must stay a template page", doc.Path))
 		}
-		pages[i].Title = doc.Meta.Title
-		pages[i].Summary = doc.Meta.Lede
-		pages[i].Eyebrow = doc.Meta.Eyebrow
-		pages[i].Lede = doc.Meta.Lede
-		pages[i].Keywords = doc.Meta.Keywords
-		pages[i].Body = doc.Body
-		pages[i].Template = "pages/doc.html"
-		pages[i].Corpus = strings.ToLower(strings.Join([]string{
-			doc.Meta.Title,
-			doc.Meta.Lede,
-			strings.Join(doc.Meta.Keywords, " "),
-			doc.Text,
-		}, "\n"))
-	}
-	for _, path := range []string{"/", "/demo", "/docs"} {
-		if _, ok := docs[path]; ok {
-			panic(fmt.Sprintf("site: %s must stay a template page", path))
-		}
+		pages = append(pages, Page{
+			Path:     doc.Path,
+			Title:    doc.Meta.Title,
+			Summary:  doc.Meta.Lede,
+			Eyebrow:  doc.Meta.Eyebrow,
+			Lede:     doc.Meta.Lede,
+			Keywords: doc.Meta.Keywords,
+			Body:     doc.Body,
+			Template: "pages/doc.html",
+			Corpus: strings.ToLower(strings.Join([]string{
+				doc.Meta.Title,
+				doc.Meta.Lede,
+				strings.Join(doc.Meta.Keywords, " "),
+				doc.Text,
+			}, "\n")),
+		})
 	}
 	return pages
 }
