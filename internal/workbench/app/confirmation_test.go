@@ -23,6 +23,33 @@ func TestConfirmationDialog_clickingOptionCompletesWithItsAction(t *testing.T) {
 		t.Fatalf("click result = completed:%t action:%q, want true/delete", completed, action)
 	}
 }
+func TestQuitDialog_optionKeysCompleteTheirActions(t *testing.T) {
+	dialog := newConfirmationDialog("Quit?", "", []confirmationOption{
+		{Label: "Disconnect", Action: "disconnect", Key: 'd'},
+		{Label: "Quit", Action: "quit", Key: 'q'},
+		{Label: "Cancel", Action: "cancel", Key: 'c'},
+	})
+
+	for key, want := range map[rune]string{'d': "disconnect", 'q': "quit", 'c': "cancel"} {
+		completed, action := dialog.Update(tea.KeyPressMsg{Code: key, Text: string(key)}, 40, 20)
+		if !completed || action != want {
+			t.Fatalf("key %q result = completed:%t action:%q, want true/%q", key, completed, action, want)
+		}
+	}
+
+	// Navigation keys still move the selection without completing.
+	dialog = newConfirmationDialog("Quit?", "", []confirmationOption{
+		{Label: "Disconnect", Action: "disconnect", Key: 'd'},
+		{Label: "Quit", Action: "quit", Key: 'q'},
+		{Label: "Cancel", Action: "cancel", Key: 'c'},
+	})
+	if completed, action := dialog.Update(tea.KeyPressMsg{Code: 'j', Text: "j"}, 40, 20); completed {
+		t.Fatalf("j completed the dialog with action %q, want navigation only", action)
+	}
+	if dialog.Selected != 1 {
+		t.Fatalf("selected = %d, want 1 after j", dialog.Selected)
+	}
+}
 
 func TestConfirmationDialog_yAndEscapeConfirmAndCancel(t *testing.T) {
 	// Given

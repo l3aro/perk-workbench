@@ -1065,6 +1065,65 @@ func TestQuitDialog_plainQDoesNotQuitAndCtrlQOpensDialog(t *testing.T) {
 	}
 }
 
+// TestQuitDialog_shortcutKeysAct exercises the single-key completions of the
+// Ctrl+Q dialog: d disconnects, q quits, c cancels. Each scenario opens a
+// fresh dialog because Disconnect leaves the model on the connection state
+// where Ctrl+Q no longer opens one.
+func TestQuitDialog_shortcutKeysAct(t *testing.T) {
+	openDialog := func(t *testing.T) Model {
+		t.Helper()
+		model := readyModel(t)
+		model.connectionID = "conn-a"
+		updated, command := model.Update(tea.KeyPressMsg{Code: 'q', Mod: tea.ModCtrl})
+		model = updated.(Model)
+		if commandQuits(command) {
+			t.Fatal("Ctrl+Q quit directly instead of opening the dialog")
+		}
+		if model.overlay.quitDialog == nil {
+			t.Fatal("Ctrl+Q did not open the quit dialog")
+		}
+		return model
+	}
+
+	// d disconnects and clears the dialog.
+	model := openDialog(t)
+	updated, command := model.Update(tea.KeyPressMsg{Code: 'd', Text: "d"})
+	model = updated.(Model)
+	if model.overlay.quitDialog != nil {
+		t.Fatal("d did not clear the quit dialog")
+	}
+	if commandQuits(command) {
+		t.Fatal("d returned a quit command")
+	}
+	if model.connectionID != "" {
+		t.Fatalf("d kept connection ID %q, want disconnected", model.connectionID)
+	}
+
+	// q quits.
+	model = openDialog(t)
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	if updated.(Model).overlay.quitDialog != nil {
+		t.Fatal("q did not clear the quit dialog")
+	}
+	if !commandQuits(command) {
+		t.Fatal("q on the quit dialog did not quit")
+	}
+
+	// c cancels and keeps the connection.
+	model = openDialog(t)
+	updated, command = model.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	model = updated.(Model)
+	if model.overlay.quitDialog != nil {
+		t.Fatal("c did not clear the quit dialog")
+	}
+	if commandQuits(command) {
+		t.Fatal("c returned a quit command")
+	}
+	if model.connectionID != "conn-a" {
+		t.Fatalf("c lost connection ID %q, want kept", model.connectionID)
+	}
+}
+
 func commandQuits(command tea.Cmd) bool {
 	if command == nil {
 		return false

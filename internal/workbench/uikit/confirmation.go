@@ -13,6 +13,10 @@ import (
 type ConfirmationOption struct {
 	Label  string
 	Action string
+	// Key, when non-zero, is a shortcut rune that completes the dialog with
+	// this option's action while the dialog is open (e.g. d/q/c on the quit
+	// dialog). Zero disables the shortcut.
+	Key rune
 }
 
 // ConfirmationDialog is a modal yes/no-style prompt owned by the root
@@ -214,6 +218,9 @@ func (d *ConfirmationDialog) Update(message tea.Msg, width, height int) (bool, s
 	}
 	switch message := message.(type) {
 	case tea.KeyPressMsg:
+		if action, ok := d.actionForKey(message.Key().Code); ok {
+			return true, action
+		}
 		switch message.Key().Code {
 		case tea.KeyEscape:
 			return true, d.Options[len(d.Options)-1].Action
@@ -247,4 +254,15 @@ func (d *ConfirmationDialog) Update(message tea.Msg, width, height int) (bool, s
 		return d.selectOption(mouse.X, mouse.Y, width, height)
 	}
 	return false, ""
+}
+
+// actionForKey resolves a shortcut rune against the dialog's options,
+// completing immediately with the matching action.
+func (d ConfirmationDialog) actionForKey(key rune) (string, bool) {
+	for _, option := range d.Options {
+		if option.Key != 0 && option.Key == key {
+			return option.Action, true
+		}
+	}
+	return "", false
 }
