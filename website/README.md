@@ -27,7 +27,7 @@ The site's frontend is built with Vite + Tailwind CSS 4. Sources live in
 `frontend/`:
 
 - `site.css` — Tailwind theme tokens, base styles, and component classes
-- `app.js` — site-wide behaviours (bundles HTMX for search)
+- `app.js` — site-wide behaviours (theme toggle, copy buttons, and the global search spotlight)
 - `demo.js` — the live terminal demo (bundles xterm.js)
 
 Build the bundles:
@@ -140,7 +140,7 @@ fresh immediately before compiling Go.
 - `/docs/workspace` — workspace navigation, queries, schemas, and results
 - `/docs/ai` — AI assistance overview
 - `/docs/plugins` — plugin and workspace-view overview
-- `/search?q=...` — case-insensitive catalogue search; HTMX requests receive a fragment
+- `/api/search?q=...` — case-insensitive catalogue search JSON backing the spotlight modal (queried as you type, keyboard-navigable)
 - `/healthz` — health check
 - `/static/` — embedded fonts and images; `/static/assets/` serves the content-hashed frontend bundles with immutable caching
 

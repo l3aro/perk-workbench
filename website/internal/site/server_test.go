@@ -1,6 +1,8 @@
 package site
 
 import (
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -79,55 +81,50 @@ func TestDocumentationNavigation(t *testing.T) {
 	}
 }
 
-func TestSearchPage(t *testing.T) {
+func TestSearchAPI(t *testing.T) {
 	t.Parallel()
 
 	server := New("test")
-	req := httptest.NewRequest("GET", "/search?q=MongoDB", nil)
+	req := httptest.NewRequest("GET", "/api/search?q=MongoDB", nil)
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, req)
 
 	if recorder.Code != 200 {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
-	if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-		t.Fatalf("content type = %q, want text/html", got)
+	if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+		t.Fatalf("content type = %q, want application/json", got)
 	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, "MongoDB") {
-		t.Errorf("body does not contain search query")
+	var payload struct {
+		Query   string `json:"query"`
+		Results []struct {
+			Path    string `json:"path"`
+			Title   string `json:"title"`
+			Summary string `json:"summary"`
+		} `json:"results"`
 	}
-	if !strings.Contains(body, "<html") || !strings.Contains(body, "<title>") {
-		t.Errorf("normal search response is not a complete HTML page")
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
 	}
-}
-
-func TestSearchHXRequest(t *testing.T) {
-	t.Parallel()
-
-	server := New("test")
-	req := httptest.NewRequest("GET", "/search?q=MongoDB", nil)
-	req.Header.Set("HX-Request", "true")
-	recorder := httptest.NewRecorder()
-	server.ServeHTTP(recorder, req)
-
-	if recorder.Code != 200 {
-		t.Fatalf("status = %d, want 200", recorder.Code)
+	if payload.Query != "MongoDB" {
+		t.Errorf("query = %q, want %q", payload.Query, "MongoDB")
 	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, "MongoDB") {
-		t.Errorf("body does not contain search query")
+	if len(payload.Results) == 0 {
+		t.Fatal("results are empty, want at least the connections page")
 	}
-	if strings.Contains(body, "<html") || strings.Contains(body, "<title>") {
-		t.Errorf("HX response unexpectedly contains the full HTML shell")
+	if payload.Results[0].Path != "/docs/connections" {
+		t.Errorf("top result = %q, want /docs/connections", payload.Results[0].Path)
+	}
+	if payload.Results[0].Title == "" || payload.Results[0].Summary == "" {
+		t.Errorf("result missing title/summary: %+v", payload.Results[0])
 	}
 }
 
-func TestSearchEmptyQuery(t *testing.T) {
+func TestSearchAPIEmptyQuery(t *testing.T) {
 	t.Parallel()
 
 	server := New("test")
-	for _, path := range []string{"/search", "/search?q="} {
+	for _, path := range []string{"/api/search", "/api/search?q=", "/api/search?q=%20%20"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
 			recorder := httptest.NewRecorder()
@@ -136,49 +133,66 @@ func TestSearchEmptyQuery(t *testing.T) {
 			if recorder.Code != 200 {
 				t.Fatalf("status = %d, want 200", recorder.Code)
 			}
-			if !strings.Contains(recorder.Body.String(), "Enter a search term") {
-				t.Errorf("body does not contain exact empty-query message")
+			var payload struct {
+				Query   string   `json:"query"`
+				Results []string `json:"results"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("response is not valid JSON: %v", err)
+			}
+			if payload.Query != "" {
+				t.Errorf("query = %q, want empty", payload.Query)
+			}
+			if len(payload.Results) != 0 {
+				t.Errorf("results = %v, want none", payload.Results)
 			}
 		})
 	}
 }
 
-func TestSearchEscapesQuery(t *testing.T) {
+func TestSearchAPIMatchesBodyContent(t *testing.T) {
 	t.Parallel()
 
 	server := New("test")
-	req := httptest.NewRequest("GET", "/search?q=%3Cscript%3E", nil)
+
+	// "AES-256-GCM" only occurs in the connections page markdown body —
+	// not in any title, lede, or keyword list.
+	req := httptest.NewRequest("GET", "/api/search?q=AES-256-GCM", nil)
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, req)
 
 	if recorder.Code != 200 {
 		t.Fatalf("status = %d, want 200", recorder.Code)
 	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, "&lt;script&gt;") {
-		t.Errorf("body does not HTML-escape the query")
+	var payload struct {
+		Results []struct {
+			Path string `json:"path"`
+		} `json:"results"`
 	}
-	if strings.Contains(body, "<script>") {
-		t.Errorf("body contains an unescaped script element")
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+	found := false
+	for _, result := range payload.Results {
+		if result.Path == "/docs/connections" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("body-only search hit missing: results do not include /docs/connections")
 	}
 }
 
-func TestSearchMatchesBodyContent(t *testing.T) {
+func TestSearchPageRemoved(t *testing.T) {
 	t.Parallel()
 
 	server := New("test")
-	// "AES-256-GCM" only occurs in the connections page body, never in its
-	// title, lede, or keywords.
-	req := httptest.NewRequest("GET", "/search?q=AES-256-GCM", nil)
+	req := httptest.NewRequest("GET", "/search?q=MongoDB", nil)
 	recorder := httptest.NewRecorder()
 	server.ServeHTTP(recorder, req)
 
-	if recorder.Code != 200 {
-		t.Fatalf("status = %d, want 200", recorder.Code)
-	}
-	body := recorder.Body.String()
-	if !strings.Contains(body, `href="/docs/connections"`) {
-		t.Errorf("body-only search hit missing: results do not link /docs/connections")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 for removed /search page", recorder.Code)
 	}
 }
 

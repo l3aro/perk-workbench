@@ -7,13 +7,13 @@ COPY website/ ./
 RUN npm run build
 
 FROM node:22-alpine AS tui-build
-# The demo TUI comes from the official npm release, pinned to 0.9.0.
+# The demo TUI comes from the official npm release, pinned to 0.10.1.
 # npm installs a JS launcher plus the native binary as a nested optional
 # dependency; only the native binary ships into the final Alpine image.
-RUN npm install -g --prefix /tui perk-workbench@0.9.0 \
- && find /tui/lib/node_modules/perk-workbench/node_modules \
-      -path '*/bin/perk-workbench' -type f \
-      -exec cp {} /tui/perk-workbench \;
+RUN npm install -g --prefix /tui perk-workbench@0.10.1 \
+  && find /tui/lib/node_modules/perk-workbench/node_modules \
+  -path '*/bin/perk-workbench' -type f \
+  -exec cp {} /tui/perk-workbench \;
 
 FROM golang:1.26.6-alpine AS site-build
 WORKDIR /src

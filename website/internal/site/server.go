@@ -76,16 +76,13 @@ func assetFuncs(m assetManifest) template.FuncMap {
 }
 
 type pageData struct {
-	Title         string
-	Path          string
-	Docs          bool
-	Eyebrow       string
-	Lede          string
-	Body          template.HTML
-	Query         string
-	SearchMessage string
-	Results       []Page
-	Version       string
+	Title   string
+	Path    string
+	Docs    bool
+	Eyebrow string
+	Lede    string
+	Body    template.HTML
+	Version string
 }
 
 func New(version string) http.Handler {
@@ -120,11 +117,11 @@ func New(version string) http.Handler {
 		newTerminalServer().ServeHTTP(w, r)
 	})
 
-	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/search", func(w http.ResponseWriter, r *http.Request) {
 		if !methodAllowed(w, r) {
 			return
 		}
-		renderSearch(w, r, version, pages, assets)
+		renderSearchJSON(w, r, pages)
 	})
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if !methodAllowed(w, r) {
@@ -182,7 +179,6 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 		"templates/base.html",
 		"templates/partials/navigation.html",
 		"templates/partials/docs-sidebar.html",
-		"templates/partials/search-results.html",
 		"templates/"+page.Template,
 	))
 	w.Header().Set("Cache-Control", "no-cache")
@@ -196,42 +192,25 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 	}
 }
 
-func renderSearch(w http.ResponseWriter, r *http.Request, version string, pages []Page, assets assetManifest) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	data := pageData{
-		Title:   "Search",
-		Path:    "/search",
-		Docs:    true,
-		Query:   q,
-		Version: version,
-	}
-	if q == "" {
-		data.SearchMessage = "Enter a search term"
-	} else {
-		data.Results = searchPages(q, pages)
-		if len(data.Results) == 0 {
-			data.SearchMessage = "No results found"
-		}
-	}
-	t := template.Must(template.New("base").Funcs(assetFuncs(assets)).ParseFS(embedded,
-		"templates/base.html",
-		"templates/partials/navigation.html",
-		"templates/partials/docs-sidebar.html",
-		"templates/partials/search-results.html",
-		"templates/pages/search.html",
-	))
+// renderSearchJSON answers the spotlight modal's live queries. The scoring
+// stays server-side (searchPages); the client only renders path/title/summary.
+func renderSearchJSON(w http.ResponseWriter, r *http.Request, pages []Page) {
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if r.Method == http.MethodHead {
 		return
 	}
-	if r.Header.Get("HX-Request") == "true" {
-		if err := t.ExecuteTemplate(w, "search-results", data); err != nil {
-			return
-		}
-		return
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	matches := searchPages(q, pages)
+	results := make([]map[string]string, 0, len(matches))
+	for _, page := range matches {
+		results = append(results, map[string]string{
+			"path":    page.Path,
+			"title":   page.Title,
+			"summary": page.Summary,
+		})
 	}
-	if err := t.ExecuteTemplate(w, "base", data); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"query": q, "results": results}); err != nil {
 		return
 	}
 }

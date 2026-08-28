@@ -1,11 +1,10 @@
-/* Site-wide behaviours: HTMX powers the live search-as-you-type results on
- * /search; the theme toggle flips the `data-theme` attribute the head
- * script also honours; copy buttons copy their data-copy payload. The
- * terminal-native extras (typewriter loop, cursor spotlight, status-bar
- * keyboard shortcuts) degrade to static content without JS.
+/* Site-wide behaviours: the global search spotlight (a <dialog> modal that
+ * queries /api/search as you type); the theme toggle flips the `data-theme`
+ * attribute the head script also honours; copy buttons copy their data-copy
+ * payload. The terminal-native extras (typewriter loop, cursor spotlight,
+ * status-bar keyboard shortcuts) degrade to static content without JS.
  * Bundled here so every script the site owns ships through the versioned
  * frontend build. */
-import 'htmx.org';
 
 function setTheme(next) {
   document.documentElement.dataset.theme = next;
@@ -143,9 +142,134 @@ if (typeTarget) {
   }
 }
 
+/* Global search spotlight: a <dialog> in base.html, openable from any page
+ * via `/`, Cmd/Ctrl+K, or any [data-search-open] trigger. Queries hit the
+ * JSON API debounced; results are keyboard-navigable (↑/↓/Enter). */
+const spotlight = document.getElementById('search-spotlight');
+if (spotlight) {
+  const input = spotlight.querySelector('#spotlight-input');
+  const list = spotlight.querySelector('#spotlight-results');
+  const empty = spotlight.querySelector('.spotlight-empty');
+  let requestSeq = 0;
+  let debounceTimer;
+  let activeIndex = -1;
+
+  const options = () => Array.from(list.querySelectorAll('.spotlight-option'));
+
+  function setActive(next) {
+    const items = options();
+    if (!items.length) return;
+    activeIndex = (next + items.length) % items.length;
+    items.forEach((item, i) => {
+      item.classList.toggle('is-active', i === activeIndex);
+      item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
+    });
+    items[activeIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function renderResults(results) {
+    list.innerHTML = '';
+    activeIndex = -1;
+    empty.hidden = results.length > 0;
+    for (const result of results) {
+      const link = document.createElement('a');
+      link.className = 'spotlight-option';
+      link.href = result.path;
+      link.setAttribute('role', 'option');
+      const title = document.createElement('span');
+      title.className = 'spotlight-option-title';
+      title.textContent = result.title;
+      const summary = document.createElement('span');
+      summary.className = 'spotlight-option-summary';
+      summary.textContent = result.summary;
+      link.append(title, summary);
+      list.append(link);
+    }
+  }
+
+  function runQuery(query) {
+    const seq = ++requestSeq;
+    fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      .then((response) => (response.ok ? response.json() : { results: [] }))
+      .then((data) => {
+        if (seq === requestSeq) renderResults(data.results ?? []);
+      })
+      .catch(() => {
+        if (seq === requestSeq) renderResults([]);
+      });
+  }
+
+  function openSpotlight() {
+    if (spotlight.open) return;
+    spotlight.showModal();
+    input.value = '';
+    renderResults([]);
+    input.focus();
+  }
+
+  document.querySelectorAll('[data-search-open]').forEach((trigger) => {
+    trigger.addEventListener('click', openSpotlight);
+  });
+
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    const query = input.value.trim();
+    if (!query) {
+      requestSeq++;
+      renderResults([]);
+      return;
+    }
+    debounceTimer = setTimeout(() => runQuery(query), 150);
+  });
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActive(activeIndex + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActive(activeIndex - 1);
+    } else if (event.key === 'Enter') {
+      // Never let the form's implicit submission reload the page and discard
+      // the query; open the highlighted item, or the top hit when nothing is
+      // highlighted yet.
+      event.preventDefault();
+      const items = options();
+      if (activeIndex >= 0) {
+        items[activeIndex].click();
+      } else if (items.length > 0) {
+        items[0].click();
+      }
+    }
+  });
+
+  // Clicking the backdrop (the dialog padding itself) closes the spotlight.
+  spotlight.addEventListener('click', (event) => {
+    if (event.target === spotlight) spotlight.close();
+  });
+
+  spotlight.addEventListener('close', () => {
+    clearTimeout(debounceTimer);
+    requestSeq++;
+    renderResults([]);
+  });
+
+  // Belt and braces: the dialog form must never submit and navigate away.
+  spotlight.querySelector('.spotlight-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+  });
+
+  window.openSpotlight = openSpotlight;
+}
+
 /* Status-bar style keyboard shortcuts: ? docs, / search, t theme.
- * Ignored while typing in form fields or with modifier keys held. */
+ * Ignored while typing in form fields; Cmd/Ctrl+K works everywhere. */
 document.addEventListener('keydown', (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    window.openSpotlight?.();
+    return;
+  }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target;
   if (target instanceof HTMLElement &&
@@ -157,7 +281,7 @@ document.addEventListener('keydown', (event) => {
     window.location.href = '/docs';
   } else if (event.key === '/') {
     event.preventDefault();
-    window.location.href = '/search';
+    window.openSpotlight?.();
   } else if (event.key === 't') {
     setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
   }

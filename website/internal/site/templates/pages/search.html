@@ -1,6 +1,0 @@
-{{ define "content" -}}
-<header><p class="eyebrow">Documentation / find an answer</p><h1 class="page-title">Search</h1><p class="lede">Find installation steps, connection targets, workspace controls, AI safety details, and plugin protocol notes.</p></header>
-<form class="search-form my-6 flex gap-2.5 max-[30rem]:grid" action="/search" method="get" role="search"><label class="mono" for="site-search">Search the docs</label><input id="site-search" name="q" type="search" value="{{ .Query }}" placeholder="Try: PostgreSQL, F5, plugins" autocomplete="off" class="min-w-0 flex-1 rounded border border-line bg-panel px-3.5 py-3 text-ink" hx-get="/search" hx-target="#search-results" hx-swap="outerHTML" hx-trigger="input changed delay:200ms"><button type="submit" class="btn-primary">Search</button></form>
-{{ template "search-results" . }}
-<noscript><p>Search is available with JavaScript disabled; submit a query to see matching documentation pages.</p></noscript>
-{{- end }}

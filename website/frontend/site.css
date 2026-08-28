@@ -549,16 +549,77 @@
     align-items: flex-start;
   }
 
-  /* ---- Search ---- */
+  /* ---- Search spotlight ---- */
 
-  .search-form input[type="search"] {
-    @apply min-w-0 flex-1 rounded-lg border border-line bg-panel px-4 py-3 text-ink transition-colors duration-150;
+  .docs-sidebar-search {
+    @apply cursor-pointer border-none bg-transparent rounded-md px-3 py-1.5 text-left text-sm text-muted transition-colors duration-150;
   }
 
-  .search-form input[type="search"]:focus {
-    border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-accent) 25%, transparent);
-    outline: none;
+  .docs-sidebar-search:hover {
+    @apply text-ink;
+    background: color-mix(in oklab, var(--color-line) 55%, transparent);
+  }
+
+  .spotlight {
+    @apply m-auto w-[min(38rem,calc(100vw-2rem))] border border-line bg-panel p-0 text-ink shadow-2xl backdrop:bg-black/50;
+    border-radius: 0.75rem;
+  }
+
+  .spotlight-form {
+    @apply flex items-center gap-3 border-b border-line px-4;
+  }
+
+  .spotlight-form svg {
+    @apply shrink-0 text-muted;
+  }
+
+  .spotlight-form input[type="search"] {
+    @apply min-w-0 flex-1 border-none bg-transparent py-4 text-ink outline-none;
+  }
+
+  .spotlight-form kbd {
+    @apply shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[0.68rem] text-muted;
+  }
+
+  .spotlight-results {
+    @apply max-h-[24rem] overflow-y-auto p-2;
+  }
+
+  .spotlight-results:empty {
+    @apply hidden;
+  }
+
+  .spotlight-option {
+    @apply flex flex-col gap-0.5 rounded-lg px-3.5 py-2.5 no-underline;
+  }
+
+  .spotlight-option:hover,
+  .spotlight-option.is-active {
+    background: color-mix(in oklab, var(--color-accent) 12%, transparent);
+  }
+
+  .spotlight-option.is-active {
+    box-shadow: inset 2px 0 0 var(--color-accent);
+  }
+
+  .spotlight-option-title {
+    @apply font-medium text-ink;
+  }
+
+  .spotlight-option-summary {
+    @apply text-sm text-muted;
+  }
+
+  .spotlight-empty {
+    @apply px-4 pb-3 pt-1 text-sm text-muted;
+  }
+
+  .spotlight-hints {
+    @apply flex gap-4 border-t border-line px-4 py-2.5 text-[0.72rem] text-muted;
+  }
+
+  .spotlight-hints kbd {
+    @apply mr-1 rounded border border-line px-1.5 py-0.5 font-mono text-[0.68rem];
   }
 
   /* ---- Motion ---- */

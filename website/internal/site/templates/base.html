@@ -52,10 +52,24 @@
     <span class="status-hint">terminal-native database exploration</span>
     <span class="status-keys">
       <button class="status-key" type="button" data-goto="/docs"><kbd>?</kbd>docs</button>
-      <button class="status-key" type="button" data-goto="/search"><kbd>/</kbd>search</button>
+      <button class="status-key" type="button" data-search-open><kbd>/</kbd>search</button>
       <button class="status-key" type="button" data-status-theme><kbd>t</kbd>theme</button>
     </span>
   </nav>
+  <dialog id="search-spotlight" class="spotlight" aria-label="Search the site">
+    <form class="spotlight-form" role="search">
+      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="spotlight-input" type="search" placeholder="Search docs… (try: PostgreSQL, F5, plugins)" autocomplete="off" spellcheck="false" aria-controls="spotlight-results" aria-autocomplete="list">
+      <kbd>esc</kbd>
+    </form>
+    <div class="spotlight-results" id="spotlight-results" role="listbox" aria-label="Search results"></div>
+    <p class="spotlight-empty" hidden>No results found</p>
+    <footer class="spotlight-hints">
+      <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
+      <span><kbd>&crarr;</kbd> open</span>
+      <span><kbd>esc</kbd> close</span>
+    </footer>
+  </dialog>
 </body>
 </html>
 {{end}}
