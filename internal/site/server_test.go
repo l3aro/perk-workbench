@@ -579,7 +579,7 @@ func TestStaticAssets(t *testing.T) {
 
 	// Every entry the templates reference must resolve and be served with
 	// immutable caching, because Vite content-hashes the filenames.
-	for _, name := range []string{"site", "app", "demo"} {
+	for _, name := range []string{"site", "app", "demo", "theme"} {
 		entry, err := manifest.entry(name)
 		if err != nil {
 			t.Fatalf("manifest entry %q: %v", name, err)
@@ -599,6 +599,91 @@ func TestStaticAssets(t *testing.T) {
 			if got := recorder.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
 				t.Errorf("%s: cache control = %q, want immutable", path, got)
 			}
+		}
+	}
+}
+
+func TestThemeControl_exposesSystemPreference(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	New("test").ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := recorder.Body.String()
+
+	start := strings.Index(body, `<button id="theme-toggle"`)
+	if start < 0 {
+		t.Fatal("theme control is missing")
+	}
+	end := strings.Index(body[start:], "</button>")
+	if end < 0 {
+		t.Fatal("theme control is not closed")
+	}
+	control := body[start : start+end]
+	for _, marker := range []string{
+		`data-theme-preference="dark"`,
+		`aria-label="Color theme: dark (activate to use light)"`,
+		`title="Color theme: dark (activate to use light)"`,
+		`theme-icon-sun`,
+		`theme-icon-moon`,
+		`theme-icon-system`,
+	} {
+		if !strings.Contains(control, marker) {
+			t.Errorf("theme control does not expose %s", marker)
+		}
+	}
+}
+
+func TestThemeAssetsSupportSystemPreference(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	manifest := loadAssetManifest()
+	assetBody := func(t *testing.T, name string) string {
+		t.Helper()
+		entry, err := manifest.entry(name)
+		if err != nil {
+			t.Fatalf("manifest entry %q: %v", name, err)
+		}
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/static/"+entry.File, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s asset status = %d, want 200", name, recorder.Code)
+		}
+		return recorder.Body.String()
+	}
+
+	bootstrap := assetBody(t, "theme")
+	for _, marker := range []string{
+		"system",
+		"prefers-color-scheme: light",
+		"matchMedia",
+		"addEventListener",
+	} {
+		if !strings.Contains(bootstrap, marker) {
+			t.Errorf("theme bootstrap does not contain %q", marker)
+		}
+	}
+
+	runtime := assetBody(t, "app")
+	for _, marker := range []string{
+		"system",
+		"themechange",
+		"localStorage",
+		"themePreference",
+	} {
+		if !strings.Contains(runtime, marker) {
+			t.Errorf("theme runtime does not contain %q", marker)
+		}
+	}
+
+	demo := assetBody(t, "demo")
+	for _, marker := range []string{
+		"dataset.theme",
+		`/ws/tui?theme=`,
+		"themechange",
+	} {
+		if !strings.Contains(demo, marker) {
+			t.Errorf("terminal demo does not contain %q", marker)
 		}
 	}
 }

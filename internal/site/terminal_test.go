@@ -83,7 +83,7 @@ func TestDemoCommandArgs_pinsReadOnlySession(t *testing.T) {
 	}
 }
 
-func TestDemoAppearance_acceptsOnlyLight(t *testing.T) {
+func TestDemoAppearance_acceptsOnlyEffectiveTheme(t *testing.T) {
 	for _, test := range []struct {
 		name string
 		url  string
@@ -91,6 +91,10 @@ func TestDemoAppearance_acceptsOnlyLight(t *testing.T) {
 	}{
 		{name: "light", url: "/ws/tui?theme=light", want: "light"},
 		{name: "dark", url: "/ws/tui?theme=dark", want: "dark"},
+		// The browser resolves the stored "system" preference before opening
+		// the terminal socket. If it leaks through, the TUI must still receive
+		// a valid effective theme rather than the unsupported preference name.
+		{name: "stored system preference", url: "/ws/tui?theme=system", want: "dark"},
 		{name: "unknown", url: "/ws/tui?theme=solarized", want: "dark"},
 		{name: "missing", url: "/ws/tui", want: "dark"},
 	} {
@@ -103,23 +107,37 @@ func TestDemoAppearance_acceptsOnlyLight(t *testing.T) {
 	}
 }
 
-func TestWriteDemoConfig_disablesAutoTheme(t *testing.T) {
-	home := t.TempDir()
-	if err := writeDemoConfig(home, "light"); err != nil {
-		t.Fatalf("writeDemoConfig: %v", err)
-	}
-	data, err := os.ReadFile(filepath.Join(home, "perk-workbench", "config.json"))
-	if err != nil {
-		t.Fatalf("read demo config: %v", err)
-	}
-	var config struct {
-		Appearance string `json:"appearance"`
-		AutoTheme  bool   `json:"auto_theme"`
-	}
-	if err := json.Unmarshal(data, &config); err != nil {
-		t.Fatalf("decode demo config: %v", err)
-	}
-	if config.Appearance != "light" || config.AutoTheme {
-		t.Fatalf("demo config = %#v, want light with auto_theme false", config)
+func TestWriteDemoConfig_acceptsOnlyEffectiveThemes(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		appearance string
+		want       string
+	}{
+		{name: "light", appearance: "light", want: "light"},
+		{name: "dark", appearance: "dark", want: "dark"},
+		// "system" is a browser preference, not a valid terminal
+		// appearance. The demo config must never pass it to the TUI.
+		{name: "stored system preference", appearance: "system", want: "dark"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			if err := writeDemoConfig(home, test.appearance); err != nil {
+				t.Fatalf("writeDemoConfig: %v", err)
+			}
+			data, err := os.ReadFile(filepath.Join(home, "perk-workbench", "config.json"))
+			if err != nil {
+				t.Fatalf("read demo config: %v", err)
+			}
+			var config struct {
+				Appearance string `json:"appearance"`
+				AutoTheme  bool   `json:"auto_theme"`
+			}
+			if err := json.Unmarshal(data, &config); err != nil {
+				t.Fatalf("decode demo config: %v", err)
+			}
+			if config.Appearance != test.want || config.AutoTheme {
+				t.Fatalf("demo config = %#v, want %s with auto_theme false", config, test.want)
+			}
+		})
 	}
 }

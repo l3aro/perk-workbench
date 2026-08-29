@@ -549,9 +549,14 @@
     @apply grid size-9 cursor-pointer place-items-center rounded-lg border border-line bg-panel text-muted transition-colors duration-150;
   }
 
-  [data-theme="dark"] .theme-icon-sun,
-  [data-theme="light"] .theme-icon-moon {
+  .theme-toggle .theme-icon {
     display: none;
+  }
+
+  .theme-toggle[data-theme-preference="light"] .theme-icon-sun,
+  .theme-toggle[data-theme-preference="dark"] .theme-icon-moon,
+  .theme-toggle[data-theme-preference="system"] .theme-icon-system {
+    display: block;
   }
 
   /* ---- Docs layout ---- */

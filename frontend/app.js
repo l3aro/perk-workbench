@@ -1,30 +1,72 @@
 /* Site-wide behaviours: the global search spotlight (a <dialog> modal that
- * queries /api/search as you type); the theme toggle flips the `data-theme`
- * attribute the head script also honours; copy buttons copy their data-copy
- * payload. The terminal-native extras (typewriter loop, cursor spotlight,
- * status-bar keyboard shortcuts) degrade to static content without JS.
- * Bundled here so every script the site owns ships through the versioned
- * frontend build. */
+ * queries /api/search as you type); theme controls cycle the saved
+ * light/dark/system preference; copy buttons copy their data-copy payload.
+ * The terminal-native extras (typewriter loop, cursor spotlight, status-bar
+ * keyboard shortcuts) degrade to static content without JS. */
+
+const THEME_PREFERENCES = ['dark', 'light', 'system'];
+
+function isThemePreference(value) {
+  return THEME_PREFERENCES.includes(value);
+}
+
+function currentThemePreference() {
+  const preference = window.getThemePreference?.() ||
+    document.documentElement.dataset.themePreference;
+  return isThemePreference(preference) ? preference : 'system';
+}
+
+function effectiveThemeFor(preference) {
+  if (preference !== 'system') return preference;
+  return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function nextThemePreference(preference) {
+  const index = THEME_PREFERENCES.indexOf(preference);
+  return THEME_PREFERENCES[(index + 1) % THEME_PREFERENCES.length];
+}
+
+function updateThemeControls(preference, effective) {
+  const next = nextThemePreference(preference);
+  document.documentElement.dataset.themePreference = preference;
+  document.querySelectorAll('#theme-toggle, [data-status-theme]').forEach((control) => {
+    control.dataset.themePreference = preference;
+    control.dataset.themeEffective = effective;
+    const label = `Color theme: ${preference} (activate to use ${next})`;
+    control.setAttribute('aria-label', label);
+    control.setAttribute('title', label);
+  });
+}
 
 function setTheme(next) {
-  document.documentElement.dataset.theme = next;
+  if (!isThemePreference(next)) return;
+  if (typeof window.setThemePreference === 'function') {
+    window.setThemePreference(next);
+    return;
+  }
+  const effective = effectiveThemeFor(next);
+  document.documentElement.dataset.theme = effective;
+  document.documentElement.dataset.themePreference = next;
   localStorage.setItem('theme', next);
-  window.dispatchEvent(new CustomEvent('themechange', { detail: next }));
+  window.dispatchEvent(new CustomEvent('themechange', { detail: effective }));
+  window.dispatchEvent(new CustomEvent('themepreferencechange', { detail: next }));
+}
+
+function cycleTheme() {
+  setTheme(nextThemePreference(currentThemePreference()));
 }
 
 const themeToggle = document.getElementById('theme-toggle');
-if (themeToggle) {
-  themeToggle.addEventListener('click', () => {
-    setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
-  });
-}
-
 const statusTheme = document.querySelector('[data-status-theme]');
-if (statusTheme) {
-  statusTheme.addEventListener('click', () => {
-    setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
-  });
-}
+updateThemeControls(currentThemePreference(), document.documentElement.dataset.theme);
+if (themeToggle) themeToggle.addEventListener('click', cycleTheme);
+if (statusTheme) statusTheme.addEventListener('click', cycleTheme);
+window.addEventListener('themechange', (event) => {
+  const effective = event.detail === 'light' || event.detail === 'dark'
+    ? event.detail
+    : document.documentElement.dataset.theme;
+  updateThemeControls(currentThemePreference(), effective);
+});
 /* Command blocks: every <pre><code> outside the home hero chrome gets a
  * copy button on a row below the snippet, so docs and demo snippets are
  * one click away without repeating markup in every template. */
@@ -302,6 +344,6 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     window.openSpotlight?.();
   } else if (event.key === 't') {
-    setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+    cycleTheme();
   }
 });

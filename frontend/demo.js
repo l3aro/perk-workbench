@@ -78,6 +78,7 @@ import '@xterm/xterm/css/xterm.css';
   var everConnected = false; // was ever usable (for the disconnect message)
   var reconnectOnClose = false;
   var readyTimer = null;
+  var terminalTheme = activeTheme();
 
   function showStatus(message) {
     var status = document.createElement('p');
@@ -87,10 +88,14 @@ import '@xterm/xterm/css/xterm.css';
   }
 
   function connect() {
-    var socket = new WebSocket(protocol + '//' + location.host + '/ws/tui?theme=' + activeTheme());
+    if (ws && ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
+      return;
+    }
+    var socket = new WebSocket(protocol + '//' + location.host + '/ws/tui?theme=' + terminalTheme);
     ws = socket;
     startReadyPolling();
     socket.onopen = function () {
+      if (socket !== ws) return;
       connected = true;
       everConnected = true;
       socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
@@ -100,17 +105,22 @@ import '@xterm/xterm/css/xterm.css';
       if (socket === ws) { term.write(event.data); }
     };
     socket.onclose = function () {
+      if (socket !== ws) return;
+      ws = null;
       connected = false;
-      if (reconnectOnClose) {
-        reconnectOnClose = false;
+      var shouldReconnect = reconnectOnClose;
+      reconnectOnClose = false;
+      clearInterval(readyTimer);
+      if (shouldReconnect) {
         connect();
         return;
       }
-      clearInterval(readyTimer);
       if (everConnected) { showStatus('Live demo disconnected. Refresh to reconnect.'); }
     };
     socket.onerror = function () {
-      if (!everConnected && !reconnectOnClose) { showStatus('Live demo unavailable right now.'); }
+      if (socket === ws && !everConnected && !reconnectOnClose) {
+        showStatus('Live demo unavailable right now.');
+      }
     };
   }
 
@@ -140,17 +150,23 @@ import '@xterm/xterm/css/xterm.css';
     }, 400);
   }
 
-  window.addEventListener('themechange', function () {
-    term.options.theme = terminalThemes[activeTheme()];
+  window.addEventListener('themechange', function (event) {
+    var nextTheme = event.detail === 'light' || event.detail === 'dark'
+      ? event.detail
+      : activeTheme();
+    if (nextTheme === terminalTheme) return;
+    terminalTheme = nextTheme;
+    term.options.theme = terminalThemes[terminalTheme];
     window.demoTermFocused = false;
     term.reset();
-    reconnectOnClose = true;
-    if (!ws || ws.readyState === WebSocket.CLOSED) {
-      reconnectOnClose = false;
-      connect();
+
+    if (ws && ws.readyState !== WebSocket.CLOSED) {
+      reconnectOnClose = true;
+      if (ws.readyState !== WebSocket.CLOSING) ws.close();
       return;
     }
-    ws.close();
+    reconnectOnClose = false;
+    connect();
   });
 
   // The TUI starts focused on the schema sidebar in vim normal mode. Once the
