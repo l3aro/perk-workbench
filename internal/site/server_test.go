@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -132,10 +133,12 @@ func TestDocumentationNavigation(t *testing.T) {
 		t.Error("topbar search input must not expose editable search behavior")
 	}
 
-	sidebarStart := strings.Index(body, `<aside class="docs-sidebar" aria-label="Documentation sections">`)
-	if sidebarStart < 0 {
+	sidebarOpen := regexp.MustCompile(`<aside\s+class="docs-sidebar"\s+aria-label="Documentation sections"\s*>`)
+	sidebarMatch := sidebarOpen.FindStringIndex(body)
+	if sidebarMatch == nil {
 		t.Fatal("documentation sidebar is missing")
 	}
+	sidebarStart := sidebarMatch[0]
 	sidebarEnd := strings.Index(body[sidebarStart:], "</aside>")
 	if sidebarEnd < 0 {
 		t.Fatal("documentation sidebar is not closed")
@@ -145,19 +148,100 @@ func TestDocumentationNavigation(t *testing.T) {
 		t.Error("documentation sidebar unexpectedly contains the docs search control")
 	}
 
-	// The Overview anchor gains aria-current on /docs itself, so match on
-	// the href and the visible label separately.
-	if count := strings.Count(sidebar, `href="/docs"`); count != 1 {
-		t.Errorf("sidebar contains %d Overview hrefs, want exactly 1", count)
+	// Match links structurally so indentation or line wrapping does not affect
+	// the navigation contract.
+	disclosurePattern := regexp.MustCompile(`(?s)<details\s+class="docs-sidebar-disclosure"\s+open\s*>(.*?)</details>`)
+	disclosureMatches := disclosurePattern.FindAllStringSubmatch(sidebar, -1)
+	if len(disclosureMatches) != 1 {
+		t.Fatalf("sidebar contains %d mobile disclosures, want exactly 1", len(disclosureMatches))
 	}
-	if count := strings.Count(sidebar, ">Overview</a>"); count != 1 {
-		t.Errorf("sidebar contains %d Overview labels, want exactly 1", count)
+	mobileDisclosure := disclosureMatches[0][0]
+	summaryPattern := regexp.MustCompile(`(?s)<summary\s+class="eyebrow">\s*Documentation\s*</summary>`)
+	if count := len(summaryPattern.FindAllString(mobileDisclosure, -1)); count != 1 {
+		t.Errorf("mobile disclosure contains %d Documentation summaries, want exactly 1", count)
 	}
-	for _, doc := range docPages(LoadPages()) {
-		link := fmt.Sprintf(`href="%s">%s</a>`, doc.Path, doc.Title)
-		if count := strings.Count(sidebar, link); count != 1 {
-			t.Errorf("sidebar contains %q %d times, want exactly 1", link, count)
+
+	desktopPattern := regexp.MustCompile(`(?s)<div\s+class="docs-sidebar-desktop"\s*>(.*?)</div>`)
+	desktopMatches := desktopPattern.FindAllStringSubmatch(sidebar, -1)
+	if len(desktopMatches) != 1 {
+		t.Fatalf("sidebar contains %d desktop wrappers, want exactly 1", len(desktopMatches))
+	}
+	desktop := desktopMatches[0][0]
+	if strings.Contains(desktop, "<details") || strings.Contains(desktop, "<summary") {
+		t.Error("desktop documentation wrapper unexpectedly contains a collapsible summary control")
+	}
+	if count := strings.Count(desktop, `<p class="eyebrow mb-3">Documentation</p>`); count != 1 {
+		t.Errorf("desktop wrapper contains %d Documentation labels, want exactly 1", count)
+	}
+
+	extractNav := func(scope, class, wrapper string) string {
+		t.Helper()
+		pattern := regexp.MustCompile(fmt.Sprintf(`(?s)<nav\s+class="%s"\s*>(.*?)</nav>`, regexp.QuoteMeta(class)))
+		matches := pattern.FindAllStringSubmatch(scope, -1)
+		if len(matches) != 1 {
+			t.Fatalf("%s wrapper contains %d %s nav elements, want exactly 1", wrapper, len(matches), class)
 		}
+		return matches[0][1]
+	}
+	mobileNav := extractNav(mobileDisclosure, "docs-sidebar-nav docs-sidebar-nav-mobile", "mobile")
+	desktopNav := extractNav(desktop, "docs-sidebar-nav", "desktop")
+
+	linkPattern := func(path, title string) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(
+			`(?s)<a\b[^>]*\shref="%s"[^>]*>\s*%s\s*</a>`,
+			regexp.QuoteMeta(path),
+			regexp.QuoteMeta(title),
+		))
+	}
+	assertCatalogue := func(wrapper, nav string) {
+		t.Helper()
+		overviewMatches := linkPattern("/docs", "Overview").FindAllString(nav, -1)
+		if len(overviewMatches) != 1 {
+			t.Errorf("%s sidebar contains %d Overview links, want exactly 1", wrapper, len(overviewMatches))
+		} else if !strings.Contains(overviewMatches[0], `aria-current="page"`) {
+			t.Errorf("%s Overview link is missing aria-current page marker on /docs", wrapper)
+		}
+		for _, doc := range docPages(LoadPages()) {
+			if matches := linkPattern(doc.Path, doc.Title).FindAllString(nav, -1); len(matches) != 1 {
+				t.Errorf("%s sidebar contains %q %d times, want exactly 1", wrapper, doc.Title, len(matches))
+			}
+		}
+	}
+	assertCatalogue("mobile", mobileNav)
+	assertCatalogue("desktop", desktopNav)
+	if count := strings.Count(mobileDisclosure, "</nav>"); count != 1 {
+		t.Errorf("mobile disclosure contains %d nav closing tags, want exactly 1", count)
+	}
+	if count := strings.Count(desktop, "</nav>"); count != 1 {
+		t.Errorf("desktop wrapper contains %d nav closing tags, want exactly 1", count)
+	}
+	if count := strings.Count(sidebar, "</details>"); count != 1 {
+		t.Errorf("sidebar contains %d details closing tags, want exactly 1", count)
+	}
+	if count := strings.Count(sidebar, "</div>"); count != 1 {
+		t.Errorf("sidebar contains %d desktop wrapper closing tags, want exactly 1", count)
+	}
+	if count := strings.Count(sidebar, `<nav `); count != 2 {
+		t.Errorf("sidebar contains %d docs nav elements, want exactly 2", count)
+	}
+	if count := strings.Count(sidebar, `<summary `); count != 1 {
+		t.Errorf("sidebar contains %d summary controls, want exactly 1 mobile summary", count)
+	}
+	if count := strings.Count(sidebar, `<details `); count != 1 {
+		t.Errorf("sidebar contains %d details elements, want exactly 1 mobile disclosure", count)
+	}
+	if count := strings.Count(sidebar, `<div class="docs-sidebar-desktop">`); count != 1 {
+		t.Errorf("sidebar contains %d desktop wrappers, want exactly 1", count)
+	}
+	if count := strings.Count(sidebar, `<p class="eyebrow mb-3">Documentation</p>`); count != 1 {
+		t.Errorf("sidebar contains %d desktop Documentation labels, want exactly 1", count)
+	}
+	if count := strings.Count(sidebar, `class="docs-sidebar-nav docs-sidebar-nav-mobile"`); count != 1 {
+		t.Errorf("sidebar contains %d mobile nav elements, want exactly 1", count)
+	}
+	navClassPattern := regexp.MustCompile(`<nav\s+class="docs-sidebar-nav(?:\s+docs-sidebar-nav-mobile)?"\s*>`)
+	if count := len(navClassPattern.FindAllString(sidebar, -1)); count != 2 {
+		t.Errorf("sidebar contains %d docs nav classes, want exactly 2", count)
 	}
 }
 

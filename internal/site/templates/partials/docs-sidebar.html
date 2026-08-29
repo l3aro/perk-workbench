@@ -1,11 +1,19 @@
+{{define "docs-sidebar-links"}}
+  <a href="/docs"{{if eq .Path "/docs"}} aria-current="page"{{end}}>Overview</a>
+  {{range .DocLinks}}
+  <a href="{{.Path}}"{{if eq $.Path .Path}} aria-current="page"{{end}}>{{.Title}}</a>
+  {{end}}
+{{end}}
+
 {{define "docs-sidebar"}}
 <aside class="docs-sidebar" aria-label="Documentation sections">
-  <p class="eyebrow mb-3">Documentation</p>
-  <nav class="docs-sidebar-nav">
-    <a href="/docs"{{if eq .Path "/docs"}} aria-current="page"{{end}}>Overview</a>
-    {{range .DocLinks}}
-    <a href="{{.Path}}"{{if eq $.Path .Path}} aria-current="page"{{end}}>{{.Title}}</a>
-    {{end}}
-  </nav>
+  <details class="docs-sidebar-disclosure" open>
+    <summary class="eyebrow">Documentation</summary>
+    <nav class="docs-sidebar-nav docs-sidebar-nav-mobile">{{template "docs-sidebar-links" .}}</nav>
+  </details>
+  <div class="docs-sidebar-desktop">
+    <p class="eyebrow mb-3">Documentation</p>
+    <nav class="docs-sidebar-nav">{{template "docs-sidebar-links" .}}</nav>
+  </div>
 </aside>
 {{end}}

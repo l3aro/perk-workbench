@@ -560,9 +560,8 @@
     @apply grid gap-12 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start;
   }
 
-  /* Below lg the single column must shrink with the viewport; without a
-   * minmax(0,1fr) track the sidebar row's content width would blow the
-   * page out horizontally instead of scrolling inside the nav. Scoped in a
+  /* Below lg the single column must shrink with the viewport so the
+   * disclosure and docs content fit without widening the page. Scoped in a
    * media query so it never overrides the lg two-column layout (a bare
    * declaration after the variant would win at every width). */
   @media (max-width: 63.99rem) {
@@ -574,9 +573,59 @@
   .docs-sidebar {
     @apply lg:sticky lg:top-24;
   }
+  .docs-sidebar-disclosure {
+    display: none;
+  }
+
+  .docs-sidebar-desktop {
+    display: block;
+  }
+
+  .docs-sidebar-disclosure > summary {
+    margin-bottom: 0.75rem;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .docs-sidebar-disclosure:not([open]) > summary {
+    margin-bottom: 0;
+  }
+
+  .docs-sidebar-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .docs-sidebar-disclosure > summary::marker {
+    content: "";
+  }
+
+  .docs-sidebar-disclosure > summary::after {
+    flex: 0 0 auto;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-inline-start: 0.25rem;
+    border-inline-end: 2px solid currentColor;
+    border-block-end: 2px solid currentColor;
+    content: "";
+    transform: rotate(45deg) translateY(-0.125rem);
+    transition: transform 150ms ease;
+  }
+
+  .docs-sidebar-disclosure[open] > summary::after {
+    transform: rotate(225deg) translateY(-0.125rem);
+  }
+
+  .docs-sidebar-disclosure > summary:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
 
   .docs-sidebar-nav {
     @apply flex flex-col gap-0.5 border-l border-line pl-4;
+  }
+
+  .docs-sidebar-disclosure:not([open]) > .docs-sidebar-nav {
+    display: none;
   }
 
   .docs-sidebar-nav a {
@@ -594,30 +643,37 @@
     box-shadow: inset 2px 0 0 var(--color-accent);
   }
 
-  /* Below lg the docs sidebar collapses from a stacked preface into a
-   * horizontally scrollable, touch-sized topic row above the content. */
   @media (max-width: 63.99rem) {
-    .docs-sidebar-nav {
-      flex-direction: row;
+    .docs-sidebar-disclosure {
+      display: block;
+    }
+
+    .docs-sidebar-desktop {
+      display: none;
+    }
+
+    .docs-sidebar-disclosure > summary {
+      display: flex;
+      width: 100%;
+      min-height: 2.75rem;
       align-items: center;
-      gap: 0.375rem;
-      overflow-x: auto;
-      padding-bottom: 0.375rem;
-      border-left: 0;
-      border-bottom: 1px solid var(--color-line);
-      -webkit-overflow-scrolling: touch;
+      justify-content: space-between;
+    }
+
+    .docs-sidebar-nav {
+      flex-direction: column;
+      align-items: stretch;
+      overflow: visible;
+      padding-bottom: 0;
+      border-bottom: 0;
     }
 
     .docs-sidebar-nav a {
+      display: flex;
       flex: 0 0 auto;
-      display: inline-flex;
       align-items: center;
       min-height: 2.75rem;
-      white-space: nowrap;
-    }
-
-    .docs-sidebar .eyebrow {
-      display: none;
+      white-space: normal;
     }
   }
 
