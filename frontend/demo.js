@@ -3,9 +3,11 @@
 import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 
-(function () {
+export function initDemo() {
   var container = document.getElementById('demo-terminal');
-  if (!container) { return; }
+  if (!container) { return function () {}; }
+
+  var disposed = false;
 
   // DejaVuSansM Nerd Font Mono at 14px: advance 8.43px, line 16.8px.
   var cell = { width: 8.43, height: 16.8 };
@@ -39,8 +41,10 @@ import '@xterm/xterm/css/xterm.css';
   });
   term.open(container);
   window.demoTerm = term;
+  window.demoTermFocused = false;
 
   function fit() {
+    if (disposed) return;
     var cols = Math.max(40, Math.min(200, Math.floor((container.clientWidth - 4) / cell.width)));
     var rows = Math.max(12, Math.min(60, Math.floor((container.clientHeight - 4) / cell.height)));
     if (cols !== term.cols || rows !== term.rows) { term.resize(cols, rows); }
@@ -58,8 +62,12 @@ import '@xterm/xterm/css/xterm.css';
     'overflow-hidden', 'bg-canvas'
   ];
   var terminalFullscreenClasses = ['flex-1', 'h-auto', 'border-0', 'rounded-none'];
+  var fullscreenClickHandler = null;
+  var fullscreenResizeHandler = null;
+  var initialBodyOverflow = document.body.style.overflow;
   if (fullscreenEl && fullscreenBtn) {
     function setFullscreen(active) {
+      if (disposed) return;
       fullscreenEl.classList.toggle('mt-12', !active);
       fullscreenClasses.forEach(function (className) {
         fullscreenEl.classList.toggle(className, active);
@@ -72,18 +80,21 @@ import '@xterm/xterm/css/xterm.css';
       document.body.style.overflow = active ? 'hidden' : '';
       fullscreenBtn.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
       requestAnimationFrame(function () {
+        if (disposed) return;
         fit();
         term.focus();
       });
     }
-    fullscreenBtn.addEventListener('click', function () {
+    fullscreenClickHandler = function () {
       setFullscreen(fullscreenEl.dataset.fullscreen !== 'true');
-    });
-    window.addEventListener('resize', function () {
+    };
+    fullscreenBtn.addEventListener('click', fullscreenClickHandler);
+    fullscreenResizeHandler = function () {
       if (fullscreenEl.dataset.fullscreen === 'true') {
         fit();
       }
-    });
+    };
+    window.addEventListener('resize', fullscreenResizeHandler);
   }
 
   var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -93,16 +104,20 @@ import '@xterm/xterm/css/xterm.css';
   var reconnectOnClose = false;
   var readyTimer = null;
   var terminalTheme = activeTheme();
+  var statusNodes = [];
 
   function showStatus(message) {
+    if (disposed) return;
     var status = document.createElement('p');
     status.className = 'mt-4 text-sm text-muted';
     status.dataset.demoTerminalStatus = '';
     status.textContent = message;
     container.after(status);
+    statusNodes.push(status);
   }
 
   function connect() {
+    if (disposed) return;
     if (ws && ws.readyState !== WebSocket.CLOSED && ws.readyState !== WebSocket.CLOSING) {
       return;
     }
@@ -110,22 +125,23 @@ import '@xterm/xterm/css/xterm.css';
     ws = socket;
     startReadyPolling();
     socket.onopen = function () {
-      if (socket !== ws) return;
+      if (disposed || socket !== ws) return;
       connected = true;
       everConnected = true;
       socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
       term.focus();
     };
     socket.onmessage = function (event) {
-      if (socket === ws) { term.write(event.data); }
+      if (!disposed && socket === ws) { term.write(event.data); }
     };
     socket.onclose = function () {
-      if (socket !== ws) return;
+      if (disposed || socket !== ws) return;
       ws = null;
       connected = false;
       var shouldReconnect = reconnectOnClose;
       reconnectOnClose = false;
       clearInterval(readyTimer);
+      readyTimer = null;
       if (shouldReconnect) {
         connect();
         return;
@@ -133,23 +149,23 @@ import '@xterm/xterm/css/xterm.css';
       if (everConnected) { showStatus('Live demo disconnected. Refresh to reconnect.'); }
     };
     socket.onerror = function () {
-      if (socket === ws && !everConnected && !reconnectOnClose) {
+      if (!disposed && socket === ws && !everConnected && !reconnectOnClose) {
         showStatus('Live demo unavailable right now.');
       }
     };
   }
 
-  term.onData(function (data) {
-    if (connected && ws) { ws.send(JSON.stringify({ type: 'input', data: data })); }
+  var dataSubscription = term.onData(function (data) {
+    if (!disposed && connected && ws) { ws.send(JSON.stringify({ type: 'input', data: data })); }
   });
-  term.onResize(function (size) {
-    if (connected && ws) { ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows })); }
+  var resizeSubscription = term.onResize(function (size) {
+    if (!disposed && connected && ws) { ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows })); }
   });
 
   function startReadyPolling() {
     clearInterval(readyTimer);
     readyTimer = setInterval(function () {
-      if (!connected || window.demoTermFocused) { return; }
+      if (disposed || !connected || window.demoTermFocused) { return; }
       var found = false;
       for (var i = 0; i < term.buffer.active.length; i++) {
         if (term.buffer.active.getLine(i).translateToString(true).indexOf('READONLY') >= 0) {
@@ -160,12 +176,14 @@ import '@xterm/xterm/css/xterm.css';
       if (found) {
         window.demoTermFocused = true;
         clearInterval(readyTimer);
+        readyTimer = null;
         if (ws) { ws.send(JSON.stringify({ type: 'input', data: '\ti' })); }
       }
     }, 400);
   }
 
-  window.addEventListener('themechange', function (event) {
+  function handleThemeChange(event) {
+    if (disposed) return;
     var nextTheme = event.detail === 'light' || event.detail === 'dark'
       ? event.detail
       : activeTheme();
@@ -182,11 +200,59 @@ import '@xterm/xterm/css/xterm.css';
     }
     reconnectOnClose = false;
     connect();
-  });
+  }
+  window.addEventListener('themechange', handleThemeChange);
 
   // The TUI starts focused on the schema sidebar in vim normal mode. Once the
   // ready screen renders, focus the query editor and enter insert mode so
   // typing a query works immediately. READONLY appears in the footer in both
   // the full and compact (narrow) layouts; pane titles do not.
   connect();
-})();
+
+  return function cleanup() {
+    if (disposed) return;
+    disposed = true;
+    reconnectOnClose = false;
+    connected = false;
+    clearInterval(readyTimer);
+    readyTimer = null;
+
+    var socket = ws;
+    ws = null;
+    if (socket && socket.readyState !== WebSocket.CLOSED && socket.readyState !== WebSocket.CLOSING) {
+      socket.close();
+    }
+
+    window.removeEventListener('themechange', handleThemeChange);
+    if (fullscreenBtn && fullscreenClickHandler) {
+      fullscreenBtn.removeEventListener('click', fullscreenClickHandler);
+    }
+    if (fullscreenResizeHandler) {
+      window.removeEventListener('resize', fullscreenResizeHandler);
+    }
+    if (fullscreenEl && fullscreenBtn) {
+      fullscreenEl.classList.remove('mt-12');
+      fullscreenClasses.forEach(function (className) {
+        fullscreenEl.classList.remove(className);
+      });
+      terminalFullscreenClasses.forEach(function (className) {
+        container.classList.remove(className);
+      });
+      fullscreenEl.dataset.fullscreen = 'false';
+      fullscreenBtn.setAttribute('aria-pressed', 'false');
+      document.body.style.overflow = initialBodyOverflow;
+      fullscreenBtn.textContent = 'Fullscreen';
+    }
+
+    if (dataSubscription) dataSubscription.dispose();
+    if (resizeSubscription) resizeSubscription.dispose();
+    term.dispose();
+    statusNodes.forEach(function (status) { status.remove(); });
+    statusNodes = [];
+
+    if (window.demoTerm === term) {
+      window.demoTerm = undefined;
+      window.demoTermFocused = undefined;
+    }
+  };
+}

@@ -71,6 +71,28 @@ func assertTestRoutes(t *testing.T, server http.Handler, tests []struct {
 	}
 }
 
+func TestHtmxNavigationBoundary(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	recorder := httptest.NewRecorder()
+	server.ServeHTTP(recorder, httptest.NewRequest("GET", "/docs/connections", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, `<body hx-boost:inherited="swap:outerSync select:#main-content target:#main-content">`) {
+		t.Fatal("page is missing the inherited htmx navigation boundary")
+	}
+	if !strings.Contains(body, `id="main-content" hx-history-elt`) {
+		t.Fatal("page is missing the history restore boundary")
+	}
+	if got := strings.Count(body, `hx-history-elt`); got != 1 {
+		t.Fatalf("page contains %d history boundaries, want 1", got)
+	}
+}
+
 func TestDocumentationNavigation(t *testing.T) {
 	t.Parallel()
 

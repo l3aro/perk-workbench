@@ -71,28 +71,32 @@ window.addEventListener('themechange', (event) => {
 /* Command blocks: every <pre><code> outside the home hero chrome gets a
  * copy button on a row below the snippet, so docs and demo snippets are
  * one click away without repeating markup in every template. */
-const COPY_ICON = '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const COPY_ICON = '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg>';
 const CHECK_ICON = '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
 
-document.querySelectorAll('main pre').forEach((pre) => {
-  if (pre.closest('.install-cmd, .boot-term, .term-window')) return;
-  if (!pre.querySelector('code') || pre.querySelector('[data-copy]')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-[var(--color-line-strong)] hover:text-ink data-[copied=true]:border-good data-[copied=true]:text-good';
-  button.dataset.copyButton = '';
-  const code = pre.querySelector('code');
-  button.dataset.copy = code.textContent.trim();
-  code.classList.add('min-w-0', 'flex-1');
-  pre.classList.add('flex', 'items-center', 'gap-4');
-  if (code.textContent.includes('\n')) {
-    pre.classList.remove('items-center');
-    pre.classList.add('items-start');
-  }
-  button.setAttribute('aria-label', 'Copy to clipboard');
-  button.innerHTML = COPY_ICON;
-  pre.appendChild(button);
-});
+function enhanceCopyButtons(root = document) {
+  root.querySelectorAll('pre').forEach((pre) => {
+    if (pre.closest('.install-cmd, .boot-term, .term-window')) return;
+    if (!pre.querySelector('code') || pre.querySelector('[data-copy]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-[var(--color-line-strong)] hover:text-ink data-[copied=true]:border-good data-[copied=true]:text-good';
+    button.dataset.copyButton = '';
+    const code = pre.querySelector('code');
+    button.dataset.copy = code.textContent.trim();
+    code.classList.add('min-w-0', 'flex-1');
+    pre.classList.add('flex', 'items-center', 'gap-4');
+    if (code.textContent.includes('\n')) {
+      pre.classList.remove('items-center');
+      pre.classList.add('items-start');
+    }
+    button.setAttribute('aria-label', 'Copy to clipboard');
+    button.innerHTML = COPY_ICON;
+    pre.appendChild(button);
+  });
+}
+
+enhanceCopyButtons();
 
 document.addEventListener('click', (event) => {
   const button = event.target.closest('[data-copy]');
@@ -123,12 +127,8 @@ document.addEventListener('click', (event) => {
     }
     return;
   }
-
-  const goto = event.target.closest('[data-goto]');
-  if (goto) {
-    window.location.href = goto.dataset.goto;
-  }
 });
+
 
 /* Cursor spotlight: the ambient backdrop carries a soft glow that follows
  * the pointer via --mx/--my custom properties (rAF-throttled). */
@@ -148,8 +148,14 @@ if (!reduceMotion) {
 /* Typewriter loop for the hero boot terminal. Phrases come from
  * data-phrases (JSON array); without JS or with reduced motion the first
  * phrase is rendered statically. */
-const typeTarget = document.getElementById('type-loop');
-if (typeTarget) {
+let stopTypewriter = null;
+
+function mountTypewriter(root = document) {
+  stopTypewriter?.();
+  stopTypewriter = null;
+  const typeTarget = root.querySelector?.('#type-loop');
+  if (!typeTarget) return;
+
   let phrases = [];
   try {
     phrases = JSON.parse(typeTarget.dataset.phrases || '[]');
@@ -167,30 +173,137 @@ if (typeTarget) {
 
   if (reduceMotion) {
     typeTarget.textContent = phrases[0];
-  } else {
-    let phraseIndex = 0;
-    let charIndex = 0;
-    let deleting = false;
-
-    const tick = () => {
-      const phrase = phrases[phraseIndex];
-      charIndex += deleting ? -1 : 1;
-      typeTarget.textContent = phrase.slice(0, charIndex);
-
-      let delay = deleting ? 26 : 58;
-      if (!deleting && charIndex === phrase.length) {
-        delay = 2200;
-        deleting = true;
-      } else if (deleting && charIndex === 0) {
-        deleting = false;
-        phraseIndex = (phraseIndex + 1) % phrases.length;
-        delay = 500;
-      }
-      setTimeout(tick, delay);
-    };
-    tick();
+    return;
   }
+
+  let phraseIndex = 0;
+  let charIndex = 0;
+  let deleting = false;
+  let timer = 0;
+  let stopped = false;
+  stopTypewriter = () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
+
+  const tick = () => {
+    if (stopped || !typeTarget.isConnected) return;
+    const phrase = phrases[phraseIndex];
+    charIndex += deleting ? -1 : 1;
+    typeTarget.textContent = phrase.slice(0, charIndex);
+
+    let delay = deleting ? 26 : 58;
+    if (!deleting && charIndex === phrase.length) {
+      delay = 2200;
+      deleting = true;
+    } else if (deleting && charIndex === 0) {
+      deleting = false;
+      phraseIndex = (phraseIndex + 1) % phrases.length;
+      delay = 500;
+    }
+    timer = setTimeout(tick, delay);
+  };
+  tick();
 }
+
+mountTypewriter();
+let demoModulePromise = null;
+let stopDemo = null;
+
+function unmountDemo() {
+  stopDemo?.();
+  stopDemo = null;
+}
+
+function mountDemo(root = document) {
+  const demo = root.querySelector?.('#demo-terminal');
+  if (!demo) {
+    unmountDemo();
+    return;
+  }
+
+  demoModulePromise ??= import('./demo.js');
+  const expected = demo;
+  demoModulePromise.then(({ initDemo }) => {
+    if (!expected.isConnected || document.getElementById('demo-terminal') !== expected) return;
+    unmountDemo();
+    stopDemo = initDemo();
+  }).catch((error) => {
+    console.error('Unable to initialize live demo', error);
+  });
+}
+
+function syncPrimaryNavigation() {
+  const path = window.location.pathname;
+  document.querySelectorAll('header nav[aria-label="Primary"] a').forEach((link) => {
+    const linkPath = new URL(link.href, window.location.href).pathname;
+    const current = linkPath === '/'
+      ? path === '/'
+      : linkPath === '/docs'
+        ? path === '/docs' || path.startsWith('/docs/')
+        : path === linkPath;
+    if (current) {
+      link.setAttribute('aria-current', 'page');
+    } else {
+      link.removeAttribute('aria-current');
+    }
+  });
+}
+
+let pendingNavigation = false;
+
+function teardownDynamicPage() {
+  stopTypewriter?.();
+  stopTypewriter = null;
+  unmountDemo();
+}
+
+document.body.addEventListener('htmx:before:request', (event) => {
+  const source = event.target instanceof Element ? event.target : null;
+  if (!source?.matches('a[href], form')) return;
+  pendingNavigation = true;
+  teardownDynamicPage();
+});
+
+document.addEventListener('htmx:before:history:restore', () => {
+  pendingNavigation = true;
+  teardownDynamicPage();
+});
+
+document.body.addEventListener('htmx:before:swap', (event) => {
+  const target = event.detail?.target ?? event.detail?.ctx?.target;
+  const source = event.target instanceof Element ? event.target : null;
+  if (target?.id !== 'main-content' && !source?.matches('a[href], form')) return;
+  pendingNavigation = true;
+  teardownDynamicPage();
+});
+document.body.addEventListener('htmx:after:swap', (event) => {
+  const target = event.detail?.target ?? event.detail?.ctx?.target;
+  const main = target?.id === 'main-content'
+    ? target
+    : pendingNavigation
+      ? document.getElementById('main-content')
+      : null;
+  if (!main) return;
+  pendingNavigation = false;
+  enhanceCopyButtons(main);
+  mountTypewriter(main);
+  mountDemo(main);
+  syncPrimaryNavigation();
+  const dialog = document.getElementById('search-spotlight');
+  if (dialog?.open) dialog.close();
+});
+
+document.addEventListener('htmx:finally:request', () => {
+  if (!pendingNavigation) return;
+  pendingNavigation = false;
+  mountTypewriter();
+  mountDemo();
+});
+
+mountDemo();
+syncPrimaryNavigation();
+
 
 /* Global search spotlight: a <dialog> in base.html, openable from any page
  * via `/`, Cmd/Ctrl+K, or any [data-search-open] trigger. Queries are
@@ -267,7 +380,9 @@ if (spotlight) {
   });
 
   document.body.addEventListener('htmx:after:swap', (event) => {
-    if (event.detail?.target?.id === 'spotlight-output') {
+    const target = event.detail?.target ?? event.detail?.ctx?.target;
+    const source = event.target instanceof Element ? event.target : null;
+    if (target?.id === 'spotlight-output' || source?.closest('#search-spotlight')) {
       activeIndex = -1;
     }
   });
@@ -307,10 +422,8 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (event.key === '?') {
-    window.location.href = '/docs';
-  } else if (event.key === '/') {
+    document.querySelector('header nav[aria-label="Primary"] a[href="/docs"]')?.click();
     event.preventDefault();
-    window.openSpotlight?.();
   } else if (event.key === 't') {
     cycleTheme();
   }

@@ -7,11 +7,12 @@
   <meta name="description" content="Perk Workbench — a terminal UI for exploring databases.">
   <title>{{if .Title}}{{.Title}} · {{end}}Perk Workbench</title>
   <script src="{{asset "theme"}}"></script>
+  {{range cssAssets "demo"}}<link rel="stylesheet" href="{{.}}">{{end}}
   <link rel="stylesheet" href="{{asset "site"}}">
   <script src="{{asset "app"}}" defer></script>
   {{block "head" .}}{{end}}
 </head>
-<body>
+<body hx-boost:inherited="swap:outerSync select:#main-content target:#main-content">
   <a class="absolute -left-[9999px] top-0 z-[1000] rounded-lg bg-panel px-3 py-2 text-ink focus:left-3 focus:top-3" href="#main-content">Skip to content</a>
   <div class="crt-overlay" aria-hidden="true"></div>
   <header class="sticky top-0 z-40 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-line bg-[color-mix(in_srgb,var(--color-canvas)_78%,transparent)] px-[clamp(1.25rem,5vw,5rem)] py-3 backdrop-blur-[14px] max-md:gap-x-4 max-md:gap-y-1 max-md:px-5 max-[30rem]:grid">
@@ -31,7 +32,7 @@
       </button>
     </div>
   </header>
-  <main class="mx-auto w-full max-w-[80rem] px-[clamp(1.25rem,5vw,5rem)] pt-14 pb-24 max-md:pt-10 [&>_*]:max-w-[62rem]" id="main-content">
+  <main class="mx-auto w-full max-w-[80rem] px-[clamp(1.25rem,5vw,5rem)] pt-14 pb-24 max-md:pt-10 [&>_*]:max-w-[62rem]" id="main-content" hx-history-elt>
     {{if .Docs}}
     <div class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-12 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
       {{template "docs-sidebar" .}}
@@ -57,7 +58,7 @@
     <span class="rounded-sm bg-[linear-gradient(180deg,var(--color-accent),var(--color-accent-strong))] px-2 py-0.5 font-bold uppercase tracking-[0.14em] text-canvas shadow-[0_0_14px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]" aria-hidden="true">NORMAL</span>
     <span class="hidden truncate text-muted md:inline">terminal-native database exploration</span>
     <span class="ml-auto flex items-center gap-4">
-      <button class="cursor-pointer border-none bg-transparent p-0 font-mono text-[0.72rem] text-muted no-underline transition-colors duration-150 hover:text-ink [&_kbd]:mr-1.5 [&_kbd]:border-[color-mix(in_oklab,var(--color-good)_40%,var(--color-line))] [&_kbd]:text-[0.68rem] [&_kbd]:text-good" type="button" data-goto="/docs"><kbd>?</kbd>docs</button>
+      <a class="cursor-pointer border-none bg-transparent p-0 font-mono text-[0.72rem] text-muted no-underline transition-colors duration-150 hover:text-ink [&_kbd]:mr-1.5 [&_kbd]:border-[color-mix(in_oklab,var(--color-good)_40%,var(--color-line))] [&_kbd]:text-[0.68rem] [&_kbd]:text-good" href="/docs"><kbd>?</kbd>docs</a>
       <button class="cursor-pointer border-none bg-transparent p-0 font-mono text-[0.72rem] text-muted no-underline transition-colors duration-150 hover:text-ink [&_kbd]:mr-1.5 [&_kbd]:border-[color-mix(in_oklab,var(--color-good)_40%,var(--color-line))] [&_kbd]:text-[0.68rem] [&_kbd]:text-good" type="button" data-search-open><kbd>/</kbd>search</button>
       <button class="cursor-pointer border-none bg-transparent p-0 font-mono text-[0.72rem] text-muted no-underline transition-colors duration-150 hover:text-ink [&_kbd]:mr-1.5 [&_kbd]:border-[color-mix(in_oklab,var(--color-good)_40%,var(--color-line))] [&_kbd]:text-[0.68rem] [&_kbd]:text-good" type="button" data-status-theme><kbd>t</kbd>theme</button>
     </span>
