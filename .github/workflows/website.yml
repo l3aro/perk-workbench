@@ -45,18 +45,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@v1.18.0
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: package-lock.json
+          cache: true
 
       # The generated frontend bundles are gitignored. The server loads the
       # embedded manifest at startup, so build them before the Go test step.
-      - name: Build frontend
+      - name: Install and build frontend
         run: |
-          npm ci
+          npm ci --include=optional
           npm run build
 
       - name: Set up Go 1.27.0

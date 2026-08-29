@@ -173,24 +173,24 @@ The product site — landing page, docs, search, and a live terminal demo — is
 the `perk-workbench-site` binary in the same unified Go 1.27 module. Sources
 live in `cmd/perk-workbench-site/`, `internal/site/`, and `frontend/`.
 
-Prerequisites: Go 1.27 and Node.js 22 (when rebuilding the frontend).
+Prerequisites: Go 1.27 and Node.js 22 (when rebuilding the frontend). Run `npm ci --include=optional` to install the project's local `vp`; `npm run build` invokes that local CLI.
 
 ### Run locally
 
 Build the frontend bundles first, then start the server:
 
 ```bash
-npm ci
+npm ci --include=optional
 npm run build
 PORT=8080 go run ./cmd/perk-workbench-site
 ```
 
 `PORT` is optional; when omitted the server listens on `8080`, and valid values
-are `1` through `65535`. The frontend build is required before any site `go
-run` or `go test`: Vite writes gitignored, content-hashed bundles to
-`internal/site/assets/dist` (`.vite/manifest.json` included), and the Go server
-reads that manifest from the embed at startup. `npm run watch` rebuilds on
-change during development.
+are `1` through `65535`. The frontend build is required before any site
+`go run` or `go test`: `vite.config.mjs` configures Vite+ to write gitignored,
+content-hashed bundles to `internal/site/assets/dist` (`.vite/manifest.json`
+included), and the Go server reads that manifest from the embed at startup.
+`npm run watch` rebuilds on change during development.
 
 Build a versioned binary with the version linker flag:
 

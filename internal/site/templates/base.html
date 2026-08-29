@@ -9,7 +9,7 @@
   <script src="{{asset "theme"}}"></script>
   {{range cssAssets "demo"}}<link rel="stylesheet" href="{{.}}">{{end}}
   <link rel="stylesheet" href="{{asset "site"}}">
-  <script src="{{asset "app"}}" defer></script>
+  <script type="module" src="{{asset "app"}}"></script>
   {{block "head" .}}{{end}}
 </head>
 <body hx-boost:inherited="swap:outerSync select:#main-content target:#main-content">

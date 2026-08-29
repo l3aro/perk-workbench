@@ -6,7 +6,7 @@ COPY frontend/ ./frontend/
 # site.css scans templates via `@source "../internal/site/templates"` so
 # Tailwind can discover utilities used only inside Go-rendered pages.
 COPY internal/site/templates ./internal/site/templates
-RUN npm ci && npm run build
+RUN npm ci --include=optional && npm run build
 
 FROM golang:1.27-alpine AS site-build
 WORKDIR /src
