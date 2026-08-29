@@ -8,6 +8,12 @@
 - Preserve query behavior in `workbench` and driver services: execution is asynchronous and cancelable, failed queries retain the prior result table, and display results cap at 500 rows and 300 runes per cell.
 - Unified Go 1.27 module covering both binaries. Root `cmd/` and `internal/` patterns include the TUI (`cmd/perk-workbench`) and the product site (`cmd/perk-workbench-site`, `internal/site`, and the Vite sources in `frontend/`). `npm ci && npm run build` must run before any website Go command, because the server embeds the generated `internal/site/assets/dist` manifest. Root `compose.yaml` is the website deployment; `demo/compose.yaml` is the database demo stack used by the Make targets.
 
+## Website workflow
+
+- After any website change, rebuild and recreate the Docker website service so embedded frontend assets and the Go binary are applied:
+  `docker compose -p website up -d --build --force-recreate website`
+- A plain container restart is insufficient for website changes because the frontend bundle is embedded in the built Go image.
+
 ## Development
 
 ```bash

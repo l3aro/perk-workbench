@@ -724,6 +724,26 @@
     @apply ml-2 font-mono text-xs text-slate-400;
   }
 
+  /* Static query cards use the semantic light-theme panel, unlike the live terminal. */
+  [data-theme="light"] .query-card {
+    background: var(--color-panel);
+    border-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .query-card .term-window-bar {
+    background: color-mix(in srgb, var(--color-panel) 92%, var(--color-line));
+    border-bottom-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .query-card .term-window-title {
+    color: var(--color-muted);
+  }
+
+  [data-theme="light"] .query-card pre,
+  [data-theme="light"] .query-card pre code {
+    color: var(--color-ink-soft);
+  }
+
   /* The live xterm surface stays dark in both themes on purpose. */
   .demo-terminal {
     @apply h-[min(76vh,42rem)] w-full overflow-hidden;
@@ -1003,6 +1023,33 @@
 
   .boot-dim {
     color: color-mix(in oklab, var(--color-ink-soft) 55%, transparent);
+  }
+
+  [data-theme="light"] .boot-term {
+    background: var(--color-panel);
+    border-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .boot-term .term-window-bar {
+    background: color-mix(in srgb, var(--color-panel) 92%, var(--color-line));
+    border-bottom-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .boot-term .term-window-title {
+    color: var(--color-muted);
+  }
+
+  [data-theme="light"] .boot-term .boot-dim {
+    color: var(--color-muted);
+  }
+
+  [data-theme="light"] .boot-term .boot-check {
+    color: color-mix(in oklab, var(--color-good) 80%, var(--color-ink) 20%);
+  }
+
+  [data-theme="light"] .boot-term .type-caret {
+    background: color-mix(in oklab, var(--color-good) 80%, var(--color-ink) 20%);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--color-good) 70%, transparent);
   }
 
   .type-caret {
