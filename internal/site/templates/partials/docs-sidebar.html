@@ -6,7 +6,6 @@
     {{range .DocLinks}}
     <a href="{{.Path}}"{{if eq $.Path .Path}} aria-current="page"{{end}}>{{.Title}}</a>
     {{end}}
-    <button class="docs-sidebar-search" type="button" data-search-open>Search docs</button>
   </nav>
 </aside>
 {{end}}

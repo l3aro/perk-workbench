@@ -430,6 +430,14 @@
     box-shadow: 0 2px 12px color-mix(in oklab, var(--color-accent) 45%, transparent);
   }
 
+  .docs-nav {
+    @apply flex min-w-0 flex-wrap items-center gap-1;
+  }
+  .site-header-actions {
+    @apply flex items-center gap-2;
+  }
+
+
   .docs-nav a {
     @apply inline-block rounded-lg px-3 py-1.5 text-sm font-medium text-muted no-underline transition-colors duration-150;
   }
@@ -442,6 +450,99 @@
   .docs-nav a[aria-current="page"] {
     @apply text-ink;
     background: color-mix(in oklab, var(--color-accent) 14%, transparent);
+  }
+
+  .docs-nav-search-shell {
+    position: relative;
+    display: inline-block;
+    width: clamp(10rem, 20vw, 16rem);
+    max-width: 100%;
+    min-width: 0;
+  }
+  .docs-nav-search-icon {
+    display: none;
+  }
+  .docs-nav-search-button {
+    @apply hidden size-9 cursor-pointer place-items-center rounded-lg border border-line bg-panel text-muted outline-none transition-colors duration-150;
+  }
+
+  .docs-nav-search-button:hover {
+    @apply text-ink;
+    border-color: var(--color-line-strong);
+    background: color-mix(in oklab, var(--color-panel) 70%, var(--color-line));
+  }
+
+  .docs-nav-search-button:focus-visible {
+    border-color: var(--color-accent);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 18%, transparent);
+  }
+
+
+  .docs-nav-search {
+    @apply block h-9 w-full max-w-full min-w-0 cursor-pointer rounded-lg border border-line bg-panel px-3 text-sm text-muted outline-none transition-colors duration-150;
+    padding-inline-end: 4rem;
+  }
+
+  .docs-nav-search-shortcut {
+    position: absolute;
+    inset-inline-end: 0.75rem;
+    top: 50%;
+    pointer-events: none;
+    transform: translateY(-50%);
+    color: var(--color-muted);
+    font-size: 0.68rem;
+    line-height: 1;
+  }
+
+  .docs-nav-search::placeholder {
+    color: var(--color-muted);
+    opacity: 1;
+  }
+
+  .docs-nav-search:hover {
+    @apply text-ink;
+    border-color: var(--color-line-strong);
+    background: color-mix(in oklab, var(--color-panel) 70%, var(--color-line));
+  }
+
+  .docs-nav-search:focus-visible {
+    border-color: var(--color-accent);
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--color-accent) 18%, transparent);
+  }
+
+  @media (max-width: 30rem) {
+    .docs-nav {
+      width: 100%;
+    }
+
+    .docs-nav-search-shell {
+      display: none;
+    }
+    .site-header-actions {
+      width: 100%;
+      justify-content: flex-end;
+      margin-block-start: 0.25rem;
+      padding-block-start: 0.5rem;
+      border-top: 1px solid var(--color-line);
+    }
+
+    .docs-nav-search-button {
+      @apply grid;
+    }
+  }
+
+  @media (min-width: 64rem) {
+    .docs-nav {
+      flex: 1 1 auto;
+    }
+
+    .docs-nav-search-shell {
+      margin-inline-start: auto;
+    }
   }
 
   .theme-toggle {
@@ -507,8 +608,7 @@
       -webkit-overflow-scrolling: touch;
     }
 
-    .docs-sidebar-nav a,
-    .docs-sidebar-nav .docs-sidebar-search {
+    .docs-sidebar-nav a {
       flex: 0 0 auto;
       display: inline-flex;
       align-items: center;
@@ -655,15 +755,6 @@
   }
 
   /* ---- Search spotlight ---- */
-
-  .docs-sidebar-search {
-    @apply cursor-pointer border-none bg-transparent rounded-md px-3 py-1.5 text-left text-sm text-muted transition-colors duration-150;
-  }
-
-  .docs-sidebar-search:hover {
-    @apply text-ink;
-    background: color-mix(in oklab, var(--color-line) 55%, transparent);
-  }
 
   .spotlight {
     @apply m-auto w-[min(38rem,calc(100vw-2rem))] border border-line bg-panel p-0 text-ink shadow-2xl backdrop:bg-black/50;

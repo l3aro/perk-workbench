@@ -153,6 +153,7 @@ if (spotlight) {
   let requestSeq = 0;
   let debounceTimer;
   let activeIndex = -1;
+  const topbarInput = document.querySelector('.docs-nav-search');
 
   const options = () => Array.from(list.querySelectorAll('.spotlight-option'));
 
@@ -198,18 +199,34 @@ if (spotlight) {
         if (seq === requestSeq) renderResults([]);
       });
   }
-
-  function openSpotlight() {
-    if (spotlight.open) return;
-    spotlight.showModal();
-    input.value = '';
+  function openSpotlight(query = '', focusInput = true, modal = true) {
+    if (spotlight.open) {
+      if (focusInput) input.focus();
+      return;
+    }
+    if (modal) {
+      spotlight.showModal();
+    } else {
+      spotlight.show();
+    }
+    input.value = query;
     renderResults([]);
-    input.focus();
+    if (query.trim()) input.dispatchEvent(new Event('input'));
+    if (focusInput) input.focus();
   }
 
   document.querySelectorAll('[data-search-open]').forEach((trigger) => {
-    trigger.addEventListener('click', openSpotlight);
+    trigger.addEventListener('click', () => openSpotlight());
   });
+
+  if (topbarInput) {
+    topbarInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openSpotlight();
+      }
+    });
+  }
 
   input.addEventListener('input', () => {
     clearTimeout(debounceTimer);
@@ -242,6 +259,7 @@ if (spotlight) {
       }
     }
   });
+
 
   // Clicking the backdrop (the dialog padding itself) closes the spotlight.
   spotlight.addEventListener('click', (event) => {

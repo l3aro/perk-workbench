@@ -98,6 +98,39 @@ func TestDocumentationNavigation(t *testing.T) {
 			t.Errorf("primary navigation unexpectedly contains %s", href)
 		}
 	}
+	if !strings.Contains(primary, `<input class="docs-nav-search" type="search"`) ||
+		!strings.Contains(primary, `placeholder="Search docs…"`) ||
+		!strings.Contains(primary, `readonly`) ||
+		!strings.Contains(primary, `data-search-open`) ||
+		!strings.Contains(primary, `aria-haspopup="dialog"`) ||
+		!strings.Contains(primary, `<svg class="docs-nav-search-icon size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">`) ||
+		!strings.Contains(primary, `<kbd class="docs-nav-search-shortcut" aria-hidden="true">⌘K</kbd>`) {
+		t.Error("primary navigation does not contain the readonly docs search trigger, icon, and shortcut hint")
+	}
+	if strings.Contains(primary, `<button class="docs-nav-search-button"`) {
+		t.Error("primary navigation unexpectedly contains the mobile docs search button")
+	}
+
+	actionsStart := strings.Index(body, `<div class="site-header-actions">`)
+	if actionsStart < 0 {
+		t.Fatal("header actions are missing")
+	}
+	actionsEnd := strings.Index(body[actionsStart:], "</div>")
+	if actionsEnd < 0 {
+		t.Fatal("header actions are not closed")
+	}
+	actions := body[actionsStart : actionsStart+actionsEnd]
+	if count := strings.Count(actions, `<button class="docs-nav-search-button"`); count != 1 {
+		t.Errorf("header actions contain %d mobile docs search buttons, want exactly 1", count)
+	}
+	if !strings.Contains(actions, `<button class="docs-nav-search-button" type="button" data-search-open aria-label="Search docs" aria-haspopup="dialog">`) ||
+		!strings.Contains(actions, `<svg class="docs-nav-search-button-icon size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">`) ||
+		!strings.Contains(actions, `id="theme-toggle"`) {
+		t.Error("header actions do not contain the mobile search button and theme toggle")
+	}
+	if strings.Contains(primary, `contenteditable="true"`) || strings.Contains(primary, `aria-autocomplete=`) {
+		t.Error("topbar search input must not expose editable search behavior")
+	}
 
 	sidebarStart := strings.Index(body, `<aside class="docs-sidebar" aria-label="Documentation sections">`)
 	if sidebarStart < 0 {
@@ -108,6 +141,9 @@ func TestDocumentationNavigation(t *testing.T) {
 		t.Fatal("documentation sidebar is not closed")
 	}
 	sidebar := body[sidebarStart : sidebarStart+sidebarEnd]
+	if strings.Contains(sidebar, "Search docs") || strings.Contains(sidebar, "docs-sidebar-search") {
+		t.Error("documentation sidebar unexpectedly contains the docs search control")
+	}
 
 	// The Overview anchor gains aria-current on /docs itself, so match on
 	// the href and the visible label separately.
