@@ -386,6 +386,83 @@ func TestSearchAPI(t *testing.T) {
 		t.Errorf("result missing title/summary: %+v", payload.Results[0])
 	}
 }
+func TestSearchFragment(t *testing.T) {
+	t.Parallel()
+
+	server := New("test")
+	t.Run("matches", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/search/fragment?q=MongoDB", nil)
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", recorder.Code)
+		}
+		if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+			t.Fatalf("content type = %q, want text/html", got)
+		}
+		body := recorder.Body.String()
+		if got := strings.Count(body, `id="spotlight-output"`); got != 1 {
+			t.Fatalf("spotlight output wrappers = %d, want 1", got)
+		}
+		if !strings.Contains(body, `href="/docs/connections"`) {
+			t.Fatal("connections result link missing")
+		}
+		if json.Valid(recorder.Body.Bytes()) {
+			t.Fatal("fragment response is valid JSON")
+		}
+	})
+
+	t.Run("blank query", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/search/fragment?q=%20%20", nil)
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", recorder.Code)
+		}
+		body := recorder.Body.String()
+		if got := strings.Count(body, `id="spotlight-output"`); got != 1 {
+			t.Fatalf("spotlight output wrappers = %d, want 1", got)
+		}
+		if strings.Contains(body, "No results found") {
+			t.Fatal("blank query rendered no-results text")
+		}
+	})
+
+	t.Run("no match", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/search/fragment?q=__not_a_real_search_term__", nil)
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", recorder.Code)
+		}
+		body := recorder.Body.String()
+		if got := strings.Count(body, `id="spotlight-output"`); got != 1 {
+			t.Fatalf("spotlight output wrappers = %d, want 1", got)
+		}
+		if !strings.Contains(body, "No results found") {
+			t.Fatal("no-match query omitted no-results text")
+		}
+	})
+
+	t.Run("head", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodHead, "/search/fragment?q=MongoDB", nil)
+		recorder := httptest.NewRecorder()
+		server.ServeHTTP(recorder, req)
+
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", recorder.Code)
+		}
+		if got := recorder.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+			t.Fatalf("content type = %q, want text/html", got)
+		}
+		if recorder.Body.Len() != 0 {
+			t.Fatalf("body length = %d, want 0", recorder.Body.Len())
+		}
+	})
+}
 
 func TestSearchAPIEmptyQuery(t *testing.T) {
 	t.Parallel()

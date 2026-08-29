@@ -9,7 +9,8 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
-    "@xterm/xterm": "5.5.0"
+    "@xterm/xterm": "5.5.0",
+    "htmx.org": "4.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.3.3",

@@ -1,0 +1,15 @@
+{{define "search-results"}}
+<div id="spotlight-output">
+  <div class="max-h-[24rem] overflow-y-auto p-2 empty:hidden" role="listbox" aria-label="Search results">
+    {{range .SearchResults}}
+    <a class="flex flex-col gap-0.5 rounded-lg px-3.5 py-2.5 no-underline hover:bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] data-[active=true]:bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] data-[active=true]:shadow-[inset_2px_0_0_var(--color-accent)]" href="{{.Path}}" role="option">
+      <span class="font-medium text-ink">{{.Title}}</span>
+      <span class="text-sm text-muted">{{.Summary}}</span>
+    </a>
+    {{end}}
+  </div>
+  {{if and .SearchQuery (not .SearchResults)}}
+  <p class="px-4 pb-3 pt-1 text-sm text-muted">No results found</p>
+  {{end}}
+</div>
+{{end}}

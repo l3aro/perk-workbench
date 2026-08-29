@@ -1,8 +1,9 @@
 /* Site-wide behaviours: the global search spotlight (a <dialog> modal that
- * queries /api/search as you type); theme controls cycle the saved
- * light/dark/system preference; copy buttons copy their data-copy payload.
- * The terminal-native extras (typewriter loop, cursor spotlight, status-bar
- * keyboard shortcuts) degrade to static content without JS. */
+ * queries the server through htmx as you type); theme controls cycle the
+ * saved light/dark/system preference; copy buttons copy their data-copy
+ * payload. The terminal-native extras (typewriter loop, cursor spotlight,
+ * status-bar keyboard shortcuts) degrade to static content without JS. */
+import htmx from 'htmx.org';
 
 const THEME_PREFERENCES = ['dark', 'light', 'system'];
 
@@ -192,19 +193,18 @@ if (typeTarget) {
 }
 
 /* Global search spotlight: a <dialog> in base.html, openable from any page
- * via `/`, Cmd/Ctrl+K, or any [data-search-open] trigger. Queries hit the
- * JSON API debounced; results are keyboard-navigable (↑/↓/Enter). */
+ * via `/`, Cmd/Ctrl+K, or any [data-search-open] trigger. Queries are
+ * rendered server-side through htmx; results are keyboard-navigable
+ * (↑/↓/Enter). */
 const spotlight = document.getElementById('search-spotlight');
 if (spotlight) {
   const input = spotlight.querySelector('#spotlight-input');
-  const list = spotlight.querySelector('#spotlight-results');
-  const empty = spotlight.querySelector('#spotlight-empty');
-  let requestSeq = 0;
-  let debounceTimer;
   let activeIndex = -1;
   const topbarInput = document.getElementById('docs-nav-search');
 
-  const options = () => Array.from(list.querySelectorAll('[role="option"]'));
+  const options = () => Array.from(
+    spotlight.querySelectorAll('#spotlight-output [role="option"]'),
+  );
 
   function setActive(next) {
     const items = options();
@@ -217,37 +217,6 @@ if (spotlight) {
     items[activeIndex].scrollIntoView({ block: 'nearest' });
   }
 
-  function renderResults(results) {
-    list.innerHTML = '';
-    activeIndex = -1;
-    empty.hidden = results.length > 0;
-    for (const result of results) {
-      const link = document.createElement('a');
-      link.className = 'flex flex-col gap-0.5 rounded-lg px-3.5 py-2.5 no-underline hover:bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] data-[active=true]:bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] data-[active=true]:shadow-[inset_2px_0_0_var(--color-accent)]';
-      link.href = result.path;
-      link.setAttribute('role', 'option');
-      const title = document.createElement('span');
-      title.className = 'font-medium text-ink';
-      title.textContent = result.title;
-      const summary = document.createElement('span');
-      summary.className = 'text-sm text-muted';
-      summary.textContent = result.summary;
-      link.append(title, summary);
-      list.append(link);
-    }
-  }
-
-  function runQuery(query) {
-    const seq = ++requestSeq;
-    fetch(`/api/search?q=${encodeURIComponent(query)}`)
-      .then((response) => (response.ok ? response.json() : { results: [] }))
-      .then((data) => {
-        if (seq === requestSeq) renderResults(data.results ?? []);
-      })
-      .catch(() => {
-        if (seq === requestSeq) renderResults([]);
-      });
-  }
   function openSpotlight(query = '', focusInput = true, modal = true) {
     if (spotlight.open) {
       if (focusInput) input.focus();
@@ -259,8 +228,7 @@ if (spotlight) {
       spotlight.show();
     }
     input.value = query;
-    renderResults([]);
-    if (query.trim()) input.dispatchEvent(new Event('input'));
+    if (query.trim()) htmx.trigger(input, 'input');
     if (focusInput) input.focus();
   }
 
@@ -277,17 +245,6 @@ if (spotlight) {
     });
   }
 
-  input.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
-    const query = input.value.trim();
-    if (!query) {
-      requestSeq++;
-      renderResults([]);
-      return;
-    }
-    debounceTimer = setTimeout(() => runQuery(query), 150);
-  });
-
   input.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown') {
       event.preventDefault();
@@ -301,7 +258,7 @@ if (spotlight) {
       // highlighted yet.
       event.preventDefault();
       const items = options();
-      if (activeIndex >= 0) {
+      if (activeIndex >= 0 && items[activeIndex]) {
         items[activeIndex].click();
       } else if (items.length > 0) {
         items[0].click();
@@ -309,6 +266,11 @@ if (spotlight) {
     }
   });
 
+  document.body.addEventListener('htmx:after:swap', (event) => {
+    if (event.detail?.target?.id === 'spotlight-output') {
+      activeIndex = -1;
+    }
+  });
 
   // Clicking the backdrop (the dialog padding itself) closes the spotlight.
   spotlight.addEventListener('click', (event) => {
@@ -316,9 +278,9 @@ if (spotlight) {
   });
 
   spotlight.addEventListener('close', () => {
-    clearTimeout(debounceTimer);
-    requestSeq++;
-    renderResults([]);
+    activeIndex = -1;
+    input.value = '';
+    htmx.trigger(input, 'input');
   });
 
   // Belt and braces: the dialog form must never submit and navigate away.

@@ -65,11 +65,10 @@
   <dialog id="search-spotlight" class="m-auto w-[min(38rem,calc(100vw-2rem))] rounded-xl border border-line bg-panel p-0 text-ink shadow-2xl backdrop:bg-black/50" aria-label="Search the site">
     <form class="flex items-center gap-3 border-b border-line px-4 [&_svg]:shrink-0 [&_svg]:text-muted [&_input[type=search]]:min-w-0 [&_input[type=search]]:flex-1 [&_input[type=search]]:border-none [&_input[type=search]]:bg-transparent [&_input[type=search]]:py-4 [&_input[type=search]]:text-ink [&_input[type=search]]:outline-none [&_kbd]:shrink-0 [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-line [&_kbd]:px-1.5 [&_kbd]:py-0.5 [&_kbd]:font-mono [&_kbd]:text-[0.68rem] [&_kbd]:text-muted" data-spotlight-form role="search">
       <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="spotlight-input" type="search" placeholder="Search docs… (try: PostgreSQL, F5, plugins)" autocomplete="off" spellcheck="false" aria-controls="spotlight-results" aria-autocomplete="list">
+      <input id="spotlight-input" name="q" type="search" placeholder="Search docs… (try: PostgreSQL, F5, plugins)" autocomplete="off" spellcheck="false" aria-controls="spotlight-output" aria-autocomplete="list" hx-get="/search/fragment" hx-trigger="input changed delay:150ms" hx-target="#spotlight-output" hx-swap="outerHTML">
       <kbd>esc</kbd>
     </form>
-    <div class="max-h-[24rem] overflow-y-auto p-2 empty:hidden" id="spotlight-results" role="listbox" aria-label="Search results"></div>
-    <p id="spotlight-empty" class="px-4 pb-3 pt-1 text-sm text-muted" hidden>No results found</p>
+    {{template "search-results" .}}
     <footer class="flex gap-4 border-t border-line px-4 py-2.5 text-[0.72rem] text-muted [&_kbd]:mr-1 [&_kbd]:rounded [&_kbd]:border [&_kbd]:border-line [&_kbd]:px-1.5 [&_kbd]:py-0.5 [&_kbd]:font-mono [&_kbd]:text-[0.68rem]">
       <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> navigate</span>
       <span><kbd>&crarr;</kbd> open</span>

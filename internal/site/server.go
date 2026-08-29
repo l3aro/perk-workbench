@@ -90,6 +90,9 @@ type pageData struct {
 	DocLinks []docLink
 	Previous *docLink
 	Next     *docLink
+
+	SearchQuery   string
+	SearchResults []Page
 }
 
 // docLink is one navigation entry in the documentation catalogue. It carries
@@ -154,6 +157,13 @@ func New(version string) http.Handler {
 		}
 		renderSearchJSON(w, r, pages)
 	})
+	mux.HandleFunc("/search/fragment", func(w http.ResponseWriter, r *http.Request) {
+		if !methodAllowed(w, r) {
+			return
+		}
+		renderSearchFragment(w, r, pages)
+	})
+
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if !methodAllowed(w, r) {
 			return
@@ -210,8 +220,10 @@ func renderPage(w http.ResponseWriter, r *http.Request, version string, page Pag
 		"templates/base.html",
 		"templates/partials/navigation.html",
 		"templates/partials/docs-sidebar.html",
+		"templates/partials/search-results.html",
 		"templates/"+page.Template,
 	))
+
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if r.Method == http.MethodHead {
@@ -284,6 +296,25 @@ func renderSearchJSON(w http.ResponseWriter, r *http.Request, pages []Page) {
 		})
 	}
 	if err := json.NewEncoder(w).Encode(map[string]any{"query": q, "results": results}); err != nil {
+		return
+	}
+}
+
+// renderSearchFragment answers the spotlight modal's live queries with an
+// HTML fragment. The scoring stays server-side (searchPages).
+func renderSearchFragment(w http.ResponseWriter, r *http.Request, pages []Page) {
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if r.Method == http.MethodHead {
+		return
+	}
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	data := pageData{
+		SearchQuery:   q,
+		SearchResults: searchPages(q, pages),
+	}
+	t := template.Must(template.ParseFS(embedded, "templates/partials/search-results.html"))
+	if err := t.ExecuteTemplate(w, "search-results", data); err != nil {
 		return
 	}
 }
