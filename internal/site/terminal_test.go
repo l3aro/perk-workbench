@@ -2,6 +2,7 @@ package site
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,5 +80,46 @@ func TestDemoCommandArgs_pinsReadOnlySession(t *testing.T) {
 	want := []string{"--read-only", "--pin", "/tmp/chinook.db"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("demoCommandArgs() = %#v, want %#v", got, want)
+	}
+}
+
+func TestDemoAppearance_acceptsOnlyLight(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "light", url: "/ws/tui?theme=light", want: "light"},
+		{name: "dark", url: "/ws/tui?theme=dark", want: "dark"},
+		{name: "unknown", url: "/ws/tui?theme=solarized", want: "dark"},
+		{name: "missing", url: "/ws/tui", want: "dark"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, test.url, nil)
+			if got := demoAppearance(req); got != test.want {
+				t.Fatalf("demoAppearance(%q) = %q, want %q", test.url, got, test.want)
+			}
+		})
+	}
+}
+
+func TestWriteDemoConfig_disablesAutoTheme(t *testing.T) {
+	home := t.TempDir()
+	if err := writeDemoConfig(home, "light"); err != nil {
+		t.Fatalf("writeDemoConfig: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(home, "perk-workbench", "config.json"))
+	if err != nil {
+		t.Fatalf("read demo config: %v", err)
+	}
+	var config struct {
+		Appearance string `json:"appearance"`
+		AutoTheme  bool   `json:"auto_theme"`
+	}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("decode demo config: %v", err)
+	}
+	if config.Appearance != "light" || config.AutoTheme {
+		t.Fatalf("demo config = %#v, want light with auto_theme false", config)
 	}
 }

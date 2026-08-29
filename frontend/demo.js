@@ -9,6 +9,24 @@ import '@xterm/xterm/css/xterm.css';
 
   // DejaVuSansM Nerd Font Mono at 14px: advance 8.43px, line 16.8px.
   var cell = { width: 8.43, height: 16.8 };
+  var terminalThemes = {
+    dark: {
+      background: '#0b0e14',
+      foreground: '#d7dee8',
+      cursor: '#d7dee8',
+      selectionBackground: '#334155'
+    },
+    light: {
+      background: '#f6f8fa',
+      foreground: '#24292f',
+      cursor: '#24292f',
+      selectionBackground: '#c8d1dc'
+    }
+  };
+
+  function activeTheme() {
+    return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  }
 
   var term = new Terminal({
     cols: 80,
@@ -17,12 +35,7 @@ import '@xterm/xterm/css/xterm.css';
     fontFamily: '"DejaVuSansM Nerd Font Mono", monospace',
     fontSize: 14,
     lineHeight: 1.2,
-    theme: {
-      background: '#0b0e14',
-      foreground: '#d7dee8',
-      cursor: '#d7dee8',
-      selectionBackground: '#334155'
-    }
+    theme: terminalThemes[activeTheme()]
   });
   term.open(container);
   window.demoTerm = term;
@@ -60,9 +73,10 @@ import '@xterm/xterm/css/xterm.css';
   }
 
   var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  var ws = new WebSocket(protocol + '//' + location.host + '/ws/tui');
+  var ws = null;
   var connected = false;     // socket currently usable
   var everConnected = false; // was ever usable (for the disconnect message)
+  var reconnectOnClose = false;
   var readyTimer = null;
 
   function showStatus(message) {
@@ -72,45 +86,76 @@ import '@xterm/xterm/css/xterm.css';
     container.after(status);
   }
 
-  ws.onopen = function () {
-    connected = true;
-    everConnected = true;
-    ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-    term.focus();
-  };
-  ws.onmessage = function (event) { term.write(event.data); };
-  ws.onclose = function () {
-    connected = false;
-    if (readyTimer) { clearInterval(readyTimer); }
-    if (everConnected) { showStatus('Live demo disconnected. Refresh to reconnect.'); }
-  };
-  ws.onerror = function () {
-    if (!everConnected) { showStatus('Live demo unavailable right now.'); }
-  };
+  function connect() {
+    var socket = new WebSocket(protocol + '//' + location.host + '/ws/tui?theme=' + activeTheme());
+    ws = socket;
+    startReadyPolling();
+    socket.onopen = function () {
+      connected = true;
+      everConnected = true;
+      socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+      term.focus();
+    };
+    socket.onmessage = function (event) {
+      if (socket === ws) { term.write(event.data); }
+    };
+    socket.onclose = function () {
+      connected = false;
+      if (reconnectOnClose) {
+        reconnectOnClose = false;
+        connect();
+        return;
+      }
+      clearInterval(readyTimer);
+      if (everConnected) { showStatus('Live demo disconnected. Refresh to reconnect.'); }
+    };
+    socket.onerror = function () {
+      if (!everConnected && !reconnectOnClose) { showStatus('Live demo unavailable right now.'); }
+    };
+  }
+
   term.onData(function (data) {
-    if (connected) { ws.send(JSON.stringify({ type: 'input', data: data })); }
+    if (connected && ws) { ws.send(JSON.stringify({ type: 'input', data: data })); }
   });
   term.onResize(function (size) {
-    if (connected) { ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows })); }
+    if (connected && ws) { ws.send(JSON.stringify({ type: 'resize', cols: size.cols, rows: size.rows })); }
+  });
+
+  function startReadyPolling() {
+    clearInterval(readyTimer);
+    readyTimer = setInterval(function () {
+      if (!connected || window.demoTermFocused) { return; }
+      var found = false;
+      for (var i = 0; i < term.buffer.active.length; i++) {
+        if (term.buffer.active.getLine(i).translateToString(true).indexOf('READONLY') >= 0) {
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        window.demoTermFocused = true;
+        clearInterval(readyTimer);
+        if (ws) { ws.send(JSON.stringify({ type: 'input', data: '\ti' })); }
+      }
+    }, 400);
+  }
+
+  window.addEventListener('themechange', function () {
+    term.options.theme = terminalThemes[activeTheme()];
+    window.demoTermFocused = false;
+    term.reset();
+    reconnectOnClose = true;
+    if (!ws || ws.readyState === WebSocket.CLOSED) {
+      reconnectOnClose = false;
+      connect();
+      return;
+    }
+    ws.close();
   });
 
   // The TUI starts focused on the schema sidebar in vim normal mode. Once the
   // ready screen renders, focus the query editor and enter insert mode so
   // typing a query works immediately. READONLY appears in the footer in both
   // the full and compact (narrow) layouts; pane titles do not.
-  readyTimer = setInterval(function () {
-    if (!connected || window.demoTermFocused) { return; }
-    var found = false;
-    for (var i = 0; i < term.buffer.active.length; i++) {
-      if (term.buffer.active.getLine(i).translateToString(true).indexOf('READONLY') >= 0) {
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      window.demoTermFocused = true;
-      clearInterval(readyTimer);
-      ws.send(JSON.stringify({ type: 'input', data: '\ti' }));
-    }
-  }, 400);
+  connect();
 })();

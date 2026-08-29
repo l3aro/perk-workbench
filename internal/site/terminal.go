@@ -6,10 +6,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"unicode/utf8"
 
@@ -79,6 +81,38 @@ func demoCommandArgs(db string) []string {
 	return []string{"--read-only", "--pin", db}
 }
 
+func demoAppearance(r *http.Request) string {
+	if r.URL.Query().Get("theme") == "light" {
+		return "light"
+	}
+	return "dark"
+}
+
+func writeDemoConfig(home, appearance string) error {
+	if appearance != "light" {
+		appearance = "dark"
+	}
+	configDir := filepath.Join(home, "perk-workbench")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return fmt.Errorf("create demo config directory: %w", err)
+	}
+	config := struct {
+		Appearance string `json:"appearance"`
+		AutoTheme  bool   `json:"auto_theme"`
+	}{
+		Appearance: appearance,
+		AutoTheme:  false,
+	}
+	data, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("encode demo config: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.json"), data, 0o600); err != nil {
+		return fmt.Errorf("write demo config: %w", err)
+	}
+	return nil
+}
+
 type terminalMessage struct {
 	Type string `json:"type"`
 	Data string `json:"data,omitempty"`
@@ -118,8 +152,13 @@ func (s *terminalServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer os.RemoveAll(home)
+	if err := writeDemoConfig(home, demoAppearance(r)); err != nil {
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte("live demo unavailable: "+err.Error()))
+		return
+	}
 
 	cmd := exec.Command(bin, demoCommandArgs(db)...)
+
 	cmd.Env = append(os.Environ(),
 		"HOME="+home,
 		"XDG_CONFIG_HOME="+home,

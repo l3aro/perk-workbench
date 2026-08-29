@@ -9,6 +9,7 @@
 function setTheme(next) {
   document.documentElement.dataset.theme = next;
   localStorage.setItem('theme', next);
+  window.dispatchEvent(new CustomEvent('themechange', { detail: next }));
 }
 
 const themeToggle = document.getElementById('theme-toggle');

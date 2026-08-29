@@ -774,10 +774,27 @@
     color: var(--color-ink-soft);
   }
 
-  /* The live xterm surface stays dark in both themes on purpose. */
+  [data-theme="light"] .demo-terminal-window {
+    background: #f6f8fa;
+    border-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .demo-terminal-window .term-window-bar {
+    background: color-mix(in srgb, var(--color-panel) 92%, var(--color-line));
+    border-bottom-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .demo-terminal-window .term-window-title {
+    color: var(--color-muted);
+  }
+
   .demo-terminal {
     @apply h-[min(76vh,42rem)] w-full overflow-hidden;
     background: #0b0e14;
+  }
+
+  [data-theme="light"] .demo-terminal {
+    background: #f6f8fa;
   }
 
   .demo-terminal .xterm {
@@ -788,6 +805,10 @@
 
   .demo-terminal .xterm-viewport {
     background: #0b0e14;
+  }
+
+  [data-theme="light"] .demo-terminal .xterm-viewport {
+    background: #f6f8fa;
   }
 
   .demo-fullscreen {
