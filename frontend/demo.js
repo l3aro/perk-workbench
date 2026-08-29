@@ -47,14 +47,28 @@ import '@xterm/xterm/css/xterm.css';
   }
   fit();
 
-  // Fullscreen toggle: CSS overlay (position:fixed) instead of the Fullscreen
-  // API, so ESC can't exit — the button is the only way out. fit() reflows the
-  // TUI to the new size (term.resize re-sends resize to the server via onResize).
+  // Fullscreen toggle: a utility-class overlay (position: fixed) instead of
+  // the Fullscreen API, so ESC can't exit — the button is the only way out.
+  // fit() reflows the TUI to the new size (term.resize re-sends resize to the
+  // server via onResize).
   var fullscreenEl = document.getElementById('demo-fullscreen');
   var fullscreenBtn = document.getElementById('demo-fullscreen-btn');
+  var fullscreenClasses = [
+    'fixed', 'inset-0', 'z-50', 'flex', 'flex-col', 'gap-3', 'mt-0', 'p-3',
+    'overflow-hidden', 'bg-canvas'
+  ];
+  var terminalFullscreenClasses = ['flex-1', 'h-auto', 'border-0', 'rounded-none'];
   if (fullscreenEl && fullscreenBtn) {
     function setFullscreen(active) {
-      fullscreenEl.classList.toggle('is-fullscreen', active);
+      fullscreenEl.classList.toggle('mt-12', !active);
+      fullscreenClasses.forEach(function (className) {
+        fullscreenEl.classList.toggle(className, active);
+      });
+      terminalFullscreenClasses.forEach(function (className) {
+        container.classList.toggle(className, active);
+      });
+      fullscreenEl.dataset.fullscreen = String(active);
+      fullscreenBtn.setAttribute('aria-pressed', String(active));
       document.body.style.overflow = active ? 'hidden' : '';
       fullscreenBtn.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
       requestAnimationFrame(function () {
@@ -63,10 +77,10 @@ import '@xterm/xterm/css/xterm.css';
       });
     }
     fullscreenBtn.addEventListener('click', function () {
-      setFullscreen(!fullscreenEl.classList.contains('is-fullscreen'));
+      setFullscreen(fullscreenEl.dataset.fullscreen !== 'true');
     });
     window.addEventListener('resize', function () {
-      if (fullscreenEl.classList.contains('is-fullscreen')) {
+      if (fullscreenEl.dataset.fullscreen === 'true') {
         fit();
       }
     });
@@ -82,7 +96,8 @@ import '@xterm/xterm/css/xterm.css';
 
   function showStatus(message) {
     var status = document.createElement('p');
-    status.className = 'note demo-terminal-status';
+    status.className = 'mt-4 text-sm text-muted';
+    status.dataset.demoTerminalStatus = '';
     status.textContent = message;
     container.after(status);
   }

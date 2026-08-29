@@ -1,24 +1,24 @@
 {{define "content"}}
 <header>
-  <p class="eyebrow">{{.Eyebrow}}</p>
-  <h1 class="page-title">{{.Title}}</h1>
-  <p class="lede">{{.Lede}}</p>
+  <p class="inline-flex items-center gap-2 rounded-full border border-line bg-panel/60 px-3 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-none tracking-[0.14em] text-muted no-underline before:size-[0.4rem] before:rounded-full before:bg-good before:shadow-[0_0_8px_color-mix(in_oklab,var(--color-good)_80%,transparent)] before:content-['']">{{.Eyebrow}}</p>
+  <h1 class="mt-5 mb-6 max-w-[16ch] text-[clamp(2.5rem,6vw,4.6rem)] font-bold text-ink">{{.Title}}</h1>
+  <p class="max-w-[56ch] text-[clamp(1.05rem,1.8vw,1.25rem)] leading-relaxed text-muted">{{.Lede}}</p>
 </header>
-<div class="doc-body">
+<div class="max-w-[62rem] text-[1.02rem] leading-relaxed text-ink-soft [&_h2]:mt-16 [&_h2]:mb-5 [&_h2]:text-[clamp(1.5rem,2.6vw,2.1rem)] [&_h2]:font-semibold [&_h2]:text-ink [&_h3]:mt-10 [&_h3]:mb-4 [&_h3]:text-[1.25rem] [&_h3]:font-semibold [&_h3]:text-ink [&_p]:my-4 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-1.5 [&_dl]:my-4 [&_dt]:mt-4 [&_dt]:font-semibold [&_dt]:text-ink [&_dd]:mt-1 [&_dd]:ml-0 [&_table]:my-6 [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_th]:font-semibold [&_pre]:my-4 [&_pre]:max-w-full [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-4 [&_blockquote]:text-muted">
 {{.Body}}
 </div>
 {{if or .Previous .Next}}
-<nav class="doc-footer-nav" aria-label="Document navigation">
+<nav class="mt-16 grid gap-3 border-t border-line pt-6 sm:grid-cols-2" aria-label="Document navigation">
   {{if .Previous}}
-  <a class="doc-nav-card doc-nav-prev" href="{{.Previous.Path}}">
-    <span>Previous</span>
-    <strong>{{.Previous.Title}}</strong>
+  <a class="only:col-span-full flex flex-col items-start gap-1 rounded-xl border border-line bg-panel p-5 text-left no-underline transition-all duration-200 hover:border-[color-mix(in_oklab,var(--color-accent)_45%,var(--color-line))] hover:shadow-[var(--shadow-glow)] focus-visible:outline-[3px] focus-visible:outline-accent focus-visible:outline-offset-3" href="{{.Previous.Path}}">
+    <span class="text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-muted">Previous</span>
+    <strong class="text-base text-ink">{{.Previous.Title}}</strong>
   </a>
   {{end}}
   {{if .Next}}
-  <a class="doc-nav-card doc-nav-next" href="{{.Next.Path}}">
-    <span>Next</span>
-    <strong>{{.Next.Title}}</strong>
+  <a class="only:col-span-full flex flex-col items-end gap-1 rounded-xl border border-line bg-panel p-5 text-right no-underline transition-all duration-200 hover:border-[color-mix(in_oklab,var(--color-accent)_45%,var(--color-line))] hover:shadow-[var(--shadow-glow)] focus-visible:outline-[3px] focus-visible:outline-accent focus-visible:outline-offset-3" href="{{.Next.Path}}">
+    <span class="text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-muted">Next</span>
+    <strong class="text-base text-ink">{{.Next.Title}}</strong>
   </a>
   {{end}}
 </nav>

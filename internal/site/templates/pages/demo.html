@@ -4,54 +4,54 @@
 {{end}}
 
 {{define "content" -}}
-<header class="fade-up">
-  <p class="eyebrow">Live demo · read-only</p>
-  <h1 class="page-title">Try the real TUI</h1>
-  <p class="lede">A live Perk Workbench terminal streams here from the server, connected to the Chinook SQLite demo database in read-only mode.</p>
+<header class="animate-[fade-up_0.7s_cubic-bezier(0.16,1,0.3,1)_both] motion-reduce:animate-none">
+  <p class="inline-flex items-center gap-2 rounded-full border border-line bg-panel/60 px-3 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-none tracking-[0.14em] text-muted no-underline before:size-[0.4rem] before:rounded-full before:bg-good before:shadow-[0_0_8px_color-mix(in_oklab,var(--color-good)_80%,transparent)] before:content-['']">Live demo · read-only</p>
+  <h1 class="mt-5 mb-6 max-w-[16ch] text-[clamp(2.5rem,6vw,4.6rem)] font-bold text-ink">Try the real TUI</h1>
+  <p class="max-w-[56ch] text-[clamp(1.05rem,1.8vw,1.25rem)] leading-relaxed text-muted">A live Perk Workbench terminal streams here from the server, connected to the Chinook SQLite demo database in read-only mode.</p>
 </header>
 
-<section class="demo-wide fade-up fade-up-2" aria-labelledby="terminal-title">
-  <div id="demo-fullscreen" class="demo-fullscreen">
+<section class="max-w-none animate-[fade-up_0.7s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.12s] motion-reduce:animate-none" aria-labelledby="terminal-title">
+  <div id="demo-fullscreen" class="mt-12">
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <h2 id="terminal-title" class="section-title mt-0 mb-0">Interactive terminal</h2>
-      <button id="demo-fullscreen-btn" type="button" class="btn-ghost font-mono text-[0.72rem] font-semibold uppercase tracking-[0.12em]">Fullscreen</button>
+      <h2 id="terminal-title" class="mt-0 mb-0 text-[clamp(1.5rem,2.6vw,2.1rem)] font-semibold text-ink">Interactive terminal</h2>
+      <button id="demo-fullscreen-btn" type="button" aria-pressed="false" class="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-panel px-5 py-2.5 font-mono text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-ink no-underline transition-all duration-200 hover:border-line-strong hover:bg-[color-mix(in_oklab,var(--color-panel)_70%,var(--color-line))]">Fullscreen</button>
     </div>
-    <div class="term-window demo-terminal-window">
-      <div class="term-window-bar" aria-hidden="true">
-        <span class="term-window-dot bg-[#ff5f57]"></span>
-        <span class="term-window-dot bg-[#febc2e]"></span>
-        <span class="term-window-dot bg-[#28c840]"></span>
-        <span class="term-window-title">perk-workbench — live demo (read-only)</span>
+    <div class="term-window overflow-hidden rounded-xl border border-line bg-[#0b0e14] shadow-deep [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-[#f6f8fa]">
+      <div class="flex items-center gap-2 border-b border-white/5 bg-white/[0.03] px-4 py-2.5 [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-[color-mix(in_srgb,var(--color-panel)_92%,var(--color-line))]" aria-hidden="true">
+        <span class="size-3 rounded-full bg-[#ff5f57]"></span>
+        <span class="size-3 rounded-full bg-[#febc2e]"></span>
+        <span class="size-3 rounded-full bg-[#28c840]"></span>
+        <span class="ml-2 font-mono text-xs text-slate-400 [[data-theme=light]_&]:text-muted">perk-workbench — live demo (read-only)</span>
       </div>
-      <div id="demo-terminal" class="demo-terminal" aria-label="Live Perk Workbench terminal"></div>
+      <div id="demo-terminal" class="h-[min(76vh,42rem)] w-full overflow-hidden bg-[#0b0e14] [&_.xterm]:h-full [&_.xterm]:p-3 [&_.xterm]:font-['DejaVuSansM_Nerd_Font_Mono',var(--font-mono)] [&_.xterm-viewport]:bg-[#0b0e14] [[data-theme=light]_&]:bg-[#f6f8fa] [[data-theme=light]_&_.xterm-viewport]:bg-[#f6f8fa]" aria-label="Live Perk Workbench terminal"></div>
     </div>
-    <p class="note demo-terminal-status">The query editor is focused automatically. Type a query and press <kbd>F5</kbd> to run it. Read-only connection: queries cannot modify the demo database. Your session ends when you leave the page.</p>
+    <p class="mt-4 text-sm text-muted">The query editor is focused automatically. Type a query and press <kbd>F5</kbd> to run it. Read-only connection: queries cannot modify the demo database. Your session ends when you leave the page.</p>
   </div>
 </section>
 
-<section class="fade-up fade-up-3" aria-labelledby="queries-title">
-  <h2 id="queries-title" class="section-title">Try these queries</h2>
+<section class="animate-[fade-up_0.7s_cubic-bezier(0.16,1,0.3,1)_both] [animation-delay:0.18s] motion-reduce:animate-none" aria-labelledby="queries-title">
+  <h2 id="queries-title" class="mt-16 mb-5 text-[clamp(1.5rem,2.6vw,2.1rem)] font-semibold text-ink">Try these queries</h2>
   <div class="grid gap-4 lg:grid-cols-1">
-    <div class="term-window query-card">
-      <div class="term-window-bar" aria-hidden="true">
-        <span class="term-window-dot bg-[#ff5f57]"></span>
-        <span class="term-window-dot bg-[#febc2e]"></span>
-        <span class="term-window-dot bg-[#28c840]"></span>
-        <span class="term-window-title">first look</span>
-        <button class="copy-btn ml-auto" type="button" data-copy="SELECT * FROM artists LIMIT 5;" aria-label="Copy query">
-          <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    <div class="term-window overflow-hidden rounded-xl border border-line bg-[#0b0e14] shadow-deep [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-panel">
+      <div class="flex items-center gap-2 border-b border-white/5 bg-white/[0.03] px-4 py-2.5 [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-[color-mix(in_srgb,var(--color-panel)_92%,var(--color-line))]" aria-hidden="true">
+        <span class="size-3 rounded-full bg-[#ff5f57]"></span>
+        <span class="size-3 rounded-full bg-[#febc2e]"></span>
+        <span class="size-3 rounded-full bg-[#28c840]"></span>
+        <span class="ml-2 font-mono text-xs text-slate-400 [[data-theme=light]_&]:text-muted">first look</span>
+        <button class="ml-auto inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-line-strong hover:text-ink [&.is-copied]:border-good [&.is-copied]:text-good" type="button" data-copy="SELECT * FROM artists LIMIT 5;" aria-label="Copy query">
+          <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg>
         </button>
       </div>
       <pre class="m-0 border-0 bg-transparent shadow-none"><code>SELECT * FROM artists LIMIT 5;</code></pre>
     </div>
-    <div class="term-window query-card">
-      <div class="term-window-bar" aria-hidden="true">
-        <span class="term-window-dot bg-[#ff5f57]"></span>
-        <span class="term-window-dot bg-[#febc2e]"></span>
-        <span class="term-window-dot bg-[#28c840]"></span>
-        <span class="term-window-title">join across tables</span>
-        <button class="copy-btn ml-auto" type="button" data-copy="SELECT t.Name, al.Title FROM tracks t JOIN albums al ON al.AlbumId = t.AlbumId LIMIT 10;" aria-label="Copy query">
-          <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    <div class="term-window overflow-hidden rounded-xl border border-line bg-[#0b0e14] shadow-deep [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-panel">
+      <div class="flex items-center gap-2 border-b border-white/5 bg-white/[0.03] px-4 py-2.5 [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-[color-mix(in_srgb,var(--color-panel)_92%,var(--color-line))]" aria-hidden="true">
+        <span class="size-3 rounded-full bg-[#ff5f57]"></span>
+        <span class="size-3 rounded-full bg-[#febc2e]"></span>
+        <span class="size-3 rounded-full bg-[#28c840]"></span>
+        <span class="ml-2 font-mono text-xs text-slate-400 [[data-theme=light]_&]:text-muted">join across tables</span>
+        <button class="ml-auto inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-line-strong hover:text-ink [&.is-copied]:border-good [&.is-copied]:text-good" type="button" data-copy="SELECT t.Name, al.Title FROM tracks t JOIN albums al ON al.AlbumId = t.AlbumId LIMIT 10;" aria-label="Copy query">
+          <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg>
         </button>
       </div>
       <pre class="m-0 border-0 bg-transparent shadow-none"><code>SELECT t.Name, al.Title
@@ -59,14 +59,14 @@ FROM tracks t
 JOIN albums al ON al.AlbumId = t.AlbumId
 LIMIT 10;</code></pre>
     </div>
-    <div class="term-window query-card">
-      <div class="term-window-bar" aria-hidden="true">
-        <span class="term-window-dot bg-[#ff5f57]"></span>
-        <span class="term-window-dot bg-[#febc2e]"></span>
-        <span class="term-window-dot bg-[#28c840]"></span>
-        <span class="term-window-title">count everything</span>
-        <button class="copy-btn ml-auto" type="button" data-copy="SELECT COUNT(*) AS tracks FROM tracks;" aria-label="Copy query">
-          <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    <div class="term-window overflow-hidden rounded-xl border border-line bg-[#0b0e14] shadow-deep [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-panel">
+      <div class="flex items-center gap-2 border-b border-white/5 bg-white/[0.03] px-4 py-2.5 [[data-theme=light]_&]:border-line-strong [[data-theme=light]_&]:bg-[color-mix(in_srgb,var(--color-panel)_92%,var(--color-line))]" aria-hidden="true">
+        <span class="size-3 rounded-full bg-[#ff5f57]"></span>
+        <span class="size-3 rounded-full bg-[#febc2e]"></span>
+        <span class="size-3 rounded-full bg-[#28c840]"></span>
+        <span class="ml-2 font-mono text-xs text-slate-400 [[data-theme=light]_&]:text-muted">count everything</span>
+        <button class="ml-auto inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-line-strong hover:text-ink [&.is-copied]:border-good [&.is-copied]:text-good" type="button" data-copy="SELECT COUNT(*) AS tracks FROM tracks;" aria-label="Copy query">
+          <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg>
         </button>
       </div>
       <pre class="m-0 border-0 bg-transparent shadow-none"><code>SELECT COUNT(*) AS tracks FROM tracks;</code></pre>

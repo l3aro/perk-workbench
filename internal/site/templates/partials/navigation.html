@@ -1,12 +1,11 @@
 {{define "navigation"}}
-<nav class="docs-nav" aria-label="Primary">
-  <a href="/"{{if eq .Path "/"}} aria-current="page"{{end}}>Home</a>
-  <a href="/demo"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Live Demo</a>
-  <a href="/docs"{{if .Docs}} aria-current="page"{{end}}>Docs</a>
-  <span class="docs-nav-search-shell">
-    <input class="docs-nav-search" type="search" placeholder="Search docs…" aria-label="Search docs" readonly data-search-open aria-haspopup="dialog">
-    <svg class="docs-nav-search-icon size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <kbd class="docs-nav-search-shortcut" aria-hidden="true">⌘K</kbd>
+<nav class="flex min-w-0 flex-wrap items-center gap-1 max-[30rem]:w-full lg:flex-1" aria-label="Primary">
+  <a class="inline-block rounded-lg px-3 py-1.5 text-sm font-medium text-muted no-underline transition-colors duration-150 hover:bg-[color-mix(in_oklab,var(--color-line)_55%,transparent)] hover:text-ink [&[aria-current=page]]:bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] [&[aria-current=page]]:text-ink" href="/"{{if eq .Path "/"}} aria-current="page"{{end}}>Home</a>
+  <a class="inline-block rounded-lg px-3 py-1.5 text-sm font-medium text-muted no-underline transition-colors duration-150 hover:bg-[color-mix(in_oklab,var(--color-line)_55%,transparent)] hover:text-ink [&[aria-current=page]]:bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] [&[aria-current=page]]:text-ink" href="/demo"{{if eq .Path "/demo"}} aria-current="page"{{end}}>Live Demo</a>
+  <a class="inline-block rounded-lg px-3 py-1.5 text-sm font-medium text-muted no-underline transition-colors duration-150 hover:bg-[color-mix(in_oklab,var(--color-line)_55%,transparent)] hover:text-ink [&[aria-current=page]]:bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] [&[aria-current=page]]:text-ink" href="/docs"{{if .Docs}} aria-current="page"{{end}}>Docs</a>
+  <span class="relative inline-block w-[clamp(10rem,20vw,16rem)] max-w-full min-w-0 lg:ml-auto max-[30rem]:hidden">
+    <input id="docs-nav-search" class="block h-9 w-full max-w-full min-w-0 cursor-pointer rounded-lg border border-line bg-panel px-3 pr-16 text-sm text-muted outline-none transition-colors duration-150 placeholder:text-muted hover:border-[var(--color-line-strong)] hover:bg-[color-mix(in_oklab,var(--color-panel)_70%,var(--color-line))] hover:text-ink focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 focus-visible:shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-accent)_18%,transparent)]" type="search" placeholder="Search docs…" aria-label="Search docs" readonly data-search-open aria-haspopup="dialog">
+    <kbd class="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 text-[0.68rem] leading-none text-muted" aria-hidden="true">⌘K</kbd>
   </span>
 </nav>
 {{end}}

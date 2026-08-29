@@ -1,14 +1,14 @@
 {{define "content"}}
-<header class="fade-up">
-  <p class="eyebrow">Documentation</p>
-  <h1 class="page-title">Perk Workbench docs</h1>
-  <p class="lede">Everything you need to install Perk Workbench, connect to data, work with queries, and extend the terminal-native workspace.</p>
+<header class="animate-[fade-up_0.7s_cubic-bezier(0.16,1,0.3,1)_both] motion-reduce:animate-none">
+  <p class="inline-flex items-center gap-2 rounded-full border border-line bg-panel/60 px-3 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-none tracking-[0.14em] text-muted no-underline before:size-[0.4rem] before:rounded-full before:bg-good before:shadow-[0_0_8px_color-mix(in_oklab,var(--color-good)_80%,transparent)] before:content-['']">Documentation</p>
+  <h1 class="mt-5 mb-6 max-w-[16ch] text-[clamp(2.5rem,6vw,4.6rem)] font-bold text-ink">Perk Workbench docs</h1>
+  <p class="max-w-[56ch] text-[clamp(1.05rem,1.8vw,1.25rem)] leading-relaxed text-muted">Everything you need to install Perk Workbench, connect to data, work with queries, and extend the terminal-native workspace.</p>
 </header>
 <section class="mt-12 grid gap-4 sm:grid-cols-2" aria-label="Documentation topics">
   {{range .DocLinks}}
-  <a class="card" href="{{.Path}}">
-    <h2>{{.Title}}</h2>
-    <p>{{.Summary}}</p>
+  <a class="relative rounded-xl border border-line bg-panel p-6 no-underline transition-all duration-200 hover:-translate-y-0.5 hover:border-[color-mix(in_oklab,var(--color-accent)_45%,var(--color-line))] hover:shadow-[var(--shadow-glow)] motion-reduce:hover:translate-y-0 focus-visible:outline-[3px] focus-visible:outline-accent focus-visible:outline-offset-3 before:pointer-events-none before:absolute before:-top-px before:-left-px before:size-[0.85rem] before:rounded-tl-xl before:border-t-2 before:border-l-2 before:border-accent before:opacity-0 before:transition-opacity before:duration-200 before:content-[''] hover:before:opacity-100 after:pointer-events-none after:absolute after:-right-px after:-bottom-px after:size-[0.85rem] after:rounded-br-xl after:border-r-2 after:border-b-2 after:border-accent after:opacity-0 after:transition-opacity after:duration-200 after:content-[''] hover:after:opacity-100" href="{{.Path}}">
+    <h2 class="text-lg font-semibold text-ink">{{.Title}}</h2>
+    <p class="mt-2 text-sm leading-relaxed text-muted">{{.Summary}}</p>
   </a>
   {{end}}
 </section>

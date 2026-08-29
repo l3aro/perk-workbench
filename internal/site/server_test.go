@@ -80,15 +80,12 @@ func TestDocumentationNavigation(t *testing.T) {
 	server.ServeHTTP(recorder, req)
 
 	body := recorder.Body.String()
-	primaryStart := strings.Index(body, `<nav class="docs-nav" aria-label="Primary">`)
-	if primaryStart < 0 {
-		t.Fatal("primary navigation is missing")
+	primaryPattern := regexp.MustCompile(`(?s)<nav\b[^>]*\baria-label="Primary"[^>]*>(.*?)</nav>`)
+	primaryMatches := primaryPattern.FindAllStringSubmatch(body, -1)
+	if len(primaryMatches) != 1 {
+		t.Fatalf("page contains %d Primary navigation landmarks, want exactly 1", len(primaryMatches))
 	}
-	primaryEnd := strings.Index(body[primaryStart:], "</nav>")
-	if primaryEnd < 0 {
-		t.Fatal("primary navigation is not closed")
-	}
-	primary := body[primaryStart : primaryStart+primaryEnd]
+	primary := primaryMatches[0][1]
 	for _, href := range []string{`href="/"`, `href="/demo"`, `href="/docs"`} {
 		if !strings.Contains(primary, href) {
 			t.Errorf("primary navigation does not contain %s", href)
@@ -99,41 +96,70 @@ func TestDocumentationNavigation(t *testing.T) {
 			t.Errorf("primary navigation unexpectedly contains %s", href)
 		}
 	}
-	if !strings.Contains(primary, `<input class="docs-nav-search" type="search"`) ||
-		!strings.Contains(primary, `placeholder="Search docs…"`) ||
-		!strings.Contains(primary, `readonly`) ||
-		!strings.Contains(primary, `data-search-open`) ||
-		!strings.Contains(primary, `aria-haspopup="dialog"`) ||
-		!strings.Contains(primary, `<svg class="docs-nav-search-icon size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">`) ||
-		!strings.Contains(primary, `<kbd class="docs-nav-search-shortcut" aria-hidden="true">⌘K</kbd>`) {
-		t.Error("primary navigation does not contain the readonly docs search trigger, icon, and shortcut hint")
+	inputPattern := regexp.MustCompile(`<input\b[^>]*>`)
+	var searchInput string
+	for _, input := range inputPattern.FindAllString(primary, -1) {
+		if strings.Contains(input, `id="docs-nav-search"`) {
+			searchInput = input
+			break
+		}
 	}
-	if strings.Contains(primary, `<button class="docs-nav-search-button"`) {
-		t.Error("primary navigation unexpectedly contains the mobile docs search button")
+	if searchInput == "" {
+		t.Fatal("primary navigation is missing the docs search trigger")
+	}
+	for _, marker := range []string{
+		`type="search"`,
+		`placeholder="Search docs…"`,
+		`aria-label="Search docs"`,
+		`readonly`,
+		`data-search-open`,
+		`aria-haspopup="dialog"`,
+	} {
+		if !strings.Contains(searchInput, marker) {
+			t.Errorf("docs search trigger does not expose %s", marker)
+		}
+	}
+	if strings.Contains(primary, `<button`) {
+		t.Error("primary navigation unexpectedly contains a button search trigger")
 	}
 
-	actionsStart := strings.Index(body, `<div class="site-header-actions">`)
-	if actionsStart < 0 {
-		t.Fatal("header actions are missing")
+	headerStart := strings.Index(body, "<header")
+	if headerStart < 0 {
+		t.Fatal("site header is missing")
 	}
-	actionsEnd := strings.Index(body[actionsStart:], "</div>")
-	if actionsEnd < 0 {
-		t.Fatal("header actions are not closed")
+	headerEnd := strings.Index(body[headerStart:], "</header>")
+	if headerEnd < 0 {
+		t.Fatal("site header is not closed")
 	}
-	actions := body[actionsStart : actionsStart+actionsEnd]
-	if count := strings.Count(actions, `<button class="docs-nav-search-button"`); count != 1 {
-		t.Errorf("header actions contain %d mobile docs search buttons, want exactly 1", count)
+	header := body[headerStart : headerStart+headerEnd]
+	buttonPattern := regexp.MustCompile(`<button\b[^>]*>`)
+	var searchButtons []string
+	for _, button := range buttonPattern.FindAllString(header, -1) {
+		if strings.Contains(button, `data-search-open`) {
+			searchButtons = append(searchButtons, button)
+		}
 	}
-	if !strings.Contains(actions, `<button class="docs-nav-search-button" type="button" data-search-open aria-label="Search docs" aria-haspopup="dialog">`) ||
-		!strings.Contains(actions, `<svg class="docs-nav-search-button-icon size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">`) ||
-		!strings.Contains(actions, `id="theme-toggle"`) {
-		t.Error("header actions do not contain the mobile search button and theme toggle")
+	if len(searchButtons) != 1 {
+		t.Fatalf("header contains %d mobile docs search buttons, want exactly 1", len(searchButtons))
+	}
+	for _, marker := range []string{
+		`type="button"`,
+		`data-search-open`,
+		`aria-label="Search docs"`,
+		`aria-haspopup="dialog"`,
+	} {
+		if !strings.Contains(searchButtons[0], marker) {
+			t.Errorf("mobile docs search button does not expose %s", marker)
+		}
+	}
+	if !strings.Contains(header, `id="theme-toggle"`) {
+		t.Error("header does not contain the theme toggle")
 	}
 	if strings.Contains(primary, `contenteditable="true"`) || strings.Contains(primary, `aria-autocomplete=`) {
 		t.Error("topbar search input must not expose editable search behavior")
 	}
 
-	sidebarOpen := regexp.MustCompile(`<aside\s+class="docs-sidebar"\s+aria-label="Documentation sections"\s*>`)
+	sidebarOpen := regexp.MustCompile(`<aside\b[^>]*\baria-label="Documentation sections"[^>]*>`)
 	sidebarMatch := sidebarOpen.FindStringIndex(body)
 	if sidebarMatch == nil {
 		t.Fatal("documentation sidebar is missing")
@@ -144,47 +170,44 @@ func TestDocumentationNavigation(t *testing.T) {
 		t.Fatal("documentation sidebar is not closed")
 	}
 	sidebar := body[sidebarStart : sidebarStart+sidebarEnd]
-	if strings.Contains(sidebar, "Search docs") || strings.Contains(sidebar, "docs-sidebar-search") {
-		t.Error("documentation sidebar unexpectedly contains the docs search control")
-	}
 
 	// Match links structurally so indentation or line wrapping does not affect
 	// the navigation contract.
-	disclosurePattern := regexp.MustCompile(`(?s)<details\s+class="docs-sidebar-disclosure"\s+open\s*>(.*?)</details>`)
+	disclosurePattern := regexp.MustCompile(`(?s)<details\b[^>]*\bopen\b[^>]*>(.*?)</details>`)
 	disclosureMatches := disclosurePattern.FindAllStringSubmatch(sidebar, -1)
 	if len(disclosureMatches) != 1 {
 		t.Fatalf("sidebar contains %d mobile disclosures, want exactly 1", len(disclosureMatches))
 	}
 	mobileDisclosure := disclosureMatches[0][0]
-	summaryPattern := regexp.MustCompile(`(?s)<summary\s+class="eyebrow">\s*Documentation\s*</summary>`)
+	summaryPattern := regexp.MustCompile(`(?s)<summary\b[^>]*>\s*Documentation\s*</summary>`)
 	if count := len(summaryPattern.FindAllString(mobileDisclosure, -1)); count != 1 {
 		t.Errorf("mobile disclosure contains %d Documentation summaries, want exactly 1", count)
 	}
 
-	desktopPattern := regexp.MustCompile(`(?s)<div\s+class="docs-sidebar-desktop"\s*>(.*?)</div>`)
-	desktopMatches := desktopPattern.FindAllStringSubmatch(sidebar, -1)
-	if len(desktopMatches) != 1 {
-		t.Fatalf("sidebar contains %d desktop wrappers, want exactly 1", len(desktopMatches))
+	desktopStart := strings.Index(sidebar, "</details>")
+	if desktopStart < 0 {
+		t.Fatal("documentation sidebar is missing its desktop section")
 	}
-	desktop := desktopMatches[0][0]
-	if strings.Contains(desktop, "<details") || strings.Contains(desktop, "<summary") {
-		t.Error("desktop documentation wrapper unexpectedly contains a collapsible summary control")
+	desktop := sidebar[desktopStart:]
+	navPattern := regexp.MustCompile(`(?s)<nav\b[^>]*>(.*?)</nav>`)
+	desktopNavMatches := navPattern.FindAllStringSubmatch(desktop, -1)
+	if len(desktopNavMatches) != 1 {
+		t.Fatalf("desktop documentation section contains %d nav elements, want exactly 1", len(desktopNavMatches))
 	}
-	if count := strings.Count(desktop, `<p class="eyebrow mb-3">Documentation</p>`); count != 1 {
-		t.Errorf("desktop wrapper contains %d Documentation labels, want exactly 1", count)
+	if count := len(regexp.MustCompile(`(?s)<p\b[^>]*>\s*Documentation\s*</p>`).FindAllString(sidebar, -1)); count != 1 {
+		t.Errorf("sidebar contains %d desktop Documentation labels, want exactly 1", count)
 	}
 
-	extractNav := func(scope, class, wrapper string) string {
+	extractNav := func(scope, wrapper string) string {
 		t.Helper()
-		pattern := regexp.MustCompile(fmt.Sprintf(`(?s)<nav\s+class="%s"\s*>(.*?)</nav>`, regexp.QuoteMeta(class)))
-		matches := pattern.FindAllStringSubmatch(scope, -1)
+		matches := navPattern.FindAllStringSubmatch(scope, -1)
 		if len(matches) != 1 {
-			t.Fatalf("%s wrapper contains %d %s nav elements, want exactly 1", wrapper, len(matches), class)
+			t.Fatalf("%s wrapper contains %d nav elements, want exactly 1", wrapper, len(matches))
 		}
 		return matches[0][1]
 	}
-	mobileNav := extractNav(mobileDisclosure, "docs-sidebar-nav docs-sidebar-nav-mobile", "mobile")
-	desktopNav := extractNav(desktop, "docs-sidebar-nav", "desktop")
+	mobileNav := extractNav(mobileDisclosure, "mobile")
+	desktopNav := extractNav(desktop, "desktop")
 
 	linkPattern := func(path, title string) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(
@@ -218,30 +241,20 @@ func TestDocumentationNavigation(t *testing.T) {
 	if count := strings.Count(sidebar, "</details>"); count != 1 {
 		t.Errorf("sidebar contains %d details closing tags, want exactly 1", count)
 	}
-	if count := strings.Count(sidebar, "</div>"); count != 1 {
-		t.Errorf("sidebar contains %d desktop wrapper closing tags, want exactly 1", count)
-	}
-	if count := strings.Count(sidebar, `<nav `); count != 2 {
-		t.Errorf("sidebar contains %d docs nav elements, want exactly 2", count)
-	}
-	if count := strings.Count(sidebar, `<summary `); count != 1 {
-		t.Errorf("sidebar contains %d summary controls, want exactly 1 mobile summary", count)
-	}
-	if count := strings.Count(sidebar, `<details `); count != 1 {
-		t.Errorf("sidebar contains %d details elements, want exactly 1 mobile disclosure", count)
-	}
-	if count := strings.Count(sidebar, `<div class="docs-sidebar-desktop">`); count != 1 {
+	if count := len(regexp.MustCompile(`<div\b[^>]*>`).FindAllString(sidebar, -1)); count != 1 {
 		t.Errorf("sidebar contains %d desktop wrappers, want exactly 1", count)
 	}
-	if count := strings.Count(sidebar, `<p class="eyebrow mb-3">Documentation</p>`); count != 1 {
+	if count := len(regexp.MustCompile(`<nav\b[^>]*>`).FindAllString(sidebar, -1)); count != 2 {
+		t.Errorf("sidebar contains %d docs nav elements, want exactly 2", count)
+	}
+	if count := len(regexp.MustCompile(`<summary\b[^>]*>`).FindAllString(sidebar, -1)); count != 1 {
+		t.Errorf("sidebar contains %d summary controls, want exactly 1 mobile summary", count)
+	}
+	if count := len(regexp.MustCompile(`<details\b[^>]*>`).FindAllString(sidebar, -1)); count != 1 {
+		t.Errorf("sidebar contains %d details elements, want exactly 1 mobile disclosure", count)
+	}
+	if count := len(regexp.MustCompile(`(?s)<p\b[^>]*>\s*Documentation\s*</p>`).FindAllString(sidebar, -1)); count != 1 {
 		t.Errorf("sidebar contains %d desktop Documentation labels, want exactly 1", count)
-	}
-	if count := strings.Count(sidebar, `class="docs-sidebar-nav docs-sidebar-nav-mobile"`); count != 1 {
-		t.Errorf("sidebar contains %d mobile nav elements, want exactly 1", count)
-	}
-	navClassPattern := regexp.MustCompile(`<nav\s+class="docs-sidebar-nav(?:\s+docs-sidebar-nav-mobile)?"\s*>`)
-	if count := len(navClassPattern.FindAllString(sidebar, -1)); count != 2 {
-		t.Errorf("sidebar contains %d docs nav classes, want exactly 2", count)
 	}
 }
 
@@ -264,51 +277,72 @@ func TestDocPreviousNext(t *testing.T) {
 		}
 		return recorder.Body.String()
 	}
-	assertPrev := func(body string, doc Page) {
+	footerNavPattern := regexp.MustCompile(`(?s)<nav\b[^>]*\baria-label="Document navigation"[^>]*>(.*?)</nav>`)
+	footerNav := func(body string) string {
 		t.Helper()
-		if !strings.Contains(body, fmt.Sprintf(`<a class="doc-nav-card doc-nav-prev" href="%s">`, doc.Path)) {
-			t.Errorf("body does not link Previous to %s", doc.Path)
+		matches := footerNavPattern.FindAllStringSubmatch(body, -1)
+		if len(matches) > 1 {
+			t.Fatalf("body contains %d Document navigation landmarks, want at most 1", len(matches))
 		}
-		if !strings.Contains(body, "<strong>"+doc.Title+"</strong>") {
-			t.Errorf("Previous link does not label its destination %q", doc.Title)
+		if len(matches) == 0 {
+			return ""
+		}
+		return matches[0][1]
+	}
+	assertLink := func(body string, direction string, doc Page) {
+		t.Helper()
+		nav := footerNav(body)
+		if nav == "" {
+			t.Fatal("document-footer navigation landmark is missing")
+		}
+		linkPattern := regexp.MustCompile(fmt.Sprintf(
+			`(?s)<a\b[^>]*\shref="%s"[^>]*>.*?</a>`,
+			regexp.QuoteMeta(doc.Path),
+		))
+		matches := linkPattern.FindAllString(nav, -1)
+		if len(matches) != 1 {
+			t.Fatalf("%s navigation does not contain exactly one link to %s (found %d)", direction, doc.Path, len(matches))
+		}
+		link := matches[0]
+		labelPattern := regexp.MustCompile(`(?s)<span\b[^>]*>\s*` + regexp.QuoteMeta(direction) + `\s*</span>`)
+		if !labelPattern.MatchString(link) {
+			t.Errorf("%s link to %s is missing its visible label", direction, doc.Path)
+		}
+		titlePattern := regexp.MustCompile(`(?s)<strong\b[^>]*>\s*` + regexp.QuoteMeta(doc.Title) + `\s*</strong>`)
+		if !titlePattern.MatchString(link) {
+			t.Errorf("%s link does not label its destination %q", direction, doc.Title)
 		}
 	}
-	assertNext := func(body string, doc Page) {
-		t.Helper()
-		if !strings.Contains(body, fmt.Sprintf(`<a class="doc-nav-card doc-nav-next" href="%s">`, doc.Path)) {
-			t.Errorf("body does not link Next to %s", doc.Path)
-		}
-		if !strings.Contains(body, "<strong>"+doc.Title+"</strong>") {
-			t.Errorf("Next link does not label its destination %q", doc.Title)
-		}
+	hasDirection := func(nav, direction string) bool {
+		return regexp.MustCompile(`(?s)<span\b[^>]*>\s*` + regexp.QuoteMeta(direction) + `\s*</span>`).MatchString(nav)
 	}
 
 	t.Run("middle document links both directions", func(t *testing.T) {
 		body := get(docs[1].Path)
-		if !strings.Contains(body, `<nav class="doc-footer-nav" aria-label="Document navigation">`) {
+		if footerNav(body) == "" {
 			t.Fatal("document-footer navigation landmark is missing")
 		}
-		assertPrev(body, docs[0])
-		assertNext(body, docs[2])
+		assertLink(body, "Previous", docs[0])
+		assertLink(body, "Next", docs[2])
 	})
 	t.Run("first document links forward only", func(t *testing.T) {
 		body := get(docs[0].Path)
-		assertNext(body, docs[1])
-		if strings.Contains(body, "doc-nav-prev") {
+		assertLink(body, "Next", docs[1])
+		if hasDirection(footerNav(body), "Previous") {
 			t.Errorf("first document %s exposes a Previous link", docs[0].Path)
 		}
 	})
 	t.Run("last document links backward only", func(t *testing.T) {
 		last := docs[len(docs)-1]
 		body := get(last.Path)
-		assertPrev(body, docs[len(docs)-2])
-		if strings.Contains(body, "doc-nav-next") {
+		assertLink(body, "Previous", docs[len(docs)-2])
+		if hasDirection(footerNav(body), "Next") {
 			t.Errorf("last document %s exposes a Next link", last.Path)
 		}
 	})
 	t.Run("overview has no footer", func(t *testing.T) {
 		body := get("/docs")
-		if strings.Contains(body, "doc-footer-nav") {
+		if footerNav(body) != "" {
 			t.Error("overview renders a document footer")
 		}
 	})
@@ -610,10 +644,12 @@ func TestThemeControl_exposesSystemPreference(t *testing.T) {
 	New("test").ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	body := recorder.Body.String()
 
-	start := strings.Index(body, `<button id="theme-toggle"`)
-	if start < 0 {
+	buttonPattern := regexp.MustCompile(`<button\b[^>]*\bid="theme-toggle"[^>]*>`)
+	buttonMatch := buttonPattern.FindStringIndex(body)
+	if buttonMatch == nil {
 		t.Fatal("theme control is missing")
 	}
+	start := buttonMatch[0]
 	end := strings.Index(body[start:], "</button>")
 	if end < 0 {
 		t.Fatal("theme control is not closed")
@@ -623,12 +659,12 @@ func TestThemeControl_exposesSystemPreference(t *testing.T) {
 		`data-theme-preference="dark"`,
 		`aria-label="Color theme: dark (activate to use light)"`,
 		`title="Color theme: dark (activate to use light)"`,
-		`theme-icon-sun`,
-		`theme-icon-moon`,
-		`theme-icon-system`,
+		`data-theme-icon="sun"`,
+		`data-theme-icon="moon"`,
+		`data-theme-icon="system"`,
 	} {
-		if !strings.Contains(control, marker) {
-			t.Errorf("theme control does not expose %s", marker)
+		if strings.Count(control, marker) != 1 {
+			t.Errorf("theme control exposes %q %d times, want exactly once", marker, strings.Count(control, marker))
 		}
 	}
 }

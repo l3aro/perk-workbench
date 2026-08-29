@@ -75,13 +75,19 @@ const CHECK_ICON = '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="
 
 document.querySelectorAll('main pre').forEach((pre) => {
   if (pre.closest('.install-cmd, .boot-term, .term-window')) return;
-  if (!pre.querySelector('code') || pre.querySelector('.copy-btn')) return;
+  if (!pre.querySelector('code') || pre.querySelector('[data-copy]')) return;
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'copy-btn copy-btn-inline';
+  button.className = 'inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-[var(--color-line-strong)] hover:text-ink data-[copied=true]:border-good data-[copied=true]:text-good';
+  button.dataset.copyButton = '';
   const code = pre.querySelector('code');
   button.dataset.copy = code.textContent.trim();
-  if (code.textContent.includes('\n')) pre.classList.add('is-multiline');
+  code.classList.add('min-w-0', 'flex-1');
+  pre.classList.add('flex', 'items-center', 'gap-4');
+  if (code.textContent.includes('\n')) {
+    pre.classList.remove('items-center');
+    pre.classList.add('items-start');
+  }
   button.setAttribute('aria-label', 'Copy to clipboard');
   button.innerHTML = COPY_ICON;
   pre.appendChild(button);
@@ -93,10 +99,10 @@ document.addEventListener('click', (event) => {
     const done = () => {
       const original = button.innerHTML;
       button.innerHTML = CHECK_ICON;
-      button.classList.add('is-copied');
+      button.dataset.copied = 'true';
       setTimeout(() => {
         button.innerHTML = original;
-        button.classList.remove('is-copied');
+        delete button.dataset.copied;
       }, 1500);
     };
     const copyText = button.dataset.copy;
@@ -192,20 +198,20 @@ const spotlight = document.getElementById('search-spotlight');
 if (spotlight) {
   const input = spotlight.querySelector('#spotlight-input');
   const list = spotlight.querySelector('#spotlight-results');
-  const empty = spotlight.querySelector('.spotlight-empty');
+  const empty = spotlight.querySelector('#spotlight-empty');
   let requestSeq = 0;
   let debounceTimer;
   let activeIndex = -1;
-  const topbarInput = document.querySelector('.docs-nav-search');
+  const topbarInput = document.getElementById('docs-nav-search');
 
-  const options = () => Array.from(list.querySelectorAll('.spotlight-option'));
+  const options = () => Array.from(list.querySelectorAll('[role="option"]'));
 
   function setActive(next) {
     const items = options();
     if (!items.length) return;
     activeIndex = (next + items.length) % items.length;
     items.forEach((item, i) => {
-      item.classList.toggle('is-active', i === activeIndex);
+      item.dataset.active = i === activeIndex ? 'true' : 'false';
       item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
     });
     items[activeIndex].scrollIntoView({ block: 'nearest' });
@@ -217,14 +223,14 @@ if (spotlight) {
     empty.hidden = results.length > 0;
     for (const result of results) {
       const link = document.createElement('a');
-      link.className = 'spotlight-option';
+      link.className = 'flex flex-col gap-0.5 rounded-lg px-3.5 py-2.5 no-underline hover:bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] data-[active=true]:bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] data-[active=true]:shadow-[inset_2px_0_0_var(--color-accent)]';
       link.href = result.path;
       link.setAttribute('role', 'option');
       const title = document.createElement('span');
-      title.className = 'spotlight-option-title';
+      title.className = 'font-medium text-ink';
       title.textContent = result.title;
       const summary = document.createElement('span');
-      summary.className = 'spotlight-option-summary';
+      summary.className = 'text-sm text-muted';
       summary.textContent = result.summary;
       link.append(title, summary);
       list.append(link);
@@ -316,7 +322,7 @@ if (spotlight) {
   });
 
   // Belt and braces: the dialog form must never submit and navigate away.
-  spotlight.querySelector('.spotlight-form')?.addEventListener('submit', (event) => {
+  spotlight.querySelector('[data-spotlight-form]')?.addEventListener('submit', (event) => {
     event.preventDefault();
   });
 

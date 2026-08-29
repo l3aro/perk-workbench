@@ -1,19 +1,21 @@
 {{define "docs-sidebar-links"}}
-  <a href="/docs"{{if eq .Path "/docs"}} aria-current="page"{{end}}>Overview</a>
+  <a class="rounded-md px-3 py-1.5 text-sm text-muted no-underline transition-colors duration-150 hover:bg-[color-mix(in_oklab,var(--color-line)_55%,transparent)] hover:text-ink [&[aria-current=page]]:bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] [&[aria-current=page]]:text-ink [&[aria-current=page]]:shadow-[inset_2px_0_0_var(--color-accent)]" href="/docs"{{if eq .Path "/docs"}} aria-current="page"{{end}}>Overview</a>
   {{range .DocLinks}}
-  <a href="{{.Path}}"{{if eq $.Path .Path}} aria-current="page"{{end}}>{{.Title}}</a>
+  <a class="rounded-md px-3 py-1.5 text-sm text-muted no-underline transition-colors duration-150 hover:bg-[color-mix(in_oklab,var(--color-line)_55%,transparent)] hover:text-ink [&[aria-current=page]]:bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] [&[aria-current=page]]:text-ink [&[aria-current=page]]:shadow-[inset_2px_0_0_var(--color-accent)]" href="{{.Path}}"{{if eq $.Path .Path}} aria-current="page"{{end}}>{{.Title}}</a>
   {{end}}
 {{end}}
 
 {{define "docs-sidebar"}}
-<aside class="docs-sidebar" aria-label="Documentation sections">
-  <details class="docs-sidebar-disclosure" open>
-    <summary class="eyebrow">Documentation</summary>
-    <nav class="docs-sidebar-nav docs-sidebar-nav-mobile">{{template "docs-sidebar-links" .}}</nav>
+<aside class="lg:sticky lg:top-24" aria-label="Documentation sections">
+  <details class="group lg:hidden" open>
+    <summary class="mb-3 flex min-h-11 w-full cursor-pointer list-none items-center justify-between rounded-full border border-line bg-panel/60 px-3 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-none tracking-[0.14em] text-muted no-underline before:size-[0.4rem] before:rounded-full before:bg-good before:shadow-[0_0_8px_color-mix(in_oklab,var(--color-good)_80%,transparent)] after:ml-1 after:size-2 after:shrink-0 after:rotate-45 after:border-r-2 after:border-b-2 after:border-current after:content-[''] after:transition-transform after:duration-150 open:after:rotate-[225deg] [&::-webkit-details-marker]:hidden focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-[3px]">
+      Documentation
+    </summary>
+    <nav class="flex flex-col gap-0.5 border-l border-line pl-4 [&_a]:flex [&_a]:min-h-11 [&_a]:flex-none [&_a]:items-center">{{template "docs-sidebar-links" .}}</nav>
   </details>
-  <div class="docs-sidebar-desktop">
-    <p class="eyebrow mb-3">Documentation</p>
-    <nav class="docs-sidebar-nav">{{template "docs-sidebar-links" .}}</nav>
+  <div class="hidden lg:block">
+    <p class="mb-3 inline-flex items-center gap-2 rounded-full border border-line bg-panel/60 px-3 py-1 font-mono text-[0.72rem] font-semibold uppercase leading-none tracking-[0.14em] text-muted no-underline before:size-[0.4rem] before:rounded-full before:bg-good before:shadow-[0_0_8px_color-mix(in_oklab,var(--color-good)_80%,transparent)]">Documentation</p>
+    <nav class="flex flex-col gap-0.5 border-l border-line pl-4">{{template "docs-sidebar-links" .}}</nav>
   </div>
 </aside>
 {{end}}
