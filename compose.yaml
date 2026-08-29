@@ -1,74 +1,14 @@
-name: perk-workbench
-
 services:
-  mysql:
-    image: mysql:8.4
+  website:
+    build:
+      context: .
+      dockerfile: Dockerfile
     environment:
-      MYSQL_ROOT_PASSWORD: root
-    volumes:
-      - ${DEMO_DIR:-./demo}/office-mysql.sql:/docker-entrypoint-initdb.d/office.sql:ro
-
-  postgres:
-    image: postgres:18
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: employees
-    volumes:
-      - ${DEMO_DIR:-./demo}/employees-postgres.sql.gz:/init-data/employees.sql.gz:ro
-      - ${DEMO_DIR:-./demo}/init-employees.sh:/docker-entrypoint-initdb.d/init-employees.sh:ro
-    # TCP probe: the entrypoint's temporary init server is socket-only, so
-    # 127.0.0.1 only answers once initdb and the demo restore are finished.
+      PORT: "8080"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
-      interval: 2s
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
       timeout: 3s
-      retries: 60
-
-  mongo:
-    image: mongo:8
-    volumes:
-      - mongo-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.runCommand({ping:1}).ok ? 0 : 1)"]
-      start_period: 20s
-      interval: 5s
-      timeout: 10s
-      retries: 30
-
-  # Idempotent seeder: imports whichever collections are missing or stale and
-  # exits. Run it on demand via `docker compose run --rm mongo-seed` (which
-  # `make mongo` does after mongo is healthy) — one-shot containers are not
-  # re-executed by plain `up`, and initdb scripts would only run on a fresh
-  # volume.
-  mongo-seed:
-    image: mongo:8
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: "no"
-    volumes:
-      - ${DEMO_DIR:-./demo}:/demo:ro
-    command: sh /demo/init-mongo.sh
-
-  dev:
-    image: golang:1.25
-    working_dir: /workspace
-    stdin_open: true
-    tty: true
-    environment:
-      TERM: ${TERM:-xterm-256color}
-      COLORTERM: ${COLORTERM:-truecolor}
-      GOCACHE: /go/build-cache
-      GOMODCACHE: /go/pkg/mod
-      GOFLAGS: -buildvcs=false
-    volumes:
-      - .:/workspace
-      - ${DEMO_DIR:-./demo}:/demo
-      - go-build-cache:/go/build-cache
-      - go-mod-cache:/go/pkg/mod
-    command: go run ./cmd/perk-workbench /demo/chinook-sqlite.db
-
-volumes:
-  go-build-cache:
-  go-mod-cache:
-  mongo-data:
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped

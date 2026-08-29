@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/l3aro/perk-workbench-site/internal/site"
+	"github.com/l3aro/perk-workbench/internal/site"
 )
 
 const defaultPort = 8080

@@ -5,8 +5,17 @@
 /skills-lock.json
 /bubble-workbench
 /compose.override.yml
+/compose.override.yaml
 /cover.out
 /coverage.html
+/coverage.out
 /perk-workbench
+/perk-workbench-site
 /dist/
 /docs/
+/bin/
+/node_modules/
+/internal/site/assets/dist/
+.env
+.env.*
+!.env.example

@@ -2,19 +2,21 @@
 
 ## Scope
 
-- Go 1.25 module; the executable is `cmd/perk-workbench`. `internal/workbench/app` owns Bubble Tea state, layout decisions, and async commands; sibling feature packages (`browse`, `chat`, `connection`, `notification`, `querylog`, `schema`, `uikit`, `profile`) are extracted from the shell. `internal/chrome` owns stateless terminal rendering helpers and must not import `workbench` packages or hold Bubble Tea state.
+- Go 1.27 module; the executables are `cmd/perk-workbench` and `cmd/perk-workbench-site`. `internal/workbench/app` owns Bubble Tea state, layout decisions, and async commands; sibling feature packages (`browse`, `chat`, `connection`, `notification`, `querylog`, `schema`, `uikit`, `profile`) are extracted from the shell. `internal/chrome` owns stateless terminal rendering helpers and must not import `workbench` packages or hold Bubble Tea state.
 - `internal/database` selects SQLite, MySQL, PostgreSQL, or MongoDB; `internal/sql` defines their shared service and display contracts. Driver adapters live in `internal/drivers/` (`sqlite`, `mysql`, `postgres`, `mongodb`); keep driver-specific SQL in `internal/drivers/sqlite`, `internal/drivers/mysql`, or `internal/drivers/postgres`, and mongosh-style statement handling in `internal/drivers/mongodb`. Only `internal/database` may import concrete drivers in production code; the workbench and contract packages must not.
 - Preserve the SQLite contract: only existing files open (`:memory:` is the exception); non-memory targets use read-write mode and must not create files. The shared statement validator accepts one statement and rejects trigger creation.
 - Preserve query behavior in `workbench` and driver services: execution is asynchronous and cancelable, failed queries retain the prior result table, and display results cap at 500 rows and 300 runes per cell.
-- `website/` is a Go 1.26.6 nested module for the product site and docs; it is excluded from the root Go 1.25 module's package patterns by design, and must be checked from `website/` after Vite builds its embedded assets.
+- Unified Go 1.27 module covering both binaries. Root `cmd/` and `internal/` patterns include the TUI (`cmd/perk-workbench`) and the product site (`cmd/perk-workbench-site`, `internal/site`, and the Vite sources in `frontend/`). `npm ci && npm run build` must run before any website Go command, because the server embeds the generated `internal/site/assets/dist` manifest. Root `compose.yaml` is the website deployment; `demo/compose.yaml` is the database demo stack used by the Make targets.
 
 ## Development
 
 ```bash
 # Product checks. Do not use `go test -race ./...`: it reaches ignored agent-skill examples with placeholder dependencies.
+# Website checks require `npm ci && npm run build` first so the embedded manifest exists.
 go test -race ./cmd/... ./internal/...
 go vet ./cmd/... ./internal/...
 go build ./cmd/perk-workbench
+go build ./cmd/perk-workbench-site
 gofmt -l cmd internal
 
 # Focused checks

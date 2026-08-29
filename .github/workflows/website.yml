@@ -1,17 +1,39 @@
-name: Website
+name: Test
 
 on:
   push:
     branches: ["**"]
     paths:
-      - "website/**"
+      - "cmd/**"
+      - "internal/**"
+      - "protocol/**"
+      - "frontend/**"
+      - "go.mod"
+      - "go.sum"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.mjs"
+      - "Dockerfile"
+      - "compose.yaml"
+      - "demo/compose.yaml"
+      - "Makefile"
       - ".github/workflows/website.yml"
-      - "go.work"
   pull_request:
     paths:
-      - "website/**"
+      - "cmd/**"
+      - "internal/**"
+      - "protocol/**"
+      - "frontend/**"
+      - "go.mod"
+      - "go.sum"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.mjs"
+      - "Dockerfile"
+      - "compose.yaml"
+      - "demo/compose.yaml"
+      - "Makefile"
       - ".github/workflows/website.yml"
-      - "go.work"
 
 permissions:
   contents: read
@@ -28,33 +50,29 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache-dependency-path: package-lock.json
 
       # The generated frontend bundles are gitignored. The server loads the
       # embedded manifest at startup, so build them before the Go test step.
       - name: Build frontend
-        working-directory: website
         run: |
           npm ci
           npm run build
 
-      - name: Set up Go 1.26.6
+      - name: Set up Go 1.27.0
         uses: actions/setup-go@v6
         with:
-          go-version: '1.26.6'
+          go-version: '1.27.0'
           cache: true
-          cache-dependency-path: website/go.sum
+          cache-dependency-path: go.sum
 
       - name: Test
-        working-directory: website
-        run: go test -race ./...
+        run: go test -race ./cmd/... ./internal/...
 
       - name: Vet
-        working-directory: website
-        run: go vet ./...
+        run: go vet ./cmd/... ./internal/...
 
       - name: Check formatting
-        working-directory: website
         shell: bash
         run: |
           files="$(gofmt -l cmd internal)"
@@ -63,6 +81,8 @@ jobs:
             exit 1
           fi
 
-      - name: Build
-        working-directory: website
+      - name: Build perk-workbench
+        run: go build ./cmd/perk-workbench
+
+      - name: Build perk-workbench-site
         run: go build ./cmd/perk-workbench-site

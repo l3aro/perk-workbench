@@ -114,18 +114,21 @@ transient key problem cannot silently destroy your stored ciphertext.
 ## Architecture
 
 ```
-cmd/perk-workbench/    CLI entry point and self-plugin dispatcher
+cmd/perk-workbench/        CLI entry point and self-plugin dispatcher
+cmd/perk-workbench-site/   Product site HTTP server (landing, docs, demo)
+frontend/                  Vite + Tailwind sources for the site
 internal/
-├── workbench/         Bubble Tea models, layout, keybindings
-├── core/              Workflow state machine (query lifecycle, focus, tabs)
-├── database/          Plugin-aware connection dispatcher
-├── database/plugin/   perk/v1 child lifecycle, loader, and shim
-├── drivers/           SQLite, MySQL, PostgreSQL, MongoDB implementations
-├── sql/               Shared types and service contracts
-├── chrome/            Stateless terminal rendering helpers
-├── ai/                AI clients (OpenAI, Anthropic, Gemini)
-├── clipboard/         System clipboard access
-└── log/               Event logging
+├── workbench/             Bubble Tea models, layout, keybindings
+├── site/                  Site handlers, templates, docs content, live TUI bridge
+├── core/                  Workflow state machine (query lifecycle, focus, tabs)
+├── database/              Plugin-aware connection dispatcher
+├── database/plugin/       perk/v1 child lifecycle, loader, and shim
+├── drivers/               SQLite, MySQL, PostgreSQL, MongoDB implementations
+├── sql/                   Shared types and service contracts
+├── chrome/                Stateless terminal rendering helpers
+├── ai/                    AI clients (OpenAI, Anthropic, Gemini)
+├── clipboard/             System clipboard access
+└── log/                   Event logging
 ```
 
 Built-in config entries are `{"builtin":"sqlite"}` (and the other three
@@ -164,6 +167,84 @@ make postgres    # Employees demo (PostgreSQL via Docker)
 make mongo       # Restaurants demo (MongoDB via Docker)
 ```
 
+## Website
+
+The product site — landing page, docs, search, and a live terminal demo — is
+the `perk-workbench-site` binary in the same unified Go 1.27 module. Sources
+live in `cmd/perk-workbench-site/`, `internal/site/`, and `frontend/`.
+
+Prerequisites: Go 1.27 and Node.js 22 (when rebuilding the frontend).
+
+### Run locally
+
+Build the frontend bundles first, then start the server:
+
+```bash
+npm ci
+npm run build
+PORT=8080 go run ./cmd/perk-workbench-site
+```
+
+`PORT` is optional; when omitted the server listens on `8080`, and valid values
+are `1` through `65535`. The frontend build is required before any site `go
+run` or `go test`: Vite writes gitignored, content-hashed bundles to
+`internal/site/assets/dist` (`.vite/manifest.json` included), and the Go server
+reads that manifest from the embed at startup. `npm run watch` rebuilds on
+change during development.
+
+Build a versioned binary with the version linker flag:
+
+```bash
+go build -ldflags "-X main.version=0.1.0" -o ./bin/perk-workbench-site ./cmd/perk-workbench-site
+```
+
+### Routes
+
+- `/` — product landing page
+- `/demo` — live read-only terminal demo against the Chinook SQLite database
+- `/ws/tui` — WebSocket bridge that runs the real TUI in a PTY (used by `/demo`)
+- `/docs/getting-started` — installation and first-query guide
+- `/docs/connections` — supported database connections
+- `/docs/workspace` — workspace navigation, queries, schemas, and results
+- `/docs/ai` — AI assistance overview
+- `/docs/plugins` — plugin and workspace-view overview
+- `/api/search?q=...` — case-insensitive catalogue search JSON backing the spotlight modal (queried as you type, keyboard-navigable)
+- `/healthz` — health check
+- `/static/` — embedded fonts and images; `/static/assets/` serves the content-hashed frontend bundles with immutable caching
+
+### Deploy with Docker Compose
+
+Root `compose.yaml` is the website deployment. The image compiles the current
+repository TUI source (no pinned npm release), and `/demo` runs it with both
+`--read-only` and `--pin`. Ensure the shared Traefik network exists, then copy
+the environment template:
+
+```bash
+docker network create traefik_proxy
+cp .env.example .env
+```
+
+Edit `.env` to set the hostname used by the Traefik router, then start:
+
+```bash
+docker compose up --build
+```
+
+`compose.override.yaml` adds the Traefik labels automatically. Set
+`TRAEFIK_NETWORK` when the shared network uses a different name. Traefik
+forwards to the container's internal port `8080`; `/healthz` is used for the
+container healthcheck. Stop with:
+
+```bash
+docker compose down
+```
+
+Outside Docker, set `PERK_WORKBENCH_BIN` when the TUI binary is not on `PATH`
+— it may point at any compatible local `perk-workbench` binary:
+
+```bash
+PERK_WORKBENCH_BIN=/path/to/perk-workbench PORT=8080 go run ./cmd/perk-workbench-site
+```
 ## License
 
 MIT

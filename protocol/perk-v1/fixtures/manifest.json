@@ -182,7 +182,7 @@
       "file": "invalid-error-string-code.json",
       "valid": false,
       "ref": "#/$defs/error",
-      "reject": "rpcError.error.code"
+      "reject": "response.error.code"
     },
     {
       "file": "invalid-success-orphan-metadata.json",
