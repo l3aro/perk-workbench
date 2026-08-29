@@ -711,6 +711,36 @@
     box-shadow: var(--shadow-deep);
   }
 
+  .tui-theme-shot {
+    display: block;
+  }
+
+  .tui-theme-shot-light {
+    display: none;
+  }
+
+  [data-theme="light"] .tui-theme-shot-dark {
+    display: none;
+  }
+
+  [data-theme="light"] .tui-showcase {
+    background: var(--color-panel);
+    border-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .tui-showcase .term-window-bar {
+    background: color-mix(in srgb, var(--color-panel) 92%, var(--color-line));
+    border-bottom-color: var(--color-line-strong);
+  }
+
+  [data-theme="light"] .tui-showcase .term-window-title {
+    color: var(--color-muted);
+  }
+
+  [data-theme="light"] .tui-theme-shot-light {
+    display: block;
+  }
+
   .term-window-bar {
     @apply flex items-center gap-2 border-b border-white/5 px-4 py-2.5;
     background: rgb(255 255 255 / 3%);
