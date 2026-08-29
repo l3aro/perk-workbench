@@ -18,7 +18,7 @@
 
 ```bash
 # Product checks. Do not use `go test -race ./...`: it reaches ignored agent-skill examples with placeholder dependencies.
-# Website checks require `npm ci --include=optional` first to install the local `vp`, then `npm run build` so the embedded manifest exists.
+# Website checks require `npm ci --include=optional` first to install the local `vp`; run `npm run check` for frontend format, lint, and type checks, then `npm run build` so the embedded manifest exists.
 go test -race ./cmd/... ./internal/...
 go vet ./cmd/... ./internal/...
 go build ./cmd/perk-workbench

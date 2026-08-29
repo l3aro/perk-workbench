@@ -175,6 +175,10 @@ live in `cmd/perk-workbench-site/`, `internal/site/`, and `frontend/`.
 
 Prerequisites: Go 1.27 and Node.js 22 (when rebuilding the frontend). Run `npm ci --include=optional` to install the project's local `vp`; `npm run build` invokes that local CLI.
 
+`npm run check` runs Vite+'s format, lint, and type checks against
+`frontend/`. The frontend source is formatted with Oxfmt; Go formatting remains
+handled by `gofmt`.
+
 ### Run locally
 
 Build the frontend bundles first, then start the server:

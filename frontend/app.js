@@ -3,23 +3,23 @@
  * saved light/dark/system preference; copy buttons copy their data-copy
  * payload. The terminal-native extras (typewriter loop, cursor spotlight,
  * status-bar keyboard shortcuts) degrade to static content without JS. */
-import htmx from 'htmx.org';
+import htmx from "htmx.org";
 
-const THEME_PREFERENCES = ['dark', 'light', 'system'];
+const THEME_PREFERENCES = ["dark", "light", "system"];
 
 function isThemePreference(value) {
   return THEME_PREFERENCES.includes(value);
 }
 
 function currentThemePreference() {
-  const preference = window.getThemePreference?.() ||
-    document.documentElement.dataset.themePreference;
-  return isThemePreference(preference) ? preference : 'system';
+  const preference =
+    window.getThemePreference?.() || document.documentElement.dataset.themePreference;
+  return isThemePreference(preference) ? preference : "system";
 }
 
 function effectiveThemeFor(preference) {
-  if (preference !== 'system') return preference;
-  return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  if (preference !== "system") return preference;
+  return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 function nextThemePreference(preference) {
@@ -30,67 +30,71 @@ function nextThemePreference(preference) {
 function updateThemeControls(preference, effective) {
   const next = nextThemePreference(preference);
   document.documentElement.dataset.themePreference = preference;
-  document.querySelectorAll('#theme-toggle, [data-status-theme]').forEach((control) => {
+  document.querySelectorAll("#theme-toggle, [data-status-theme]").forEach((control) => {
     control.dataset.themePreference = preference;
     control.dataset.themeEffective = effective;
     const label = `Color theme: ${preference} (activate to use ${next})`;
-    control.setAttribute('aria-label', label);
-    control.setAttribute('title', label);
+    control.setAttribute("aria-label", label);
+    control.setAttribute("title", label);
   });
 }
 
 function setTheme(next) {
   if (!isThemePreference(next)) return;
-  if (typeof window.setThemePreference === 'function') {
+  if (typeof window.setThemePreference === "function") {
     window.setThemePreference(next);
     return;
   }
   const effective = effectiveThemeFor(next);
   document.documentElement.dataset.theme = effective;
   document.documentElement.dataset.themePreference = next;
-  localStorage.setItem('theme', next);
-  window.dispatchEvent(new CustomEvent('themechange', { detail: effective }));
-  window.dispatchEvent(new CustomEvent('themepreferencechange', { detail: next }));
+  localStorage.setItem("theme", next);
+  window.dispatchEvent(new CustomEvent("themechange", { detail: effective }));
+  window.dispatchEvent(new CustomEvent("themepreferencechange", { detail: next }));
 }
 
 function cycleTheme() {
   setTheme(nextThemePreference(currentThemePreference()));
 }
 
-const themeToggle = document.getElementById('theme-toggle');
-const statusTheme = document.querySelector('[data-status-theme]');
+const themeToggle = document.getElementById("theme-toggle");
+const statusTheme = document.querySelector("[data-status-theme]");
 updateThemeControls(currentThemePreference(), document.documentElement.dataset.theme);
-if (themeToggle) themeToggle.addEventListener('click', cycleTheme);
-if (statusTheme) statusTheme.addEventListener('click', cycleTheme);
-window.addEventListener('themechange', (event) => {
-  const effective = event.detail === 'light' || event.detail === 'dark'
-    ? event.detail
-    : document.documentElement.dataset.theme;
+if (themeToggle) themeToggle.addEventListener("click", cycleTheme);
+if (statusTheme) statusTheme.addEventListener("click", cycleTheme);
+window.addEventListener("themechange", (event) => {
+  const effective =
+    event.detail === "light" || event.detail === "dark"
+      ? event.detail
+      : document.documentElement.dataset.theme;
   updateThemeControls(currentThemePreference(), effective);
 });
 /* Command blocks: every <pre><code> outside the home hero chrome gets a
  * copy button on a row below the snippet, so docs and demo snippets are
  * one click away without repeating markup in every template. */
-const COPY_ICON = '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg>';
-const CHECK_ICON = '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
+const COPY_ICON =
+  '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2 2v1"/></svg>';
+const CHECK_ICON =
+  '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
 
 function enhanceCopyButtons(root = document) {
-  root.querySelectorAll('pre').forEach((pre) => {
-    if (pre.closest('.install-cmd, .boot-term, .term-window')) return;
-    if (!pre.querySelector('code') || pre.querySelector('[data-copy]')) return;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-[var(--color-line-strong)] hover:text-ink data-[copied=true]:border-good data-[copied=true]:text-good';
-    button.dataset.copyButton = '';
-    const code = pre.querySelector('code');
+  root.querySelectorAll("pre").forEach((pre) => {
+    if (pre.closest(".install-cmd, .boot-term, .term-window")) return;
+    if (!pre.querySelector("code") || pre.querySelector("[data-copy]")) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className =
+      "inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-transparent text-muted transition-colors duration-150 hover:border-[var(--color-line-strong)] hover:text-ink data-[copied=true]:border-good data-[copied=true]:text-good";
+    button.dataset.copyButton = "";
+    const code = pre.querySelector("code");
     button.dataset.copy = code.textContent.trim();
-    code.classList.add('min-w-0', 'flex-1');
-    pre.classList.add('flex', 'items-center', 'gap-4');
-    if (code.textContent.includes('\n')) {
-      pre.classList.remove('items-center');
-      pre.classList.add('items-start');
+    code.classList.add("min-w-0", "flex-1");
+    pre.classList.add("flex", "items-center", "gap-4");
+    if (code.textContent.includes("\n")) {
+      pre.classList.remove("items-center");
+      pre.classList.add("items-start");
     }
-    button.setAttribute('aria-label', 'Copy to clipboard');
+    button.setAttribute("aria-label", "Copy to clipboard");
     button.innerHTML = COPY_ICON;
     pre.appendChild(button);
   });
@@ -98,13 +102,13 @@ function enhanceCopyButtons(root = document) {
 
 enhanceCopyButtons();
 
-document.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-copy]');
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-copy]");
   if (button) {
     const done = () => {
       const original = button.innerHTML;
       button.innerHTML = CHECK_ICON;
-      button.dataset.copied = 'true';
+      button.dataset.copied = "true";
       setTimeout(() => {
         button.innerHTML = original;
         delete button.dataset.copied;
@@ -114,14 +118,14 @@ document.addEventListener('click', (event) => {
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(copyText).then(done);
     } else {
-      const helper = document.createElement('textarea');
+      const helper = document.createElement("textarea");
       helper.value = copyText;
-      helper.setAttribute('readonly', '');
-      helper.style.position = 'fixed';
-      helper.style.opacity = '0';
+      helper.setAttribute("readonly", "");
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
       document.body.appendChild(helper);
       helper.select();
-      document.execCommand('copy');
+      document.execCommand("copy");
       helper.remove();
       done();
     }
@@ -129,18 +133,17 @@ document.addEventListener('click', (event) => {
   }
 });
 
-
 /* Cursor spotlight: the ambient backdrop carries a soft glow that follows
  * the pointer via --mx/--my custom properties (rAF-throttled). */
-const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 if (!reduceMotion) {
   let frame = 0;
-  document.addEventListener('pointermove', (event) => {
+  document.addEventListener("pointermove", (event) => {
     if (frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      document.body.style.setProperty('--mx', `${event.clientX}px`);
-      document.body.style.setProperty('--my', `${event.clientY}px`);
+      document.body.style.setProperty("--mx", `${event.clientX}px`);
+      document.body.style.setProperty("--my", `${event.clientY}px`);
     });
   });
 }
@@ -153,21 +156,21 @@ let stopTypewriter = null;
 function mountTypewriter(root = document) {
   stopTypewriter?.();
   stopTypewriter = null;
-  const typeTarget = root.querySelector?.('#type-loop');
+  const typeTarget = root.querySelector?.("#type-loop");
   if (!typeTarget) return;
 
   let phrases = [];
   try {
-    phrases = JSON.parse(typeTarget.dataset.phrases || '[]');
+    phrases = JSON.parse(typeTarget.dataset.phrases || "[]");
   } catch {
     phrases = [];
   }
   if (!phrases.length) {
     phrases = [
-      'perk-workbench chinook-sqlite.db --read-only',
-      'SELECT name FROM albums LIMIT 5;',
-      '\\dt -- list tables',
-      '.schema artists',
+      "perk-workbench chinook-sqlite.db --read-only",
+      "SELECT name FROM albums LIMIT 5;",
+      "\\dt -- list tables",
+      ".schema artists",
     ];
   }
 
@@ -216,36 +219,39 @@ function unmountDemo() {
 }
 
 function mountDemo(root = document) {
-  const demo = root.querySelector?.('#demo-terminal');
+  const demo = root.querySelector?.("#demo-terminal");
   if (!demo) {
     unmountDemo();
     return;
   }
 
-  demoModulePromise ??= import('./demo.js');
+  demoModulePromise ??= import("./demo.js");
   const expected = demo;
-  demoModulePromise.then(({ initDemo }) => {
-    if (!expected.isConnected || document.getElementById('demo-terminal') !== expected) return;
-    unmountDemo();
-    stopDemo = initDemo();
-  }).catch((error) => {
-    console.error('Unable to initialize live demo', error);
-  });
+  demoModulePromise
+    .then(({ initDemo }) => {
+      if (!expected.isConnected || document.getElementById("demo-terminal") !== expected) return;
+      unmountDemo();
+      stopDemo = initDemo();
+    })
+    .catch((error) => {
+      console.error("Unable to initialize live demo", error);
+    });
 }
 
 function syncPrimaryNavigation() {
   const path = window.location.pathname;
   document.querySelectorAll('header nav[aria-label="Primary"] a').forEach((link) => {
     const linkPath = new URL(link.href, window.location.href).pathname;
-    const current = linkPath === '/'
-      ? path === '/'
-      : linkPath === '/docs'
-        ? path === '/docs' || path.startsWith('/docs/')
-        : path === linkPath;
+    const current =
+      linkPath === "/"
+        ? path === "/"
+        : linkPath === "/docs"
+          ? path === "/docs" || path.startsWith("/docs/")
+          : path === linkPath;
     if (current) {
-      link.setAttribute('aria-current', 'page');
+      link.setAttribute("aria-current", "page");
     } else {
-      link.removeAttribute('aria-current');
+      link.removeAttribute("aria-current");
     }
   });
 }
@@ -258,43 +264,44 @@ function teardownDynamicPage() {
   unmountDemo();
 }
 
-document.body.addEventListener('htmx:before:request', (event) => {
+document.body.addEventListener("htmx:before:request", (event) => {
   const source = event.target instanceof Element ? event.target : null;
-  if (!source?.matches('a[href], form')) return;
+  if (!source?.matches("a[href], form")) return;
   pendingNavigation = true;
   teardownDynamicPage();
 });
 
-document.addEventListener('htmx:before:history:restore', () => {
+document.addEventListener("htmx:before:history:restore", () => {
   pendingNavigation = true;
   teardownDynamicPage();
 });
 
-document.body.addEventListener('htmx:before:swap', (event) => {
+document.body.addEventListener("htmx:before:swap", (event) => {
   const target = event.detail?.target ?? event.detail?.ctx?.target;
   const source = event.target instanceof Element ? event.target : null;
-  if (target?.id !== 'main-content' && !source?.matches('a[href], form')) return;
+  if (target?.id !== "main-content" && !source?.matches("a[href], form")) return;
   pendingNavigation = true;
   teardownDynamicPage();
 });
-document.body.addEventListener('htmx:after:swap', (event) => {
+document.body.addEventListener("htmx:after:swap", (event) => {
   const target = event.detail?.target ?? event.detail?.ctx?.target;
-  const main = target?.id === 'main-content'
-    ? target
-    : pendingNavigation
-      ? document.getElementById('main-content')
-      : null;
+  const main =
+    target?.id === "main-content"
+      ? target
+      : pendingNavigation
+        ? document.getElementById("main-content")
+        : null;
   if (!main) return;
   pendingNavigation = false;
   enhanceCopyButtons(main);
   mountTypewriter(main);
   mountDemo(main);
   syncPrimaryNavigation();
-  const dialog = document.getElementById('search-spotlight');
+  const dialog = document.getElementById("search-spotlight");
   if (dialog?.open) dialog.close();
 });
 
-document.addEventListener('htmx:finally:request', () => {
+document.addEventListener("htmx:finally:request", () => {
   if (!pendingNavigation) return;
   pendingNavigation = false;
   mountTypewriter();
@@ -304,33 +311,30 @@ document.addEventListener('htmx:finally:request', () => {
 mountDemo();
 syncPrimaryNavigation();
 
-
 /* Global search spotlight: a <dialog> in base.html, openable from any page
  * via `/`, Cmd/Ctrl+K, or any [data-search-open] trigger. Queries are
  * rendered server-side through htmx; results are keyboard-navigable
  * (↑/↓/Enter). */
-const spotlight = document.getElementById('search-spotlight');
+const spotlight = document.getElementById("search-spotlight");
 if (spotlight) {
-  const input = spotlight.querySelector('#spotlight-input');
+  const input = spotlight.querySelector("#spotlight-input");
   let activeIndex = -1;
-  const topbarInput = document.getElementById('docs-nav-search');
+  const topbarInput = document.getElementById("docs-nav-search");
 
-  const options = () => Array.from(
-    spotlight.querySelectorAll('#spotlight-output [role="option"]'),
-  );
+  const options = () => Array.from(spotlight.querySelectorAll('#spotlight-output [role="option"]'));
 
   function setActive(next) {
     const items = options();
     if (!items.length) return;
     activeIndex = (next + items.length) % items.length;
     items.forEach((item, i) => {
-      item.dataset.active = i === activeIndex ? 'true' : 'false';
-      item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
+      item.dataset.active = i === activeIndex ? "true" : "false";
+      item.setAttribute("aria-selected", i === activeIndex ? "true" : "false");
     });
-    items[activeIndex].scrollIntoView({ block: 'nearest' });
+    items[activeIndex].scrollIntoView({ block: "nearest" });
   }
 
-  function openSpotlight(query = '', focusInput = true, modal = true) {
+  function openSpotlight(query = "", focusInput = true, modal = true) {
     if (spotlight.open) {
       if (focusInput) input.focus();
       return;
@@ -341,31 +345,31 @@ if (spotlight) {
       spotlight.show();
     }
     input.value = query;
-    if (query.trim()) htmx.trigger(input, 'input');
+    if (query.trim()) htmx.trigger(input, "input");
     if (focusInput) input.focus();
   }
 
-  document.querySelectorAll('[data-search-open]').forEach((trigger) => {
-    trigger.addEventListener('click', () => openSpotlight());
+  document.querySelectorAll("[data-search-open]").forEach((trigger) => {
+    trigger.addEventListener("click", () => openSpotlight());
   });
 
   if (topbarInput) {
-    topbarInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
+    topbarInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         openSpotlight();
       }
     });
   }
 
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowDown') {
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
       event.preventDefault();
       setActive(activeIndex + 1);
-    } else if (event.key === 'ArrowUp') {
+    } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive(activeIndex - 1);
-    } else if (event.key === 'Enter') {
+    } else if (event.key === "Enter") {
       // Never let the form's implicit submission reload the page and discard
       // the query; open the highlighted item, or the top hit when nothing is
       // highlighted yet.
@@ -379,27 +383,27 @@ if (spotlight) {
     }
   });
 
-  document.body.addEventListener('htmx:after:swap', (event) => {
+  document.body.addEventListener("htmx:after:swap", (event) => {
     const target = event.detail?.target ?? event.detail?.ctx?.target;
     const source = event.target instanceof Element ? event.target : null;
-    if (target?.id === 'spotlight-output' || source?.closest('#search-spotlight')) {
+    if (target?.id === "spotlight-output" || source?.closest("#search-spotlight")) {
       activeIndex = -1;
     }
   });
 
   // Clicking the backdrop (the dialog padding itself) closes the spotlight.
-  spotlight.addEventListener('click', (event) => {
+  spotlight.addEventListener("click", (event) => {
     if (event.target === spotlight) spotlight.close();
   });
 
-  spotlight.addEventListener('close', () => {
+  spotlight.addEventListener("close", () => {
     activeIndex = -1;
-    input.value = '';
-    htmx.trigger(input, 'input');
+    input.value = "";
+    htmx.trigger(input, "input");
   });
 
   // Belt and braces: the dialog form must never submit and navigate away.
-  spotlight.querySelector('[data-spotlight-form]')?.addEventListener('submit', (event) => {
+  spotlight.querySelector("[data-spotlight-form]")?.addEventListener("submit", (event) => {
     event.preventDefault();
   });
 
@@ -408,23 +412,25 @@ if (spotlight) {
 
 /* Status-bar style keyboard shortcuts: ? docs, / search, t theme.
  * Ignored while typing in form fields; Cmd/Ctrl+K works everywhere. */
-document.addEventListener('keydown', (event) => {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
     window.openSpotlight?.();
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target;
-  if (target instanceof HTMLElement &&
-      (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
+  if (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+  ) {
     return;
   }
 
-  if (event.key === '?') {
+  if (event.key === "?") {
     document.querySelector('header nav[aria-label="Primary"] a[href="/docs"]')?.click();
     event.preventDefault();
-  } else if (event.key === 't') {
+  } else if (event.key === "t") {
     cycleTheme();
   }
 });
