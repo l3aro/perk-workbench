@@ -36,6 +36,25 @@ Or install the prebuilt binary with Homebrew:
 brew install l3aro/tap/perk-workbench
 ```
 
+Or install the latest supported prebuilt binary into `~/.local/bin`:
+
+```bash
+curl -LSsf https://raw.githubusercontent.com/l3aro/perk-workbench/main/install.sh | bash
+```
+
+The installer detects Linux AMD64/ARM64, macOS ARM64, and Windows AMD64
+(through Git Bash), downloads the matching GitHub Release archive, verifies its
+SHA-256 checksum, and installs `perk-workbench` without requiring `jq` or
+`fzf`. Pass a version to install a specific release:
+
+```bash
+curl -LSsf https://raw.githubusercontent.com/l3aro/perk-workbench/main/install.sh | bash -s -- 1.0.0
+```
+
+The script requires `curl`, `sha256sum` or `shasum`, and `tar` for Unix
+targets; Windows Git Bash additionally requires `unzip`. Add `~/.local/bin` to
+`PATH` if it is not already there.
+
 The four bundled database modes are self-hosted child processes speaking
 perk/v1 over NDJSON. They are not in-process drivers:
 
