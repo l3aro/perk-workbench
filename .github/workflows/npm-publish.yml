@@ -36,7 +36,7 @@ jobs:
           node-version: 24
       - name: Install and build frontend
         run: |
-          npm ci --include=optional
+          npm install --include=optional --package-lock=false
           npm run build
       - uses: actions/setup-go@v5
         with:
