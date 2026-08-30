@@ -9,6 +9,27 @@ keywords: [SQLite, MySQL, PostgreSQL, MongoDB, drivers, connection]
 ## Four backends
 
 SQLite opens a local database file. MySQL, PostgreSQL, and MongoDB run as self-hosted plugin child processes and accept real targets:
+<figure class="mt-8">
+  <div class="overflow-hidden rounded-xl border border-line bg-[#0b0e14] shadow-deep [[data-theme=light]_&]:border-[var(--color-line-strong)] [[data-theme=light]_&]:bg-panel">
+    <img
+      class="block h-auto w-full [[data-theme=light]_&]:hidden"
+      data-tui-theme-shot="dark"
+      src="/static/connection.png"
+      width="1444"
+      height="868"
+      alt="Perk Workbench native TUI connection screen showing database target fields and saved profiles"
+    >
+    <img
+      class="hidden h-auto w-full [[data-theme=light]_&]:block"
+      data-tui-theme-shot="light"
+      src="/static/connection-light.png"
+      width="1444"
+      height="868"
+      alt="Perk Workbench light native TUI connection screen showing database target fields and saved profiles"
+    >
+  </div>
+  <figcaption class="mt-3 text-sm text-muted">Native TUI connection-screen capture from Perk Workbench.</figcaption>
+</figure>
 
 | Backend | Target format | Example |
 | --- | --- | --- |
