@@ -1,5 +1,6 @@
 services:
   website:
+    container_name: perk-workbench-website
     build:
       context: .
       dockerfile: Dockerfile

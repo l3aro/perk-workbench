@@ -18,9 +18,9 @@ import (
 //go:embed content/docs/*.md
 var docContent embed.FS
 
-// docMeta is the YAML frontmatter of a docs markdown file. Path is derived
-// from the filename (getting-started.md -> /docs/getting-started), so it is
-// deliberately not part of the metadata; order fixes the navigation position.
+// docMeta is one markdown document. Its path is derived from the filename
+// (installation.md -> /docs/installation), so it is deliberately not part of
+// the metadata; order fixes the navigation position.
 type docMeta struct {
 	Title    string   `yaml:"title"`
 	Eyebrow  string   `yaml:"eyebrow"`

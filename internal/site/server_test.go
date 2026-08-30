@@ -113,7 +113,7 @@ func TestDocumentationNavigation(t *testing.T) {
 			t.Errorf("primary navigation does not contain %s", href)
 		}
 	}
-	for _, href := range []string{`href="/docs/getting-started"`, `href="/docs/connections"`, `href="/docs/workspace"`, `href="/docs/ai"`, `href="/docs/plugins"`, `href="/search"`} {
+	for _, href := range []string{`href="/docs/installation"`, `href="/docs/connections"`, `href="/docs/workspace"`, `href="/docs/ai"`, `href="/docs/plugins"`, `href="/search"`} {
 		if strings.Contains(primary, href) {
 			t.Errorf("primary navigation unexpectedly contains %s", href)
 		}

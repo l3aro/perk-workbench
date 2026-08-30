@@ -232,7 +232,7 @@ go build -ldflags "-X main.version=0.1.0" -o ./bin/perk-workbench-site ./cmd/per
 - `/` — product landing page
 - `/demo` — live read-only terminal demo against the Chinook SQLite database
 - `/ws/tui` — WebSocket bridge that runs the real TUI in a PTY (used by `/demo`)
-- `/docs/getting-started` — installation and first-query guide
+- `/docs/installation` — installation and first-query guide
 - `/docs/connections` — supported database connections
 - `/docs/workspace` — workspace navigation, queries, schemas, and results
 - `/docs/ai` — AI assistance overview
