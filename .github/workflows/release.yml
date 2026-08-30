@@ -40,7 +40,7 @@ jobs:
           mkdir -p .release-work
           suffix=''; [[ '${{ matrix.goos }}' == windows ]] && suffix='.exe'
           CGO_ENABLED=0 GOOS='${{ matrix.goos }}' GOARCH='${{ matrix.goarch }}' GOTOOLCHAIN=local \
-            go build -trimpath -buildvcs=false -ldflags='-s -w -buildid= -X main.version=${GITHUB_REF_NAME#v}' \
+            go build -trimpath -buildvcs=false -ldflags="-s -w -buildid= -X main.version=${GITHUB_REF_NAME#v}" \
             -o ".release-work/perk-workbench$suffix" ./cmd/perk-workbench
       - name: Smoke-test all self-plugin modes on the native runner
         shell: bash
