@@ -14,6 +14,52 @@
   `docker compose -p website up -d --build --force-recreate website`
 - A plain container restart is insufficient for website changes because the frontend bundle is embedded in the built Go image.
 
+## Refreshing homepage TUI screenshots
+
+### Observed facts
+
+- `internal/site/assets/tui.png` is the dark homepage capture. It was first added as `website/internal/site/assets/tui.png` in commit `94a0cba` (“Show real TUI capture on homepage”); after flattening, its current path is `internal/site/assets/tui.png`.
+- `internal/site/assets/tui-light.png` is the light counterpart added by commit `77b7f2c` (“Add light terminal showcase theme”).
+- Both are static, embedded PNG assets, exactly 1444x868 pixels. `internal/site/templates/pages/home.html` references them as `/static/tui.png` and `/static/tui-light.png`; they are separate from the live `/demo` xterm bridge.
+- The old capture utility/command is not tracked in this repository. Do not invent or document a repository screenshot script.
+
+### Practical capture method (not historical proof)
+
+1. From the repository root, ensure `demo/chinook-sqlite.db` exists; run `make sqlite` if it does not. Frontend installation/build is not needed for a native TUI capture; run `npm ci --include=optional && npm run build` only before website Go commands or deployment.
+2. Use one temporary XDG config for both captures so the real TUI has an explicit, deterministic appearance:
+
+   ```bash
+   capture_home="$(mktemp -d)"
+   mkdir -p "$capture_home/perk-workbench"
+
+   # Dark capture:
+   printf '%s\n' '{"appearance":"dark","auto_theme":false}' \
+     >"$capture_home/perk-workbench/config.json"
+   XDG_CONFIG_HOME="$capture_home" \
+     go run ./cmd/perk-workbench demo/chinook-sqlite.db
+
+   # After capturing/quitting, change only the appearance for the light capture:
+   printf '%s\n' '{"appearance":"light","auto_theme":false}' \
+     >"$capture_home/perk-workbench/config.json"
+   XDG_CONFIG_HOME="$capture_home" \
+     go run ./cmd/perk-workbench demo/chinook-sqlite.db
+   ```
+
+   Use `go run ./cmd/perk-workbench --read-only --pin demo/chinook-sqlite.db` instead when reproducing the website bridge; direct captures may use the launch above without those flags.
+3. Open the real TUI in a terminal emulator, not the `/demo` browser page. Keep the terminal at 120 columns x 36 rows and set the captured terminal surface to exactly 1444x868 pixels, matching the existing assets and the bridge PTY geometry. Use the OS/window or region screenshot facility available on the capture workstation; the historical utility and exact command are not tracked. Capture only the TUI surface—no browser chrome or surrounding terminal window—and do not claim a browser screenshot reproduces the homepage assets without checking the pixels. Preserve the same screen, selections, query text/results, scroll/cursor position, and composition in both images; only the dark/light appearance should differ.
+4. Save the external captures with these exact names:
+   `internal/site/assets/tui.png` (dark) and `internal/site/assets/tui-light.png` (light).
+5. Verify dimensions/types and homepage references:
+
+   ```bash
+   file internal/site/assets/tui.png internal/site/assets/tui-light.png
+   grep -nE 'src="/static/tui(-light)?\.png"|width="1444"|height="868"' \
+     internal/site/templates/pages/home.html
+   ```
+
+   After asset or frontend changes, rebuild and recreate the website service:
+   `docker compose -p website up -d --build --force-recreate website`.
+
 ## Development
 
 ```bash
@@ -24,6 +70,8 @@ go vet ./cmd/... ./internal/...
 go build ./cmd/perk-workbench
 go build ./cmd/perk-workbench-site
 gofmt -l cmd internal
+
+scripts/install.test.sh
 
 # Focused checks
 go test -race ./internal/drivers/sqlite -run 'TestServiceExecute|TestServiceRejects|TestOpenMissingFileDoesNotCreate'
