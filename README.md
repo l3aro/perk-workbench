@@ -30,6 +30,12 @@ The same command is the normal installed-binary form:
 npx perk-workbench path/to/database.db
 ```
 
+Or install the prebuilt binary with Homebrew:
+
+```bash
+brew install l3aro/tap/perk-workbench
+```
+
 The four bundled database modes are self-hosted child processes speaking
 perk/v1 over NDJSON. They are not in-process drivers:
 
