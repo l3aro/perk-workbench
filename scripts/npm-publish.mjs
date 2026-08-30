@@ -23,7 +23,7 @@ function run(command, args, options = {}) {
   const { allowFailure = false, ...spawnOptions } = options;
   const result = spawnSync(command, args, { cwd: root, encoding: 'utf8', ...spawnOptions });
   if (result.error) throw result.error;
-  if (!allowFailure && result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed:\n${result.stderr}`);
+  if (!allowFailure && result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed:\n${result.stdout}${result.stderr}`);
   return result.stdout;
 }
 
