@@ -1,11 +1,66 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
+
+func TestTermRenderer_usesThemeCompatibleStyleAndContrast(t *testing.T) {
+	previous := uikit.IsLightTheme
+	t.Cleanup(func() { uikit.IsLightTheme = previous })
+
+	rendered := make(map[bool]string, 2)
+	for _, light := range []bool{false, true} {
+		uikit.IsLightTheme = light
+		if got, want := termRendererStyle(), map[bool]string{false: "dark", true: "light"}[light]; got != want {
+			t.Fatalf("termRendererStyle(%t) = %q, want %q", light, got, want)
+		}
+		renderer, err := newTermRenderer(80)
+		if err != nil {
+			t.Fatalf("newTermRenderer(%t): %v", light, err)
+		}
+		rendered[light], err = renderer.Render("Readable assistant response.")
+		if err != nil {
+			t.Fatalf("Render(%t): %v", light, err)
+		}
+	}
+	if rendered[false] == rendered[true] {
+		t.Fatal("light and dark assistant responses rendered identically")
+	}
+}
+
+func TestRenderContent_rebuildsRendererAndInvalidatesAllRunCachesOnThemeChange(t *testing.T) {
+	previous := uikit.IsLightTheme
+	t.Cleanup(func() { uikit.IsLightTheme = previous })
+
+	uikit.IsLightTheme = false
+	model := New()
+	model.Resize(uikit.Layout{Width: 80, Height: 20})
+	active := model.ActiveRun()
+	other := &Run{
+		BlockCache: []Block{{Block: "dark cache"}},
+		stream:     streamCache{SourcePrefix: "dark stream"},
+	}
+	model.Runs["other"] = other
+	active.BlockCache = []Block{{Block: "dark cache"}}
+	active.stream = streamCache{SourcePrefix: "dark stream"}
+
+	uikit.IsLightTheme = true
+	rendered := model.RenderContent("Readable assistant response.")
+	if len(active.BlockCache) != 0 || len(other.BlockCache) != 0 {
+		t.Fatal("theme change retained rendered blocks from the previous style")
+	}
+	if active.stream.SourcePrefix != "" || other.stream.SourcePrefix != "" {
+		t.Fatal("theme change retained streaming cache from the previous style")
+	}
+	if !strings.Contains(ansi.Strip(rendered), "Readable assistant response.") {
+		t.Fatalf("light response = %q, want response text", rendered)
+	}
+}
 
 func TestRefreshViewInvalidatesChangedMiddleAndRole(t *testing.T) {
 	model := New()

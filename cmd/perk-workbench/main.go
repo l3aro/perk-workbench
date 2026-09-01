@@ -23,6 +23,7 @@ import (
 	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	"github.com/l3aro/perk-workbench/internal/log"
 	app "github.com/l3aro/perk-workbench/internal/workbench/app"
+	"github.com/l3aro/perk-workbench/internal/workbench/chat"
 )
 
 // version is injected at build time with -ldflags=-X main.version=<version>.
@@ -216,8 +217,8 @@ func loadConfig() (app.Config, error) {
 	return app.LoadConfig(path)
 }
 
-func loadAI() (*ai.Client, *ai.History, error) {
-	config, err := ai.Load()
+func loadAI(userPath, projectPath string) (*ai.Client, *ai.History, error) {
+	config, err := ai.LoadFiles(userPath, projectPath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -237,6 +238,20 @@ func loadAI() (*ai.Client, *ai.History, error) {
 		return nil, nil, err
 	}
 	return client, history, nil
+}
+
+// loadAIClient reloads the AI configuration using the same user/project
+// precedence as startup. It only constructs a client; conversation history
+// remains owned by the running app.
+func loadAIClient(userPath, projectPath string) (chat.Client, error) {
+	config, err := ai.LoadFiles(userPath, projectPath)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := config.Agents["assistant"]; !ok {
+		return nil, errors.New("AI configuration requires an assistant agent")
+	}
+	return ai.NewClient(config)
 }
 
 // dispatch runs one CLI invocation and returns its exit status: 0
@@ -333,7 +348,11 @@ func run(target string, selectFromProfiles bool, selectedPlugin string, readOnly
 			return errors.Join(err, loader.Close())
 		}
 	}
-	client, history, err := loadAI()
+	userAIPath, projectAIPath, err := ai.DefaultPaths()
+	if err != nil {
+		return errors.Join(err, loader.Close())
+	}
+	client, history, err := loadAI(userAIPath, projectAIPath)
 	if err != nil {
 		return errors.Join(err, loader.Close())
 	}
@@ -348,6 +367,9 @@ func run(target string, selectFromProfiles bool, selectedPlugin string, readOnly
 	// manager's Status view and Restart act through it, and the app
 	// never owns child processes.
 	model.SetPluginControl(loader)
+	model.SetAIConfig(userAIPath, func() (chat.Client, error) {
+		return loadAIClient(userAIPath, projectAIPath)
+	})
 	if client != nil {
 		model.SetAI(client, history)
 	}

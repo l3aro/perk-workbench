@@ -73,19 +73,21 @@ type Model struct {
 	// Ctrl+Q, the header quit button, the palette quit entry, and the
 	// footer hints) is disabled. The program still exits when its context
 	// is cancelled, so the embedding host owns session teardown.
-	noQuit        bool
-	vimMode       bool
-	configPath    string
-	pluginControl PluginControl
-	connection    connectionState
-	schema        schemaState
-	queryLog      queryState
-	browse        browseState
-	workspace     workspaceViewState
-	notifications notificationState
-	overlay       overlayState
-	layout        layoutState
-	chat          chatState
+	noQuit         bool
+	vimMode        bool
+	configPath     string
+	pluginControl  PluginControl
+	connection     connectionState
+	schema         schemaState
+	queryLog       queryState
+	browse         browseState
+	workspace      workspaceViewState
+	notifications  notificationState
+	overlay        overlayState
+	aiConfigPath   string
+	aiConfigLoader func() (chat.Client, error)
+	layout         layoutState
+	chat           chatState
 }
 
 // editorLanguage returns the active query editor language. A zero value
@@ -240,6 +242,7 @@ type overlayState struct {
 	quitDialog              *confirmationDialog
 	queryConfirmation       *queryConfirmation
 	explainPicker           *explainPicker
+	aiWizard                *aiWizard
 	contextMenu             *contextMenuModel
 	deleteConfirm           *confirmationDialog
 	deletePending           string

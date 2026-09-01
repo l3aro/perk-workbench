@@ -159,6 +159,7 @@ type Model struct {
 	HistoryChoice string
 	ChatMode      Mode
 	glamour       *glamour.TermRenderer
+	glamourStyle  string
 	Completion    Completion // slash-command suggestions while typing
 	// HistoryPicker is the /history conversation picker overlay.
 	HistoryPicker *huh.Form

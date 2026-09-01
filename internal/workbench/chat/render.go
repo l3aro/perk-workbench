@@ -10,16 +10,25 @@ import (
 	"github.com/l3aro/perk-workbench/internal/workbench/uikit"
 )
 
+// termRendererStyle selects Glamour's document colors for the active palette.
+func termRendererStyle() string {
+	if uikit.IsLightTheme {
+		return "light"
+	}
+	return "dark"
+}
+
 // newTermRenderer builds the glamour renderer for the chat viewport width.
 func newTermRenderer(width int) (*glamour.TermRenderer, error) {
 	return glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dark"),
+		glamour.WithStandardStyle(termRendererStyle()),
 		glamour.WithWordWrap(width),
 	)
 }
 
 // RefreshView re-renders the visible conversation into the viewport.
 func (cm *Model) RefreshView() {
+	cm.ensureGlamour()
 	run := cm.ActiveRun()
 	width := max(cm.Viewport.Width(), 1)
 	if width != run.CachedWidth {
@@ -248,18 +257,35 @@ func (cm *Model) initGlamour(width int) {
 	if width < 1 {
 		width = 80
 	}
+	style := termRendererStyle()
+	if cm.glamourStyle != style {
+		for _, run := range cm.Runs {
+			run.resetRenderCache()
+			run.resetStreamCache()
+		}
+	}
 	r, err := newTermRenderer(width)
 	if err != nil {
 		cm.glamour = nil
+		cm.glamourStyle = ""
 		return
 	}
 	cm.glamour = r
+	cm.glamourStyle = style
+}
+
+func (cm *Model) ensureGlamour() {
+	if cm.glamour != nil && cm.glamourStyle == termRendererStyle() {
+		return
+	}
+	cm.initGlamour(cm.Viewport.Width())
 }
 
 // RenderContent renders assistant message content. Non-table markdown goes
 // through glamour; GFM table blocks are rendered with lipgloss/v2/table
 // for proper column alignment within the chat viewport width.
 func (cm *Model) RenderContent(content string) string {
+	cm.ensureGlamour()
 	if cm.glamour == nil || !strings.Contains(content, "\n|") && !strings.HasPrefix(content, "|") {
 		// No table likely — use glamour directly.
 		if cm.glamour != nil {

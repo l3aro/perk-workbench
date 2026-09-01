@@ -275,6 +275,8 @@ func commandLabel(m Model, id CommandID, raw string) string {
 }
 func commandAvailable(id CommandID, def commandDef, m Model) bool {
 	switch id {
+	case "ai.configure":
+		return true
 	case "app.quit":
 		return !m.noQuit && !m.formActive() && !m.schema.component.Filter.Focused() &&
 			!(m.State == stateConnection && (m.connection.component.RecentFilter.Focused() || (m.connection.component.Form.Focus == connectionFocusForm && m.overlay.formMode.Editing()))) &&

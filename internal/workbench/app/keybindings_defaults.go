@@ -20,6 +20,7 @@ var defaultDefs = []commandDef{
 	{id: "focus.query_log", scope: scopeGlobal, keys: []string{"3"}, label: "log"},
 	{id: "focus.chat", scope: scopeGlobal, keys: []string{"4"}, label: "AI chat"},
 	{id: "ai.toggle", scope: scopeGlobal, keys: []string{"ctrl+g"}, label: "toggle AI"},
+	{id: "ai.configure", scope: scopeGlobal, label: "configure AI"},
 	{id: "focus.toggle_fullscreen", scope: scopeGlobal, keys: []string{"f"}, label: "fullscreen"},
 	{id: "focus.cycle_forward", scope: scopeGlobal, keys: []string{"tab", "]"}, label: "next"},
 	{id: "focus.cycle_backward", scope: scopeGlobal, keys: []string{"shift+tab", "["}, label: "prev"},

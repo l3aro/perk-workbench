@@ -58,11 +58,11 @@ func Load() (Config, error) {
 }
 
 func LoadFiles(userPath, projectPath string) (Config, error) {
-	user, err := readConfig(userPath)
+	user, err := LoadFile(userPath)
 	if err != nil {
 		return Config{}, err
 	}
-	project, err := readConfig(projectPath)
+	project, err := LoadFile(projectPath)
 	if err != nil {
 		return Config{}, err
 	}
@@ -81,7 +81,12 @@ func LoadFiles(userPath, projectPath string) (Config, error) {
 	return config, nil
 }
 
-func readConfig(path string) (Config, error) {
+// LoadFile reads one AI configuration layer from path.
+//
+// A missing file is treated as an empty configuration. Existing files must
+// contain exactly one valid JSON value and may only use known configuration
+// fields.
+func LoadFile(path string) (Config, error) {
 	contents, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return Config{}, nil
@@ -99,6 +104,68 @@ func readConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("parsing AI config %q: multiple JSON values", path)
 	}
 	return config, nil
+}
+
+// Save validates config and atomically writes it to path.
+func Save(path string, config Config) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	toSave := config
+	if toSave.Providers == nil {
+		toSave.Providers = map[string]Provider{}
+	}
+	if toSave.Agents == nil {
+		toSave.Agents = map[string]Agent{}
+	}
+	data, err := json.MarshalIndent(toSave, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encoding AI config %q: %w", path, err)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("creating AI config directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".ai-*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating AI config temporary file: %w", err)
+	}
+	name := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tmp.Close()
+			_ = os.Remove(name)
+		}
+	}()
+
+	if err := tmp.Chmod(0o600); err != nil {
+		return fmt.Errorf("setting AI config temporary file permissions: %w", err)
+	}
+	n, err := tmp.Write(data)
+	if err != nil {
+		return fmt.Errorf("writing AI config temporary file: %w", err)
+	}
+	if n != len(data) {
+		return fmt.Errorf("writing AI config temporary file: %w", io.ErrShortWrite)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("syncing AI config temporary file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing AI config temporary file: %w", err)
+	}
+	if err := os.Rename(name, path); err != nil {
+		return fmt.Errorf("renaming AI config temporary file: %w", err)
+	}
+	committed = true
+
+	if dirFile, err := os.Open(dir); err == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
+	}
+	return nil
 }
 
 func (c Config) Validate() error {

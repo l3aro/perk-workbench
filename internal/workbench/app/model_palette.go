@@ -111,6 +111,8 @@ func (m Model) handlePaletteCommand(id CommandID) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, nil
+	case "ai.configure":
+		return m, m.openAIWizard()
 	case "ai.toggle":
 		m.toggleAI()
 		return m, nil

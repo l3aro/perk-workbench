@@ -117,6 +117,9 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyLayout(window.Width, window.Height)
 		m.browse.component.Resize(window.Width, window.Height)
 		m.notifications.component.ResizeHistory(window.Width, window.Height)
+		if m.overlay.aiWizard != nil {
+			m.overlay.aiWizard.setWidth(window.Width)
+		}
 		return m, nil
 	}
 
@@ -248,6 +251,18 @@ func (m Model) updateCore(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.overlay.pluginManager != nil {
 		return m.updatePluginManager(message)
+	}
+	if m.overlay.aiWizard != nil {
+		wizard := m.overlay.aiWizard
+		action, command := wizard.update(message)
+		switch action {
+		case aiWizardSave:
+			return m, m.saveAIWizard()
+		case aiWizardClose:
+			m.overlay.aiWizard = nil
+			return m, nil
+		}
+		return m, command
 	}
 	if m.overlay.commandPalette.visible {
 		if keyPress, ok := message.(tea.KeyPressMsg); ok {

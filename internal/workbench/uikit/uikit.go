@@ -165,6 +165,9 @@ const (
 // current theme. Root's theme code snapshots these into its own style
 // registry on every SetTheme.
 var (
+	// IsLightTheme reports whether the active palette is a supported light
+	// theme. SetTheme updates it together with the palette.
+	IsLightTheme                                            bool
 	ColorCanvas, ColorPanel, ColorStripe                    string
 	ColorInk, ColorMuted, ColorPrimary                      string
 	ColorSecondary, ColorDanger, ColorFocused, ColorSuccess string
@@ -282,7 +285,17 @@ func SetTheme(name string) {
 		ColorBorder, ColorModeNormal, ColorModeInsert = "#324155", "#58a6ff", "#3fb950"
 		ColorWarn = "#f9e2af"
 	}
+	IsLightTheme = themeIsLight(name)
 	resetStyles()
+}
+
+func themeIsLight(name string) bool {
+	switch name {
+	case "light-ocean", "light-nord", "light-monokai", "light-dracula", "light-catppuccin", "light-solarized":
+		return true
+	default:
+		return false
+	}
 }
 
 func init() { SetTheme("ocean") }

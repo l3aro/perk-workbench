@@ -252,8 +252,10 @@ AI providers and agents do not belong in the application `config.json`. They are
 loaded from the user file `$XDG_CONFIG_HOME/perk-workbench/ai.json` and the
 project file `.perk-workbench/ai.json`; entries with the same ID in the project
 file override user entries. Provider keys can use `env:VARIABLE` references so
-secrets stay out of JSON. See [AI assistance](/docs/ai) for the provider and
-agent schema.
+secrets stay out of JSON. Use **configure AI** from the command palette to set
+up the user-level provider and `assistant` agent directly in the TUI, or edit
+the files manually. See [AI assistance](/docs/ai) for the provider and agent
+schema.
 
 ## Validation and troubleshooting
 

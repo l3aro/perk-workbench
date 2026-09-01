@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/l3aro/perk-workbench/internal/ai"
 	"github.com/l3aro/perk-workbench/internal/database"
 	"github.com/l3aro/perk-workbench/internal/database/plugin"
 	"github.com/l3aro/perk-workbench/internal/log"
@@ -679,6 +684,101 @@ func TestExistingConfigBuiltinDescriptorReachesSavedProfilePicker(t *testing.T) 
 	}
 	if err := component.Form.Validate(); err != nil {
 		t.Fatalf("saved profile validation = %v, driver=%q plugin=%q candidates=%v", err, component.Form.Values.Driver, component.Form.Values.Plugin, database.PluginsByDriver(string(component.Form.Values.Driver)))
+	}
+}
+func TestLoadAI_freshStartupLoadsSavedUserConfigWithProjectPrecedence(t *testing.T) {
+	userServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "user layer should be overridden", http.StatusInternalServerError)
+	}))
+	t.Cleanup(userServer.Close)
+
+	var projectModel, projectAuthorization string
+	projectServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		projectAuthorization = request.Header.Get("Authorization")
+		var payload struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			http.Error(writer, err.Error(), http.StatusBadRequest)
+			return
+		}
+		projectModel = payload.Model
+		_, _ = io.WriteString(writer, `{"choices":[{"message":{"content":"project response"}}]}`)
+	}))
+	t.Cleanup(projectServer.Close)
+
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	userPath := filepath.Join(configHome, "perk-workbench", "ai.json")
+	projectPath := filepath.Join(t.TempDir(), ".perk-workbench", "ai.json")
+	userConfig := ai.Config{
+		Providers: map[string]ai.Provider{
+			"cloud": {
+				Name: "User Cloud", API: ai.APIOpenAICompatible,
+				BaseURL: userServer.URL + "/v1", APIKey: "user-key", Models: []string{"small"},
+			},
+		},
+		Agents: map[string]ai.Agent{
+			"assistant": {Name: "User Assistant", Provider: "cloud", Model: "small"},
+		},
+	}
+	projectConfig := ai.Config{
+		Providers: map[string]ai.Provider{
+			"cloud": {
+				Name: "Project Cloud", API: ai.APIOpenAICompatible,
+				BaseURL: projectServer.URL + "/v1", APIKey: "project-key", Models: []string{"large"},
+			},
+		},
+		Agents: map[string]ai.Agent{
+			"assistant": {Name: "Project Assistant", Provider: "cloud", Model: "large"},
+		},
+	}
+	if err := ai.Save(userPath, userConfig); err != nil {
+		t.Fatalf("saving user AI config: %v", err)
+	}
+	if err := ai.Save(projectPath, projectConfig); err != nil {
+		t.Fatalf("saving project AI config: %v", err)
+	}
+	projectBefore, err := os.ReadFile(projectPath)
+	if err != nil {
+		t.Fatalf("reading project AI config before startup: %v", err)
+	}
+
+	// loadAI is the startup reload path used by Configure AI. It must
+	// construct a client from the saved user layer while applying project
+	// overrides; the request below exercises that fresh-startup client.
+	client, history, err := loadAI(userPath, projectPath)
+	if err != nil {
+		t.Fatalf("loading AI client on fresh startup: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := history.Close(); err != nil {
+			t.Errorf("closing fresh startup history: %v", err)
+		}
+	})
+	if client == nil {
+		t.Fatal("fresh startup returned a nil AI client")
+	}
+
+	response, err := client.Chat(context.Background(), ai.Request{
+		AgentID:  "assistant",
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("chat through fresh startup client: %v", err)
+	}
+	if response.Agent != "Project Assistant" || response.Content != "project response" {
+		t.Fatalf("response = %#v, want project-layer assistant", response)
+	}
+	if projectModel != "large" || projectAuthorization != "Bearer project-key" {
+		t.Fatalf("project request = model %q authorization %q, want large/project-key", projectModel, projectAuthorization)
+	}
+	projectAfter, err := os.ReadFile(projectPath)
+	if err != nil {
+		t.Fatalf("reading project AI config after startup: %v", err)
+	}
+	if string(projectAfter) != string(projectBefore) {
+		t.Fatalf("project AI config changed from %q to %q", projectBefore, projectAfter)
 	}
 }
 

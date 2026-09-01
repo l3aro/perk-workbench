@@ -7,6 +7,8 @@ import (
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/l3aro/perk-workbench/internal/ai"
 )
 
 func TestPaletteThemeCommandsApplySharedPalette(t *testing.T) {
@@ -94,5 +96,38 @@ func TestFormTheme_confirmButtonUsesFocusedColorOnlyWhileFocused(t *testing.T) {
 	confirm.Blur()
 	if view := confirm.View(); !strings.Contains(view, accentButton) || strings.Contains(view, focusedButton) {
 		t.Fatalf("blurred confirm view = %q, want accent button color only", view)
+	}
+}
+
+func TestApplyThemeRefreshesChatAfterLayoutInitialized(t *testing.T) {
+	snapshotThemeState(t)
+	setTheme(themeOcean)
+
+	model := New("", context.Background(), testOpen, false)
+	model.State = stateReady
+	model.SetAI(fakeChatClient{}, nil)
+	model.applyLayout(140, 32)
+	run := model.chat.component.ActiveRun()
+	run.Messages = []ai.Message{{
+		Role:    ai.RoleAssistant,
+		Content: "**Readable assistant response.**",
+	}}
+	model.chat.component.RefreshView()
+	if len(run.BlockCache) != 1 {
+		t.Fatalf("dark block cache length = %d, want 1", len(run.BlockCache))
+	}
+	darkBlock := run.BlockCache[0].Block
+
+	model.applyTheme(themeLightOcean)
+
+	if len(run.BlockCache) != 1 {
+		t.Fatalf("light block cache length = %d, want 1", len(run.BlockCache))
+	}
+	lightBlock := run.BlockCache[0].Block
+	if lightBlock == darkBlock {
+		t.Fatal("light theme retained dark rendered assistant content")
+	}
+	if got := strings.Join(strings.Fields(ansi.Strip(model.chat.component.Viewport.GetContent())), " "); !strings.Contains(got, "Readable assistant response.") {
+		t.Fatalf("light chat content = %q, want assistant response", got)
 	}
 }

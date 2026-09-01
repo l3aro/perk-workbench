@@ -18,6 +18,11 @@ var _ chat.Executor = chatExecutor{}
 // component and enables the pane.
 func (m *Model) SetAI(client chat.Client, history chat.History) {
 	m.chat.component.SetAI(client, history)
+	// The palette and layout are both derived from chat availability. Refresh
+	// them immediately because activation can happen after New has built the
+	// initial (AI-disabled) state, such as when the wizard saves a config.
+	m.overlay.commandPalette = newCommandPalette(*m)
+	m.applyLayout(m.layout.width, m.layout.height)
 }
 
 func (m *Model) toggleAI() {
