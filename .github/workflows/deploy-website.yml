@@ -59,7 +59,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ env.ACT == 'true' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ env.ACT != 'true' }}
           load: ${{ env.ACT == 'true' }}
           tags: ${{ env.IMAGE }}
