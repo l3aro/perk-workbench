@@ -1,0 +1,35 @@
+services:
+  website:
+    image: ${IMAGE}
+    environment:
+      PORT: "8080"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - traefik_proxy
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.${STACK_NAME}.rule=Host(`${SITE_HOST}`)
+        - traefik.http.routers.${STACK_NAME}.entrypoints=web
+        - traefik.swarm.network=traefik_proxy
+        - traefik.http.services.${STACK_NAME}.loadbalancer.server.port=8080
+        - traefik.http.services.${STACK_NAME}.loadbalancer.passhostheader=true
+
+networks:
+  traefik_proxy:
+    external: true

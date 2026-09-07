@@ -1,0 +1,83 @@
+name: Deploy Website
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-website
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  STACK_NAME: perk-workbench-website
+  IMAGE: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        if: ${{ !env.ACT }}
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: ${{ env.ACT == 'true' && 'docker' || 'docker-container' }}
+      - name: Log in to the Container registry
+        if: ${{ !env.ACT }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate SITE_HOST and render compose file
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          STACK_NAME: ${{ env.STACK_NAME }}
+          SITE_HOST: ${{ vars.SITE_HOST }}
+        run: |
+          if [ -z "${SITE_HOST}" ]; then
+            echo "::error::vars.SITE_HOST is not set or empty"
+            exit 1
+          fi
+          if ! command -v envsubst >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base
+          fi
+          envsubst '$IMAGE $STACK_NAME $SITE_HOST' < compose.deploy.yaml > compose.deploy.rendered.yaml
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ env.ACT == 'true' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ env.ACT != 'true' }}
+          load: ${{ env.ACT == 'true' }}
+          tags: ${{ env.IMAGE }}
+
+      - name: Deploy stack
+        if: ${{ !env.ACT }}
+        uses: cssnr/stack-deploy-action@v1
+        with:
+          name: ${{ env.STACK_NAME }}
+          file: compose.deploy.rendered.yaml
+          host: ${{ secrets.DEPLOYMENT_HOST }}
+          port: ${{ secrets.DEPLOYMENT_PORT }}
+          user: ${{ vars.DEPLOYMENT_USER }}
+          ssh_key: ${{ secrets.DEPLOYMENT_PRIVATE_KEY }}
+          registry_auth: true
+          registry_host: ghcr.io
+          registry_user: ${{ github.actor }}
+          registry_pass: ${{ secrets.GITHUB_TOKEN }}
+          prune: true
+          detach: false
+          resolve_image: changed

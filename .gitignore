@@ -18,4 +18,4 @@
 /internal/site/assets/dist/
 .env
 .env.*
-!.env.example
+.vars*
